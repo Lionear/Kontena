@@ -48,3 +48,9 @@ jobs:
       # Integration tests against a real Docker engine; each test skips cleanly when Docker is absent.
       - name: Test (Adapters.Docker)
         run: dotnet test tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj -c Release
+
+      # Keep THIRD-PARTY-NOTICES.md in sync with the dependency closure.
+      - name: Check third-party notices
+        run: |
+          dotnet restore
+          python3 tools/generate-third-party-notices.py --check

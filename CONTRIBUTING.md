@@ -95,6 +95,14 @@ and PR; `build.yml` publishes cross-platform builds. Pushing to `main` refreshes
 **preview** release; pushing a `v<semver>` tag cuts a real **stable** release (Windows `.zip`, Linux
 `.AppImage`, macOS `.zip`). The builds are unsigned / not notarized for now.
 
+## Dependencies & notices
+
+Bundled open-source dependencies keep their own licenses; the required attribution lives in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md), generated from the NuGet dependency closure. If your
+change adds, removes or bumps a dependency, regenerate it and commit the result
+(`python3 tools/generate-third-party-notices.py`; `--check` verifies the committed file is current, and
+CI runs it).
+
 ## License of contributions
 
 The project is source-available under a split license: `src/Kontena.Sdk` is
