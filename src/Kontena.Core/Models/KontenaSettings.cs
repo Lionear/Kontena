@@ -41,6 +41,14 @@ public sealed record KontenaSettings
 
     /// <summary>Enable programming-font ligatures in the terminal.</summary>
     public bool TerminalLigatures { get; init; } = true;
+
+    // ── Window placement (restored on launch) ─────────────────────────────────
+
+    public double? WindowWidth { get; init; }
+    public double? WindowHeight { get; init; }
+    public int? WindowX { get; init; }
+    public int? WindowY { get; init; }
+    public bool WindowMaximized { get; init; }
 }
 
 /// <summary>Terminal font settings resolved for a session (family carries a mono fallback).</summary>
