@@ -48,6 +48,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>The page shown in the content area.</summary>
     [ObservableProperty] private object? _currentPage;
 
+    /// <summary>The active modal dialog (e.g. Run container), or null when none.</summary>
+    [ObservableProperty] private object? _dialog;
+
+    public bool IsDialogOpen => Dialog is not null;
+
+    partial void OnDialogChanged(object? value) => OnPropertyChanged(nameof(IsDialogOpen));
+
     public ObservableCollection<NavItem> NavItems { get; }
 
     /// <summary>Engines shown in the backend-switcher dropdown.</summary>
@@ -123,8 +130,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         RebuildEngineList();
 
         DisposeDetail();
+        Dialog = null;
 
-        Containers = new ContainersViewModel(_engine) { RequestOpenDetail = ShowContainerDetail };
+        Containers = new ContainersViewModel(_engine)
+        {
+            RequestOpenDetail = ShowContainerDetail,
+            RequestRunContainer = () => _ = ShowRunDialogAsync(),
+        };
         Images = new ImagesViewModel(_engine);
         Volumes = new VolumesViewModel(_engine);
         Networks = new NetworksViewModel(_engine);
@@ -173,6 +185,28 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _detail?.Dispose();
         _detail = null;
     }
+
+    private async Task ShowRunDialogAsync()
+    {
+        if (_engine is null)
+            return;
+
+        var networks = (await _engine.ListNetworksAsync()).Select(n => n.Name).ToList();
+        var images = (await _engine.ListImagesAsync())
+            .Select(i => $"{i.Repository}:{i.Tag}")
+            .ToHashSet(StringComparer.Ordinal);
+
+        Dialog = new RunContainerViewModel(
+            _engine, EngineName, EngineChip, networks, images,
+            onClose: CloseDialog,
+            onCreated: async () =>
+            {
+                if (Containers is not null)
+                    await Containers.LoadAsync();
+            });
+    }
+
+    private void CloseDialog() => Dialog = null;
 
     public void Dispose()
     {

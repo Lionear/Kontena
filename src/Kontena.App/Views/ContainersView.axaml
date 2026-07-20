@@ -29,7 +29,7 @@
                             <TextBlock Text="Pull image" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <Button Classes="primary">
+                    <Button Classes="primary" Command="{Binding RunContainerCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="7">
                             <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource PrimaryInk}"
                                   Data="{StaticResource IconPlay}"/>

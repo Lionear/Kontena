@@ -239,5 +239,11 @@
                 </StackPanel>
             </Panel>
         </Grid>
+
+        <!-- Modal overlay (Run container, …) -->
+        <Panel Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
+            <ContentControl Content="{Binding Dialog}" HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Margin="32"/>
+        </Panel>
     </Grid>
 </Window>

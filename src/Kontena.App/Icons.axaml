@@ -58,4 +58,8 @@
     <StreamGeometry x:Key="IconHash">M4 9h16 M4 15h16 M10 3L8 21 M16 3l-2 18</StreamGeometry>
 
     <StreamGeometry x:Key="IconClock">M22 12A10 10 0 1 1 2 12A10 10 0 1 1 22 12Z M12 6v6l4 2</StreamGeometry>
+
+    <StreamGeometry x:Key="IconClose">M18 6L6 18 M6 6l12 12</StreamGeometry>
+
+    <StreamGeometry x:Key="IconPlus">M5 12h14 M12 5v14</StreamGeometry>
 </ResourceDictionary>

@@ -20,6 +20,12 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
     public void OpenDetail(ContainerRowViewModel row) => RequestOpenDetail?.Invoke(row.Summary);
 
+    /// <summary>Raised when the Run button is clicked; the shell shows the Run modal.</summary>
+    public Action? RequestRunContainer { get; set; }
+
+    [RelayCommand]
+    private void RunContainer() => RequestRunContainer?.Invoke();
+
     private readonly List<ContainerRowViewModel> _all = [];
 
     // Event-driven refresh: engine events (from CLI or any other app) mark the
