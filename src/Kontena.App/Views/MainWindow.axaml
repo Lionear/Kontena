@@ -10,6 +10,7 @@
         Width="1180" Height="760" MinWidth="900" MinHeight="560"
         Background="{DynamicResource Bg}"
         TransparencyLevelHint="None"
+        Icon="/Assets/icon.ico"
         Title="Kontena">
 
     <Design.DataContext>
@@ -89,11 +90,7 @@
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,16">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,4,0,20">
-                    <Canvas Width="26" Height="26">
-                        <Border Canvas.Left="0" Canvas.Top="0" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource Primary}"/>
-                        <Border Canvas.Left="13" Canvas.Top="3" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource Accent}" Opacity="0.9"/>
-                        <Border Canvas.Left="5" Canvas.Top="13" Width="13" Height="13" CornerRadius="4" Background="#0F9E7E" Opacity="0.85"/>
-                    </Canvas>
+                    <Image Source="/Assets/icon.png" Width="26" Height="26"/>
                     <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
 
