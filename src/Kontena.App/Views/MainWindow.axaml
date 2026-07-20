@@ -89,8 +89,17 @@
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
-        <Style Selector="Button.engineitem:pointerover /template/ ContentPresenter">
+        <!-- Hover only on connected, non-active rows -->
+        <Style Selector="Button.engineitem:pointerover:not(.active):not(:disabled) /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <!-- The active engine gets a steady, subtle highlight -->
+        <Style Selector="Button.engineitem.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+        <!-- Not-connected rows are clearly dimmed and inert -->
+        <Style Selector="Button.engineitem:disabled">
+            <Setter Property="Opacity" Value="0.45"/>
         </Style>
     </Window.Styles>
 
@@ -211,7 +220,8 @@
                                         <ItemsControl ItemsSource="{Binding Engines}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:EngineOption">
-                                                    <Button Classes="engineitem" IsEnabled="{Binding IsConnected}"
+                                                    <Button Classes="engineitem" Classes.active="{Binding IsActive}"
+                                                            IsEnabled="{Binding IsConnected}"
                                                             Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
                                                         <Grid ColumnDefinitions="Auto,*,Auto">
                                                             <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
