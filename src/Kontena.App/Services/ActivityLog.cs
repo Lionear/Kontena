@@ -53,6 +53,11 @@ public sealed class ActivityLog : IDisposable
             {
                 await foreach (var ev in engine.StreamEventsAsync(ct))
                 {
+                    // Skip noise the engine can't classify — health-check and exec pings
+                    // (e.g. Docker's health_status / exec_create|start|die) are not real changes.
+                    if (ev.Type == EngineEventType.Unknown)
+                        continue;
+
                     var captured = ev;
                     // Build + insert on the UI thread: resolveName reads UI-owned collections.
                     Dispatcher.UIThread.Post(() =>
