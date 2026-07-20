@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
@@ -339,6 +340,84 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             var response = await _client.Images.PruneImagesAsync(parameters, ct).ConfigureAwait(false);
             return new PruneResult(response.ImagesDeleted?.Count ?? 0, (long)response.SpaceReclaimed);
         });
+
+    public async IAsyncEnumerable<BuildProgress> BuildImageAsync(
+        BuildRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var parameters = new ImageBuildParameters
+        {
+            Tags = [request.Tag],
+            Dockerfile = request.Dockerfile,
+            Target = string.IsNullOrWhiteSpace(request.Target) ? null : request.Target,
+            BuildArgs = new Dictionary<string, string>(request.BuildArgs),
+            NoCache = request.NoCache,
+            Pull = request.Pull ? "true" : null,
+            Remove = true,
+        };
+
+        // Docker's /build endpoint wants the context as a tar stream.
+        using var context = new MemoryStream();
+        var tarError = default(string);
+        try
+        {
+            TarFile.CreateFromDirectory(request.ContextPath, context, includeBaseDirectory: false);
+            context.Position = 0;
+        }
+        catch (Exception ex)
+        {
+            tarError = $"Could not read build context: {ex.Message}";
+        }
+
+        if (tarError is not null)
+        {
+            yield return new BuildProgress(string.Empty, tarError);
+            yield break;
+        }
+
+        var channel = Channel.CreateUnbounded<BuildProgress>();
+        var progress = new ChannelBuildProgress(channel.Writer);
+
+        var build = Task.Run(async () =>
+        {
+            try
+            {
+                await _client.Images.BuildImageFromDockerfileAsync(
+                    parameters, context, null, null, progress, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                channel.Writer.TryWrite(new BuildProgress(string.Empty, ex.Message));
+            }
+            finally
+            {
+                channel.Writer.TryComplete();
+            }
+        }, CancellationToken.None);
+
+        await foreach (var item in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            yield return item;
+
+        try { await build.ConfigureAwait(false); }
+        catch { /* surfaced through the channel already */ }
+    }
+
+    /// <summary>Forwards Docker build messages to a channel, in order, on the reading thread.</summary>
+    private sealed class ChannelBuildProgress(ChannelWriter<BuildProgress> writer) : IProgress<JSONMessage>
+    {
+        public void Report(JSONMessage message)
+        {
+            var error = message.Error?.Message ?? message.ErrorMessage;
+            if (!string.IsNullOrEmpty(error))
+            {
+                writer.TryWrite(new BuildProgress(string.Empty, error));
+                return;
+            }
+
+            var text = (message.Stream ?? message.Status ?? string.Empty).TrimEnd('\n', '\r');
+            if (text.Length > 0)
+                writer.TryWrite(new BuildProgress(text));
+        }
+    }
 
     // ── Volumes ─────────────────────────────────────────────────────────────
 

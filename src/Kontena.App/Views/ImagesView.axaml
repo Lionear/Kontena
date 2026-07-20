@@ -25,6 +25,12 @@
                             <TextBlock Text="Pull image" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
+                    <Button Classes="primary" Command="{Binding BuildImageCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource PrimaryInk}" Data="{StaticResource IconBox}"/>
+                            <TextBlock Text="Build image" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
             <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextDim}"/>

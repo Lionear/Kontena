@@ -77,6 +77,11 @@ public interface IContainerEngine
     IAsyncEnumerable<PullProgress> PullImageAsync(
         string reference, CancellationToken ct = default);
 
+    /// <summary>Build an image from a Dockerfile, streaming builder output until it completes.</summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsBuild"/>.</remarks>
+    IAsyncEnumerable<BuildProgress> BuildImageAsync(
+        BuildRequest request, CancellationToken ct = default);
+
     ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default);
 
     /// <summary>

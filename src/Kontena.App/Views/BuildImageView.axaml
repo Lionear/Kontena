@@ -1,0 +1,247 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.BuildImageView"
+             x:DataType="vm:BuildImageViewModel"
+             x:Name="BuildRoot">
+
+    <UserControl.Styles>
+        <Style Selector="TextBox.fieldinput">
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="TextBox.fieldinput:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="TextBlock.flabel">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="Margin" Value="0,0,0,7"/>
+        </Style>
+        <Style Selector="Button.del">
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+        <Style Selector="Button.del:pointerover /template/ ContentPresenter">
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Danger}"/>
+        </Style>
+        <Style Selector="Button.addrow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryDim}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="8,7"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,9,0,0"/>
+        </Style>
+        <Style Selector="ToggleSwitch.pill">
+            <Setter Property="OnContent" Value="{x:Null}"/>
+            <Setter Property="OffContent" Value="{x:Null}"/>
+            <Setter Property="MinWidth" Value="0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Width="780" MaxHeight="780" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+            <!-- Header -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="24,20">
+                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="9" Background="{DynamicResource PrimarySoft}">
+                    <Path Classes="icon" Width="19" Height="19" Stroke="{DynamicResource Primary}" Data="{StaticResource IconBox}"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="Build an image" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="Build from a Dockerfile in a local context — Kontena streams the builder output."
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Classes="qa" Width="32" Height="32" Command="{Binding CloseCommand}" ToolTip.Tip="Close">
+                    <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconClose}"/>
+                </Button>
+            </Grid>
+            <Border Grid.Row="0" Height="1" Background="{DynamicResource Border}" VerticalAlignment="Bottom"/>
+
+            <!-- Body: config (before) or output (during/after) -->
+            <Panel Grid.Row="1">
+
+                <!-- Config -->
+                <ScrollViewer IsVisible="{Binding NotStarted}">
+                    <StackPanel Margin="24,20" Spacing="16">
+                        <StackPanel>
+                            <TextBlock Classes="flabel" Text="Build context"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding ContextPath, Mode=TwoWay}" PlaceholderText="/path/to/context"/>
+                                <Button Grid.Column="1" Classes="ghost" Padding="12,8" Margin="8,0,0,0" Click="OnBrowseContextClick" ToolTip.Tip="Choose folder">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconFolder}"/>
+                                        <TextBlock Text="Browse" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Classes="flabel" Text="Image tag"/>
+                                <TextBox Classes="fieldinput" Text="{Binding Tag, Mode=TwoWay}" PlaceholderText="myapp:1.0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Classes="flabel" Text="Dockerfile  (relative)"/>
+                                <TextBox Classes="fieldinput" Text="{Binding Dockerfile, Mode=TwoWay}" PlaceholderText="Dockerfile"/>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel HorizontalAlignment="Left" Width="360">
+                            <TextBlock Classes="flabel" Text="Target stage  (optional)"/>
+                            <TextBox Classes="fieldinput" Text="{Binding Target, Mode=TwoWay}" PlaceholderText="e.g. runtime"/>
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock Classes="flabel" Text="Options"/>
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="No cache" FontSize="13" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                    <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding NoCache, Mode=TwoWay}"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="Pull base images" FontSize="13" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                    <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding Pull, Mode=TwoWay}"/>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock Classes="flabel" Text="Build args"/>
+                            <ItemsControl ItemsSource="{Binding BuildArgs}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BuildArgRow">
+                                        <Grid ColumnDefinitions="*,22,*,Auto" Margin="0,0,0,8">
+                                            <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Key, Mode=TwoWay}" PlaceholderText="ARG"/>
+                                            <TextBlock Grid.Column="1" Text="=" Foreground="{DynamicResource TextFaint}" FontFamily="{StaticResource Mono}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Column="2" Classes="fieldinput" Text="{Binding Value, Mode=TwoWay}" PlaceholderText="value"/>
+                                            <Button Grid.Column="3" Classes="del" Margin="8,0,0,0"
+                                                    Command="{Binding #BuildRoot.((vm:BuildImageViewModel)DataContext).RemoveArgCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconTrash}"/>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Classes="addrow" Command="{Binding AddArgCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource Primary}" Data="{StaticResource IconPlus}"/>
+                                    <TextBlock Text="Add build arg" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Output -->
+                <Grid IsVisible="{Binding HasOutput}" ColumnDefinitions="308,*" Margin="0">
+                    <ScrollViewer Grid.Column="0" Padding="20,16" >
+                        <ItemsControl ItemsSource="{Binding Steps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:BuildStepViewModel">
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,0,0,10">
+                                        <TextBlock Grid.Column="0" Text="{Binding Number}" FontFamily="{StaticResource Mono}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" MinWidth="30"/>
+                                        <Ellipse Grid.Column="1" Width="8" Height="8" Fill="{Binding DotBrush}" Margin="4,0,10,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Instruction}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                   Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding TagText}" IsVisible="{Binding HasTag}" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Border Grid.Column="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
+                        <ListBox x:Name="ConsoleList" ItemsSource="{Binding Console}" Background="Transparent" Padding="16,14"
+                                 SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="MinHeight" Value="0"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                </Style>
+                                <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                </Style>
+                            </ListBox.Styles>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12" LineHeight="19"
+                                               Foreground="{DynamicResource TextDim}"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+            </Panel>
+
+            <!-- Footer -->
+            <StackPanel Grid.Row="2" Background="#12161D">
+                <Border Height="1" Background="{DynamicResource Border}"/>
+
+                <!-- Progress (during / after) -->
+                <StackPanel Margin="24,14,24,0" Spacing="8" IsVisible="{Binding HasOutput}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding StatusLine}" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="1" Text="{Binding ElapsedText}" FontSize="12" FontFamily="{StaticResource Mono}"
+                                   Foreground="{DynamicResource TextFaint}"/>
+                    </Grid>
+                    <ProgressBar Value="{Binding ProgressPercent}" Maximum="100" Height="5" CornerRadius="3"
+                                 Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,Auto" Margin="24,16">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                        <!-- Not started -->
+                        <Button Classes="ghost" Command="{Binding CloseCommand}" IsVisible="{Binding NotStarted}">Cancel</Button>
+                        <Button Classes="primary" Command="{Binding BuildCommand}" IsEnabled="{Binding CanBuild}" IsVisible="{Binding NotStarted}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource PrimaryInk}" Data="{StaticResource IconBox}"/>
+                                <TextBlock Text="Build" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <!-- Building -->
+                        <Button Classes="ghost" Command="{Binding CancelCommand}" IsVisible="{Binding IsBuilding}">Cancel build</Button>
+                        <!-- Done / failed -->
+                        <Button Classes="ghost" Command="{Binding CloseCommand}" IsVisible="{Binding IsFailed}">Close</Button>
+                        <Button Classes="ghost" Command="{Binding CloseCommand}" IsVisible="{Binding IsDone}">Close</Button>
+                        <Button Classes="primary" Command="{Binding RunOnFinishCommand}" IsVisible="{Binding IsDone}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource PrimaryInk}" Data="{StaticResource IconPlay}"/>
+                                <TextBlock Text="Run image" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

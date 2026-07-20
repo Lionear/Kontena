@@ -19,6 +19,12 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
     [RelayCommand]
     private void PullImage() => RequestPullImage?.Invoke();
 
+    /// <summary>Raised when the Build image button is clicked; the shell shows the Build modal.</summary>
+    public Action? RequestBuildImage { get; set; }
+
+    [RelayCommand]
+    private void BuildImage() => RequestBuildImage?.Invoke();
+
     public ObservableCollection<ImageRowViewModel> Items { get; } = [];
 
     [ObservableProperty] private string _searchText = string.Empty;

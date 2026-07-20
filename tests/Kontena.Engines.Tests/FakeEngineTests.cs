@@ -94,6 +94,24 @@ public class FakeEngineTests
     }
 
     [Fact]
+    public async Task Build_streams_steps_and_adds_the_image()
+    {
+        var engine = NewEngine();
+        var before = (await engine.ListImagesAsync()).Count;
+
+        var lines = new List<string>();
+        await foreach (var p in engine.BuildImageAsync(new BuildRequest { ContextPath = ".", Tag = "myapp:1.0" }))
+            lines.Add(p.Text);
+
+        Assert.Contains(lines, l => l.StartsWith("Step 1/", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("Successfully tagged myapp:1.0", StringComparison.Ordinal));
+
+        var after = await engine.ListImagesAsync();
+        Assert.Equal(before + 1, after.Count);
+        Assert.Contains(after, i => i.Repository == "myapp" && i.Tag == "1.0");
+    }
+
+    [Fact]
     public async Task Streams_logs_yield_lines()
     {
         var engine = NewEngine();

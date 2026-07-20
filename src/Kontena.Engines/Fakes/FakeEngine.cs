@@ -202,6 +202,45 @@ public sealed class FakeEngine : IContainerEngine
         yield return new PullProgress(reference, "Pull complete", total, total);
     }
 
+    public async IAsyncEnumerable<BuildProgress> BuildImageAsync(
+        BuildRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        string[] lines =
+        [
+            "Step 1/5 : FROM node:22-slim AS build",
+            " ---> Using cache",
+            "Step 2/5 : WORKDIR /app",
+            " ---> Using cache",
+            "Step 3/5 : COPY package*.json ./",
+            " ---> Using cache",
+            "Step 4/5 : RUN npm ci --omit=dev",
+            "added 214 packages in 17s",
+            "Step 5/5 : COPY . . && npm run build",
+            "creating an optimized production build…",
+            "Successfully built fake0build01",
+            $"Successfully tagged {request.Tag}",
+        ];
+
+        foreach (var line in lines)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(2, ct).ConfigureAwait(false);
+            yield return new BuildProgress(line);
+        }
+
+        var (repo, tag) = SplitReference(request.Tag);
+        var id = NextId();
+        _images[id] = new ImageSummary
+        {
+            Id = id,
+            Repository = repo,
+            Tag = tag,
+            SizeBytes = 96_000_000,
+            CreatedAt = DateTimeOffset.UtcNow,
+            InUse = false,
+        };
+    }
+
     public ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default)
     {
         Require(_images.Remove(id), $"image {id}");
