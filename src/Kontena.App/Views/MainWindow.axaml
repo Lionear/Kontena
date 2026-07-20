@@ -95,14 +95,14 @@
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Bottom" Spacing="2">
-                    <Button Classes="nav" Command="{Binding ShowActivityCommand}">
+                    <Button Classes="nav" Classes.selected="{Binding IsActivitySelected}" Command="{Binding ShowActivityCommand}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                   Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconActivity}"/>
                             <TextBlock Grid.Column="1" Text="Activity" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
-                    <Button Classes="nav" Command="{Binding ShowSettingsCommand}">
+                    <Button Classes="nav" Classes.selected="{Binding IsSettingsSelected}" Command="{Binding ShowSettingsCommand}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                   Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconSettings}"/>

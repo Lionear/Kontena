@@ -66,6 +66,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>The page shown in the content area.</summary>
     [ObservableProperty] private object? _currentPage;
 
+    public bool IsActivitySelected => Activity is not null && ReferenceEquals(CurrentPage, Activity);
+    public bool IsSettingsSelected => SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
+
+    partial void OnCurrentPageChanged(object? value)
+    {
+        OnPropertyChanged(nameof(IsActivitySelected));
+        OnPropertyChanged(nameof(IsSettingsSelected));
+    }
+
     /// <summary>The active modal dialog (e.g. Run container), or null when none.</summary>
     [ObservableProperty] private object? _dialog;
 
