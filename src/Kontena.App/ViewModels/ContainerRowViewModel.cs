@@ -8,13 +8,33 @@ namespace Kontena.App.ViewModels;
 /// <summary>Display + interaction wrapper around a <see cref="ContainerSummary"/>.</summary>
 public partial class ContainerRowViewModel : ObservableObject
 {
-    private readonly ContainerSummary _c;
+    private ContainerSummary _c;
     private readonly ContainersViewModel _parent;
 
     public ContainerRowViewModel(ContainerSummary container, ContainersViewModel parent)
     {
         _c = container;
         _parent = parent;
+    }
+
+    /// <summary>Patch this row in place from a fresh summary (same container Id).</summary>
+    public void Update(ContainerSummary container)
+    {
+        _c = container;
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Image));
+        OnPropertyChanged(nameof(BackendChip));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(PortsText));
+        OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(IsNotRunning));
+        OnPropertyChanged(nameof(StatusBrush));
+
+        if (!IsRunning)
+        {
+            CpuText = "—";
+            MemText = "—";
+        }
     }
 
     public string Id => _c.Id;

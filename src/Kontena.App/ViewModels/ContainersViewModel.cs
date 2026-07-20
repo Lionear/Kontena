@@ -32,11 +32,61 @@ public partial class ContainersViewModel : ViewModelBase, IDisposable
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
-    private void ApplyFilter()
+    /// <summary>
+    /// Reconcile the master list against a fresh snapshot: reuse existing rows
+    /// (patched in place), add new ones, drop removed ones. No full rebuild.
+    /// </summary>
+    private void Reconcile(IReadOnlyList<ContainerSummary> list)
     {
-        Items.Clear();
-        foreach (var row in _all.Where(Matches))
-            Items.Add(row);
+        var byId = _all.ToDictionary(r => r.Id);
+        var rebuilt = new List<ContainerRowViewModel>(list.Count);
+
+        foreach (var c in list.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (byId.TryGetValue(c.Id, out var existing))
+            {
+                existing.Update(c);
+                rebuilt.Add(existing);
+            }
+            else
+            {
+                rebuilt.Add(new ContainerRowViewModel(c, this));
+            }
+        }
+
+        _all.Clear();
+        _all.AddRange(rebuilt);
+    }
+
+    private void ApplyFilter() => SyncCollection(Items, _all.Where(Matches).ToList());
+
+    /// <summary>Mutate <paramref name="target"/> the minimum needed to match
+    /// <paramref name="desired"/> (add/remove/move only), preserving unchanged rows.</summary>
+    private static void SyncCollection(
+        ObservableCollection<ContainerRowViewModel> target, List<ContainerRowViewModel> desired)
+    {
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(target[i]))
+                target.RemoveAt(i);
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var want = desired[i];
+            if (i >= target.Count)
+            {
+                target.Add(want);
+            }
+            else if (!ReferenceEquals(target[i], want))
+            {
+                var at = target.IndexOf(want);
+                if (at >= 0)
+                    target.Move(at, i);
+                else
+                    target.Insert(i, want);
+            }
+        }
     }
 
     private bool Matches(ContainerRowViewModel row)
@@ -78,9 +128,7 @@ public partial class ContainersViewModel : ViewModelBase, IDisposable
         try
         {
             var list = await _engine.ListContainersAsync();
-            _all.Clear();
-            foreach (var c in list)
-                _all.Add(new ContainerRowViewModel(c, this));
+            Reconcile(list);
 
             RunningCount = list.Count(c => c.State == ContainerState.Running);
             StoppedCount = list.Count - RunningCount;
