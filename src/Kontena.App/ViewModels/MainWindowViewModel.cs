@@ -70,6 +70,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
             Containers = new ContainersViewModel(_engine);
             await Containers.LoadAsync();
+            Containers.StartWatching();
 
             var ci = CultureInfo.InvariantCulture;
             NavItems[0].Count = Containers.Items.Count.ToString(ci);

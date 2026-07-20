@@ -268,6 +268,10 @@ public sealed class FakeEngine : IContainerEngine
             yield return new EngineEvent(EngineEventType.Started, ResourceKind.Container,
                 container.Id, DateTimeOffset.UtcNow);
         }
+
+        // Keep the stream open like a real engine would, instead of completing
+        // (which would make consumers re-subscribe in a tight loop).
+        await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────

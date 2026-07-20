@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Threading;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Models;
@@ -7,13 +9,20 @@ using Kontena.Engines;
 namespace Kontena.App.ViewModels;
 
 /// <summary>The Containers page: lists containers from the active engine and drives actions.</summary>
-public partial class ContainersViewModel : ViewModelBase
+public partial class ContainersViewModel : ViewModelBase, IDisposable
 {
     private readonly IContainerEngine _engine;
 
     public ContainersViewModel(IContainerEngine engine) => _engine = engine;
 
     private readonly List<ContainerRowViewModel> _all = [];
+
+    // Event-driven refresh: engine events (from CLI or any other app) mark the
+    // list dirty; a debounce loop reloads ~250ms after the last event.
+    private CancellationTokenSource? _watchCts;
+    private volatile bool _dirty;
+    private long _lastSignalTicks;
+    private const int DebounceMs = 250;
 
     /// <summary>Filtered view bound to the UI.</summary>
     public ObservableCollection<ContainerRowViewModel> Items { get; } = [];
@@ -58,6 +67,9 @@ public partial class ContainersViewModel : ViewModelBase
     [RelayCommand]
     public async Task LoadAsync()
     {
+        if (IsBusy)
+            return;
+
         IsBusy = true;
         try
         {
@@ -98,6 +110,90 @@ public partial class ContainersViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>Start reacting to engine events so external changes (CLI, other apps) show up live.</summary>
+    public void StartWatching()
+    {
+        if (_watchCts is not null)
+            return;
+
+        _watchCts = new CancellationTokenSource();
+        _ = WatchEventsAsync(_watchCts.Token);
+        _ = DebounceLoopAsync(_watchCts.Token);
+    }
+
+    public void StopWatching()
+    {
+        _watchCts?.Cancel();
+        _watchCts?.Dispose();
+        _watchCts = null;
+    }
+
+    public void Dispose()
+    {
+        StopWatching();
+        GC.SuppressFinalize(this);
+    }
+
+    private async Task WatchEventsAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await foreach (var ev in _engine.StreamEventsAsync(ct))
+                {
+                    if (ev.ResourceKind == ResourceKind.Container)
+                        Signal();
+                }
+
+                // Stream ended without error — pause briefly, then re-subscribe.
+                await Task.Delay(1000, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // Engine hiccup (e.g. restart) — back off, then try to re-subscribe.
+                try { await Task.Delay(2000, ct); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+    }
+
+    private void Signal()
+    {
+        _dirty = true;
+        Interlocked.Exchange(ref _lastSignalTicks, DateTime.UtcNow.Ticks);
+    }
+
+    private async Task DebounceLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(100, ct);
+
+                if (!_dirty || IsBusy)
+                    continue;
+
+                var idleMs = (DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastSignalTicks))
+                    / TimeSpan.TicksPerMillisecond;
+                if (idleMs < DebounceMs)
+                    continue; // still receiving events — wait for a quiet window
+
+                _dirty = false;
+                await Dispatcher.UIThread.InvokeAsync(LoadAsync);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // watching stopped
         }
     }
 
