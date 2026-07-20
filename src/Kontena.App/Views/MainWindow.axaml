@@ -8,7 +8,7 @@
         x:Class="Kontena.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Width="1180" Height="760" MinWidth="900" MinHeight="560"
-        Background="{StaticResource Bg}"
+        Background="{DynamicResource Bg}"
         TransparencyLevelHint="None"
         Title="Kontena">
 
@@ -85,16 +85,16 @@
     <Grid ColumnDefinitions="222,*">
 
         <!-- Sidebar -->
-        <Border Grid.Column="0" Background="{StaticResource SidebarBg}"
-                BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBg}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,16">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,4,0,20">
                     <Canvas Width="26" Height="26">
-                        <Border Canvas.Left="0" Canvas.Top="0" Width="13" Height="13" CornerRadius="4" Background="{StaticResource Primary}"/>
-                        <Border Canvas.Left="13" Canvas.Top="3" Width="13" Height="13" CornerRadius="4" Background="{StaticResource Accent}" Opacity="0.9"/>
+                        <Border Canvas.Left="0" Canvas.Top="0" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource Primary}"/>
+                        <Border Canvas.Left="13" Canvas.Top="3" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource Accent}" Opacity="0.9"/>
                         <Border Canvas.Left="5" Canvas.Top="13" Width="13" Height="13" CornerRadius="4" Background="#0F9E7E" Opacity="0.85"/>
                     </Canvas>
-                    <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Bottom" Spacing="2">
@@ -105,7 +105,7 @@
                             <TextBlock Grid.Column="1" Text="Activity" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
-                    <Button Classes="nav">
+                    <Button Classes="nav" Command="{Binding ShowSettingsCommand}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                   Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconSettings}"/>
@@ -139,14 +139,14 @@
         <Grid Grid.Column="1" RowDefinitions="56,*">
 
             <!-- Command bar -->
-            <Border Grid.Row="0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+            <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                 <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto,Auto">
-                    <Border Grid.Column="0" Width="420" Height="34" Background="{StaticResource Bg}"
-                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                    <Border Grid.Column="0" Width="420" Height="34" Background="{DynamicResource Bg}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
                             CornerRadius="8" Padding="12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <DockPanel LastChildFill="True">
                             <Path DockPanel.Dock="Left" Classes="icon" Width="15" Height="15"
-                                  Stroke="{StaticResource TextFaint}" Data="{StaticResource IconSearch}" VerticalAlignment="Center"/>
+                                  Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconSearch}" VerticalAlignment="Center"/>
                             <TextBox Classes="bare" Margin="9,0,0,0"
                                      PlaceholderText="Search containers, images, volumes…"
                                      Text="{Binding SearchText, Mode=TwoWay}"/>
@@ -156,25 +156,25 @@
                     <!-- Backend switcher (working dropdown) -->
                     <Button Grid.Column="2" Classes="switcher" Margin="0,0,12,0">
                         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                            <Border Width="22" Height="22" CornerRadius="6" Background="{StaticResource DockerChip}" VerticalAlignment="Center">
+                            <Border Width="22" Height="22" CornerRadius="6" Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding EngineChip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="12"
                                            Foreground="#2496ED" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
-                            <TextBlock Text="{Binding EngineName}" FontSize="13" FontWeight="Medium" Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding EngineName}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                             <Panel Width="9" Height="9" VerticalAlignment="Center">
                                 <Ellipse Width="9" Height="9" Fill="#34D399" Opacity="0.25"/>
-                                <Ellipse Width="7" Height="7" Fill="{StaticResource Success}"/>
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource Success}"/>
                             </Panel>
-                            <Path Classes="icon" Width="12" Height="12" Stroke="{StaticResource TextFaint}"
+                            <Path Classes="icon" Width="12" Height="12" Stroke="{DynamicResource TextFaint}"
                                   Data="{StaticResource IconChevronDown}" VerticalAlignment="Center" Margin="1,1,0,0"/>
                         </StackPanel>
 
                         <Button.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight" FlyoutPresenterClasses="flat">
-                                <Border Width="280" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                <Border Width="280" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                                         BorderThickness="1" CornerRadius="10" Padding="6" BoxShadow="0 12 40 0 #66000000">
                                     <StackPanel Spacing="2">
-                                        <TextBlock Text="ENGINES" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}" Margin="10,8,0,6"/>
+                                        <TextBlock Text="ENGINES" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}" Margin="10,8,0,6"/>
                                         <ItemsControl ItemsSource="{Binding Engines}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:EngineOption">
@@ -183,33 +183,33 @@
                                                             Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
                                                         <Grid ColumnDefinitions="Auto,*,Auto">
                                                             <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
-                                                                    Background="{StaticResource DockerChip}" VerticalAlignment="Center">
+                                                                    Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
                                                                 <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold"
                                                                            FontSize="13" Foreground="#2496ED" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                             </Border>
                                                             <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
                                                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                    <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource Text}"/>
+                                                                    <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                                                                     <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
-                                                                        <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Success}"/>
+                                                                        <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
                                                                     </Border>
                                                                 </StackPanel>
                                                                 <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
-                                                                           Foreground="{StaticResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                                                           Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
                                                             </StackPanel>
-                                                            <Path Grid.Column="2" Classes="icon" Width="16" Height="16" Stroke="{StaticResource Primary}"
+                                                            <Path Grid.Column="2" Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
                                                                   Data="{StaticResource IconCheck}" VerticalAlignment="Center" IsVisible="{Binding IsActive}"/>
                                                         </Grid>
                                                     </Button>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                        <Border Height="1" Background="{StaticResource Border}" Margin="4,6"/>
+                                        <Border Height="1" Background="{DynamicResource Border}" Margin="4,6"/>
                                         <Button Classes="engineitem">
                                             <StackPanel Orientation="Horizontal" Spacing="11">
-                                                <Path Classes="icon" Width="16" Height="16" Stroke="{StaticResource TextDim}"
+                                                <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource TextDim}"
                                                       Data="{StaticResource IconPlug}" VerticalAlignment="Center"/>
-                                                <TextBlock Text="Connect a remote engine…" FontSize="13" Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Connect a remote engine…" FontSize="13" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -220,10 +220,10 @@
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="Refresh">
-                            <Path Classes="icon" Width="17" Height="17" Stroke="{StaticResource TextDim}" Data="{StaticResource IconRefresh}"/>
+                            <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconRefresh}"/>
                         </Button>
                         <Button Classes="qa" Width="34" Height="34" ToolTip.Tip="Toggle theme">
-                            <Path Classes="icon" Width="17" Height="17" Stroke="{StaticResource TextDim}" Data="{StaticResource IconMoon}"/>
+                            <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconMoon}"/>
                         </Button>
                     </StackPanel>
                 </Grid>
@@ -234,8 +234,8 @@
                 <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsReady}"/>
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding !IsReady}">
                     <ProgressBar IsIndeterminate="True" Width="220" Height="4"
-                                 Foreground="{StaticResource Primary}" Background="{StaticResource Surface2}"/>
-                    <TextBlock Text="Connecting to your container engine…" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center"/>
+                                 Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
+                    <TextBlock Text="Connecting to your container engine…" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Panel>
         </Grid>

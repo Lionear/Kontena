@@ -66,27 +66,27 @@
         </Style>
     </UserControl.Styles>
 
-    <Border Width="660" MaxHeight="760" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+    <Border Width="660" MaxHeight="760" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
             BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <Grid RowDefinitions="Auto,*,Auto">
 
             <!-- Header -->
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="24,20"
                   Background="Transparent">
-                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="9" Background="{StaticResource PrimarySoft}">
-                    <Path Classes="icon" Width="19" Height="19" Stroke="{StaticResource Primary}" Data="{StaticResource IconPlay}"/>
+                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="9" Background="{DynamicResource PrimarySoft}">
+                    <Path Classes="icon" Width="19" Height="19" Stroke="{DynamicResource Primary}" Data="{StaticResource IconPlay}"/>
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
-                    <TextBlock Text="Run a container" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Text}"/>
+                    <TextBlock Text="Run a container" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                     <TextBlock Text="Configure and launch — Kontena builds the run for the active engine"
-                               FontSize="12.5" Foreground="{StaticResource TextFaint}"/>
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
                 </StackPanel>
                 <Button Grid.Column="2" Classes="qa" Width="32" Height="32" Command="{Binding CancelCommand}" ToolTip.Tip="Close">
-                    <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}" Data="{StaticResource IconClose}"/>
+                    <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconClose}"/>
                 </Button>
             </Grid>
 
-            <Border Grid.Row="0" Height="1" Background="{StaticResource Border}" VerticalAlignment="Bottom"/>
+            <Border Grid.Row="0" Height="1" Background="{DynamicResource Border}" VerticalAlignment="Bottom"/>
 
             <!-- Body -->
             <ScrollViewer Grid.Row="1">
@@ -101,7 +101,7 @@
                                     Command="{Binding PullCommand}" IsEnabled="{Binding CanPull}" IsVisible="{Binding IsImagePulled}"
                                     ToolTip.Tip="Pull now to auto-fill ports and volumes">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextDim}" Data="{StaticResource IconPull}"/>
+                                    <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconPull}"/>
                                     <TextBlock Text="Pull" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
@@ -109,25 +109,25 @@
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="2,8,0,0">
                             <Border CornerRadius="6" Padding="9,4" Background="#34D39916" IsVisible="{Binding IsImageLocal}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Ellipse Width="6" Height="6" Fill="{StaticResource Success}" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Found locally" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Success}"/>
+                                    <Ellipse Width="6" Height="6" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Found locally" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
                                 </StackPanel>
                             </Border>
                             <Border CornerRadius="6" Padding="9,4" Background="#5AB8FF16"
                                     IsVisible="{Binding IsImagePulled}" IsEnabled="{Binding !IsPulling}">
-                                <TextBlock Text="Will be pulled before start" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Info}"/>
+                                <TextBlock Text="Will be pulled before start" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Info}"/>
                             </Border>
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding IsPulling}">
                                 <ProgressBar IsIndeterminate="True" Width="70" Height="3"
-                                             Foreground="{StaticResource Primary}" Background="{StaticResource Surface2}"/>
+                                             Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
                                 <TextBlock Text="{Binding PullStatus}" FontSize="11.5" FontFamily="{StaticResource Mono}"
-                                           Foreground="{StaticResource TextDim}"/>
+                                           Foreground="{DynamicResource TextDim}"/>
                             </StackPanel>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,8,0,0" IsVisible="{Binding ShowPullHint}">
-                            <Path Classes="icon" Width="13" Height="13" Stroke="{StaticResource TextFaint}"
+                            <Path Classes="icon" Width="13" Height="13" Stroke="{DynamicResource TextFaint}"
                                   Data="{StaticResource IconInfo}" VerticalAlignment="Top" Margin="0,2,0,0"/>
-                            <TextBlock FontSize="11.5" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap" MaxWidth="560"
+                            <TextBlock FontSize="11.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap" MaxWidth="560"
                                        Text="Pull now to let Kontena read the image and auto-fill its ports and volumes. Otherwise it's pulled automatically when you run."/>
                         </StackPanel>
                     </StackPanel>
@@ -153,13 +153,13 @@
                                 <DataTemplate x:DataType="vm:PortRow">
                                     <Grid ColumnDefinitions="*,22,*,Auto" Margin="0,0,0,8">
                                         <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Host, Mode=TwoWay}" PlaceholderText="host"/>
-                                        <TextBlock Grid.Column="1" Text="→" Foreground="{StaticResource TextFaint}" FontFamily="{StaticResource Mono}"
+                                        <TextBlock Grid.Column="1" Text="→" Foreground="{DynamicResource TextFaint}" FontFamily="{StaticResource Mono}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBox Grid.Column="2" Classes="fieldinput" Text="{Binding Container, Mode=TwoWay}" PlaceholderText="container e.g. 5432/tcp"/>
                                         <Button Grid.Column="3" Classes="del" Margin="8,0,0,0"
                                                 Command="{Binding #DialogRoot.((vm:RunContainerViewModel)DataContext).RemovePortCommand}"
                                                 CommandParameter="{Binding}">
-                                            <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextFaint}" Data="{StaticResource IconTrash}"/>
+                                            <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconTrash}"/>
                                         </Button>
                                     </Grid>
                                 </DataTemplate>
@@ -167,7 +167,7 @@
                         </ItemsControl>
                         <Button Classes="addrow" Command="{Binding AddPortCommand}">
                             <StackPanel Orientation="Horizontal" Spacing="7">
-                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource Primary}" Data="{StaticResource IconPlus}"/>
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource Primary}" Data="{StaticResource IconPlus}"/>
                                 <TextBlock Text="Add port" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
@@ -181,13 +181,13 @@
                                 <DataTemplate x:DataType="vm:EnvRow">
                                     <Grid ColumnDefinitions="*,22,*,Auto" Margin="0,0,0,8">
                                         <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Key, Mode=TwoWay}" PlaceholderText="KEY"/>
-                                        <TextBlock Grid.Column="1" Text="=" Foreground="{StaticResource TextFaint}" FontFamily="{StaticResource Mono}"
+                                        <TextBlock Grid.Column="1" Text="=" Foreground="{DynamicResource TextFaint}" FontFamily="{StaticResource Mono}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBox Grid.Column="2" Classes="fieldinput" Text="{Binding Value, Mode=TwoWay}" PlaceholderText="value"/>
                                         <Button Grid.Column="3" Classes="del" Margin="8,0,0,0"
                                                 Command="{Binding #DialogRoot.((vm:RunContainerViewModel)DataContext).RemoveEnvCommand}"
                                                 CommandParameter="{Binding}">
-                                            <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextFaint}" Data="{StaticResource IconTrash}"/>
+                                            <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconTrash}"/>
                                         </Button>
                                     </Grid>
                                 </DataTemplate>
@@ -195,7 +195,7 @@
                         </ItemsControl>
                         <Button Classes="addrow" Command="{Binding AddEnvCommand}">
                             <StackPanel Orientation="Horizontal" Spacing="7">
-                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource Primary}" Data="{StaticResource IconPlus}"/>
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource Primary}" Data="{StaticResource IconPlus}"/>
                                 <TextBlock Text="Add variable" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
@@ -209,13 +209,13 @@
                                 <DataTemplate x:DataType="vm:VolumeRow">
                                     <Grid ColumnDefinitions="*,22,*,Auto" Margin="0,0,0,8">
                                         <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Source, Mode=TwoWay}" PlaceholderText="volume or host path"/>
-                                        <TextBlock Grid.Column="1" Text="→" Foreground="{StaticResource TextFaint}" FontFamily="{StaticResource Mono}"
+                                        <TextBlock Grid.Column="1" Text="→" Foreground="{DynamicResource TextFaint}" FontFamily="{StaticResource Mono}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBox Grid.Column="2" Classes="fieldinput" Text="{Binding Destination, Mode=TwoWay}" PlaceholderText="/path/in/container"/>
                                         <Button Grid.Column="3" Classes="del" Margin="8,0,0,0"
                                                 Command="{Binding #DialogRoot.((vm:RunContainerViewModel)DataContext).RemoveVolumeCommand}"
                                                 CommandParameter="{Binding}">
-                                            <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextFaint}" Data="{StaticResource IconTrash}"/>
+                                            <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconTrash}"/>
                                         </Button>
                                     </Grid>
                                 </DataTemplate>
@@ -223,7 +223,7 @@
                         </ItemsControl>
                         <Button Classes="addrow" Command="{Binding AddVolumeCommand}">
                             <StackPanel Orientation="Horizontal" Spacing="7">
-                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource Primary}" Data="{StaticResource IconPlus}"/>
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource Primary}" Data="{StaticResource IconPlus}"/>
                                 <TextBlock Text="Add volume" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
@@ -241,25 +241,25 @@
 
             <!-- Footer -->
             <StackPanel Grid.Row="2" Background="#12161D">
-                <Border Height="1" Background="{StaticResource Border}"/>
+                <Border Height="1" Background="{DynamicResource Border}"/>
                 <Grid ColumnDefinitions="Auto,*" Margin="24,12" MinHeight="20">
                     <TextBlock Grid.Column="0" Text="preview" FontFamily="{StaticResource Mono}" FontSize="12"
-                               Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                     <TextBlock Grid.Column="1" Text="{Binding CommandPreview}" FontFamily="{StaticResource Mono}" FontSize="12"
-                               Foreground="{StaticResource TextDim}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                               Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 </Grid>
-                <Border Height="1" Background="{StaticResource Border}"/>
+                <Border Height="1" Background="{DynamicResource Border}"/>
 
                 <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
-                           Foreground="{StaticResource Danger}" FontSize="12.5" Margin="24,12,24,0" TextWrapping="Wrap"/>
+                           Foreground="{DynamicResource Danger}" FontSize="12.5" Margin="24,12,24,0" TextWrapping="Wrap"/>
 
                 <Grid ColumnDefinitions="*,Auto" Margin="24,16">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                        <Border Width="20" Height="20" CornerRadius="5" Background="{StaticResource DockerChip}">
+                        <Border Width="20" Height="20" CornerRadius="5" Background="{DynamicResource DockerChip}">
                             <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="10"
-                                       Foreground="{StaticResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                       Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock FontSize="12.5" Foreground="{StaticResource TextDim}" VerticalAlignment="Center">
+                        <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center">
                             <Run Text="Running on"/><Run Text=" "/><Run Text="{Binding BackendName}" FontWeight="SemiBold"/>
                         </TextBlock>
                     </StackPanel>
@@ -267,7 +267,7 @@
                         <Button Classes="ghost" Command="{Binding CancelCommand}">Cancel</Button>
                         <Button Classes="primary" Command="{Binding RunCommand}" IsEnabled="{Binding CanRun}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource PrimaryInk}" Data="{StaticResource IconPlay}"/>
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource PrimaryInk}" Data="{StaticResource IconPlay}"/>
                                 <TextBlock Text="Run container" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>

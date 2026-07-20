@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Services;
 using Kontena.Core.Models;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
@@ -11,6 +12,8 @@ namespace Kontena.App.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly EngineRegistry _registry;
+    private readonly SettingsStore _store;
+    private KontenaSettings _settings;
     private IReadOnlyList<EngineProbe> _probes = [];
     private IContainerEngine? _engine;
     private string _activeBackend = string.Empty;
@@ -23,8 +26,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public MainWindowViewModel(EngineRegistry registry)
+        : this(registry, new SettingsStore(), new KontenaSettings())
+    {
+    }
+
+    public MainWindowViewModel(EngineRegistry registry, SettingsStore store, KontenaSettings settings)
     {
         _registry = registry;
+        _store = store;
+        _settings = settings;
 
         NavItems =
         [
@@ -44,6 +54,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private ImagesViewModel? _images;
     [ObservableProperty] private VolumesViewModel? _volumes;
     [ObservableProperty] private NetworksViewModel? _networks;
+    [ObservableProperty] private SettingsViewModel? _settingsPage;
 
     /// <summary>The page shown in the content area.</summary>
     [ObservableProperty] private object? _currentPage;
@@ -105,7 +116,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         try
         {
             _probes = await _registry.ProbeAllAsync();
-            var active = _probes.FirstOrDefault(p => p.Connected) ?? _probes[^1];
+            var active = _probes.FirstOrDefault(p => p.Connected && p.Provider.Backend == _settings.DefaultEngine)
+                ?? _probes.FirstOrDefault(p => p.Connected)
+                ?? _probes[^1];
+
+            BuildSettingsPage();
             await ActivateAsync(active.Provider);
         }
         catch (Exception ex)
@@ -179,6 +194,30 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         CurrentPage = Containers;
         SearchText = Containers.SearchText;
+    }
+
+    private void BuildSettingsPage()
+    {
+        var engines = _probes.Select(p => new EngineListItem(
+            p.Provider.Backend, p.Provider.DisplayName, p.Provider.Chip,
+            p.Detail ?? string.Empty, p.Connected,
+            p.Provider.Backend == _settings.DefaultEngine)).ToList();
+
+        SettingsPage = new SettingsViewModel(_store, _settings, engines);
+    }
+
+    [RelayCommand]
+    private void ShowSettings()
+    {
+        DisposeDetail();
+        CloseDialog();
+        if (SettingsPage is null)
+            return;
+
+        CurrentPage = SettingsPage;
+        SearchText = string.Empty;
+        foreach (var item in NavItems)
+            item.IsSelected = false;
     }
 
     private void DisposeDetail()

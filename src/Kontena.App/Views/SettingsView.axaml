@@ -1,0 +1,245 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Button.snav">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+        </Style>
+        <Style Selector="Button.snav:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+        <Style Selector="Button.snav.on /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+
+        <Style Selector="Button.seg">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.seg.on /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+
+        <!-- Compact switch -->
+        <Style Selector="ToggleSwitch.pill">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="OnContent" Value="{x:Null}"/>
+            <Setter Property="OffContent" Value="{x:Null}"/>
+        </Style>
+
+        <Style Selector="TextBlock.gh">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid ColumnDefinitions="216,*">
+
+        <!-- Sub-nav -->
+        <Border Grid.Column="0" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
+            <StackPanel Margin="12,22">
+                <TextBlock Text="SETTINGS" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"
+                           Margin="10,0,0,12"/>
+                <Button Classes="snav" Classes.on="{Binding IsGeneral}" Command="{Binding SelectCategoryCommand}" CommandParameter="general">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconSettings}"/>
+                        <TextBlock Grid.Column="1" Text="General" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
+                <Button Classes="snav" Classes.on="{Binding IsEngines}" Command="{Binding SelectCategoryCommand}" CommandParameter="engines">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconContainer}"/>
+                        <TextBlock Grid.Column="1" Text="Engines" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
+                <Button Classes="snav" Classes.on="{Binding IsAbout}" Command="{Binding SelectCategoryCommand}" CommandParameter="about">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
+                        <TextBlock Grid.Column="1" Text="About" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Column="1">
+            <StackPanel Margin="34,28" MaxWidth="860" HorizontalAlignment="Stretch">
+
+                <!-- General -->
+                <StackPanel IsVisible="{Binding IsGeneral}" Spacing="0">
+                    <TextBlock Text="General" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="Appearance and startup behavior." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+
+                    <TextBlock Classes="gh" Text="APPEARANCE"/>
+                    <Border Classes="card" Padding="0" Margin="0,0,0,30">
+                        <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Text="Theme" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                <TextBlock Text="Kontena follows your OS by default. Override it here." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="8" Padding="3" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="2">
+                                    <Button Classes="seg" Classes.on="{Binding IsLightTheme}" Command="{Binding SetThemeCommand}" CommandParameter="light">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Path Classes="icon" Width="14" Height="14" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconSun}"/>
+                                            <TextBlock Text="Light" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Classes="seg" Classes.on="{Binding IsDarkTheme}" Command="{Binding SetThemeCommand}" CommandParameter="dark">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Path Classes="icon" Width="14" Height="14" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconMoon}"/>
+                                            <TextBlock Text="Dark" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Classes="seg" Classes.on="{Binding IsSystemTheme}" Command="{Binding SetThemeCommand}" CommandParameter="system">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Path Classes="icon" Width="14" Height="14" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconMonitor}"/>
+                                            <TextBlock Text="System" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Classes="gh" Text="STARTUP"/>
+                    <Border Classes="card" Padding="0">
+                        <StackPanel>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Launch Kontena at login" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Start with your session (stored preference)." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Border Height="1" Background="{DynamicResource Border}"/>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Send anonymous usage stats" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Opt-in, privacy-first. No container contents or names ever leave your machine." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding SendUsageStats, Mode=TwoWay}" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Engines -->
+                <StackPanel IsVisible="{Binding IsEngines}" Spacing="0">
+                    <TextBlock Text="Engines" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="How Kontena discovers and selects your container engines." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+
+                    <Border Classes="card" Padding="0" Margin="0,0,0,30">
+                        <StackPanel>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Auto-detect engines" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Watch for Docker, Podman and (later) Apple container starting or stopping." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding AutoDetect, Mode=TwoWay}" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Border Height="1" Background="{DynamicResource Border}"/>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Default engine on launch" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Which backend Kontena selects when it opens." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
+                                          ItemsSource="{Binding DefaultEngineOptions}"
+                                          SelectedItem="{Binding SelectedDefaultEngine, Mode=TwoWay}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Classes="gh" Text="DETECTED ENGINES"/>
+                    <Border Classes="card" Padding="0">
+                        <ItemsControl ItemsSource="{Binding Engines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:EngineListItem">
+                                    <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                        <Grid Margin="18,14" ColumnDefinitions="Auto,*">
+                                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9" Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="16"
+                                                           Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Spacing="3">
+                                                <StackPanel Orientation="Horizontal" Spacing="9">
+                                                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                                    <Border Background="#34D39916" CornerRadius="20" Padding="7,2" VerticalAlignment="Center" IsVisible="{Binding Connected}">
+                                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                                            <Ellipse Width="6" Height="6" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
+                                                            <TextBlock Text="Connected" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <Border Background="{DynamicResource PrimarySoft}" CornerRadius="20" Padding="7,2" VerticalAlignment="Center" IsVisible="{Binding IsDefault}">
+                                                        <TextBlock Text="Default" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource Primary}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Detail}" FontSize="12" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </StackPanel>
+
+                <!-- About -->
+                <StackPanel IsVisible="{Binding IsAbout}" Spacing="0">
+                    <TextBlock Text="About" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="One UI. Any engine. Zero friction." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+
+                    <Border Classes="card">
+                        <StackPanel Spacing="16">
+                            <StackPanel Orientation="Horizontal" Spacing="14">
+                                <Canvas Width="34" Height="34" VerticalAlignment="Center">
+                                    <Border Canvas.Left="0" Canvas.Top="0" Width="17" Height="17" CornerRadius="5" Background="{DynamicResource Primary}"/>
+                                    <Border Canvas.Left="17" Canvas.Top="4" Width="17" Height="17" CornerRadius="5" Background="{DynamicResource Accent}" Opacity="0.9"/>
+                                    <Border Canvas.Left="7" Canvas.Top="17" Width="17" Height="17" CornerRadius="5" Background="{DynamicResource PrimaryDim}" Opacity="0.85"/>
+                                </Canvas>
+                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Kontena" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}">
+                                        <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
+                                        <Run Text="  ·  source-available"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </StackPanel>
+                            <Border Height="1" Background="{DynamicResource Border}"/>
+                            <TextBlock FontSize="12.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
+                                       Text="A cross-platform desktop app to manage containers through one UI, regardless of the underlying runtime engine — Docker, Podman, and (later) Apple container."/>
+                            <TextBlock FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"
+                                       Text="github.com/Lionear/Kontena  ·  kontena.app"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

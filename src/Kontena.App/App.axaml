@@ -1,8 +1,7 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Kontena.App.App"
-             xmlns:local="using:Kontena.App"
-             RequestedThemeVariant="Dark">
+             xmlns:local="using:Kontena.App">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
@@ -14,37 +13,53 @@
                 <ResourceInclude Source="/Icons.axaml"/>
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- Kontena palette (dark) -->
-            <Color x:Key="BgColor">#0E1116</Color>
-            <Color x:Key="SurfaceColor">#171B22</Color>
-            <Color x:Key="Surface2Color">#1E232C</Color>
-            <Color x:Key="BorderColor">#272E39</Color>
-            <Color x:Key="TextColor">#E6EAF0</Color>
-            <Color x:Key="TextDimColor">#9AA4B2</Color>
-            <Color x:Key="TextFaintColor">#5C6675</Color>
-            <Color x:Key="PrimaryColor">#22D3AA</Color>
-            <Color x:Key="AccentColor">#7C6BF5</Color>
-            <Color x:Key="SuccessColor">#34D399</Color>
-            <Color x:Key="InfoColor">#5AB8FF</Color>
-
-            <SolidColorBrush x:Key="Bg" Color="{StaticResource BgColor}"/>
-            <SolidColorBrush x:Key="Surface" Color="{StaticResource SurfaceColor}"/>
-            <SolidColorBrush x:Key="Surface2" Color="{StaticResource Surface2Color}"/>
-            <SolidColorBrush x:Key="SidebarBg" Color="#10141A"/>
-            <SolidColorBrush x:Key="Border" Color="{StaticResource BorderColor}"/>
-            <SolidColorBrush x:Key="Text" Color="{StaticResource TextColor}"/>
-            <SolidColorBrush x:Key="TextDim" Color="{StaticResource TextDimColor}"/>
-            <SolidColorBrush x:Key="TextFaint" Color="{StaticResource TextFaintColor}"/>
-            <SolidColorBrush x:Key="Primary" Color="{StaticResource PrimaryColor}"/>
-            <SolidColorBrush x:Key="PrimaryInk" Color="#08201A"/>
-            <SolidColorBrush x:Key="PrimaryDim" Color="#0F9E7E"/>
-            <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}"/>
-            <SolidColorBrush x:Key="Success" Color="{StaticResource SuccessColor}"/>
-            <SolidColorBrush x:Key="Info" Color="{StaticResource InfoColor}"/>
-            <SolidColorBrush x:Key="Warn" Color="#F5B14C"/>
-            <SolidColorBrush x:Key="Danger" Color="#F87171"/>
-            <SolidColorBrush x:Key="PrimarySoft" Color="#22D3AA" Opacity="0.10"/>
-            <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
+            <!-- Kontena palette — light + dark variants, resolved via DynamicResource -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="Bg" Color="#0E1116"/>
+                    <SolidColorBrush x:Key="Surface" Color="#171B22"/>
+                    <SolidColorBrush x:Key="Surface2" Color="#1E232C"/>
+                    <SolidColorBrush x:Key="SidebarBg" Color="#10141A"/>
+                    <SolidColorBrush x:Key="Border" Color="#272E39"/>
+                    <SolidColorBrush x:Key="Text" Color="#E6EAF0"/>
+                    <SolidColorBrush x:Key="TextDim" Color="#9AA4B2"/>
+                    <SolidColorBrush x:Key="TextFaint" Color="#5C6675"/>
+                    <SolidColorBrush x:Key="Primary" Color="#22D3AA"/>
+                    <SolidColorBrush x:Key="PrimaryInk" Color="#08201A"/>
+                    <SolidColorBrush x:Key="PrimaryDim" Color="#0F9E7E"/>
+                    <SolidColorBrush x:Key="Accent" Color="#7C6BF5"/>
+                    <SolidColorBrush x:Key="Success" Color="#34D399"/>
+                    <SolidColorBrush x:Key="Info" Color="#5AB8FF"/>
+                    <SolidColorBrush x:Key="Warn" Color="#F5B14C"/>
+                    <SolidColorBrush x:Key="Danger" Color="#F87171"/>
+                    <SolidColorBrush x:Key="PrimarySoft" Color="#22D3AA" Opacity="0.10"/>
+                    <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
+                    <SolidColorBrush x:Key="Console" Color="#0A0D12"/>
+                    <SolidColorBrush x:Key="SurfaceRaised" Color="#141821"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="Bg" Color="#F6F8FA"/>
+                    <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="Surface2" Color="#F0F3F6"/>
+                    <SolidColorBrush x:Key="SidebarBg" Color="#FBFCFD"/>
+                    <SolidColorBrush x:Key="Border" Color="#DCE1E8"/>
+                    <SolidColorBrush x:Key="Text" Color="#1B2430"/>
+                    <SolidColorBrush x:Key="TextDim" Color="#55606E"/>
+                    <SolidColorBrush x:Key="TextFaint" Color="#8A94A2"/>
+                    <SolidColorBrush x:Key="Primary" Color="#0F9E7E"/>
+                    <SolidColorBrush x:Key="PrimaryInk" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="PrimaryDim" Color="#0B7D63"/>
+                    <SolidColorBrush x:Key="Accent" Color="#6D5CE0"/>
+                    <SolidColorBrush x:Key="Success" Color="#0E9F6E"/>
+                    <SolidColorBrush x:Key="Info" Color="#2F7FE0"/>
+                    <SolidColorBrush x:Key="Warn" Color="#C7841A"/>
+                    <SolidColorBrush x:Key="Danger" Color="#E5484D"/>
+                    <SolidColorBrush x:Key="PrimarySoft" Color="#0F9E7E" Opacity="0.10"/>
+                    <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
+                    <SolidColorBrush x:Key="Console" Color="#0F141B"/>
+                    <SolidColorBrush x:Key="SurfaceRaised" Color="#F0F3F6"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
 
             <FontFamily x:Key="Mono">JetBrains Mono, Cascadia Code, Consolas, monospace</FontFamily>
         </ResourceDictionary>

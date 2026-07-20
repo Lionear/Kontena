@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Kontena.Adapters.Docker;
+using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
 using Kontena.Engines;
@@ -20,6 +21,10 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            var store = new SettingsStore();
+            var settings = store.Load();
+            ThemeApplier.Apply(settings.Theme);
+
             // Provider-based: the registry discovers backends (and, later, plugins).
             var registry = new EngineRegistry(
             [
@@ -30,7 +35,7 @@ public partial class App : Application
 
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(registry),
+                DataContext = new MainWindowViewModel(registry, store, settings),
             };
         }
 

@@ -11,78 +11,78 @@
         <StackPanel Margin="24,22" Spacing="14">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="Images" FontSize="20" FontWeight="SemiBold"
-                           Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
                     <Button Classes="ghost" Command="{Binding ArmPruneCommand}" IsEnabled="{Binding HasUnused}">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                            <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}" Data="{StaticResource IconBroom}"/>
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconBroom}"/>
                             <TextBlock Text="Prune unused" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
                     <Button Classes="ghost" Command="{Binding PullImageCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                            <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}" Data="{StaticResource IconPull}"/>
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconPull}"/>
                             <TextBlock Text="Pull image" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
             </Grid>
-            <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{StaticResource TextDim}"/>
+            <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextDim}"/>
 
             <!-- Prune confirmation (destructive → explicit confirm) -->
             <Border IsVisible="{Binding PruneArmed}" Background="#1c1810" BorderBrush="#3a3320"
                     BorderThickness="1" CornerRadius="10" Padding="14,12">
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                    <Path Grid.Column="0" Classes="icon" Width="17" Height="17" Stroke="{StaticResource Warn}"
+                    <Path Grid.Column="0" Classes="icon" Width="17" Height="17" Stroke="{DynamicResource Warn}"
                           Data="{StaticResource IconBroom}" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" Text="{Binding PruneSummary}" Margin="12,0,0,0"
                                Foreground="#e8cf9a" FontSize="13" VerticalAlignment="Center"/>
                     <Button Grid.Column="2" Classes="ghost" Command="{Binding CancelPruneCommand}" Margin="0,0,8,0">Cancel</Button>
                     <Button Grid.Column="3" Command="{Binding PruneCommand}"
-                            Background="#F8717120" Foreground="{StaticResource Danger}"
+                            Background="#F8717120" Foreground="{DynamicResource Danger}"
                             BorderBrush="#5a2c2c" BorderThickness="1" CornerRadius="8" Padding="14,7" FontWeight="SemiBold">
                         Remove images
                     </Button>
                 </Grid>
             </Border>
 
-            <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                 <StackPanel>
-                    <Border Background="#141821" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                    <Border Background="#141821" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <Grid Margin="18,12" ColumnDefinitions="2*,1*,1.1*,.8*,1*,90">
-                            <TextBlock Grid.Column="0" Text="REPOSITORY" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
-                            <TextBlock Grid.Column="1" Text="TAG" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
-                            <TextBlock Grid.Column="2" Text="IMAGE ID" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
-                            <TextBlock Grid.Column="3" Text="SIZE" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
-                            <TextBlock Grid.Column="4" Text="STATUS" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
+                            <TextBlock Grid.Column="0" Text="REPOSITORY" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="1" Text="TAG" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="2" Text="IMAGE ID" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="3" Text="SIZE" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="4" Text="STATUS" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ImageRowViewModel">
-                                <Border Classes="row" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                                <Border Classes="row" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                     <Grid Margin="18,11" ColumnDefinitions="2*,1*,1.1*,.8*,1*,90" VerticalAlignment="Center">
                                         <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding RepoName}" FontFamily="{StaticResource Mono}"
-                                                       FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource Text}"/>
+                                                       FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource Text}"/>
                                             <TextBlock Text="{Binding RepoNamespace}" FontSize="11"
-                                                       Foreground="{StaticResource TextFaint}"/>
+                                                       Foreground="{DynamicResource TextFaint}"/>
                                         </StackPanel>
                                         <TextBlock Grid.Column="1" Text="{Binding Tag}" FontFamily="{StaticResource Mono}"
-                                                   FontSize="12" Foreground="{StaticResource Primary}" VerticalAlignment="Center"/>
+                                                   FontSize="12" Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="2" Text="{Binding ShortId}" FontFamily="{StaticResource Mono}"
-                                                   FontSize="12.5" Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
+                                                   FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="3" Text="{Binding SizeText}" FontFamily="{StaticResource Mono}"
-                                                   FontSize="12.5" Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
+                                                   FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                             <Ellipse Width="7" Height="7" Fill="{Binding UseBrush}"/>
-                                            <TextBlock Text="{Binding UseText}" FontSize="12" Foreground="{StaticResource TextDim}"/>
+                                            <TextBlock Text="{Binding UseText}" FontSize="12" Foreground="{DynamicResource TextDim}"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4"
                                                     HorizontalAlignment="Right" VerticalAlignment="Center">
                                             <Button Classes="qa danger" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete">
-                                                <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource Danger}" Data="{StaticResource IconTrash}"/>
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Danger}" Data="{StaticResource IconTrash}"/>
                                             </Button>
                                         </StackPanel>
                                     </Grid>
