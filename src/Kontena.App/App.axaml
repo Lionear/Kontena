@@ -40,6 +40,8 @@
             <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}"/>
             <SolidColorBrush x:Key="Success" Color="{StaticResource SuccessColor}"/>
             <SolidColorBrush x:Key="Info" Color="{StaticResource InfoColor}"/>
+            <SolidColorBrush x:Key="Warn" Color="#F5B14C"/>
+            <SolidColorBrush x:Key="Danger" Color="#F87171"/>
             <SolidColorBrush x:Key="PrimarySoft" Color="#22D3AA" Opacity="0.10"/>
             <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
 
@@ -103,6 +105,32 @@
         </Style>
         <Style Selector="Button.qa:pointerover /template/ ContentPresenter">
             <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+        <Style Selector="Button.qa.danger:pointerover /template/ ContentPresenter">
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Danger}"/>
+        </Style>
+
+        <!-- Stroke-rendered Lucide icon (fill would turn outlines into blobs) -->
+        <Style Selector="Path.icon">
+            <Setter Property="StrokeThickness" Value="2"/>
+            <Setter Property="StrokeLineCap" Value="Round"/>
+            <Setter Property="StrokeJoin" Value="Round"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
+        </Style>
+
+        <!-- Surface card -->
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="16,14"/>
+        </Style>
+
+        <!-- Table row hover -->
+        <Style Selector="Border.row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
         </Style>
     </Application.Styles>
 </Application>

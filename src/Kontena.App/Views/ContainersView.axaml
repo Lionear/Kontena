@@ -1,0 +1,156 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.ContainersView"
+             x:DataType="vm:ContainersViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="24,22" Spacing="22">
+
+            <!-- Header -->
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Containers" FontSize="20" FontWeight="SemiBold"
+                           Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button Classes="ghost">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
+                                  Data="{StaticResource IconPull}"/>
+                            <TextBlock Text="Pull image" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="primary">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource PrimaryInk}"
+                                  Data="{StaticResource IconPlay}"/>
+                            <TextBlock Text="Run container" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Loading state -->
+            <StackPanel Margin="0,90,0,0" Spacing="16" HorizontalAlignment="Center"
+                        IsVisible="{Binding !HasLoaded}">
+                <ProgressBar IsIndeterminate="True" Width="220" Height="4"
+                             Foreground="{StaticResource Primary}" Background="{StaticResource Surface2}"/>
+                <TextBlock Text="Loading containers…" Foreground="{StaticResource TextDim}"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Stat cards -->
+            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14" IsVisible="{Binding HasLoaded}">
+                <Border Grid.Column="0" Classes="card">
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Ellipse Width="7" Height="7" Fill="{StaticResource Success}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Running" FontSize="12" Foreground="{StaticResource TextDim}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding RunningCount}" FontSize="26" FontWeight="SemiBold"
+                                   FontFamily="{StaticResource Mono}" Foreground="{StaticResource Text}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Classes="card">
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Ellipse Width="7" Height="7" Fill="{StaticResource Danger}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Stopped" FontSize="12" Foreground="{StaticResource TextDim}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding StoppedCount}" FontSize="26" FontWeight="SemiBold"
+                                   FontFamily="{StaticResource Mono}" Foreground="{StaticResource Text}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Classes="card">
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Ellipse Width="7" Height="7" Fill="{StaticResource Info}" VerticalAlignment="Center"/>
+                            <TextBlock Text="CPU" FontSize="12" Foreground="{StaticResource TextDim}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding CpuTotalText}" FontSize="26" FontWeight="SemiBold"
+                                   FontFamily="{StaticResource Mono}" Foreground="{StaticResource Text}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="3" Classes="card">
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Ellipse Width="7" Height="7" Fill="{StaticResource Accent}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Memory" FontSize="12" Foreground="{StaticResource TextDim}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding MemTotalText}" FontSize="26" FontWeight="SemiBold"
+                                   FontFamily="{StaticResource Mono}" Foreground="{StaticResource Text}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Container table -->
+            <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                    BorderThickness="1" CornerRadius="10" ClipToBounds="True" IsVisible="{Binding HasLoaded}">
+                <StackPanel>
+                    <Border Background="#141821" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                        <Grid Margin="18,12" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158">
+                            <TextBlock Grid.Column="1" Text="NAME" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
+                            <TextBlock Grid.Column="2" Text="IMAGE" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
+                            <TextBlock Grid.Column="3" Text="PORTS" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}"/>
+                            <TextBlock Grid.Column="4" Text="CPU" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}" TextAlignment="Right"/>
+                            <TextBlock Grid.Column="5" Text="MEM" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}" TextAlignment="Right"/>
+                        </Grid>
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ContainerRowViewModel">
+                                <Border Classes="row" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                                    <Grid Margin="18,11" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158" VerticalAlignment="Center">
+                                        <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{Binding StatusBrush}"
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}"
+                                                       FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource Text}"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Border Width="16" Height="16" CornerRadius="4" Background="{StaticResource DockerChip}">
+                                                    <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}"
+                                                               FontSize="9" FontWeight="Bold" Foreground="{StaticResource Info}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                           Foreground="{StaticResource TextFaint}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding Image}" FontFamily="{StaticResource Mono}"
+                                                   FontSize="12.5" Foreground="{StaticResource TextDim}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding PortsText}" FontFamily="{StaticResource Mono}"
+                                                   FontSize="12" Foreground="{StaticResource Info}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding CpuText}" FontFamily="{StaticResource Mono}"
+                                                   FontSize="12.5" Foreground="{StaticResource TextDim}" TextAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding MemText}" FontFamily="{StaticResource Mono}"
+                                                   FontSize="12.5" Foreground="{StaticResource TextDim}" TextAlignment="Right" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <Button Classes="qa" Command="{Binding RestartCommand}" IsVisible="{Binding IsRunning}" ToolTip.Tip="Restart">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}" Data="{StaticResource IconRestart}"/>
+                                            </Button>
+                                            <Button Classes="qa" Command="{Binding StartCommand}" IsVisible="{Binding IsNotRunning}" ToolTip.Tip="Start">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}" Data="{StaticResource IconPlay}"/>
+                                            </Button>
+                                            <Button Classes="qa" Command="{Binding StopCommand}" IsVisible="{Binding IsRunning}" ToolTip.Tip="Stop">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}" Data="{StaticResource IconStop}"/>
+                                            </Button>
+                                            <Button Classes="qa danger" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource Danger}" Data="{StaticResource IconTrash}"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

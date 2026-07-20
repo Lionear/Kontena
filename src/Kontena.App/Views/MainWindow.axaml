@@ -17,24 +17,6 @@
     </Design.DataContext>
 
     <Window.Styles>
-        <Style Selector="Path.icon">
-            <Setter Property="StrokeThickness" Value="2"/>
-            <Setter Property="StrokeLineCap" Value="Round"/>
-            <Setter Property="StrokeJoin" Value="Round"/>
-            <Setter Property="Stretch" Value="Uniform"/>
-            <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
-        </Style>
-        <Style Selector="Border.row:pointerover">
-            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
-        </Style>
-        <Style Selector="Border.card">
-            <Setter Property="Background" Value="{DynamicResource Surface}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="16,14"/>
-        </Style>
-
         <!-- Flat search input: the wrapping Border supplies the frame -->
         <Style Selector="TextBox.bare">
             <Setter Property="Background" Value="Transparent"/>
@@ -89,15 +71,12 @@
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
-        <!-- Hover only on connected, non-active rows -->
         <Style Selector="Button.engineitem:pointerover:not(.active):not(:disabled) /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>
         </Style>
-        <!-- The active engine gets a steady, subtle highlight -->
         <Style Selector="Button.engineitem.active /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
         </Style>
-        <!-- Not-connected rows are clearly dimmed and inert -->
         <Style Selector="Button.engineitem:disabled">
             <Setter Property="Opacity" Value="0.45"/>
         </Style>
@@ -109,56 +88,44 @@
         <Border Grid.Column="0" Background="{StaticResource SidebarBg}"
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,16">
-                <!-- Brand -->
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,4,0,20">
                     <Canvas Width="26" Height="26">
-                        <Border Canvas.Left="0" Canvas.Top="0" Width="13" Height="13"
-                                CornerRadius="4" Background="{StaticResource Primary}"/>
-                        <Border Canvas.Left="13" Canvas.Top="3" Width="13" Height="13"
-                                CornerRadius="4" Background="{StaticResource Accent}" Opacity="0.9"/>
-                        <Border Canvas.Left="5" Canvas.Top="13" Width="13" Height="13"
-                                CornerRadius="4" Background="#0F9E7E" Opacity="0.85"/>
+                        <Border Canvas.Left="0" Canvas.Top="0" Width="13" Height="13" CornerRadius="4" Background="{StaticResource Primary}"/>
+                        <Border Canvas.Left="13" Canvas.Top="3" Width="13" Height="13" CornerRadius="4" Background="{StaticResource Accent}" Opacity="0.9"/>
+                        <Border Canvas.Left="5" Canvas.Top="13" Width="13" Height="13" CornerRadius="4" Background="#0F9E7E" Opacity="0.85"/>
                     </Canvas>
-                    <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold"
-                               Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Bottom nav -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="2">
                     <Button Classes="nav">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
-                                  Stroke="{Binding $parent[Button].Foreground}"
-                                  Data="{StaticResource IconActivity}"/>
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconActivity}"/>
                             <TextBlock Grid.Column="1" Text="Activity" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
                     <Button Classes="nav">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
-                                  Stroke="{Binding $parent[Button].Foreground}"
-                                  Data="{StaticResource IconSettings}"/>
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconSettings}"/>
                             <TextBlock Grid.Column="1" Text="Settings" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
                 </StackPanel>
 
-                <!-- Main nav -->
                 <ItemsControl ItemsSource="{Binding NavItems}" DockPanel.Dock="Top">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:NavItem">
-                            <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2">
+                            <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
+                                    Command="{Binding Command}" CommandParameter="{Binding Key}">
                                 <Grid ColumnDefinitions="Auto,*,Auto">
                                     <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                           Stroke="{Binding $parent[Button].Foreground}"
                                           Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Label}"
-                                               Margin="11,0,0,0" VerticalAlignment="Center"/>
-                                    <Border Grid.Column="2" Background="{DynamicResource Surface2}"
-                                            CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Count}" FontSize="11"
-                                                   FontFamily="{StaticResource Mono}"
-                                                   Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
+                                    <Border Grid.Column="2" Background="{DynamicResource Surface2}" CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>
                                 </Grid>
                             </Button>
@@ -172,51 +139,42 @@
         <Grid Grid.Column="1" RowDefinitions="56,*">
 
             <!-- Command bar -->
-            <Border Grid.Row="0" Background="{StaticResource Surface}"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+            <Border Grid.Row="0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
                 <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto,Auto">
                     <Border Grid.Column="0" Width="420" Height="34" Background="{StaticResource Bg}"
                             BorderBrush="{StaticResource Border}" BorderThickness="1"
                             CornerRadius="8" Padding="12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <DockPanel LastChildFill="True">
                             <Path DockPanel.Dock="Left" Classes="icon" Width="15" Height="15"
-                                  Stroke="{StaticResource TextFaint}" Data="{StaticResource IconSearch}"
-                                  VerticalAlignment="Center"/>
+                                  Stroke="{StaticResource TextFaint}" Data="{StaticResource IconSearch}" VerticalAlignment="Center"/>
                             <TextBox Classes="bare" Margin="9,0,0,0"
                                      PlaceholderText="Search containers, images, volumes…"
-                                     Text="{Binding Containers.SearchText, Mode=TwoWay}"/>
+                                     Text="{Binding SearchText, Mode=TwoWay}"/>
                         </DockPanel>
                     </Border>
 
                     <!-- Backend switcher (working dropdown) -->
                     <Button Grid.Column="2" Classes="switcher" Margin="0,0,12,0">
                         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                            <Border Width="22" Height="22" CornerRadius="6" Background="{StaticResource DockerChip}"
-                                    VerticalAlignment="Center">
-                                <TextBlock Text="{Binding EngineChip}" FontFamily="{StaticResource Mono}"
-                                           FontWeight="Bold" FontSize="12" Foreground="#2496ED"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Border Width="22" Height="22" CornerRadius="6" Background="{StaticResource DockerChip}" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding EngineChip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="12"
+                                           Foreground="#2496ED" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
-                            <TextBlock Text="{Binding EngineName}" FontSize="13" FontWeight="Medium"
-                                       Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding EngineName}" FontSize="13" FontWeight="Medium" Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
                             <Panel Width="9" Height="9" VerticalAlignment="Center">
                                 <Ellipse Width="9" Height="9" Fill="#34D399" Opacity="0.25"/>
                                 <Ellipse Width="7" Height="7" Fill="{StaticResource Success}"/>
                             </Panel>
                             <Path Classes="icon" Width="12" Height="12" Stroke="{StaticResource TextFaint}"
-                                  Data="{StaticResource IconChevronDown}" VerticalAlignment="Center"
-                                  Margin="1,1,0,0"/>
+                                  Data="{StaticResource IconChevronDown}" VerticalAlignment="Center" Margin="1,1,0,0"/>
                         </StackPanel>
 
                         <Button.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight" FlyoutPresenterClasses="flat">
-                                <Border Width="280" Background="{StaticResource Surface}"
-                                        BorderBrush="{StaticResource Border}" BorderThickness="1"
-                                        CornerRadius="10" Padding="6"
-                                        BoxShadow="0 12 40 0 #66000000">
+                                <Border Width="280" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                        BorderThickness="1" CornerRadius="10" Padding="6" BoxShadow="0 12 40 0 #66000000">
                                     <StackPanel Spacing="2">
-                                        <TextBlock Text="ENGINES" FontSize="10.5" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextFaint}" Margin="10,8,0,6"/>
+                                        <TextBlock Text="ENGINES" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextFaint}" Margin="10,8,0,6"/>
                                         <ItemsControl ItemsSource="{Binding Engines}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:EngineOption">
@@ -226,28 +184,21 @@
                                                         <Grid ColumnDefinitions="Auto,*,Auto">
                                                             <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
                                                                     Background="{StaticResource DockerChip}" VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}"
-                                                                           FontWeight="Bold" FontSize="13" Foreground="#2496ED"
-                                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold"
+                                                                           FontSize="13" Foreground="#2496ED" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                             </Border>
                                                             <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
                                                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                    <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
-                                                                               Foreground="{StaticResource Text}"/>
-                                                                    <Border Background="#34D39916" CornerRadius="20" Padding="6,1"
-                                                                            VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
-                                                                        <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold"
-                                                                                   Foreground="{StaticResource Success}"/>
+                                                                    <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource Text}"/>
+                                                                    <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
+                                                                        <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Success}"/>
                                                                     </Border>
                                                                 </StackPanel>
-                                                                <TextBlock Text="{Binding Detail}" FontSize="11.5"
-                                                                           FontFamily="{StaticResource Mono}"
-                                                                           Foreground="{StaticResource TextFaint}"
-                                                                           TextTrimming="CharacterEllipsis"/>
+                                                                <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                                                                           Foreground="{StaticResource TextFaint}" TextTrimming="CharacterEllipsis"/>
                                                             </StackPanel>
-                                                            <Path Grid.Column="2" Classes="icon" Width="16" Height="16"
-                                                                  Stroke="{StaticResource Primary}" Data="{StaticResource IconCheck}"
-                                                                  VerticalAlignment="Center" IsVisible="{Binding IsActive}"/>
+                                                            <Path Grid.Column="2" Classes="icon" Width="16" Height="16" Stroke="{StaticResource Primary}"
+                                                                  Data="{StaticResource IconCheck}" VerticalAlignment="Center" IsVisible="{Binding IsActive}"/>
                                                         </Grid>
                                                     </Button>
                                                 </DataTemplate>
@@ -258,8 +209,7 @@
                                             <StackPanel Orientation="Horizontal" Spacing="11">
                                                 <Path Classes="icon" Width="16" Height="16" Stroke="{StaticResource TextDim}"
                                                       Data="{StaticResource IconPlug}" VerticalAlignment="Center"/>
-                                                <TextBlock Text="Connect a remote engine…" FontSize="13"
-                                                           Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Connect a remote engine…" FontSize="13" Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -269,192 +219,25 @@
                     </Button>
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button Classes="qa" Width="34" Height="34"
-                                Command="{Binding Containers.LoadCommand}" ToolTip.Tip="Refresh">
-                            <Path Classes="icon" Width="17" Height="17" Stroke="{StaticResource TextDim}"
-                                  Data="{StaticResource IconRefresh}"/>
+                        <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="Refresh">
+                            <Path Classes="icon" Width="17" Height="17" Stroke="{StaticResource TextDim}" Data="{StaticResource IconRefresh}"/>
                         </Button>
                         <Button Classes="qa" Width="34" Height="34" ToolTip.Tip="Toggle theme">
-                            <Path Classes="icon" Width="17" Height="17" Stroke="{StaticResource TextDim}"
-                                  Data="{StaticResource IconMoon}"/>
+                            <Path Classes="icon" Width="17" Height="17" Stroke="{StaticResource TextDim}" Data="{StaticResource IconMoon}"/>
                         </Button>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- Content -->
-            <ScrollViewer Grid.Row="1">
-                <StackPanel Margin="24,22" Spacing="22">
-
-                    <!-- Header -->
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="Containers" FontSize="20" FontWeight="SemiBold"
-                                   Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-                            <Button Classes="ghost">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
-                                          Data="{StaticResource IconPull}"/>
-                                    <TextBlock Text="Pull image" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button Classes="primary">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource PrimaryInk}"
-                                          Data="{StaticResource IconPlay}"/>
-                                    <TextBlock Text="Run container" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- Loading state (until the first list arrives) -->
-                    <StackPanel Margin="0,90,0,0" Spacing="16" HorizontalAlignment="Center"
-                                IsVisible="{Binding !IsReady}">
-                        <ProgressBar IsIndeterminate="True" Width="220" Height="4"
-                                     Foreground="{StaticResource Primary}"
-                                     Background="{StaticResource Surface2}"/>
-                        <TextBlock Text="Connecting to your container engine…"
-                                   Foreground="{StaticResource TextDim}" HorizontalAlignment="Center"/>
-                    </StackPanel>
-
-                    <!-- Stat cards -->
-                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14"
-                          IsVisible="{Binding IsReady}">
-                        <Border Grid.Column="0" Classes="card">
-                            <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Ellipse Width="7" Height="7" Fill="{StaticResource Success}" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Running" FontSize="12" Foreground="{StaticResource TextDim}"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding Containers.RunningCount}" FontSize="26"
-                                           FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
-                                           Foreground="{StaticResource Text}"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Grid.Column="1" Classes="card">
-                            <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Ellipse Width="7" Height="7" Fill="#F87171" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Stopped" FontSize="12" Foreground="{StaticResource TextDim}"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding Containers.StoppedCount}" FontSize="26"
-                                           FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
-                                           Foreground="{StaticResource Text}"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Grid.Column="2" Classes="card">
-                            <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Ellipse Width="7" Height="7" Fill="{StaticResource Info}" VerticalAlignment="Center"/>
-                                    <TextBlock Text="CPU" FontSize="12" Foreground="{StaticResource TextDim}"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding Containers.CpuTotalText}" FontSize="26"
-                                           FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
-                                           Foreground="{StaticResource Text}"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Grid.Column="3" Classes="card">
-                            <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Ellipse Width="7" Height="7" Fill="{StaticResource Accent}" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Memory" FontSize="12" Foreground="{StaticResource TextDim}"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding Containers.MemTotalText}" FontSize="26"
-                                           FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
-                                           Foreground="{StaticResource Text}"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
-                    <!-- Container table -->
-                    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
-                            BorderThickness="1" CornerRadius="10" ClipToBounds="True"
-                            IsVisible="{Binding IsReady}">
-                        <StackPanel>
-                            <!-- Header row -->
-                            <Border Background="#141821" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-                                <Grid Margin="18,12" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158">
-                                    <TextBlock Grid.Column="1" Text="NAME" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextFaint}"/>
-                                    <TextBlock Grid.Column="2" Text="IMAGE" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextFaint}"/>
-                                    <TextBlock Grid.Column="3" Text="PORTS" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextFaint}"/>
-                                    <TextBlock Grid.Column="4" Text="CPU" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextFaint}" TextAlignment="Right"/>
-                                    <TextBlock Grid.Column="5" Text="MEM" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextFaint}" TextAlignment="Right"/>
-                                </Grid>
-                            </Border>
-
-                            <!-- Rows -->
-                            <ItemsControl ItemsSource="{Binding Containers.Items}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:ContainerRowViewModel">
-                                        <Border Classes="row" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-                                            <Grid Margin="18,11" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158" VerticalAlignment="Center">
-                                                <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{Binding StatusBrush}"
-                                                         HorizontalAlignment="Left" VerticalAlignment="Center"/>
-
-                                                <StackPanel Grid.Column="1" Spacing="2">
-                                                    <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}"
-                                                               FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource Text}"/>
-                                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                                        <Border Width="16" Height="16" CornerRadius="4" Background="{StaticResource DockerChip}">
-                                                            <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}"
-                                                                       FontSize="9" FontWeight="Bold" Foreground="{StaticResource Info}"
-                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                        </Border>
-                                                        <TextBlock Text="{Binding StatusText}" FontSize="11"
-                                                                   Foreground="{StaticResource TextFaint}" VerticalAlignment="Center"/>
-                                                    </StackPanel>
-                                                </StackPanel>
-
-                                                <TextBlock Grid.Column="2" Text="{Binding Image}" FontFamily="{StaticResource Mono}"
-                                                           FontSize="12.5" Foreground="{StaticResource TextDim}"
-                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Grid.Column="3" Text="{Binding PortsText}" FontFamily="{StaticResource Mono}"
-                                                           FontSize="12" Foreground="{StaticResource Info}" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="4" Text="{Binding CpuText}" FontFamily="{StaticResource Mono}"
-                                                           FontSize="12.5" Foreground="{StaticResource TextDim}"
-                                                           TextAlignment="Right" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="5" Text="{Binding MemText}" FontFamily="{StaticResource Mono}"
-                                                           FontSize="12.5" Foreground="{StaticResource TextDim}"
-                                                           TextAlignment="Right" VerticalAlignment="Center"/>
-
-                                                <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4"
-                                                            HorizontalAlignment="Right" VerticalAlignment="Center">
-                                                    <Button Classes="qa" Command="{Binding RestartCommand}"
-                                                            IsVisible="{Binding IsRunning}" ToolTip.Tip="Restart">
-                                                        <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
-                                                              Data="{StaticResource IconRestart}"/>
-                                                    </Button>
-                                                    <Button Classes="qa" Command="{Binding StartCommand}"
-                                                            IsVisible="{Binding IsNotRunning}" ToolTip.Tip="Start">
-                                                        <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
-                                                              Data="{StaticResource IconPlay}"/>
-                                                    </Button>
-                                                    <Button Classes="qa" Command="{Binding StopCommand}"
-                                                            IsVisible="{Binding IsRunning}" ToolTip.Tip="Stop">
-                                                        <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
-                                                              Data="{StaticResource IconStop}"/>
-                                                    </Button>
-                                                    <Button Classes="qa" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove">
-                                                        <Path Classes="icon" Width="15" Height="15" Stroke="#F87171"
-                                                              Data="{StaticResource IconTrash}"/>
-                                                    </Button>
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </Border>
-
+            <!-- Content: the active page, or a connecting state -->
+            <Panel Grid.Row="1">
+                <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsReady}"/>
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding !IsReady}">
+                    <ProgressBar IsIndeterminate="True" Width="220" Height="4"
+                                 Foreground="{StaticResource Primary}" Background="{StaticResource Surface2}"/>
+                    <TextBlock Text="Connecting to your container engine…" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center"/>
                 </StackPanel>
-            </ScrollViewer>
+            </Panel>
         </Grid>
     </Grid>
 </Window>

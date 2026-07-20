@@ -26,40 +26,75 @@ public partial class MainWindowViewModel : ViewModelBase
 
         NavItems =
         [
-            new NavItem("Containers", "IconContainer", isSelected: true),
-            new NavItem("Images", "IconLayers"),
-            new NavItem("Volumes", "IconDatabase"),
-            new NavItem("Networks", "IconNetwork"),
+            new NavItem("containers", "Containers", "IconContainer") { IsSelected = true },
+            new NavItem("images", "Images", "IconLayers"),
+            new NavItem("volumes", "Volumes", "IconDatabase"),
+            new NavItem("networks", "Networks", "IconNetwork"),
         ];
+        foreach (var item in NavItems)
+            item.Command = NavigateCommand;
 
         _ = InitAsync();
     }
 
-    [ObservableProperty]
-    private ContainersViewModel? _containers;
+    // Pages
+    [ObservableProperty] private ContainersViewModel? _containers;
+    [ObservableProperty] private ImagesViewModel? _images;
+    [ObservableProperty] private VolumesViewModel? _volumes;
+    [ObservableProperty] private NetworksViewModel? _networks;
+
+    /// <summary>The page shown in the content area.</summary>
+    [ObservableProperty] private object? _currentPage;
 
     public ObservableCollection<NavItem> NavItems { get; }
 
     /// <summary>Engines shown in the backend-switcher dropdown.</summary>
     public ObservableCollection<EngineOption> Engines { get; } = [];
 
-    [ObservableProperty]
-    private string _engineName = "Connecting…";
+    [ObservableProperty] private string _engineName = "Connecting…";
+    [ObservableProperty] private string _engineChip = "?";
 
-    [ObservableProperty]
-    private string _engineChip = "?";
+    /// <summary>False until the first page is on screen (drives the connecting state).</summary>
+    [ObservableProperty] private bool _isReady;
 
-    /// <summary>False until the first container list is on screen (drives the loading state).</summary>
-    [ObservableProperty]
-    private bool _isReady;
+    /// <summary>Shared command-bar search; forwarded to the active page.</summary>
+    [ObservableProperty] private string _searchText = string.Empty;
+
+    partial void OnSearchTextChanged(string value)
+    {
+        if (CurrentPage is IListPage page)
+            page.SearchText = value;
+    }
+
+    [RelayCommand]
+    private void Navigate(string key)
+    {
+        IListPage? page = key switch
+        {
+            "images" => Images,
+            "volumes" => Volumes,
+            "networks" => Networks,
+            "containers" => Containers,
+            _ => Containers,
+        };
+        if (page is null)
+            return;
+
+        CurrentPage = page;
+        foreach (var item in NavItems)
+            item.IsSelected = item.Key == key;
+
+        SearchText = page.SearchText;
+
+        if (!page.HasLoaded)
+            _ = page.LoadAsync();
+    }
 
     private async Task InitAsync()
     {
         try
         {
             _probes = await _registry.ProbeAllAsync();
-
-            // First connected provider wins; the fake always connects as a fallback.
             var active = _probes.FirstOrDefault(p => p.Connected) ?? _probes[^1];
             await ActivateAsync(active.Provider);
         }
@@ -73,7 +108,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task ActivateAsync(IEngineProvider provider)
     {
-        // Tear down the previous engine/watcher, if any.
         Containers?.StopWatching();
         (_engine as IDisposable)?.Dispose();
 
@@ -86,11 +120,27 @@ public partial class MainWindowViewModel : ViewModelBase
         RebuildEngineList();
 
         Containers = new ContainersViewModel(_engine);
+        Images = new ImagesViewModel(_engine);
+        Volumes = new VolumesViewModel(_engine);
+        Networks = new NetworksViewModel(_engine);
+
+        SearchText = string.Empty;
+        CurrentPage = Containers;
+        foreach (var item in NavItems)
+            item.IsSelected = item.Key == "containers";
+
         await Containers.LoadAsync();
         IsReady = true;
         Containers.StartWatching();
 
         await UpdateNavCountsAsync();
+    }
+
+    [RelayCommand]
+    private async Task RefreshCurrentPageAsync()
+    {
+        if (CurrentPage is IListPage page)
+            await page.LoadAsync();
     }
 
     [RelayCommand]

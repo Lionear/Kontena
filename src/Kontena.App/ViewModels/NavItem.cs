@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Kontena.App.ViewModels;
@@ -5,12 +6,15 @@ namespace Kontena.App.ViewModels;
 /// <summary>A single entry in the sidebar navigation.</summary>
 public partial class NavItem : ObservableObject
 {
-    public NavItem(string label, string iconKey, bool isSelected = false)
+    public NavItem(string key, string label, string iconKey)
     {
+        Key = key;
         Label = label;
         IconKey = iconKey;
-        IsSelected = isSelected;
     }
+
+    /// <summary>Page key, e.g. "containers", "images".</summary>
+    public string Key { get; }
 
     public string Label { get; }
 
@@ -22,4 +26,7 @@ public partial class NavItem : ObservableObject
 
     [ObservableProperty]
     private string _count = string.Empty;
+
+    /// <summary>Navigation command (shared), invoked with <see cref="Key"/> as parameter.</summary>
+    public ICommand? Command { get; set; }
 }
