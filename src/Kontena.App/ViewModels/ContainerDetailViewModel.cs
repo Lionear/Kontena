@@ -25,7 +25,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
 
     private readonly List<LogLineViewModel> _all = [];
 
-    public ContainerDetailViewModel(IContainerEngine engine, ContainerSummary container, Action onBack)
+    public ContainerDetailViewModel(
+        IContainerEngine engine, ContainerSummary container, Action onBack, TerminalFont terminalFont)
     {
         _engine = engine;
         _c = container;
@@ -34,8 +35,17 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
         SupportsStats = engine.Capabilities.SupportsStats;
         SupportsExec = engine.Capabilities.SupportsExec;
 
+        TerminalFontFamily = $"{terminalFont.Family}, monospace";
+        TerminalFontSize = terminalFont.Size;
+        TerminalLigatures = terminalFont.Ligatures;
+
         Start();
     }
+
+    /// <summary>Terminal font (from settings), consumed by the Terminal tab.</summary>
+    public string TerminalFontFamily { get; }
+    public double TerminalFontSize { get; }
+    public bool TerminalLigatures { get; }
 
     // ── Identity / header ─────────────────────────────────────────────────────
 

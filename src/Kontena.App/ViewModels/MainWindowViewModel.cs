@@ -77,6 +77,19 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>False until the first page is on screen (drives the connecting state).</summary>
     [ObservableProperty] private bool _isReady;
 
+    /// <summary>True when no container engine could be reached — shows the engine-down state.</summary>
+    [ObservableProperty] private bool _isEngineDown;
+
+    [ObservableProperty] private string _engineDownDetail = string.Empty;
+
+    /// <summary>The connecting state shows only while neither ready nor engine-down.</summary>
+    public bool IsConnecting => !IsReady && !IsEngineDown;
+
+    partial void OnIsReadyChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
+    partial void OnIsEngineDownChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
+
+    private const string FakeBackend = "fake";
+
     /// <summary>Shared command-bar search; forwarded to the active page.</summary>
     [ObservableProperty] private string _searchText = string.Empty;
 
@@ -116,19 +129,44 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         try
         {
             _probes = await _registry.ProbeAllAsync();
-            var active = _probes.FirstOrDefault(p => p.Connected && p.Provider.Backend == _settings.DefaultEngine)
-                ?? _probes.FirstOrDefault(p => p.Connected)
-                ?? _probes[^1];
-
             BuildSettingsPage();
-            await ActivateAsync(active.Provider);
+            RebuildEngineList();
+
+            var real = _probes.FirstOrDefault(p =>
+                           p.Connected && p.Provider.Backend != FakeBackend
+                           && p.Provider.Backend == _settings.DefaultEngine)
+                       ?? _probes.FirstOrDefault(p => p.Connected && p.Provider.Backend != FakeBackend);
+
+            if (real is null)
+            {
+                EnterEngineDown("No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.");
+                return;
+            }
+
+            await ActivateAsync(real.Provider);
         }
         catch (Exception ex)
         {
-            EngineName = "Engine unavailable";
-            EngineChip = "!";
-            System.Diagnostics.Debug.WriteLine($"Kontena init failed: {ex}");
+            EnterEngineDown(ex.Message);
         }
+    }
+
+    private void EnterEngineDown(string detail)
+    {
+        IsReady = false;
+        IsEngineDown = true;
+        EngineDownDetail = detail;
+        EngineName = "No engine";
+        EngineChip = "!";
+        CurrentPage = null;
+    }
+
+    [RelayCommand]
+    private async Task ReconnectAsync()
+    {
+        IsEngineDown = false;
+        EngineDownDetail = string.Empty;
+        await InitAsync();
     }
 
     private async Task ActivateAsync(IEngineProvider provider)
@@ -137,6 +175,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         (_engine as IDisposable)?.Dispose();
 
         IsReady = false;
+        IsEngineDown = false;
         _engine = provider.CreateEngine();
         _activeBackend = provider.Backend;
         EngineName = provider.DisplayName;
@@ -150,7 +189,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Containers = new ContainersViewModel(_engine)
         {
             RequestOpenDetail = ShowContainerDetail,
-            RequestRunContainer = () => _ = ShowRunDialogAsync(),
+            RequestRunContainer = image => _ = ShowRunDialogAsync(image),
             RequestPullImage = ShowPullDialog,
         };
         Images = new ImagesViewModel(_engine) { RequestPullImage = ShowPullDialog };
@@ -182,7 +221,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
 
         DisposeDetail();
-        _detail = new ContainerDetailViewModel(_engine, summary, ShowContainers);
+
+        // Reload settings so a just-changed terminal font is picked up.
+        var current = _store.Load();
+        var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
+
+        _detail = new ContainerDetailViewModel(_engine, summary, ShowContainers, font);
         CurrentPage = _detail;
     }
 
@@ -226,7 +270,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _detail = null;
     }
 
-    private async Task ShowRunDialogAsync()
+    private async Task ShowRunDialogAsync(string? initialImage = null)
     {
         if (_engine is null)
             return;
@@ -243,7 +287,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 if (Containers is not null)
                     await Containers.LoadAsync();
-            });
+            },
+            initialImage: initialImage);
     }
 
     private void ShowPullDialog()

@@ -28,7 +28,8 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         IReadOnlyList<string> networks,
         IReadOnlySet<string> localImages,
         Action onClose,
-        Func<Task> onCreated)
+        Func<Task> onCreated,
+        string? initialImage = null)
     {
         _engine = engine;
         _onClose = onClose;
@@ -45,6 +46,10 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         SelectedRestartPolicy = "no";
 
         UpdatePreview();
+
+        // Setting via the property (not the field) fires the pre-fill for the image.
+        if (!string.IsNullOrWhiteSpace(initialImage))
+            Image = initialImage;
     }
 
     public string BackendName { get; }

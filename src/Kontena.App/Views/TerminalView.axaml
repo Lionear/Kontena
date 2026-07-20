@@ -28,8 +28,7 @@
         <!-- Terminal surface -->
         <Border Grid.Row="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="1,0,1,1" CornerRadius="0,0,8,8" ClipToBounds="True" Padding="8">
-            <term:TerminalControl x:Name="Term" FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
-                                  FontSize="12" EnableLigatures="True"/>
+            <term:TerminalControl x:Name="Term"/>
         </Border>
     </Grid>
 </UserControl>

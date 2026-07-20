@@ -64,8 +64,63 @@
                            HorizontalAlignment="Center"/>
             </StackPanel>
 
+            <!-- Empty state -->
+            <StackPanel IsVisible="{Binding IsEmpty}" Margin="0,54,0,0" Spacing="18" HorizontalAlignment="Center" MaxWidth="520">
+                <Border Width="72" Height="72" CornerRadius="18" Background="{DynamicResource Surface2}" HorizontalAlignment="Center">
+                    <Path Classes="icon" Width="34" Height="34" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconContainer}"/>
+                </Border>
+                <TextBlock Text="No containers running yet" FontSize="19" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="Your engine is connected and idle. Launch your first container, or pull an image to get going — Kontena handles the rest."
+                           FontSize="13" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="440"/>
+                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                    <Button Classes="ghost" Command="{Binding PullImageCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconPull}"/>
+                            <TextBlock Text="Pull image" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="primary" Command="{Binding RunContainerCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource PrimaryInk}" Data="{StaticResource IconPlay}"/>
+                            <TextBlock Text="Run container" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel Spacing="11" HorizontalAlignment="Center" Margin="0,12,0,0">
+                    <TextBlock Text="Quick start from a template" FontSize="12" Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                        <Button Classes="ghost" Command="{Binding RunTemplateCommand}" CommandParameter="nginx">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="8" Height="8" Fill="#5AB8FF" VerticalAlignment="Center"/>
+                                <TextBlock Text="nginx" FontFamily="{StaticResource Mono}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost" Command="{Binding RunTemplateCommand}" CommandParameter="postgres:16">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="8" Height="8" Fill="#34D399" VerticalAlignment="Center"/>
+                                <TextBlock Text="postgres:16" FontFamily="{StaticResource Mono}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost" Command="{Binding RunTemplateCommand}" CommandParameter="redis:7">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="8" Height="8" Fill="#F87171" VerticalAlignment="Center"/>
+                                <TextBlock Text="redis:7" FontFamily="{StaticResource Mono}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost" Command="{Binding RunTemplateCommand}" CommandParameter="node:22">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="8" Height="8" Fill="#F5B14C" VerticalAlignment="Center"/>
+                                <TextBlock Text="node:22" FontFamily="{StaticResource Mono}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+
             <!-- Stat cards -->
-            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14" IsVisible="{Binding HasLoaded}">
+            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14" IsVisible="{Binding HasAnyContainers}">
                 <Border Grid.Column="0" Classes="card">
                     <StackPanel Spacing="6">
                         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -110,7 +165,7 @@
 
             <!-- Container table -->
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="1" CornerRadius="10" ClipToBounds="True" IsVisible="{Binding HasLoaded}">
+                    BorderThickness="1" CornerRadius="10" ClipToBounds="True" IsVisible="{Binding HasAnyContainers}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <Grid Margin="18,12" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158">
@@ -174,6 +229,10 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!-- No search matches (inside the table, below the header) -->
+                    <TextBlock IsVisible="{Binding HasNoMatches}" Text="No containers match your search."
+                               Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center" Margin="0,26"/>
                 </StackPanel>
             </Border>
 

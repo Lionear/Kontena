@@ -20,11 +20,14 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
     public void OpenDetail(ContainerRowViewModel row) => RequestOpenDetail?.Invoke(row.Summary);
 
-    /// <summary>Raised when the Run button is clicked; the shell shows the Run modal.</summary>
-    public Action? RequestRunContainer { get; set; }
+    /// <summary>Raised when Run is clicked; the shell shows the Run modal (optionally pre-filled with an image).</summary>
+    public Action<string?>? RequestRunContainer { get; set; }
 
     [RelayCommand]
-    private void RunContainer() => RequestRunContainer?.Invoke();
+    private void RunContainer() => RequestRunContainer?.Invoke(null);
+
+    [RelayCommand]
+    private void RunTemplate(string image) => RequestRunContainer?.Invoke(image);
 
     /// <summary>Raised when the Pull image button is clicked; the shell shows the Pull modal.</summary>
     public Action? RequestPullImage { get; set; }
@@ -75,7 +78,27 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
         _all.AddRange(rebuilt);
     }
 
-    private void ApplyFilter() => SyncCollection(Items, _all.Where(Matches).ToList());
+    private void ApplyFilter()
+    {
+        SyncCollection(Items, _all.Where(Matches).ToList());
+        RaiseCollectionState();
+    }
+
+    /// <summary>True once loaded and at least one container exists (drives stat cards + table).</summary>
+    public bool HasAnyContainers => HasLoaded && _all.Count > 0;
+
+    /// <summary>Loaded, but no containers at all — show the empty state.</summary>
+    public bool IsEmpty => HasLoaded && _all.Count == 0;
+
+    /// <summary>Has containers, but the current search hides them all.</summary>
+    public bool HasNoMatches => HasLoaded && _all.Count > 0 && Items.Count == 0;
+
+    private void RaiseCollectionState()
+    {
+        OnPropertyChanged(nameof(HasAnyContainers));
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(HasNoMatches));
+    }
 
     /// <summary>Mutate <paramref name="target"/> the minimum needed to match
     /// <paramref name="desired"/> (add/remove/move only), preserving unchanged rows.</summary>

@@ -44,7 +44,14 @@ public partial class TerminalView : UserControl
         _vm = DataContext as ContainerDetailViewModel;
 
         if (_vm is not null)
+        {
             _vm.PropertyChanged += OnVmPropertyChanged;
+
+            // Exclr8's font props are plain CLR properties, so set them in code.
+            Term.FontFamily = _vm.TerminalFontFamily;
+            Term.FontSize = _vm.TerminalFontSize;
+            Term.EnableLigatures = _vm.TerminalLigatures;
+        }
 
         MaybeStart();
     }

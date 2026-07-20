@@ -32,4 +32,16 @@ public sealed record KontenaSettings
 
     /// <summary>Opt-in anonymous usage stats.</summary>
     public bool SendUsageStats { get; init; }
+
+    /// <summary>Primary monospace family for the container terminal.</summary>
+    public string TerminalFontFamily { get; init; } = "JetBrains Mono";
+
+    /// <summary>Terminal font size in points.</summary>
+    public double TerminalFontSize { get; init; } = 12;
+
+    /// <summary>Enable programming-font ligatures in the terminal.</summary>
+    public bool TerminalLigatures { get; init; } = true;
 }
+
+/// <summary>Terminal font settings resolved for a session (family carries a mono fallback).</summary>
+public sealed record TerminalFont(string Family, double Size, bool Ligatures);

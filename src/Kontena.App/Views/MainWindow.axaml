@@ -229,14 +229,68 @@
                 </Grid>
             </Border>
 
-            <!-- Content: the active page, or a connecting state -->
+            <!-- Content: the active page, a connecting state, or the engine-down state -->
             <Panel Grid.Row="1">
                 <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsReady}"/>
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding !IsReady}">
+
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding IsConnecting}">
                     <ProgressBar IsIndeterminate="True" Width="220" Height="4"
                                  Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
                     <TextBlock Text="Connecting to your container engine…" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                 </StackPanel>
+
+                <!-- Engine-down -->
+                <ScrollViewer IsVisible="{Binding IsEngineDown}" VerticalAlignment="Center">
+                    <Border Classes="card" MaxWidth="520" Padding="34,30" Margin="24" HorizontalAlignment="Center">
+                        <StackPanel Spacing="16" HorizontalAlignment="Center">
+                            <Border Width="60" Height="60" CornerRadius="15" Background="#F8717118" HorizontalAlignment="Center">
+                                <Path Classes="icon" Width="28" Height="28" Stroke="{DynamicResource Danger}" Data="{StaticResource IconPlug}"/>
+                            </Border>
+                            <TextBlock Text="Can't reach a container engine" FontSize="18" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text}" HorizontalAlignment="Center" TextAlignment="Center"/>
+                            <TextBlock Text="{Binding EngineDownDetail}" FontSize="13" Foreground="{DynamicResource TextDim}"
+                                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="420"/>
+
+                            <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding ReconnectCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource PrimaryInk}" Data="{StaticResource IconRefresh}"/>
+                                    <TextBlock Text="Reconnect" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="AVAILABLE ENGINES" FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                <ItemsControl ItemsSource="{Binding Engines}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:EngineOption">
+                                            <Button Classes="engineitem" IsEnabled="{Binding IsConnected}"
+                                                    Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}" Margin="0,0,0,2">
+                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
+                                                            Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold"
+                                                                   FontSize="13" Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                                            <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
+                                                                <TextBlock Text="Running" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                                                                   Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
             </Panel>
         </Grid>
 

@@ -146,6 +146,41 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <TextBlock Classes="gh" Text="TERMINAL" Margin="0,30,0,12"/>
+                    <Border Classes="card" Padding="0">
+                        <StackPanel>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Font" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Monospace family for the container shell." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
+                                          ItemsSource="{Binding FontFamilies}" SelectedItem="{Binding TerminalFontFamily, Mode=TwoWay}"/>
+                            </Grid>
+                            <Border Height="1" Background="{DynamicResource Border}"/>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Font size" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Applies to terminals you open next." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                    <Slider Width="150" Minimum="9" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding TerminalFontSize, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding TerminalFontSize}" FontFamily="{StaticResource Mono}" FontSize="13"
+                                               Foreground="{DynamicResource Text}" VerticalAlignment="Center" MinWidth="24"/>
+                                </StackPanel>
+                            </Grid>
+                            <Border Height="1" Background="{DynamicResource Border}"/>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Ligatures" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Render programming-font ligatures (e.g. → and ≠)." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding TerminalLigatures, Mode=TwoWay}" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- Engines -->

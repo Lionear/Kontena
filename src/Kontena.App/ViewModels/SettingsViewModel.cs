@@ -30,6 +30,9 @@ public partial class SettingsViewModel : ViewModelBase
         _autoDetect = settings.AutoDetectEngines;
         _launchAtLogin = settings.LaunchAtLogin;
         _sendUsageStats = settings.SendUsageStats;
+        _terminalFontFamily = settings.TerminalFontFamily;
+        _terminalFontSize = settings.TerminalFontSize;
+        _terminalLigatures = settings.TerminalLigatures;
 
         DefaultEngineOptions = [FirstConnectedOption, .. engines.Select(e => e.Name)];
         _selectedDefaultEngine =
@@ -103,6 +106,20 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _sendUsageStats;
     partial void OnSendUsageStatsChanged(bool value) => Save();
 
+    // ── Terminal ────────────────────────────────────────────────────────────
+
+    public string[] FontFamilies { get; } =
+        ["JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", "Menlo", "monospace"];
+
+    [ObservableProperty] private string _terminalFontFamily;
+    partial void OnTerminalFontFamilyChanged(string value) => Save();
+
+    [ObservableProperty] private double _terminalFontSize;
+    partial void OnTerminalFontSizeChanged(double value) => Save();
+
+    [ObservableProperty] private bool _terminalLigatures;
+    partial void OnTerminalLigaturesChanged(bool value) => Save();
+
     // ── Persist ─────────────────────────────────────────────────────────────
 
     private void Save()
@@ -116,6 +133,9 @@ public partial class SettingsViewModel : ViewModelBase
             DefaultEngine = backend,
             LaunchAtLogin = LaunchAtLogin,
             SendUsageStats = SendUsageStats,
+            TerminalFontFamily = TerminalFontFamily,
+            TerminalFontSize = TerminalFontSize,
+            TerminalLigatures = TerminalLigatures,
         };
         _store.Save(_settings);
     }
