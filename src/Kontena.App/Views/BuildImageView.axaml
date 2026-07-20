@@ -89,7 +89,19 @@
                 <ScrollViewer IsVisible="{Binding NotStarted}">
                     <StackPanel Margin="24,20" Spacing="16">
                         <StackPanel>
-                            <TextBlock Classes="flabel" Text="Build context"/>
+                            <TextBlock Classes="flabel" Text="Dockerfile"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Dockerfile, Mode=TwoWay}" PlaceholderText="Dockerfile"/>
+                                <Button Grid.Column="1" Classes="ghost" Padding="12,8" Margin="8,0,0,0" Click="OnBrowseDockerfileClick" ToolTip.Tip="Choose a Dockerfile">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconLogs}"/>
+                                        <TextBlock Text="Browse" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Classes="flabel" Text="Build context  (defaults to the Dockerfile's folder)"/>
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding ContextPath, Mode=TwoWay}" PlaceholderText="/path/to/context"/>
                                 <Button Grid.Column="1" Classes="ghost" Padding="12,8" Margin="8,0,0,0" Click="OnBrowseContextClick" ToolTip.Tip="Choose folder">
@@ -106,14 +118,10 @@
                                 <TextBox Classes="fieldinput" Text="{Binding Tag, Mode=TwoWay}" PlaceholderText="myapp:1.0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Classes="flabel" Text="Dockerfile  (relative)"/>
-                                <TextBox Classes="fieldinput" Text="{Binding Dockerfile, Mode=TwoWay}" PlaceholderText="Dockerfile"/>
+                                <TextBlock Classes="flabel" Text="Target stage  (optional)"/>
+                                <TextBox Classes="fieldinput" Text="{Binding Target, Mode=TwoWay}" PlaceholderText="e.g. runtime"/>
                             </StackPanel>
                         </Grid>
-                        <StackPanel HorizontalAlignment="Left" Width="360">
-                            <TextBlock Classes="flabel" Text="Target stage  (optional)"/>
-                            <TextBox Classes="fieldinput" Text="{Binding Target, Mode=TwoWay}" PlaceholderText="e.g. runtime"/>
-                        </StackPanel>
 
                         <StackPanel>
                             <TextBlock Classes="flabel" Text="Options"/>

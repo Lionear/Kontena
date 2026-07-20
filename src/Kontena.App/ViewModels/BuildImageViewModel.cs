@@ -50,6 +50,19 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
 
     partial void OnContextPathChanged(string value) => OnPropertyChanged(nameof(CanBuild));
     partial void OnTagChanged(string value) => OnPropertyChanged(nameof(CanBuild));
+    partial void OnDockerfileChanged(string value) => OnPropertyChanged(nameof(CanBuild));
+
+    /// <summary>Called after picking a Dockerfile: default the context to its folder (overridable).</summary>
+    public void SetDockerfile(string path)
+    {
+        Dockerfile = path;
+        if (string.IsNullOrWhiteSpace(ContextPath))
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
+                ContextPath = dir;
+        }
+    }
 
     [RelayCommand]
     private void AddArg() => BuildArgs.Add(new BuildArgRow());
@@ -99,9 +112,22 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
             Fail($"Build context not found: {context}");
             return;
         }
-        if (!File.Exists(Path.Combine(context, Dockerfile.Trim())))
+
+        // The Dockerfile may be absolute (picked) or relative to the context; the /build
+        // endpoint needs it as a path relative to (and inside) the context tar.
+        var dfInput = Dockerfile.Trim().Length == 0 ? "Dockerfile" : Dockerfile.Trim();
+        var dfAbs = Path.IsPathRooted(dfInput) ? dfInput : Path.Combine(context, dfInput);
+        if (!File.Exists(dfAbs))
         {
-            Fail($"Dockerfile not found: {Path.Combine(context, Dockerfile.Trim())}");
+            Fail($"Dockerfile not found: {dfAbs}");
+            return;
+        }
+
+        var dockerfileRel = Path.GetRelativePath(Path.GetFullPath(context), Path.GetFullPath(dfAbs))
+            .Replace('\\', '/');
+        if (dockerfileRel == ".." || dockerfileRel.StartsWith("../", StringComparison.Ordinal))
+        {
+            Fail("The Dockerfile must be inside the build context. Adjust the build context path.");
             return;
         }
 
@@ -126,7 +152,7 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
         var request = new BuildRequest
         {
             ContextPath = context,
-            Dockerfile = Dockerfile.Trim(),
+            Dockerfile = dockerfileRel,
             Tag = Tag.Trim(),
             Target = string.IsNullOrWhiteSpace(Target) ? null : Target.Trim(),
             NoCache = NoCache,
