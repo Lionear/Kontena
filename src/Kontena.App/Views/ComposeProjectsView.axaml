@@ -1,0 +1,116 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.ComposeProjectsView"
+             x:DataType="vm:ComposeProjectsViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="24,22" Spacing="18">
+
+            <!-- Header -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="Compose projects" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextDim}"/>
+            </StackPanel>
+
+            <!-- Empty state -->
+            <StackPanel IsVisible="{Binding IsEmpty}" Margin="0,54,0,0" Spacing="16" HorizontalAlignment="Center" MaxWidth="520">
+                <Border Width="72" Height="72" CornerRadius="18" Background="{DynamicResource Surface2}" HorizontalAlignment="Center">
+                    <Path Classes="icon" Width="34" Height="34" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconBox}"/>
+                </Border>
+                <TextBlock Text="No Compose projects yet" FontSize="19" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="Start a stack with docker compose (or podman-compose) and its services show up here, grouped by project."
+                           FontSize="13" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="440"/>
+            </StackPanel>
+
+            <!-- Projects -->
+            <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ComposeProjectViewModel">
+                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="10" ClipToBounds="True" Margin="0,0,0,14">
+                            <StackPanel>
+
+                                <!-- Project header -->
+                                <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                    <Grid Margin="16,13" ColumnDefinitions="Auto,*,Auto">
+                                        <Border Grid.Column="0" Width="34" Height="34" CornerRadius="8" Background="{DynamicResource PrimarySoft}" VerticalAlignment="Center">
+                                            <Path Classes="icon" Width="18" Height="18" Stroke="{DynamicResource Primary}" Data="{StaticResource IconBox}"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="3">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontWeight="SemiBold"
+                                                           FontSize="14.5" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                                <Border CornerRadius="20" Padding="8,2" VerticalAlignment="Center" Background="#1E232C">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource TextDim}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding ConfigFile}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                                       Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Button Classes="qa" Command="{Binding StartCommand}" IsVisible="{Binding HasStopped}" ToolTip.Tip="Start all">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Success}" Data="{StaticResource IconPlay}"/>
+                                            </Button>
+                                            <Button Classes="qa" Command="{Binding RestartCommand}" ToolTip.Tip="Restart all">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconRestart}"/>
+                                            </Button>
+                                            <Button Classes="qa" Command="{Binding StopCommand}" ToolTip.Tip="Stop all">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconStop}"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Services -->
+                                <ItemsControl ItemsSource="{Binding Services}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ComposeServiceViewModel">
+                                            <Border Classes="row" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                                <Grid Margin="18,10" ColumnDefinitions="20,1.4*,1.8*,1*,1.1*,88" VerticalAlignment="Center">
+                                                    <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{Binding StatusBrush}"
+                                                             HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                                    <Button Grid.Column="1" Classes="link" Command="{Binding OpenCommand}" ToolTip.Tip="Open details">
+                                                        <StackPanel Spacing="1">
+                                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontWeight="SemiBold"
+                                                                       FontSize="13" Foreground="{DynamicResource Text}"/>
+                                                            <TextBlock Text="service" FontSize="10.5" Foreground="{DynamicResource TextFaint}"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Image}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding PortsText}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                               Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="4" Text="{Binding StatusText}" FontSize="11.5"
+                                                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                        <Button Classes="qa" Command="{Binding StartCommand}" IsVisible="{Binding IsNotRunning}" ToolTip.Tip="Start">
+                                                            <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconPlay}"/>
+                                                        </Button>
+                                                        <Button Classes="qa" Command="{Binding StopCommand}" IsVisible="{Binding IsRunning}" ToolTip.Tip="Stop">
+                                                            <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconStop}"/>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

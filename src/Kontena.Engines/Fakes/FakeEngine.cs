@@ -451,6 +451,47 @@ public sealed class FakeEngine : IContainerEngine
         AddNetwork("bridge", "bridge", "172.17.0.0/16", builtIn: true, []);
         AddNetwork("host", "host", null, builtIn: true, []);
         AddNetwork("none", "null", null, builtIn: true, []);
+
+        // Two Compose projects (discovered from labels) for the Projects page.
+        const string stack = "~/dev/ashenmoon/docker-compose.yml";
+        AddComposeContainer("ashenmoon-stack", "gateway", stack, "nginx:1.27-alpine",
+            ContainerState.Running, "Up 2 hours", new PortBinding(8080, 80));
+        AddComposeContainer("ashenmoon-stack", "api", stack, "ghcr.io/lionear/api:1.8",
+            ContainerState.Running, "Up 2 hours", new PortBinding(4000, 4000));
+        AddComposeContainer("ashenmoon-stack", "db", stack, "postgres:16",
+            ContainerState.Running, "Up 2 hours · healthy", new PortBinding(5432, 5432));
+        AddComposeContainer("ashenmoon-stack", "redis", stack, "redis:7-alpine",
+            ContainerState.Running, "Up 2 hours", new PortBinding(6379, 6379));
+
+        const string mon = "~/dev/infra/monitoring/compose.yaml";
+        AddComposeContainer("monitoring", "prometheus", mon, "prom/prometheus:v2.54",
+            ContainerState.Running, "Up 40 minutes", new PortBinding(9090, 9090));
+        AddComposeContainer("monitoring", "grafana", mon, "grafana/grafana:11.2.0",
+            ContainerState.Exited, "Exited (1)", new PortBinding(3000, 3000));
+    }
+
+    private void AddComposeContainer(
+        string project, string service, string configFile, string image,
+        ContainerState state, string status, params PortBinding[] ports)
+    {
+        var id = NextId();
+        _containers[id] = new ContainerSummary
+        {
+            Id = id,
+            Name = $"{project}-{service}-1",
+            Image = image,
+            State = state,
+            Status = status,
+            Ports = ports,
+            Labels = new Dictionary<string, string>
+            {
+                ["com.docker.compose.project"] = project,
+                ["com.docker.compose.service"] = service,
+                ["com.docker.compose.project.config_files"] = configFile,
+            },
+            CreatedAt = DateTimeOffset.UtcNow,
+            Backend = Backend,
+        };
     }
 
     private void AddContainer(

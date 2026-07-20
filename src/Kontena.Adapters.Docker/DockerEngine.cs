@@ -545,6 +545,9 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         State = MapState(c.State),
         Status = c.Status ?? string.Empty,
         Ports = MapPorts(c.Ports),
+        Labels = c.Labels is { Count: > 0 }
+            ? new Dictionary<string, string>(c.Labels)
+            : new Dictionary<string, string>(),
         CreatedAt = c.Created,
         Backend = Backend,
     };

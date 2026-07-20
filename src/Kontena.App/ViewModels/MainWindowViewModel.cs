@@ -42,6 +42,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             new NavItem("images", "Images", "IconLayers"),
             new NavItem("volumes", "Volumes", "IconDatabase"),
             new NavItem("networks", "Networks", "IconNetwork"),
+            new NavItem("projects", "Projects", "IconBox"),
         ];
         foreach (var item in NavItems)
             item.Command = NavigateCommand;
@@ -54,6 +55,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private ImagesViewModel? _images;
     [ObservableProperty] private VolumesViewModel? _volumes;
     [ObservableProperty] private NetworksViewModel? _networks;
+    [ObservableProperty] private ComposeProjectsViewModel? _composeProjects;
     [ObservableProperty] private SettingsViewModel? _settingsPage;
 
     /// <summary>The page shown in the content area.</summary>
@@ -107,6 +109,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             "images" => Images,
             "volumes" => Volumes,
             "networks" => Networks,
+            "projects" => ComposeProjects,
             "containers" => Containers,
             _ => Containers,
         };
@@ -195,6 +198,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Images = new ImagesViewModel(_engine) { RequestPullImage = ShowPullDialog };
         Volumes = new VolumesViewModel(_engine);
         Networks = new NetworksViewModel(_engine);
+        ComposeProjects = new ComposeProjectsViewModel(_engine) { RequestOpenDetail = ShowContainerDetail };
 
         SearchText = string.Empty;
         CurrentPage = Containers;
@@ -361,5 +365,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         NavItems[1].Count = (await _engine.ListImagesAsync()).Count.ToString(ci);
         NavItems[2].Count = (await _engine.ListVolumesAsync()).Count.ToString(ci);
         NavItems[3].Count = (await _engine.ListNetworksAsync()).Count.ToString(ci);
+
+        var projects = (await _engine.ListContainersAsync())
+            .Where(c => c.Labels.ContainsKey(ComposeProjectsViewModel.ProjectLabel))
+            .Select(c => c.Labels[ComposeProjectsViewModel.ProjectLabel])
+            .Distinct()
+            .Count();
+        NavItems[4].Count = projects.ToString(ci);
     }
 }

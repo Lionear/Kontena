@@ -27,6 +27,10 @@ public sealed record ContainerSummary
     /// <summary>Published ports.</summary>
     public IReadOnlyList<PortBinding> Ports { get; init; } = [];
 
+    /// <summary>Engine labels (used e.g. to group Compose projects/services).</summary>
+    public IReadOnlyDictionary<string, string> Labels { get; init; } =
+        new Dictionary<string, string>();
+
     /// <summary>When the container was created (UTC).</summary>
     public DateTimeOffset CreatedAt { get; init; }
 

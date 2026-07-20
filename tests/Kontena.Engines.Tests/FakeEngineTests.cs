@@ -25,11 +25,26 @@ public class FakeEngineTests
     public async Task Lists_seeded_containers()
     {
         var all = await NewEngine().ListContainersAsync(all: true);
-        Assert.Equal(5, all.Count);
+        Assert.Equal(11, all.Count);
 
         var running = await NewEngine().ListContainersAsync(all: false);
         Assert.All(running, c => Assert.Equal(ContainerState.Running, c.State));
-        Assert.Equal(3, running.Count);
+        Assert.Equal(8, running.Count);
+    }
+
+    [Fact]
+    public async Task Seeded_containers_carry_compose_labels()
+    {
+        var all = await NewEngine().ListContainersAsync(all: true);
+
+        var projects = all
+            .Where(c => c.Labels.ContainsKey("com.docker.compose.project"))
+            .Select(c => c.Labels["com.docker.compose.project"])
+            .Distinct()
+            .ToList();
+
+        Assert.Contains("ashenmoon-stack", projects);
+        Assert.Contains("monitoring", projects);
     }
 
     [Fact]

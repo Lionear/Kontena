@@ -66,4 +66,6 @@
     <StreamGeometry x:Key="IconSun">M16 12A4 4 0 1 1 8 12A4 4 0 1 1 16 12Z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4</StreamGeometry>
 
     <StreamGeometry x:Key="IconMonitor">M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z M8 21h8 M12 17v4</StreamGeometry>
+
+    <StreamGeometry x:Key="IconBox">M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z M3.3 7l8.7 5 8.7-5 M12 22V12</StreamGeometry>
 </ResourceDictionary>
