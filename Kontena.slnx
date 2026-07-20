@@ -5,6 +5,7 @@
     <Project Path="src/Kontena.App/Kontena.App.csproj" />
     <Project Path="src/Kontena.Core/Kontena.Core.csproj" />
     <Project Path="src/Kontena.Engines/Kontena.Engines.csproj" />
+    <Project Path="src/Kontena.Sdk/Kontena.Sdk.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj" />

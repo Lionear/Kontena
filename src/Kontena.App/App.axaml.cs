@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Kontena.Adapters.Docker;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
+using Kontena.Engines;
 using Kontena.Engines.Fakes;
 
 namespace Kontena.App;
@@ -19,10 +20,17 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // Try real Docker first; fall back to the in-memory FakeEngine.
+            // Provider-based: the registry discovers backends (and, later, plugins).
+            var registry = new EngineRegistry(
+            [
+                new DockerEngineProvider(),
+                new PodmanEngineProvider(),
+                new FakeEngineProvider(),
+            ]);
+
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(new DockerEngine(), new FakeEngine()),
+                DataContext = new MainWindowViewModel(registry),
             };
         }
 

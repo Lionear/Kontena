@@ -21,17 +21,31 @@ adapter implements.
 Kontena.slnx
 ├─ src/
 │  ├─ Kontena.Core             # Engine-neutral domain models & product identity (no UI)
-│  ├─ Kontena.Engines          # CEAL contract, engine registry, capability discovery (no UI)
-│  ├─ Kontena.Adapters.Docker  # Docker Engine API adapter          (no UI)
-│  ├─ Kontena.Adapters.Podman  # Podman (rootless) adapter          (no UI)
+│  ├─ Kontena.Engines          # CEAL contract, engine registry, providers (no UI)
+│  ├─ Kontena.Sdk              # Extension SDK: IEnginePlugin + manifest (no UI)
+│  ├─ Kontena.Adapters.Docker  # Docker + Podman adapter & providers      (no UI)
+│  ├─ Kontena.Adapters.Podman  # (reserved) dedicated Podman adapter       (no UI)
 │  └─ Kontena.App              # Avalonia desktop UI (MVVM)
 └─ tests/
    ├─ Kontena.Core.Tests
-   └─ Kontena.Engines.Tests
+   ├─ Kontena.Engines.Tests
+   └─ Kontena.Adapters.Docker.Tests   # integration (skips without Docker)
 ```
 
 Core / Engines / Adapters carry **no** Avalonia reference — the whole abstraction layer is
 unit-testable without the UI.
+
+## Extensibility
+
+Kontena is provider-based. Every backend registers as an `IEngineProvider` with the
+`EngineRegistry`, which probes providers for availability — the app hard-codes nothing.
+Built-in providers cover Docker, Podman (reusing the Docker-compatible adapter), and an
+in-memory Fake for development.
+
+To add a new backend you implement two interfaces — `IContainerEngine` (the CEAL) and
+`IEngineProvider` — and expose them through `IEnginePlugin` from **`Kontena.Sdk`**. A future
+plugin loader (KON-49) will discover SDK plugins from external assemblies and register their
+providers at runtime, which is the foundation for a store of installable adapters (KON-51).
 
 ## Prerequisites
 

@@ -23,14 +23,22 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
 {
     private readonly DockerClient _client;
     private readonly Uri _endpoint;
+    private readonly string _backend;
+    private readonly string _displayName;
 
-    public DockerEngine(Uri? endpoint = null)
+    /// <summary>
+    /// The Docker Engine API is also spoken by Podman, so this adapter serves both:
+    /// pass the Podman socket plus a "podman"/"Podman" identity to reuse it.
+    /// </summary>
+    public DockerEngine(Uri? endpoint = null, string backend = "docker", string displayName = "Docker")
     {
         _endpoint = endpoint ?? DefaultEndpoint();
+        _backend = backend;
+        _displayName = displayName;
         _client = new DockerClientConfiguration(_endpoint).CreateClient();
     }
 
-    public string Backend => "docker";
+    public string Backend => _backend;
 
     public EngineCapabilities Capabilities { get; } = new()
     {
@@ -54,8 +62,8 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             var version = await _client.System.GetVersionAsync(ct).ConfigureAwait(false);
             return new EngineInfo
             {
-                Backend = Backend,
-                DisplayName = "Docker",
+                Backend = _backend,
+                DisplayName = _displayName,
                 Version = version.Version,
                 Endpoint = _endpoint.ToString(),
                 ConnectionState = EngineConnectionState.Connected,

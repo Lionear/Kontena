@@ -211,7 +211,8 @@
                                         <ItemsControl ItemsSource="{Binding Engines}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:EngineOption">
-                                                    <Button Classes="engineitem">
+                                                    <Button Classes="engineitem" IsEnabled="{Binding IsConnected}"
+                                                            Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
                                                         <Grid ColumnDefinitions="Auto,*,Auto">
                                                             <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
                                                                     Background="{StaticResource DockerChip}" VerticalAlignment="Center">
@@ -224,7 +225,7 @@
                                                                     <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
                                                                                Foreground="{StaticResource Text}"/>
                                                                     <Border Background="#34D39916" CornerRadius="20" Padding="6,1"
-                                                                            VerticalAlignment="Center" IsVisible="{Binding IsActive}">
+                                                                            VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
                                                                         <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold"
                                                                                    Foreground="{StaticResource Success}"/>
                                                                     </Border>
