@@ -219,8 +219,10 @@
                         <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="Refresh">
                             <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconRefresh}"/>
                         </Button>
-                        <Button Classes="qa" Width="34" Height="34" ToolTip.Tip="Toggle theme">
-                            <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconMoon}"/>
+                        <Button Classes="qa" Width="34" Height="34" Command="{Binding ToggleThemeCommand}"
+                                ToolTip.Tip="{Binding ThemeToggleTip}">
+                            <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}"
+                                  Data="{Binding ThemeToggleIconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
                         </Button>
                     </StackPanel>
                 </Grid>

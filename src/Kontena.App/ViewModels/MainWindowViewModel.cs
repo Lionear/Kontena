@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Avalonia;
+using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
@@ -47,6 +49,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         foreach (var item in NavItems)
             item.Command = NavigateCommand;
 
+        SyncThemeToggleIcon();
         _ = InitAsync();
     }
 
@@ -270,6 +273,43 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         SearchText = string.Empty;
         foreach (var item in NavItems)
             item.IsSelected = false;
+    }
+
+    // ── Theme quick-toggle (topbar) ─────────────────────────────────────────
+
+    /// <summary>Resource key of the icon shown on the topbar theme button.</summary>
+    [ObservableProperty] private string _themeToggleIconKey = "IconMoon";
+
+    /// <summary>Tooltip for the topbar theme button.</summary>
+    [ObservableProperty] private string _themeToggleTip = "Toggle theme";
+
+    /// <summary>Flips between Light and Dark based on what is actually on screen.
+    /// The three-way preference (incl. System) still lives in Settings.</summary>
+    [RelayCommand]
+    private void ToggleTheme()
+    {
+        var next = Application.Current?.ActualThemeVariant == ThemeVariant.Dark
+            ? ThemePreference.Light
+            : ThemePreference.Dark;
+
+        _settings = _settings with { Theme = next };
+
+        if (SettingsPage is not null)
+            SettingsPage.Theme = next; // applies + persists via its own handler
+        else
+        {
+            ThemeApplier.Apply(next);
+            _store.Save(_settings);
+        }
+
+        SyncThemeToggleIcon();
+    }
+
+    private void SyncThemeToggleIcon()
+    {
+        var isDark = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
+        ThemeToggleIconKey = isDark ? "IconSun" : "IconMoon";
+        ThemeToggleTip = isDark ? "Switch to light theme" : "Switch to dark theme";
     }
 
     private void DisposeDetail()
