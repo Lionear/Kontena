@@ -73,12 +73,20 @@ public partial class ContainersViewModel : ViewModelBase
             long mem = 0;
             foreach (var row in _all.Where(r => r.IsRunning))
             {
-                await foreach (var s in _engine.StreamStatsAsync(row.Id))
+                try
                 {
-                    row.ApplyStats(s);
-                    cpu += s.CpuPercent;
-                    mem += s.MemoryUsedBytes;
-                    break; // one sample is enough for the overview
+                    using var statsCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    await foreach (var s in _engine.StreamStatsAsync(row.Id, statsCts.Token))
+                    {
+                        row.ApplyStats(s);
+                        cpu += s.CpuPercent;
+                        mem += s.MemoryUsedBytes;
+                        break; // one sample is enough for the overview
+                    }
+                }
+                catch
+                {
+                    // A single container's stats failing must never sink the whole list.
                 }
             }
 
