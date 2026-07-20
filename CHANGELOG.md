@@ -9,10 +9,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-_Nothing yet._
-
-## [0.1.0] - 2026-07-20
-
 ### Added
 
 - **Backend-agnostic container management** — one UI over the Container Engine Abstraction Layer
@@ -28,10 +24,16 @@ _Nothing yet._
   policy) with a live command preview, auto-pull of missing images, and metadata pre-fill of exposed
   ports and declared volumes; a Pull-image dialog with streaming progress; quick-start templates from
   the empty state.
-- **Settings** — light / dark / system theme applied live, a persisted settings store, a default-engine
-  picker, and configurable terminal font (family, size, ligatures).
+- **First-run onboarding** — a full-window wizard that detects the container engines on your machine,
+  lets you pick a default, and links to a guided Podman install when none is present.
+- **Activity timeline** — a live, filterable feed of engine events (create / start / stop / pull /
+  remove and more), straight off the event stream with no polling.
+- **Settings** — light / dark / system theme applied live plus a top-bar quick-toggle, a persisted
+  settings store, a default-engine picker, a compact-density option for tighter list rows, and a
+  configurable terminal font (family, size, ligatures).
 - **Graceful states** — an empty state with quick-start, a no-match note, and an engine-down state
   with reconnect and available-engine fallback.
+- **Refined look** — a crisp vector app mark used throughout, and theme-aware surfaces that hold up in
+  both light and dark.
 
-[Unreleased]: https://github.com/Lionear/Kontena/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/Lionear/Kontena/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Lionear/Kontena/commits/main
