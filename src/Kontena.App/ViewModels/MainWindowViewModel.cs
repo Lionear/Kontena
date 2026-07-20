@@ -87,11 +87,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private string _engineDownDetail = string.Empty;
 
-    /// <summary>The connecting state shows only while neither ready nor engine-down.</summary>
-    public bool IsConnecting => !IsReady && !IsEngineDown;
+    /// <summary>True on first run — shows the full-window onboarding (engine connect) wizard.</summary>
+    [ObservableProperty] private bool _isOnboarding;
+
+    /// <summary>The first-run wizard view model, or null when not onboarding.</summary>
+    [ObservableProperty] private OnboardingViewModel? _onboarding;
+
+    /// <summary>The connecting state shows only while neither ready, engine-down, nor onboarding.</summary>
+    public bool IsConnecting => !IsReady && !IsEngineDown && !IsOnboarding;
 
     partial void OnIsReadyChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
     partial void OnIsEngineDownChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
+    partial void OnIsOnboardingChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
 
     private const string FakeBackend = "fake";
 
@@ -138,22 +145,89 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             BuildSettingsPage();
             RebuildEngineList();
 
-            var real = _probes.FirstOrDefault(p =>
-                           p.Connected && p.Provider.Backend != FakeBackend
-                           && p.Provider.Backend == _settings.DefaultEngine)
-                       ?? _probes.FirstOrDefault(p => p.Connected && p.Provider.Backend != FakeBackend);
-
-            if (real is null)
+            if (!_settings.Onboarded)
             {
-                EnterEngineDown("No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.");
+                EnterOnboarding();
                 return;
             }
 
-            await ActivateAsync(real.Provider);
+            await ConnectPreferredAsync();
         }
         catch (Exception ex)
         {
             EnterEngineDown(ex.Message);
+        }
+    }
+
+    /// <summary>Activate the saved default engine, else the first connected real one, else engine-down.</summary>
+    private async Task ConnectPreferredAsync()
+    {
+        var real = _probes.FirstOrDefault(p =>
+                       p.Connected && p.Provider.Backend != FakeBackend
+                       && p.Provider.Backend == _settings.DefaultEngine)
+                   ?? _probes.FirstOrDefault(p => p.Connected && p.Provider.Backend != FakeBackend);
+
+        if (real is null)
+        {
+            EnterEngineDown("No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.");
+            return;
+        }
+
+        await ActivateAsync(real.Provider);
+    }
+
+    private void EnterOnboarding()
+    {
+        IsReady = false;
+        IsEngineDown = false;
+        CurrentPage = null;
+        Onboarding = new OnboardingViewModel(
+            _probes,
+            FakeBackend,
+            _settings.AutoDetectEngines,
+            onContinue: backend => _ = CompleteOnboardingAsync(backend),
+            onSkip: () => _ = CompleteOnboardingAsync(null),
+            onInstallPodman: () => OpenUrl("https://podman.io/docs/installation"));
+        IsOnboarding = true;
+    }
+
+    private async Task CompleteOnboardingAsync(string? backend)
+    {
+        var autoDetect = Onboarding?.AutoDetect ?? _settings.AutoDetectEngines;
+        _settings = _settings with
+        {
+            Onboarded = true,
+            DefaultEngine = backend ?? _settings.DefaultEngine,
+            AutoDetectEngines = autoDetect,
+        };
+        _store.Save(_settings);
+        BuildSettingsPage(); // reflect the just-chosen default in Settings
+
+        IsOnboarding = false;
+        Onboarding = null;
+
+        if (backend is not null)
+        {
+            var provider = _probes.FirstOrDefault(p => p.Provider.Backend == backend && p.Connected)?.Provider;
+            if (provider is not null)
+            {
+                await ActivateAsync(provider);
+                return;
+            }
+        }
+
+        await ConnectPreferredAsync();
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch
+        {
+            // Best-effort: opening a browser isn't critical to onboarding.
         }
     }
 

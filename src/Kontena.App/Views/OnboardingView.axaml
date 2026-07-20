@@ -1,0 +1,177 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             x:Class="Kontena.App.Views.OnboardingView"
+             x:DataType="vm:OnboardingViewModel"
+             x:Name="Root">
+
+    <UserControl.Styles>
+        <Style Selector="Button.engineopt">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.engineopt:pointerover /template/ ContentPresenter">
+            <Setter Property="BorderBrush" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <Style Selector="Button.engineopt.on">
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Button.engineopt:disabled">
+            <Setter Property="Opacity" Value="0.5"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+
+        <Style Selector="Border.radio">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.engineopt.on Border.radio">
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+
+        <Style Selector="Button.ob">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="18,11"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ob.ghost">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="Button.ob.primary">
+            <Setter Property="Background" Value="{DynamicResource Primary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryInk}"/>
+        </Style>
+        <Style Selector="Button.ob.primary:disabled">
+            <Setter Property="Opacity" Value="0.45"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Width="640" MaxWidth="640"
+            Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True">
+        <StackPanel>
+
+            <!-- Header -->
+            <Border Padding="36,34,36,26" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                    Background="{DynamicResource SurfaceRaised}">
+                <StackPanel HorizontalAlignment="Center" Spacing="0">
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,0,0,16">
+                        <Image Source="{StaticResource KontenaLogo}" Width="36" Height="36"/>
+                        <TextBlock Text="Kontena" FontSize="25" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="Let's connect your container engine" FontSize="20" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                    <TextBlock FontSize="13.5" Foreground="{DynamicResource TextDim}" MaxWidth="440" Margin="0,8,0,0"
+                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                               Text="Kontena works with the engine you already have. We scanned your machine — pick one to get started."/>
+                </StackPanel>
+            </Border>
+
+            <!-- Body -->
+            <StackPanel Margin="36,26,36,10" Spacing="16">
+                <TextBlock Text="DETECTED ENGINES" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextFaint}"/>
+
+                <ItemsControl ItemsSource="{Binding Engines}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="12"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:OnboardingEngine">
+                            <Button Classes="engineopt" Classes.on="{Binding IsSelected}"
+                                    IsEnabled="{Binding Selectable}"
+                                    Command="{Binding #Root.((vm:OnboardingViewModel)DataContext).SelectCommand}"
+                                    CommandParameter="{Binding}">
+                                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                    <Panel Grid.Column="0" Width="44" Height="44">
+                                        <Border Background="{Binding Accent}" Opacity="0.16" CornerRadius="10"/>
+                                        <TextBlock Text="{Binding Chip}" Foreground="{Binding Accent}"
+                                                   FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="18"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Panel>
+
+                                    <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center" Spacing="3">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                            <Border CornerRadius="20" Padding="8,2" VerticalAlignment="Center"
+                                                    Background="#34D39918" IsVisible="{Binding ShowRunning}">
+                                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                                    <Ellipse Width="6" Height="6" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Running" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <Border CornerRadius="20" Padding="8,2" VerticalAlignment="Center"
+                                                    Background="{DynamicResource Surface2}" IsVisible="{Binding ShowNotRunning}">
+                                                <TextBlock Text="Not running" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                            </Border>
+                                            <Border CornerRadius="20" Padding="8,2" VerticalAlignment="Center"
+                                                    Background="{DynamicResource Surface2}" IsVisible="{Binding ComingSoon}">
+                                                <TextBlock Text="Coming soon" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Detail}" FontSize="12.5" FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+
+                                    <Border Grid.Column="2" Classes="radio">
+                                        <Ellipse Width="10" Height="10" Fill="{DynamicResource Primary}"
+                                                 IsVisible="{Binding IsSelected}"/>
+                                    </Border>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Install assist -->
+                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"
+                        Background="{DynamicResource SurfaceRaised}" Padding="16,14">
+                    <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                                   TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,14,0"
+                                   Text="No engine, or want a clean one? Podman is rootless and needs no admin on most systems — the guide walks you through it per OS."/>
+                        <Button Grid.Column="1" Classes="ob ghost" VerticalAlignment="Center"
+                                Command="{Binding InstallPodmanCommand}"
+                                Content="Podman setup guide"/>
+                    </Grid>
+                </Border>
+
+                <Grid ColumnDefinitions="*,Auto" Margin="2,2,0,0" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center" Margin="0,0,14,0">
+                        <TextBlock Text="Auto-detection" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                   Text="Keep engines in sync as you start or stop them."/>
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" Classes="pill" VerticalAlignment="Center"
+                                  IsChecked="{Binding AutoDetect, Mode=TwoWay}"/>
+                </Grid>
+            </StackPanel>
+
+            <!-- Footer -->
+            <Grid Margin="36,20,36,30" ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button Classes="ob ghost" Content="Skip" Command="{Binding SkipCommand}"/>
+                    <Button Classes="ob primary" Content="{Binding ContinueLabel}"
+                            IsEnabled="{Binding CanContinue}" Command="{Binding ContinueCommand}"/>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

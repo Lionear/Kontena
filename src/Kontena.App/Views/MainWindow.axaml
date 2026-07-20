@@ -298,5 +298,13 @@
             <ContentControl Content="{Binding Dialog}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Margin="32"/>
         </Panel>
+
+        <!-- First-run onboarding: full-window, opaque, covers the whole shell -->
+        <Panel Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsOnboarding}" Background="{DynamicResource Bg}">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ContentControl Content="{Binding Onboarding}" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Margin="24,32"/>
+            </ScrollViewer>
+        </Panel>
     </Grid>
 </Window>

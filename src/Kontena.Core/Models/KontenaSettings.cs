@@ -27,6 +27,9 @@ public sealed record KontenaSettings
     /// <summary>Backend id to activate on launch (e.g. "docker"); null = first connected.</summary>
     public string? DefaultEngine { get; init; }
 
+    /// <summary>Whether the first-run onboarding (engine connect) has been completed.</summary>
+    public bool Onboarded { get; init; }
+
     /// <summary>Start Kontena at login (stored preference; wiring is platform-specific).</summary>
     public bool LaunchAtLogin { get; init; }
 
