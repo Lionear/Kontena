@@ -1,0 +1,13 @@
+<Project>
+  <!-- Shared build settings for every project in the Kontena solution. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <Authors>Kontena</Authors>
+    <Product>Kontena</Product>
+  </PropertyGroup>
+</Project>
