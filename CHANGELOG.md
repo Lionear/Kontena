@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.0] - 2026-07-20
+
 ### Added
 
 - **Backend-agnostic container management** — one UI over the Container Engine Abstraction Layer
@@ -36,4 +40,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Refined look** — a crisp vector app mark used throughout, and theme-aware surfaces that hold up in
   both light and dark.
 
-[Unreleased]: https://github.com/Lionear/Kontena/commits/main
+[Unreleased]: https://github.com/Lionear/Kontena/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Lionear/Kontena/releases/tag/v0.1.0
