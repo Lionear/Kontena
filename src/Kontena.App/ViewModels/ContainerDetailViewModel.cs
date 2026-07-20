@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Threading;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -78,6 +79,9 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsStatsSelected));
         OnPropertyChanged(nameof(IsTerminalSelected));
         OnPropertyChanged(nameof(IsInspectSelected));
+
+        if (value == "inspect" && !_inspectLoaded && !InspectLoading)
+            _ = LoadInspectAsync();
     }
 
     public bool IsLogsSelected => SelectedTab == "logs";
@@ -87,6 +91,79 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
 
     [RelayCommand]
     private void SelectTab(string tab) => SelectedTab = tab;
+
+    // ── Inspect ───────────────────────────────────────────────────────────────
+
+    [ObservableProperty] private ContainerInspect? _inspect;
+    [ObservableProperty] private bool _inspectLoading;
+    private bool _inspectLoaded;
+
+    public bool HasInspect => Inspect is not null;
+
+    public IReadOnlyList<KeyValueItem> EnvironmentItems =>
+        Inspect?.EnvironmentVariables.Select(kv => new KeyValueItem(kv.Key, kv.Value)).ToList() ?? [];
+    public IReadOnlyList<KeyValueItem> LabelItems =>
+        Inspect?.Labels.Select(kv => new KeyValueItem(kv.Key, kv.Value)).ToList() ?? [];
+    public IReadOnlyList<InspectMount> Mounts => Inspect?.Mounts ?? [];
+    public IReadOnlyList<InspectNetwork> Networks => Inspect?.Networks ?? [];
+
+    public bool HasEnvironment => EnvironmentItems.Count > 0;
+    public bool HasLabels => LabelItems.Count > 0;
+    public bool HasMounts => Mounts.Count > 0;
+    public bool HasNetworks => Networks.Count > 0;
+    public bool HasCommand => !string.IsNullOrWhiteSpace(Inspect?.Command);
+
+    public string RestartPolicyText => Inspect?.RestartPolicy switch
+    {
+        RestartPolicy.Always => "always",
+        RestartPolicy.OnFailure => "on-failure",
+        RestartPolicy.UnlessStopped => "unless-stopped",
+        RestartPolicy.No => "no",
+        _ => "—",
+    };
+
+    public string StartedText => FormatMoment(Inspect?.StartedAt);
+    public string FinishedText => FormatMoment(Inspect?.FinishedAt);
+
+    private static string FormatMoment(DateTimeOffset? when) =>
+        when is { } value
+            ? value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            : "—";
+
+    partial void OnInspectChanged(ContainerInspect? value)
+    {
+        OnPropertyChanged(nameof(HasInspect));
+        OnPropertyChanged(nameof(EnvironmentItems));
+        OnPropertyChanged(nameof(LabelItems));
+        OnPropertyChanged(nameof(Mounts));
+        OnPropertyChanged(nameof(Networks));
+        OnPropertyChanged(nameof(HasEnvironment));
+        OnPropertyChanged(nameof(HasLabels));
+        OnPropertyChanged(nameof(HasMounts));
+        OnPropertyChanged(nameof(HasNetworks));
+        OnPropertyChanged(nameof(HasCommand));
+        OnPropertyChanged(nameof(RestartPolicyText));
+        OnPropertyChanged(nameof(StartedText));
+        OnPropertyChanged(nameof(FinishedText));
+    }
+
+    private async Task LoadInspectAsync()
+    {
+        InspectLoading = true;
+        try
+        {
+            Inspect = await _engine.InspectContainerAsync(_c.Id);
+            _inspectLoaded = true;
+        }
+        catch
+        {
+            // Leave Inspect null — the tab shows the empty/failed state.
+        }
+        finally
+        {
+            InspectLoading = false;
+        }
+    }
 
     // ── Live stats strip ──────────────────────────────────────────────────────
 
@@ -295,6 +372,11 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
         _c = fresh;
         RaiseHeaderChanged();
 
+        // State changed — let the Inspect tab refetch (reload now if it's showing).
+        _inspectLoaded = false;
+        if (IsInspectSelected)
+            _ = LoadInspectAsync();
+
         if (!IsRunning)
             ResetStats();
 
@@ -322,3 +404,6 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
         GC.SuppressFinalize(this);
     }
 }
+
+/// <summary>A single key/value row (environment variable or label) in the Inspect tab.</summary>
+public sealed record KeyValueItem(string Key, string Value);

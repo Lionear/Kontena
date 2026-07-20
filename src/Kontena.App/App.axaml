@@ -167,6 +167,25 @@
             <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
         </Style>
 
+        <!-- Inspect-tab field label / value / hint -->
+        <Style Selector="TextBlock.ilabel">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.ivalue">
+            <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.ihint">
+            <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
         <!-- Detail-page toggle pill (Follow / Timestamps / Wrap) -->
         <Style Selector="Button.pill">
             <Setter Property="Background" Value="{DynamicResource Surface}"/>

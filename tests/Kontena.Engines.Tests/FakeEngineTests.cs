@@ -189,6 +189,29 @@ public class FakeEngineTests
     }
 
     [Fact]
+    public async Task Inspect_returns_structured_detail()
+    {
+        var engine = NewEngine();
+        var container = (await engine.ListContainersAsync()).First();
+
+        var inspect = await engine.InspectContainerAsync(container.Id);
+
+        Assert.Equal(container.Id, inspect.Id);
+        Assert.Equal(container.Image, inspect.Image);
+        Assert.Equal(container.State, inspect.State);
+        Assert.NotEmpty(inspect.EnvironmentVariables);
+        Assert.NotEmpty(inspect.Networks);
+    }
+
+    [Fact]
+    public async Task Inspect_missing_container_throws_not_found()
+    {
+        var engine = NewEngine();
+        await Assert.ThrowsAsync<ResourceNotFoundException>(
+            async () => await engine.InspectContainerAsync("does-not-exist"));
+    }
+
+    [Fact]
     public async Task Exec_session_for_missing_container_throws_not_found()
     {
         var engine = NewEngine();

@@ -51,6 +51,9 @@ public interface IContainerEngine
     /// <summary>Remove a container. <paramref name="force"/> kills it if running.</summary>
     ValueTask RemoveContainerAsync(string id, bool force = false, CancellationToken ct = default);
 
+    /// <summary>Full, structured configuration and state of a container (the Inspect tab).</summary>
+    ValueTask<ContainerInspect> InspectContainerAsync(string id, CancellationToken ct = default);
+
     /// <summary>Run a one-shot command inside a running container.</summary>
     /// <remarks>Requires <see cref="EngineCapabilities.SupportsExec"/>.</remarks>
     ValueTask<int> ExecAsync(string id, ExecRequest request, CancellationToken ct = default);

@@ -107,6 +107,48 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.FromResult(0);
     }
 
+    public ValueTask<ContainerInspect> InspectContainerAsync(string id, CancellationToken ct = default)
+    {
+        var c = RequireContainer(id);
+        var running = c.State == ContainerState.Running;
+
+        return ValueTask.FromResult(new ContainerInspect
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Image = c.Image,
+            ImageId = $"sha256:{c.Id}",
+            State = c.State,
+            Status = c.State.ToString().ToLowerInvariant(),
+            CreatedAt = c.CreatedAt,
+            StartedAt = running ? c.CreatedAt : null,
+            ExitCode = 0,
+            Pid = running ? 4242 : 0,
+            RestartPolicy = RestartPolicy.UnlessStopped,
+            Command = "/docker-entrypoint.sh nginx -g 'daemon off;'",
+            WorkingDirectory = "/",
+            User = string.Empty,
+            EnvironmentVariables = new Dictionary<string, string>
+            {
+                ["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                ["NGINX_VERSION"] = "1.27.1",
+            },
+            Labels = new Dictionary<string, string>
+            {
+                ["maintainer"] = "NGINX Docker Maintainers",
+                ["com.kontena.demo"] = "true",
+            },
+            Mounts =
+            [
+                new InspectMount("volume", $"{c.Name}-data", "/var/lib/data", ReadWrite: true),
+            ],
+            Networks =
+            [
+                new InspectNetwork("bridge", running ? "172.17.0.2" : string.Empty, "172.17.0.1"),
+            ],
+        });
+    }
+
     public ValueTask<IExecSession> StartExecSessionAsync(
         string id, ExecRequest request, CancellationToken ct = default)
     {

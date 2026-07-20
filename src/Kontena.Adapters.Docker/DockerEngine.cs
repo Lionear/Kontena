@@ -141,6 +141,13 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Exec(() => _client.Containers.RemoveContainerAsync(id,
             new ContainerRemoveParameters { Force = force }, ct));
 
+    public ValueTask<ContainerInspect> InspectContainerAsync(string id, CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var r = await _client.Containers.InspectContainerAsync(id, ct).ConfigureAwait(false);
+            return MapInspect(r);
+        });
+
     public ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default) =>
         Exec(async () =>
         {
@@ -608,6 +615,77 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Core.Models.RestartPolicy.UnlessStopped => RestartPolicyKind.UnlessStopped,
         _ => RestartPolicyKind.No,
     };
+
+    private static Core.Models.RestartPolicy MapRestart(RestartPolicyKind? kind) => kind switch
+    {
+        RestartPolicyKind.Always => Core.Models.RestartPolicy.Always,
+        RestartPolicyKind.OnFailure => Core.Models.RestartPolicy.OnFailure,
+        RestartPolicyKind.UnlessStopped => Core.Models.RestartPolicy.UnlessStopped,
+        _ => Core.Models.RestartPolicy.No,
+    };
+
+    private static ContainerInspect MapInspect(ContainerInspectResponse r)
+    {
+        var env = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var entry in r.Config?.Env ?? [])
+        {
+            var eq = entry.IndexOf('=', StringComparison.Ordinal);
+            if (eq > 0)
+                env[entry[..eq]] = entry[(eq + 1)..];
+            else
+                env[entry] = string.Empty;
+        }
+
+        var command = new List<string>();
+        if (r.Config?.Entrypoint is { } entrypoint)
+            command.AddRange(entrypoint);
+        if (r.Config?.Cmd is { } cmd)
+            command.AddRange(cmd);
+
+        var mounts = (r.Mounts ?? [])
+            .Select(m => new InspectMount(m.Type ?? string.Empty, m.Source ?? string.Empty,
+                m.Destination ?? string.Empty, m.RW))
+            .ToList();
+
+        var networks = (r.NetworkSettings?.Networks ?? new Dictionary<string, EndpointSettings>())
+            .Select(kv => new InspectNetwork(kv.Key, kv.Value?.IPAddress ?? string.Empty,
+                kv.Value?.Gateway ?? string.Empty))
+            .ToList();
+
+        return new ContainerInspect
+        {
+            Id = r.ID,
+            Name = (r.Name ?? string.Empty).TrimStart('/'),
+            Image = r.Config?.Image ?? string.Empty,
+            ImageId = r.Image ?? string.Empty,
+            State = MapState(r.State?.Status),
+            Status = r.State?.Status ?? string.Empty,
+            CreatedAt = r.Created,
+            StartedAt = ParseDockerDate(r.State?.StartedAt),
+            FinishedAt = ParseDockerDate(r.State?.FinishedAt),
+            ExitCode = (int)(r.State?.ExitCode ?? 0),
+            Pid = (int)(r.State?.Pid ?? 0),
+            RestartPolicy = MapRestart(r.HostConfig?.RestartPolicy?.Name),
+            Command = string.Join(" ", command),
+            WorkingDirectory = r.Config?.WorkingDir ?? string.Empty,
+            User = r.Config?.User ?? string.Empty,
+            EnvironmentVariables = env,
+            Labels = r.Config?.Labels is { } labels
+                ? new Dictionary<string, string>(labels)
+                : new Dictionary<string, string>(),
+            Mounts = mounts,
+            Networks = networks,
+        };
+    }
+
+    /// <summary>Docker returns RFC3339 timestamps; a zero value means "never".</summary>
+    private static DateTimeOffset? ParseDockerDate(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || !DateTimeOffset.TryParse(value, out var when))
+            return null;
+
+        return when.Year <= 1 ? null : when;
+    }
 
     private async Task<bool> ImageExistsAsync(string reference, CancellationToken ct)
     {

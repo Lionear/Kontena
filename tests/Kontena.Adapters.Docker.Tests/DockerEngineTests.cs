@@ -143,6 +143,21 @@ public class DockerEngineTests
     }
 
     [SkippableFact]
+    public async Task Inspect_returns_structured_config_for_a_container()
+    {
+        using var engine = await ConnectOrSkipAsync();
+
+        var any = (await engine.ListContainersAsync(all: true)).FirstOrDefault();
+        Skip.If(any is null, "No container to inspect on this host.");
+
+        var inspect = await engine.InspectContainerAsync(any!.Id);
+
+        Assert.Equal(any.Id, inspect.Id);
+        Assert.False(string.IsNullOrWhiteSpace(inspect.Name));
+        Assert.False(string.IsNullOrWhiteSpace(inspect.Image));
+    }
+
+    [SkippableFact]
     public async Task Exec_session_runs_a_command_in_a_running_container()
     {
         using var engine = await ConnectOrSkipAsync();
