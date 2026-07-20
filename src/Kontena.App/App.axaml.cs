@@ -26,12 +26,22 @@ public partial class App : Application
             ThemeApplier.Apply(settings.Theme);
 
             // Provider-based: the registry discovers backends (and, later, plugins).
-            var registry = new EngineRegistry(
-            [
+            var providers = new List<IEngineProvider>
+            {
                 new DockerEngineProvider(),
                 new PodmanEngineProvider(),
-                new FakeEngineProvider(),
-            ]);
+            };
+
+            // The in-memory demo backend is a dev/testing aid — never shipped to users.
+            // Available in Debug builds, or opt-in from a release build for demos/screenshots.
+#if DEBUG
+            providers.Add(new FakeEngineProvider());
+#else
+            if (Environment.GetEnvironmentVariable("KONTENA_FAKE_ENGINE") == "1")
+                providers.Add(new FakeEngineProvider());
+#endif
+
+            var registry = new EngineRegistry(providers);
 
             desktop.MainWindow = new MainWindow
             {
