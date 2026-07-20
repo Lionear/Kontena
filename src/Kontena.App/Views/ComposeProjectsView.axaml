@@ -46,7 +46,7 @@
                                             <StackPanel Orientation="Horizontal" Spacing="10">
                                                 <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontWeight="SemiBold"
                                                            FontSize="14.5" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
-                                                <Border CornerRadius="20" Padding="8,2" VerticalAlignment="Center" Background="#1E232C">
+                                                <Border CornerRadius="20" Padding="8,2" VerticalAlignment="Center" Background="{DynamicResource Surface2}">
                                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                                         <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
                                                         <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="SemiBold"

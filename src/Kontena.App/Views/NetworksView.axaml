@@ -15,7 +15,7 @@
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                 <StackPanel>
-                    <Border Background="#141821" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <Grid Margin="18,12" ColumnDefinitions="1.4*,.8*,.7*,1.2*,1.4*,68">
                             <TextBlock Grid.Column="0" Text="NAME" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="1" Text="DRIVER" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
