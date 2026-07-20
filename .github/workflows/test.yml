@@ -1,0 +1,50 @@
+name: Tests
+
+# Runs the unit tests on every PR and on pushes to main, so a regression is caught before it reaches
+# a build. The Docker adapter suite talks to a real engine when one is present and skips cleanly when
+# it isn't (SkippableFact), so it stays green on runners without Docker.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".idea/**"
+      - "**/*.DotSettings*"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".idea/**"
+      - "**/*.DotSettings*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Test (Core)
+        run: dotnet test tests/Kontena.Core.Tests/Kontena.Core.Tests.csproj -c Release
+
+      - name: Test (Engines)
+        run: dotnet test tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj -c Release
+
+      # Integration tests against a real Docker engine; each test skips cleanly when Docker is absent.
+      - name: Test (Adapters.Docker)
+        run: dotnet test tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj -c Release

@@ -1,0 +1,297 @@
+name: Build
+
+# Cross-platform release builds. Kontena is a single-branch project, so:
+#   push main       -> refreshes the rolling `preview` prerelease (what has been merged)
+#   push tag v*      -> cuts a real, latest `stable` release and rolls the changelog
+#   workflow_dispatch -> manual build of main, optionally refreshing the preview release
+#
+# Builds are unsigned / not notarized for now (see the release notes footer).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version stamp (leave empty to derive from Directory.Build.props)"
+        required: false
+        default: ""
+      publish_release:
+        description: "Also refresh the preview release"
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".idea/**"
+      - "**/*.DotSettings*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Decide once what we build and where it lands, so the build matrix and release job can't disagree.
+  setup:
+    name: Resolve target
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.target.outputs.channel }}
+      release_tag: ${{ steps.target.outputs.release_tag }}
+      version: ${{ steps.target.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve channel and version
+        id: target
+        # Workflow inputs reach bash through env, never through `${{ }}`: GitHub substitutes those
+        # textually before the shell parses the line, so an input could close the quote and append
+        # commands. Env values are data to bash, whatever they contain.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          if [ "$REF_TYPE" = tag ]; then
+            # A tag build must be a v<semver> tag (it becomes a checkout ref = code execution).
+            if ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?$'; then
+              echo "Refusing tag ref: $REF_NAME" >&2; exit 1
+            fi
+            CHANNEL=stable
+            RELEASE_TAG="$REF_NAME"
+            VERSION="${REF_NAME#v}"
+          else
+            CHANNEL=preview
+            RELEASE_TAG=preview
+            if [ -n "${INPUT_VERSION:-}" ]; then
+              VERSION="$INPUT_VERSION"
+            else
+              BASE=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' Directory.Build.props)
+              [ -n "$BASE" ] || { echo "No <Version> in Directory.Build.props" >&2; exit 1; }
+              VERSION="$BASE-preview.$(date -u +%Y%m%d).$RUN_NUMBER"
+            fi
+          fi
+
+          # This value later reaches MSBuild args and file names. Keeping it boring (letters/digits/
+          # dot/plus/hyphen) is the backstop that also blocks a newline forging output.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.+-]*$'; then
+            echo "Refusing version '$VERSION'" >&2; exit 1
+          fi
+
+          {
+            echo "channel=$CHANNEL"
+            echo "release_tag=$RELEASE_TAG"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building channel '$CHANNEL' (assets on '$RELEASE_TAG'), version $VERSION"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: setup
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            rid: win-x64
+            package: windows
+            publishArgs: "-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true"
+          - name: Linux AppImage
+            os: ubuntu-latest
+            rid: linux-x64
+            package: appimage
+            publishArgs: ""
+          - name: macOS Apple Silicon
+            os: macos-14
+            rid: osx-arm64
+            package: macos
+            publishArgs: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        env:
+          VERSION_IN: ${{ needs.setup.outputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="$VERSION_IN"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.+-]*$'; then
+            echo "Refusing version '$VERSION'" >&2; exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish src/Kontena.App/Kontena.App.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:Version=${{ steps.version.outputs.value }} \
+            ${{ matrix.publishArgs }} \
+            -o publish/${{ matrix.rid }}
+
+      - name: Package (Windows zip)
+        if: matrix.package == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Compress-Archive -Path "publish/${{ matrix.rid }}/*" `
+            -DestinationPath "artifacts/Kontena-${{ steps.version.outputs.value }}-${{ matrix.rid }}.zip" -Force
+
+      - name: Package (macOS zip)
+        if: matrix.package == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          ( cd "publish/${{ matrix.rid }}" && zip -qry "../../artifacts/Kontena-${{ steps.version.outputs.value }}-${{ matrix.rid }}.zip" . )
+
+      - name: Package (Linux AppImage)
+        if: matrix.package == 'appimage'
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"   # GitHub runners have no FUSE
+          ARCH: x86_64
+        run: |
+          set -euo pipefail
+          APPDIR=AppDir
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r publish/${{ matrix.rid }}/* "$APPDIR/usr/bin/"
+          chmod +x "$APPDIR/usr/bin/Kontena.App"
+
+          # Icon (top-level + hicolor path, both referenced by the .desktop entry).
+          cp src/Kontena.App/Assets/icon.png "$APPDIR/kontena.png"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          cp src/Kontena.App/Assets/icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/kontena.png"
+
+          cat > "$APPDIR/kontena.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Kontena
+          Exec=Kontena.App
+          Icon=kontena
+          Categories=Development;System;
+          Terminal=false
+          EOF
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/Kontena.App" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          # appimagetool is the one external binary this pipeline runs, so verify it (the sha256 is the
+          # real lock; a tag is only a download location). Bump both deliberately.
+          APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+          APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+          wget -q "$APPIMAGETOOL_URL" -O appimagetool
+          echo "$APPIMAGETOOL_SHA256  appimagetool" | sha256sum -c -
+          chmod +x appimagetool
+
+          mkdir -p artifacts
+          ./appimagetool "$APPDIR" "artifacts/Kontena-${{ steps.version.outputs.value }}-x86_64.AppImage"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: artifacts/*
+          retention-days: 14
+          if-no-files-found: error
+
+  # Publishes the channel's release. Preview is a rolling prerelease; Stable is a real latest release
+  # on the v-tag, after which the changelog's [Unreleased] section is rolled into [VERSION] on main.
+  release:
+    name: Publish ${{ needs.setup.outputs.channel }} release
+    needs: [setup, build]
+    if: ${{ (github.event_name == 'push') || inputs.publish_release }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CHANNEL: ${{ needs.setup.outputs.channel }}
+          RELEASE_TAG: ${{ needs.setup.outputs.release_tag }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # One flat dir for the upload glob.
+          mkdir -p assets
+          find dist -type f -exec cp {} assets/ \;
+
+          # Release notes are the maintainer-curated CHANGELOG.md [Unreleased] section, not the git log.
+          CHANGELOG=CHANGELOG.md tools/changelog-unreleased.sh > notes.md || true
+          [ -s notes.md ] || echo "No changes recorded." > notes.md
+
+          BODY="$(cat notes.md)
+
+          These builds are unsigned / not notarized.
+          Linux: the .AppImage is self-contained — chmod +x and run it.
+          macOS: unzip, then clear quarantine before first launch: xattr -cr Kontena.App.
+          Windows: unzip and run Kontena.App.exe; SmartScreen may warn on first launch."
+
+          if [ "$CHANNEL" = stable ]; then
+            TARGET=$(git rev-parse "${RELEASE_TAG}^{commit}")
+            gh release delete "$RELEASE_TAG" --yes || true
+            gh release create "$RELEASE_TAG" assets/* \
+              --title "Kontena $VERSION" --notes "$BODY" --latest --target "$TARGET"
+
+            # Roll [Unreleased] into [VERSION] on main and push it back. Only CHANGELOG.md changes, and
+            # *.md is in paths-ignore, so the commit-back never re-triggers a build. Best-effort — a
+            # push race must never fail an already-published release.
+            if git fetch origin main \
+               && git checkout -B main origin/main \
+               && VERSION="$VERSION" DATE="$(date -u +%Y-%m-%d)" REPO="$GH_REPO" \
+                    CHANGELOG=CHANGELOG.md tools/changelog-roll.sh \
+               && ! git diff --quiet -- CHANGELOG.md; then
+              git config user.name  "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add CHANGELOG.md
+              git commit -m "chore(release): roll changelog for $VERSION"
+              git push origin main \
+                || echo "::warning::changelog roll-back push failed; roll [Unreleased] into [$VERSION] by hand"
+            else
+              echo "::warning::changelog roll skipped (nothing to roll or checkout failed); verify CHANGELOG.md"
+            fi
+          else
+            gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+            gh release create "$RELEASE_TAG" assets/* \
+              --title "Preview build (main)" --notes "$BODY" --prerelease --target "$GITHUB_SHA"
+          fi

@@ -9,5 +9,6 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <Authors>Kontena</Authors>
     <Product>Kontena</Product>
+    <Version>0.1.0</Version>
   </PropertyGroup>
 </Project>
