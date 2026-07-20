@@ -27,6 +27,7 @@ public partial class SettingsViewModel : ViewModelBase
         Engines = engines;
 
         _theme = settings.Theme;
+        _compactDensity = settings.CompactDensity;
         _autoDetect = settings.AutoDetectEngines;
         _launchAtLogin = settings.LaunchAtLogin;
         _terminalFontFamily = settings.TerminalFontFamily;
@@ -81,6 +82,14 @@ public partial class SettingsViewModel : ViewModelBase
         Save();
     }
 
+    [ObservableProperty] private bool _compactDensity;
+
+    partial void OnCompactDensityChanged(bool value)
+    {
+        DensityApplier.Apply(value);
+        Save();
+    }
+
     [RelayCommand]
     private void SetTheme(string theme) => Theme = theme switch
     {
@@ -125,6 +134,7 @@ public partial class SettingsViewModel : ViewModelBase
         _settings = _settings with
         {
             Theme = Theme,
+            CompactDensity = CompactDensity,
             AutoDetectEngines = AutoDetect,
             DefaultEngine = backend,
             LaunchAtLogin = LaunchAtLogin,

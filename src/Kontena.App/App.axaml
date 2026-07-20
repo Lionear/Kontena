@@ -36,6 +36,11 @@
                     <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
                     <SolidColorBrush x:Key="Console" Color="#0A0D12"/>
                     <SolidColorBrush x:Key="SurfaceRaised" Color="#141821"/>
+                    <SolidColorBrush x:Key="WarnSoft" Color="#1C1810"/>
+                    <SolidColorBrush x:Key="WarnSoftBorder" Color="#3A3320"/>
+                    <SolidColorBrush x:Key="WarnText" Color="#E8CF9A"/>
+                    <SolidColorBrush x:Key="DangerSoft" Color="#F8717120"/>
+                    <SolidColorBrush x:Key="DangerSoftBorder" Color="#5A2C2C"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="Bg" Color="#F6F8FA"/>
@@ -58,10 +63,18 @@
                     <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
                     <SolidColorBrush x:Key="Console" Color="#0F141B"/>
                     <SolidColorBrush x:Key="SurfaceRaised" Color="#F0F3F6"/>
+                    <SolidColorBrush x:Key="WarnSoft" Color="#FBF2DD"/>
+                    <SolidColorBrush x:Key="WarnSoftBorder" Color="#ECD9A8"/>
+                    <SolidColorBrush x:Key="WarnText" Color="#8A6410"/>
+                    <SolidColorBrush x:Key="DangerSoft" Color="#FBE7E8"/>
+                    <SolidColorBrush x:Key="DangerSoftBorder" Color="#F0C4C6"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
             <FontFamily x:Key="Mono">JetBrains Mono, Cascadia Code, Consolas, monospace</FontFamily>
+
+            <!-- List-row content margin; swapped live by DensityApplier for compact density. -->
+            <Thickness x:Key="RowMargin">18,11</Thickness>
         </ResourceDictionary>
     </Application.Resources>
 

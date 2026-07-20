@@ -24,6 +24,7 @@ public partial class App : Application
             var store = new SettingsStore();
             var settings = store.Load();
             ThemeApplier.Apply(settings.Theme);
+            DensityApplier.Apply(settings.CompactDensity);
 
             // Provider-based: the registry discovers backends (and, later, plugins).
             var providers = new List<IEngineProvider>

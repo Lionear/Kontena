@@ -28,7 +28,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:NetworkRowViewModel">
                                 <Border Classes="row" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                                    <Grid Margin="18,11" ColumnDefinitions="1.4*,.8*,.7*,1.2*,1.4*,68" VerticalAlignment="Center">
+                                    <Grid Margin="{DynamicResource RowMargin}" ColumnDefinitions="1.4*,.8*,.7*,1.2*,1.4*,68" VerticalAlignment="Center">
                                         <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}"
                                                        FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource Text}"/>
