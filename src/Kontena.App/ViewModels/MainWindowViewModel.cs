@@ -8,7 +8,7 @@ using Kontena.Engines.Fakes;
 
 namespace Kontena.App.ViewModels;
 
-public partial class MainWindowViewModel : ViewModelBase
+public partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly EngineRegistry _registry;
     private IReadOnlyList<EngineProbe> _probes = [];
@@ -172,6 +172,14 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _detail?.Dispose();
         _detail = null;
+    }
+
+    public void Dispose()
+    {
+        DisposeDetail();
+        Containers?.Dispose();
+        (_engine as IDisposable)?.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     [RelayCommand]

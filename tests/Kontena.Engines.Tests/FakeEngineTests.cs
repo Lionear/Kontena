@@ -1,3 +1,4 @@
+using System.Text;
 using Kontena.Core.Errors;
 using Kontena.Core.Models;
 using Kontena.Engines;
@@ -160,6 +161,39 @@ public class FakeEngineTests
         var builtIn = (await engine.ListNetworksAsync()).First(n => n.IsBuiltIn);
         await Assert.ThrowsAsync<EngineException>(
             async () => await engine.RemoveNetworkAsync(builtIn.Id));
+    }
+
+    [Fact]
+    public async Task Exec_session_echoes_input_and_exits_on_exit()
+    {
+        var engine = NewEngine();
+        var container = (await engine.ListContainersAsync()).First();
+
+        await using var session = await engine.StartExecSessionAsync(
+            container.Id, new ExecRequest { Command = ["/bin/sh"], Tty = true });
+
+        Assert.Null(session.ExitCode);
+
+        // Unbounded channel: writes buffer, and 'exit' completes the stream, so a
+        // straight drain afterwards sees everything and then ends.
+        await session.WriteAsync(Encoding.UTF8.GetBytes("hello\r"));
+        await session.WriteAsync(Encoding.UTF8.GetBytes("exit\r"));
+
+        var output = new StringBuilder();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+            output.Append(Encoding.UTF8.GetString(chunk.Span));
+
+        Assert.Contains("hello", output.ToString());
+        Assert.Equal(0, session.ExitCode);
+    }
+
+    [Fact]
+    public async Task Exec_session_for_missing_container_throws_not_found()
+    {
+        var engine = NewEngine();
+        await Assert.ThrowsAsync<ResourceNotFoundException>(async () =>
+            await engine.StartExecSessionAsync("does-not-exist", new ExecRequest { Command = ["/bin/sh"] }));
     }
 
     [Fact]

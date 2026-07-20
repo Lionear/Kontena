@@ -107,6 +107,13 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.FromResult(0);
     }
 
+    public ValueTask<IExecSession> StartExecSessionAsync(
+        string id, ExecRequest request, CancellationToken ct = default)
+    {
+        RequireContainer(id);
+        return ValueTask.FromResult<IExecSession>(new FakeExecSession());
+    }
+
     public ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default)
     {
         var stopped = _containers

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
@@ -63,7 +64,7 @@
                                 IsVisible="{Binding SupportsExec}" IsEnabled="{Binding IsRunning}">
                             <StackPanel Orientation="Horizontal" Spacing="7">
                                 <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextDim}" Data="{StaticResource IconTerminal}"/>
-                                <TextBlock Text="Shell" VerticalAlignment="Center"/>
+                                <TextBlock Text="Terminal" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button Classes="ghost" Padding="12,8" Command="{Binding RemoveCommand}">
@@ -295,17 +296,21 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- Terminal (placeholder) -->
-            <StackPanel IsVisible="{Binding IsTerminalSelected}" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-                <Border Width="52" Height="52" CornerRadius="12" Background="{StaticResource Surface2}" HorizontalAlignment="Center">
-                    <Path Classes="icon" Width="24" Height="24" Stroke="{StaticResource TextDim}" Data="{StaticResource IconTerminal}"/>
-                </Border>
-                <TextBlock Text="Interactive shell is coming soon" FontSize="14.5" FontWeight="SemiBold"
-                           Foreground="{StaticResource Text}" HorizontalAlignment="Center"/>
-                <TextBlock Text="An attached exec session (stdin/stdout) needs a streaming CEAL contract — tracked as KON-35."
-                           FontSize="12.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" MaxWidth="380"
-                           TextAlignment="Center" TextWrapping="Wrap"/>
-            </StackPanel>
+            <!-- Terminal -->
+            <Panel IsVisible="{Binding IsTerminalSelected}">
+                <views:TerminalView IsVisible="{Binding CanOpenTerminal}"/>
+                <StackPanel IsVisible="{Binding !CanOpenTerminal}" VerticalAlignment="Center"
+                            HorizontalAlignment="Center" Spacing="12">
+                    <Border Width="52" Height="52" CornerRadius="12" Background="{StaticResource Surface2}" HorizontalAlignment="Center">
+                        <Path Classes="icon" Width="24" Height="24" Stroke="{StaticResource TextDim}" Data="{StaticResource IconTerminal}"/>
+                    </Border>
+                    <TextBlock Text="Start the container to open a shell" FontSize="14.5" FontWeight="SemiBold"
+                               Foreground="{StaticResource Text}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="An interactive shell needs a running container with a compatible /bin/sh."
+                               FontSize="12.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" MaxWidth="380"
+                               TextAlignment="Center" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Panel>
 
             <!-- Inspect (placeholder) -->
             <StackPanel IsVisible="{Binding IsInspectSelected}" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">

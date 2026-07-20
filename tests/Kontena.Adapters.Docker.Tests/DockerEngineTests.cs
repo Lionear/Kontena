@@ -1,5 +1,8 @@
+using System.Text;
 using Kontena.Adapters.Docker;
+using Kontena.Core.Errors;
 using Kontena.Core.Models;
+using Kontena.Engines;
 using Xunit;
 
 namespace Kontena.Adapters.Docker.Tests;
@@ -136,6 +139,49 @@ public class DockerEngineTests
         finally
         {
             await engine.RemoveContainerAsync(id, force: true);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Exec_session_runs_a_command_in_a_running_container()
+    {
+        using var engine = await ConnectOrSkipAsync();
+
+        var running = (await engine.ListContainersAsync(all: false))
+            .FirstOrDefault(c => c.State == ContainerState.Running);
+        Skip.If(running is null, "No running container to exec into on this host.");
+
+        IExecSession session;
+        try
+        {
+            session = await engine.StartExecSessionAsync(running!.Id,
+                new ExecRequest { Command = ["/bin/sh", "-c", "echo kontena-exec-ok"] });
+        }
+        catch (EngineException)
+        {
+            Skip.If(true, "Selected container has no /bin/sh to exec.");
+            return;
+        }
+
+        await using (session)
+        {
+            var output = new StringBuilder();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+                {
+                    output.Append(Encoding.UTF8.GetString(chunk.Span));
+                    if (output.ToString().Contains("kontena-exec-ok", StringComparison.Ordinal))
+                        break;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // fall through to the assertion, which will report the timeout
+            }
+
+            Assert.Contains("kontena-exec-ok", output.ToString());
         }
     }
 }

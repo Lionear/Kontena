@@ -55,6 +55,14 @@ public interface IContainerEngine
     /// <remarks>Requires <see cref="EngineCapabilities.SupportsExec"/>.</remarks>
     ValueTask<int> ExecAsync(string id, ExecRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Open an interactive, attached exec session: a duplex byte channel (with an
+    /// optional PTY) to a process running in the container. Used for the terminal.
+    /// </summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsExec"/>.</remarks>
+    ValueTask<IExecSession> StartExecSessionAsync(
+        string id, ExecRequest request, CancellationToken ct = default);
+
     /// <summary>Remove all stopped containers.</summary>
     ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default);
 

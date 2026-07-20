@@ -174,6 +174,26 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             return (int)inspect.ExitCode;
         });
 
+    public ValueTask<IExecSession> StartExecSessionAsync(
+        string id, ExecRequest request, CancellationToken ct = default) =>
+        Exec<IExecSession>(async () =>
+        {
+            var exec = await _client.Exec.ExecCreateContainerAsync(id, new ContainerExecCreateParameters
+            {
+                Cmd = request.Command.ToList(),
+                AttachStdin = true,
+                AttachStdout = true,
+                AttachStderr = true,
+                Tty = request.Tty,
+                WorkingDir = request.WorkingDirectory,
+            }, ct).ConfigureAwait(false);
+
+            var stream = await _client.Exec
+                .StartAndAttachContainerExecAsync(exec.ID, request.Tty, ct).ConfigureAwait(false);
+
+            return new DockerExecSession(_client, exec.ID, stream);
+        });
+
     // ── Images ──────────────────────────────────────────────────────────────
 
     public ValueTask<IReadOnlyList<ImageSummary>> ListImagesAsync(CancellationToken ct = default) =>

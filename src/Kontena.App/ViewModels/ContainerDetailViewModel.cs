@@ -263,6 +263,20 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void Shell() => SelectedTab = "terminal";
 
+    /// <summary>True when an interactive shell can be opened right now.</summary>
+    public bool CanOpenTerminal => SupportsExec && IsRunning;
+
+    /// <summary>
+    /// Open an attached shell session for the terminal. Ownership (and disposal)
+    /// passes to the caller — the terminal view drives and tears it down.
+    /// </summary>
+    public ValueTask<IExecSession> OpenExecSessionAsync(CancellationToken ct) =>
+        _engine.StartExecSessionAsync(_c.Id, new ExecRequest
+        {
+            Command = ["/bin/sh"],
+            Tty = true,
+        }, ct);
+
     /// <summary>Re-fetch this container's summary after a lifecycle action and
     /// restart the stats stream if it just came up.</summary>
     private async Task RefreshSelfAsync()
@@ -295,6 +309,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(StatusBrush));
         OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(IsNotRunning));
+        OnPropertyChanged(nameof(CanOpenTerminal));
         OnPropertyChanged(nameof(PortsText));
         OnPropertyChanged(nameof(ImageText));
     }

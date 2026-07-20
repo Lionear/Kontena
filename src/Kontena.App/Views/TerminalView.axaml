@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:term="clr-namespace:Exclr8.Terminal;assembly=Exclr8.Terminal"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="480"
+             x:Class="Kontena.App.Views.TerminalView"
+             x:DataType="vm:ContainerDetailViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Status bar -->
+        <Border Grid.Row="0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                BorderThickness="1" CornerRadius="8,8,0,0" Padding="12,8">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <Ellipse Grid.Column="0" x:Name="StatusDot" Width="8" Height="8" Fill="{StaticResource TextFaint}"
+                         VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" x:Name="StatusText" Text="connecting…" Margin="9,0,0,0"
+                           FontSize="12.5" Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Text="/bin/sh" Margin="14,0,0,0" FontFamily="{StaticResource Mono}"
+                           FontSize="12" Foreground="{StaticResource TextFaint}" VerticalAlignment="Center"/>
+                <Button Grid.Column="3" x:Name="ReconnectButton" Classes="pill" Content="Reconnect"
+                        Click="OnReconnectClick"/>
+            </Grid>
+        </Border>
+
+        <!-- Terminal surface -->
+        <Border Grid.Row="1" Background="#0A0D12" BorderBrush="{StaticResource Border}"
+                BorderThickness="1,0,1,1" CornerRadius="0,0,8,8" ClipToBounds="True" Padding="8">
+            <term:TerminalControl x:Name="Term" FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
+                                  FontSize="12" EnableLigatures="True"/>
+        </Border>
+    </Grid>
+</UserControl>
