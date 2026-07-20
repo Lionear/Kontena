@@ -22,7 +22,7 @@
                             <TextBlock Text="Prune stopped" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <Button Classes="ghost">
+                    <Button Classes="ghost" Command="{Binding PullImageCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="7">
                             <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
                                   Data="{StaticResource IconPull}"/>

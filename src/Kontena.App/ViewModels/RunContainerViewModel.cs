@@ -19,7 +19,7 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
     private readonly IContainerEngine _engine;
     private readonly Action _onClose;
     private readonly Func<Task> _onCreated;
-    private readonly IReadOnlySet<string> _localImages;
+    private readonly HashSet<string> _localImages;
 
     public RunContainerViewModel(
         IContainerEngine engine,
@@ -33,7 +33,7 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         _engine = engine;
         _onClose = onClose;
         _onCreated = onCreated;
-        _localImages = localImages;
+        _localImages = new HashSet<string>(localImages, StringComparer.Ordinal);
 
         BackendName = backendName;
         BackendChip = backendChip;
@@ -66,19 +66,81 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
     public ObservableCollection<EnvRow> EnvVars { get; } = [];
     public ObservableCollection<VolumeRow> Volumes { get; } = [];
 
+    [ObservableProperty] private bool _isPulling;
+    [ObservableProperty] private string _pullStatus = string.Empty;
+
     /// <summary>True when the entered image is already present locally.</summary>
     public bool IsImageLocal => !string.IsNullOrWhiteSpace(Image) && _localImages.Contains(Image.Trim());
     public bool IsImagePulled => !string.IsNullOrWhiteSpace(Image) && !IsImageLocal;
 
-    public bool CanRun => !string.IsNullOrWhiteSpace(Image) && !IsBusy;
+    /// <summary>Pull is offered when an image is entered that isn't local yet.</summary>
+    public bool CanPull => IsImagePulled && !IsPulling;
+
+    /// <summary>Show the "why pull now" hint while a not-yet-local image is entered.</summary>
+    public bool ShowPullHint => IsImagePulled && !IsPulling;
+
+    public bool CanRun => !string.IsNullOrWhiteSpace(Image) && !IsBusy && !IsPulling;
 
     partial void OnImageChanged(string value)
     {
         OnPropertyChanged(nameof(IsImageLocal));
         OnPropertyChanged(nameof(IsImagePulled));
+        OnPropertyChanged(nameof(CanPull));
+        OnPropertyChanged(nameof(ShowPullHint));
         OnPropertyChanged(nameof(CanRun));
         UpdatePreview();
         SchedulePrefill();
+    }
+
+    partial void OnIsPullingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanPull));
+        OnPropertyChanged(nameof(ShowPullHint));
+        OnPropertyChanged(nameof(CanRun));
+    }
+
+    /// <summary>Pull the entered image, then scaffold its ports/volumes from the fresh metadata.</summary>
+    [RelayCommand]
+    private async Task PullAsync()
+    {
+        var reference = Image.Trim();
+        if (string.IsNullOrWhiteSpace(reference) || IsPulling)
+            return;
+
+        Error = null;
+        IsPulling = true;
+        PullStatus = "Preparing…";
+        try
+        {
+            await foreach (var progress in _engine.PullImageAsync(reference))
+                PullStatus = FormatPull(progress);
+
+            _localImages.Add(reference);
+            OnPropertyChanged(nameof(IsImageLocal));
+            OnPropertyChanged(nameof(IsImagePulled));
+            OnPropertyChanged(nameof(CanPull));
+            OnPropertyChanged(nameof(ShowPullHint));
+            PullStatus = "Pulled ✓";
+
+            await ScaffoldFromImageAsync(reference, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            PullStatus = string.Empty;
+        }
+        finally
+        {
+            IsPulling = false;
+        }
+    }
+
+    private static string FormatPull(PullProgress progress)
+    {
+        if (progress.Total is > 0 && progress.Current is >= 0)
+            return $"{progress.Status} {(int)(100.0 * progress.Current.Value / progress.Total.Value)}%";
+
+        return progress.Status;
     }
 
     // ── Pre-fill from image metadata ────────────────────────────────────────────
@@ -106,35 +168,7 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
             if (string.IsNullOrWhiteSpace(reference) || !_localImages.Contains(reference))
                 return;
 
-            var config = await _engine.InspectImageAsync(reference, ct);
-            if (config is null || ct.IsCancellationRequested)
-                return;
-
-            if (Ports.Count == 0 && config.ExposedPorts.Count > 0)
-            {
-                foreach (var port in config.ExposedPorts)
-                {
-                    Ports.Add(new PortRow(UpdatePreview)
-                    {
-                        Host = port.ContainerPort.ToString(CultureInfo.InvariantCulture),
-                        Container = $"{port.ContainerPort}/{port.Protocol}",
-                    });
-                }
-            }
-
-            if (Volumes.Count == 0 && config.Volumes.Count > 0)
-            {
-                foreach (var destination in config.Volumes)
-                {
-                    Volumes.Add(new VolumeRow(UpdatePreview)
-                    {
-                        Source = SuggestVolumeName(reference, destination),
-                        Destination = destination,
-                    });
-                }
-            }
-
-            UpdatePreview();
+            await ScaffoldFromImageAsync(reference, ct);
         }
         catch (OperationCanceledException)
         {
@@ -144,6 +178,39 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         {
             // pre-fill is best-effort — never block the modal on it
         }
+    }
+
+    private async Task ScaffoldFromImageAsync(string reference, CancellationToken ct)
+    {
+        var config = await _engine.InspectImageAsync(reference, ct);
+        if (config is null || ct.IsCancellationRequested)
+            return;
+
+        if (Ports.Count == 0 && config.ExposedPorts.Count > 0)
+        {
+            foreach (var port in config.ExposedPorts)
+            {
+                Ports.Add(new PortRow(UpdatePreview)
+                {
+                    Host = port.ContainerPort.ToString(CultureInfo.InvariantCulture),
+                    Container = $"{port.ContainerPort}/{port.Protocol}",
+                });
+            }
+        }
+
+        if (Volumes.Count == 0 && config.Volumes.Count > 0)
+        {
+            foreach (var destination in config.Volumes)
+            {
+                Volumes.Add(new VolumeRow(UpdatePreview)
+                {
+                    Source = SuggestVolumeName(reference, destination),
+                    Destination = destination,
+                });
+            }
+        }
+
+        UpdatePreview();
     }
 
     /// <summary>Suggest a volume name like "postgres-data" from the image + mount point.</summary>

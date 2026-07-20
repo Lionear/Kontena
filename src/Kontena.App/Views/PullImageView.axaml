@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="320"
+             x:Class="Kontena.App.Views.PullImageView"
+             x:DataType="vm:PullImageViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBox.fieldinput">
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="TextBox.fieldinput:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Width="560" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+
+            <!-- Header -->
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="24,20">
+                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="9" Background="{StaticResource PrimarySoft}">
+                    <Path Classes="icon" Width="19" Height="19" Stroke="{StaticResource Primary}" Data="{StaticResource IconPull}"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="Pull an image" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Text}"/>
+                    <TextBlock Text="Download an image from a registry into the active engine"
+                               FontSize="12.5" Foreground="{StaticResource TextFaint}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Classes="qa" Width="32" Height="32" Command="{Binding CloseCommand}" ToolTip.Tip="Close">
+                    <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}" Data="{StaticResource IconClose}"/>
+                </Button>
+            </Grid>
+            <Border Height="1" Background="{StaticResource Border}"/>
+
+            <!-- Body -->
+            <StackPanel Margin="24,20" Spacing="14">
+                <StackPanel>
+                    <TextBlock Text="Image reference" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextDim}" Margin="0,0,0,7"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Reference, Mode=TwoWay}"
+                                 PlaceholderText="e.g. nginx:1.27-alpine"/>
+                        <Button Grid.Column="1" Classes="primary" Margin="10,0,0,0"
+                                Command="{Binding PullCommand}" IsEnabled="{Binding CanPull}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource PrimaryInk}" Data="{StaticResource IconPull}"/>
+                                <TextBlock Text="Pull" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Progress -->
+                <StackPanel Spacing="9" IsVisible="{Binding IsPulling}">
+                    <ProgressBar IsIndeterminate="True" Height="4" CornerRadius="2"
+                                 Foreground="{StaticResource Primary}" Background="{StaticResource Surface2}"/>
+                    <TextBlock Text="{Binding Status}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                               Foreground="{StaticResource TextDim}"/>
+                </StackPanel>
+
+                <!-- Done -->
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsDone}">
+                    <Path Classes="icon" Width="16" Height="16" Stroke="{StaticResource Success}" Data="{StaticResource IconCheck}"/>
+                    <TextBlock Text="{Binding Status}" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource Success}" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Error -->
+                <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{StaticResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Height="1" Background="{StaticResource Border}"/>
+            <Grid Margin="24,16">
+                <Button Classes="ghost" HorizontalAlignment="Right" Command="{Binding CloseCommand}">Close</Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

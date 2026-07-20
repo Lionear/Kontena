@@ -95,7 +95,17 @@
                     <!-- Image -->
                     <StackPanel>
                         <TextBlock Classes="flabel" Text="Image"/>
-                        <TextBox Classes="fieldinput" Text="{Binding Image, Mode=TwoWay}" PlaceholderText="e.g. postgres:16"/>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Image, Mode=TwoWay}" PlaceholderText="e.g. postgres:16"/>
+                            <Button Grid.Column="1" Classes="ghost" Padding="12,8" Margin="8,0,0,0"
+                                    Command="{Binding PullCommand}" IsEnabled="{Binding CanPull}" IsVisible="{Binding IsImagePulled}"
+                                    ToolTip.Tip="Pull now to auto-fill ports and volumes">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextDim}" Data="{StaticResource IconPull}"/>
+                                    <TextBlock Text="Pull" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="2,8,0,0">
                             <Border CornerRadius="6" Padding="9,4" Background="#34D39916" IsVisible="{Binding IsImageLocal}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -103,9 +113,22 @@
                                     <TextBlock Text="Found locally" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Success}"/>
                                 </StackPanel>
                             </Border>
-                            <Border CornerRadius="6" Padding="9,4" Background="#5AB8FF16" IsVisible="{Binding IsImagePulled}">
+                            <Border CornerRadius="6" Padding="9,4" Background="#5AB8FF16"
+                                    IsVisible="{Binding IsImagePulled}" IsEnabled="{Binding !IsPulling}">
                                 <TextBlock Text="Will be pulled before start" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Info}"/>
                             </Border>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding IsPulling}">
+                                <ProgressBar IsIndeterminate="True" Width="70" Height="3"
+                                             Foreground="{StaticResource Primary}" Background="{StaticResource Surface2}"/>
+                                <TextBlock Text="{Binding PullStatus}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                                           Foreground="{StaticResource TextDim}"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,8,0,0" IsVisible="{Binding ShowPullHint}">
+                            <Path Classes="icon" Width="13" Height="13" Stroke="{StaticResource TextFaint}"
+                                  Data="{StaticResource IconInfo}" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock FontSize="11.5" Foreground="{StaticResource TextFaint}" TextWrapping="Wrap" MaxWidth="560"
+                                       Text="Pull now to let Kontena read the image and auto-fill its ports and volumes. Otherwise it's pulled automatically when you run."/>
                         </StackPanel>
                     </StackPanel>
 

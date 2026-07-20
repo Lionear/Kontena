@@ -136,8 +136,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             RequestOpenDetail = ShowContainerDetail,
             RequestRunContainer = () => _ = ShowRunDialogAsync(),
+            RequestPullImage = ShowPullDialog,
         };
-        Images = new ImagesViewModel(_engine);
+        Images = new ImagesViewModel(_engine) { RequestPullImage = ShowPullDialog };
         Volumes = new VolumesViewModel(_engine);
         Networks = new NetworksViewModel(_engine);
 
@@ -204,6 +205,21 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 if (Containers is not null)
                     await Containers.LoadAsync();
             });
+    }
+
+    private void ShowPullDialog()
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new PullImageViewModel(_engine, CloseDialog, onPulled: RefreshAfterPullAsync);
+    }
+
+    private async Task RefreshAfterPullAsync()
+    {
+        if (Images is { HasLoaded: true })
+            await Images.LoadAsync();
+        await UpdateNavCountsAsync();
     }
 
     private void CloseDialog()

@@ -13,6 +13,12 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
 
     public ImagesViewModel(IContainerEngine engine) => _engine = engine;
 
+    /// <summary>Raised when the Pull image button is clicked; the shell shows the Pull modal.</summary>
+    public Action? RequestPullImage { get; set; }
+
+    [RelayCommand]
+    private void PullImage() => RequestPullImage?.Invoke();
+
     public ObservableCollection<ImageRowViewModel> Items { get; } = [];
 
     [ObservableProperty] private string _searchText = string.Empty;

@@ -26,6 +26,12 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     [RelayCommand]
     private void RunContainer() => RequestRunContainer?.Invoke();
 
+    /// <summary>Raised when the Pull image button is clicked; the shell shows the Pull modal.</summary>
+    public Action? RequestPullImage { get; set; }
+
+    [RelayCommand]
+    private void PullImage() => RequestPullImage?.Invoke();
+
     private readonly List<ContainerRowViewModel> _all = [];
 
     // Event-driven refresh: engine events (from CLI or any other app) mark the
