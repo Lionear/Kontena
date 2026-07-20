@@ -55,6 +55,9 @@ public interface IContainerEngine
     /// <remarks>Requires <see cref="EngineCapabilities.SupportsExec"/>.</remarks>
     ValueTask<int> ExecAsync(string id, ExecRequest request, CancellationToken ct = default);
 
+    /// <summary>Remove all stopped containers.</summary>
+    ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default);
+
     // ── Images ──────────────────────────────────────────────────────────────
 
     ValueTask<IReadOnlyList<ImageSummary>> ListImagesAsync(CancellationToken ct = default);
@@ -77,6 +80,9 @@ public interface IContainerEngine
     ValueTask<VolumeSummary> CreateVolumeAsync(
         CreateVolumeRequest request, CancellationToken ct = default);
     ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default);
+
+    /// <summary>Remove all volumes not used by any container.</summary>
+    ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default);
 
     // ── Networks ────────────────────────────────────────────────────────────
 

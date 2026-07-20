@@ -120,6 +120,32 @@ public class FakeEngineTests
     }
 
     [Fact]
+    public async Task Prune_containers_removes_stopped_ones()
+    {
+        var engine = NewEngine();
+        var stoppedBefore = (await engine.ListContainersAsync())
+            .Count(c => c.State is ContainerState.Exited or ContainerState.Created or ContainerState.Dead);
+
+        var result = await engine.PruneContainersAsync();
+
+        Assert.Equal(stoppedBefore, result.ItemsDeleted);
+        Assert.DoesNotContain(await engine.ListContainersAsync(),
+            c => c.State is ContainerState.Exited or ContainerState.Created or ContainerState.Dead);
+    }
+
+    [Fact]
+    public async Task Prune_volumes_removes_dangling_ones()
+    {
+        var engine = NewEngine();
+        var danglingBefore = (await engine.ListVolumesAsync()).Count(v => v.IsDangling);
+
+        var result = await engine.PruneVolumesAsync();
+
+        Assert.Equal(danglingBefore, result.ItemsDeleted);
+        Assert.DoesNotContain(await engine.ListVolumesAsync(), v => v.IsDangling);
+    }
+
+    [Fact]
     public async Task Removing_missing_container_throws_not_found()
     {
         var engine = NewEngine();

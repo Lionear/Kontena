@@ -63,7 +63,7 @@
                             <DataTemplate x:DataType="vm:ImageRowViewModel">
                                 <Border Classes="row" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
                                     <Grid Margin="18,11" ColumnDefinitions="2*,1*,1.1*,.8*,1*,90" VerticalAlignment="Center">
-                                        <StackPanel Grid.Column="0" Spacing="2">
+                                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding RepoName}" FontFamily="{StaticResource Mono}"
                                                        FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource Text}"/>
                                             <TextBlock Text="{Binding RepoNamespace}" FontSize="11"

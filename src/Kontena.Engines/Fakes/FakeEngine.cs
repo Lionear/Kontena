@@ -107,6 +107,17 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.FromResult(0);
     }
 
+    public ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default)
+    {
+        var stopped = _containers
+            .Where(kv => kv.Value.State is ContainerState.Exited or ContainerState.Created or ContainerState.Dead)
+            .ToList();
+        foreach (var kv in stopped)
+            _containers.Remove(kv.Key);
+
+        return ValueTask.FromResult(new PruneResult(stopped.Count, 0));
+    }
+
     // ── Images ──────────────────────────────────────────────────────────────
 
     public ValueTask<IReadOnlyList<ImageSummary>> ListImagesAsync(CancellationToken ct = default)
@@ -193,6 +204,19 @@ public sealed class FakeEngine : IContainerEngine
     {
         Require(_volumes.Remove(name), $"volume {name}");
         return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default)
+    {
+        var dangling = _volumes.Where(kv => kv.Value.IsDangling).ToList();
+        long reclaimed = 0;
+        foreach (var kv in dangling)
+        {
+            reclaimed += kv.Value.SizeBytes ?? 0;
+            _volumes.Remove(kv.Key);
+        }
+
+        return ValueTask.FromResult(new PruneResult(dangling.Count, reclaimed));
     }
 
     // ── Networks ────────────────────────────────────────────────────────────

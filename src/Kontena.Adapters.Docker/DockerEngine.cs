@@ -141,6 +141,13 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Exec(() => _client.Containers.RemoveContainerAsync(id,
             new ContainerRemoveParameters { Force = force }, ct));
 
+    public ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var response = await _client.Containers.PruneContainersAsync(new ContainersPruneParameters(), ct).ConfigureAwait(false);
+            return new PruneResult(response.ContainersDeleted?.Count ?? 0, (long)response.SpaceReclaimed);
+        });
+
     public ValueTask<int> ExecAsync(string id, ExecRequest request, CancellationToken ct = default) =>
         Exec(async () =>
         {
@@ -288,6 +295,13 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
 
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default) =>
         Exec(() => _client.Volumes.RemoveAsync(name, force, ct));
+
+    public ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var response = await _client.Volumes.PruneAsync(new VolumesPruneParameters(), ct).ConfigureAwait(false);
+            return new PruneResult(response.VolumesDeleted?.Count ?? 0, (long)response.SpaceReclaimed);
+        });
 
     // ── Networks ────────────────────────────────────────────────────────────
 

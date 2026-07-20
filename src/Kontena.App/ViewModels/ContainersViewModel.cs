@@ -118,6 +118,10 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     [ObservableProperty]
     private bool _hasLoaded;
 
+    [ObservableProperty] private bool _hasStopped;
+    [ObservableProperty] private bool _pruneArmed;
+    [ObservableProperty] private string _pruneSummary = string.Empty;
+
     [RelayCommand]
     public async Task LoadAsync()
     {
@@ -132,6 +136,11 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
             RunningCount = list.Count(c => c.State == ContainerState.Running);
             StoppedCount = list.Count - RunningCount;
+
+            HasStopped = StoppedCount > 0;
+            PruneSummary = $"Remove {StoppedCount} stopped container{(StoppedCount == 1 ? "" : "s")}?";
+            if (!HasStopped)
+                PruneArmed = false;
 
             HasLoaded = true;
             ApplyFilter(); // show the list immediately — do NOT wait for stats
@@ -284,6 +293,21 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
         {
             // watching stopped
         }
+    }
+
+    [RelayCommand]
+    private void ArmPrune() => PruneArmed = HasStopped;
+
+    [RelayCommand]
+    private void CancelPrune() => PruneArmed = false;
+
+    [RelayCommand]
+    private async Task PruneAsync()
+    {
+        PruneArmed = false;
+        try { await _engine.PruneContainersAsync(); }
+        catch { /* nothing to prune or engine hiccup */ }
+        await LoadAsync();
     }
 
     public async Task StartAsync(string id)

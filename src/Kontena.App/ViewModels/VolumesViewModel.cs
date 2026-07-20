@@ -18,6 +18,9 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private string _summary = string.Empty;
+    [ObservableProperty] private bool _hasDangling;
+    [ObservableProperty] private bool _pruneArmed;
+    [ObservableProperty] private string _pruneSummary = string.Empty;
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
@@ -29,11 +32,32 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
         foreach (var volume in list.OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase))
             _all.Add(new VolumeRowViewModel(volume, this));
 
-        var dangling = list.Count(v => v.IsDangling);
-        Summary = $"{list.Count} volumes · {dangling} dangling";
+        var dangling = list.Where(v => v.IsDangling).ToList();
+        Summary = $"{list.Count} volumes · {dangling.Count} dangling";
+
+        HasDangling = dangling.Count > 0;
+        var reclaim = Format.Size(dangling.Sum(v => v.SizeBytes ?? 0));
+        PruneSummary = $"Remove {dangling.Count} dangling volume{(dangling.Count == 1 ? "" : "s")} and free ~{reclaim}?";
+        if (!HasDangling)
+            PruneArmed = false;
 
         HasLoaded = true;
         ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void ArmPrune() => PruneArmed = HasDangling;
+
+    [RelayCommand]
+    private void CancelPrune() => PruneArmed = false;
+
+    [RelayCommand]
+    private async Task PruneAsync()
+    {
+        PruneArmed = false;
+        try { await _engine.PruneVolumesAsync(); }
+        catch { /* nothing to prune or engine hiccup */ }
+        await LoadAsync();
     }
 
     public async Task DeleteAsync(string name)

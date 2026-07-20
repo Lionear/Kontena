@@ -15,6 +15,13 @@
                 <TextBlock Grid.Column="0" Text="Containers" FontSize="20" FontWeight="SemiBold"
                            Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button Classes="ghost" Command="{Binding ArmPruneCommand}" IsEnabled="{Binding HasStopped}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
+                                  Data="{StaticResource IconBroom}"/>
+                            <TextBlock Text="Prune stopped" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Classes="ghost">
                         <StackPanel Orientation="Horizontal" Spacing="7">
                             <Path Classes="icon" Width="15" Height="15" Stroke="{StaticResource TextDim}"
@@ -31,6 +38,22 @@
                     </Button>
                 </StackPanel>
             </Grid>
+
+            <Border IsVisible="{Binding PruneArmed}" Background="#1c1810" BorderBrush="#3a3320"
+                    BorderThickness="1" CornerRadius="10" Padding="14,12">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Path Grid.Column="0" Classes="icon" Width="17" Height="17" Stroke="{StaticResource Warn}"
+                          Data="{StaticResource IconBroom}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="{Binding PruneSummary}" Margin="12,0,0,0"
+                               Foreground="#e8cf9a" FontSize="13" VerticalAlignment="Center"/>
+                    <Button Grid.Column="2" Classes="ghost" Command="{Binding CancelPruneCommand}" Margin="0,0,8,0">Cancel</Button>
+                    <Button Grid.Column="3" Command="{Binding PruneCommand}"
+                            Background="#F8717120" Foreground="{StaticResource Danger}"
+                            BorderBrush="#5a2c2c" BorderThickness="1" CornerRadius="8" Padding="14,7" FontWeight="SemiBold">
+                        Remove containers
+                    </Button>
+                </Grid>
+            </Border>
 
             <!-- Loading state -->
             <StackPanel Margin="0,90,0,0" Spacing="16" HorizontalAlignment="Center"
@@ -106,7 +129,7 @@
                                     <Grid Margin="18,11" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158" VerticalAlignment="Center">
                                         <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{Binding StatusBrush}"
                                                  HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="1" Spacing="2">
+                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}"
                                                        FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource Text}"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6">
