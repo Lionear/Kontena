@@ -90,7 +90,7 @@
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,16">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,4,0,20">
-                    <Image Source="/Assets/icon.png" Width="26" Height="26"/>
+                    <Image Source="{StaticResource KontenaLogo}" Width="26" Height="26"/>
                     <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
 

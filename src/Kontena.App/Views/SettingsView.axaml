@@ -252,7 +252,7 @@
                     <Border Classes="card">
                         <StackPanel Spacing="16">
                             <StackPanel Orientation="Horizontal" Spacing="14">
-                                <Image Source="/Assets/icon.png" Width="36" Height="36" VerticalAlignment="Center"/>
+                                <Image Source="{StaticResource KontenaLogo}" Width="36" Height="36" VerticalAlignment="Center"/>
                                 <StackPanel VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="Kontena" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}">

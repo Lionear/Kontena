@@ -70,4 +70,14 @@
     <StreamGeometry x:Key="IconBox">M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z M3.3 7l8.7 5 8.7-5 M12 22V12</StreamGeometry>
 
     <StreamGeometry x:Key="IconFolder">M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z</StreamGeometry>
+
+    <!-- Kontena app mark: three overlapping rounded squares (viewBox 0 0 512 512).
+         Vector so it stays crisp at any render size, unlike the raster icon.png. -->
+    <DrawingImage x:Key="KontenaLogo">
+        <DrawingGroup>
+            <GeometryDrawing Brush="#5CE5C5" Geometry="M292,136 H428 A56,56 0 0 1 484,192 V328 A56,56 0 0 1 428,384 H292 A56,56 0 0 1 236,328 V192 A56,56 0 0 1 292,136 Z"/>
+            <GeometryDrawing Brush="#22D3AA" Geometry="M84,31 H220 A56,56 0 0 1 276,87 V223 A56,56 0 0 1 220,279 H84 A56,56 0 0 1 28,223 V87 A56,56 0 0 1 84,31 Z"/>
+            <GeometryDrawing Brush="#158369" Geometry="M119,232 H255 A56,56 0 0 1 311,288 V424 A56,56 0 0 1 255,480 H119 A56,56 0 0 1 63,424 V288 A56,56 0 0 1 119,232 Z"/>
+        </DrawingGroup>
+    </DrawingImage>
 </ResourceDictionary>
