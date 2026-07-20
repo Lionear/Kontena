@@ -1,0 +1,108 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Kontena.App.App"
+             xmlns:local="using:Kontena.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="/Icons.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Kontena palette (dark) -->
+            <Color x:Key="BgColor">#0E1116</Color>
+            <Color x:Key="SurfaceColor">#171B22</Color>
+            <Color x:Key="Surface2Color">#1E232C</Color>
+            <Color x:Key="BorderColor">#272E39</Color>
+            <Color x:Key="TextColor">#E6EAF0</Color>
+            <Color x:Key="TextDimColor">#9AA4B2</Color>
+            <Color x:Key="TextFaintColor">#5C6675</Color>
+            <Color x:Key="PrimaryColor">#22D3AA</Color>
+            <Color x:Key="AccentColor">#7C6BF5</Color>
+            <Color x:Key="SuccessColor">#34D399</Color>
+            <Color x:Key="InfoColor">#5AB8FF</Color>
+
+            <SolidColorBrush x:Key="Bg" Color="{StaticResource BgColor}"/>
+            <SolidColorBrush x:Key="Surface" Color="{StaticResource SurfaceColor}"/>
+            <SolidColorBrush x:Key="Surface2" Color="{StaticResource Surface2Color}"/>
+            <SolidColorBrush x:Key="SidebarBg" Color="#10141A"/>
+            <SolidColorBrush x:Key="Border" Color="{StaticResource BorderColor}"/>
+            <SolidColorBrush x:Key="Text" Color="{StaticResource TextColor}"/>
+            <SolidColorBrush x:Key="TextDim" Color="{StaticResource TextDimColor}"/>
+            <SolidColorBrush x:Key="TextFaint" Color="{StaticResource TextFaintColor}"/>
+            <SolidColorBrush x:Key="Primary" Color="{StaticResource PrimaryColor}"/>
+            <SolidColorBrush x:Key="PrimaryInk" Color="#08201A"/>
+            <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}"/>
+            <SolidColorBrush x:Key="Success" Color="{StaticResource SuccessColor}"/>
+            <SolidColorBrush x:Key="Info" Color="{StaticResource InfoColor}"/>
+            <SolidColorBrush x:Key="PrimarySoft" Color="#22D3AA" Opacity="0.10"/>
+            <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
+
+            <FontFamily x:Key="Mono">JetBrains Mono, Cascadia Code, Consolas, monospace</FontFamily>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <!-- Sidebar nav button -->
+        <Style Selector="Button.nav">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="Padding" Value="11,9"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+        <Style Selector="Button.nav.selected">
+            <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Button.nav.selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+
+        <!-- Primary / secondary buttons -->
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource Primary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryInk}"/>
+            <Setter Property="Padding" Value="15,9"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="Padding" Value="15,9"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Small icon action button -->
+        <Style Selector="Button.qa">
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="Button.qa:pointerover /template/ ContentPresenter">
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+    </Application.Styles>
+</Application>
