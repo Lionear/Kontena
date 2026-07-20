@@ -29,7 +29,6 @@ public partial class SettingsViewModel : ViewModelBase
         _theme = settings.Theme;
         _autoDetect = settings.AutoDetectEngines;
         _launchAtLogin = settings.LaunchAtLogin;
-        _sendUsageStats = settings.SendUsageStats;
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
@@ -103,9 +102,6 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _launchAtLogin;
     partial void OnLaunchAtLoginChanged(bool value) => Save();
 
-    [ObservableProperty] private bool _sendUsageStats;
-    partial void OnSendUsageStatsChanged(bool value) => Save();
-
     // ── Terminal ────────────────────────────────────────────────────────────
 
     public string[] FontFamilies { get; } =
@@ -132,7 +128,6 @@ public partial class SettingsViewModel : ViewModelBase
             AutoDetectEngines = AutoDetect,
             DefaultEngine = backend,
             LaunchAtLogin = LaunchAtLogin,
-            SendUsageStats = SendUsageStats,
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,
             TerminalLigatures = TerminalLigatures,

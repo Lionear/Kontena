@@ -30,7 +30,7 @@ public class KontenaSettingsTests
             AutoDetectEngines = false,
             DefaultEngine = "podman",
             LaunchAtLogin = true,
-            SendUsageStats = true,
+            TerminalLigatures = true,
         };
 
         var json = JsonSerializer.Serialize(original, Options);

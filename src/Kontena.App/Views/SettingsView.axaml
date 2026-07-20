@@ -136,14 +136,6 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" VerticalAlignment="Center"/>
                             </Grid>
-                            <Border Height="1" Background="{DynamicResource Border}"/>
-                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
-                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
-                                    <TextBlock Text="Send anonymous usage stats" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                    <TextBlock Text="Opt-in, privacy-first. No container contents or names ever leave your machine." FontSize="12" Foreground="{DynamicResource TextDim}"/>
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding SendUsageStats, Mode=TwoWay}" VerticalAlignment="Center"/>
-                            </Grid>
                         </StackPanel>
                     </Border>
 

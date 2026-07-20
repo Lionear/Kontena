@@ -30,9 +30,6 @@ public sealed record KontenaSettings
     /// <summary>Start Kontena at login (stored preference; wiring is platform-specific).</summary>
     public bool LaunchAtLogin { get; init; }
 
-    /// <summary>Opt-in anonymous usage stats.</summary>
-    public bool SendUsageStats { get; init; }
-
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";
 
