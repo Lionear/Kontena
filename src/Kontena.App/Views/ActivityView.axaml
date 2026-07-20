@@ -1,0 +1,138 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:conv="using:Kontena.App.Converters"
+             x:Class="Kontena.App.Views.ActivityView"
+             x:DataType="vm:ActivityViewModel"
+             x:Name="Root">
+
+    <UserControl.Styles>
+        <Style Selector="Button.fchip">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="13,6"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.fchip:pointerover /template/ ContentPresenter">
+            <Setter Property="BorderBrush" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <Style Selector="Button.fchip.on">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryDim}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Border.evrow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="24,22">
+
+        <!-- Header -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+            <StackPanel Grid.Column="0" Spacing="3">
+                <TextBlock Text="Activity" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock FontSize="13" Foreground="{DynamicResource TextDim}"
+                           Text="A live timeline of engine events — no polling, straight off the event stream."/>
+            </StackPanel>
+            <Button Grid.Column="1" Classes="ghost" VerticalAlignment="Center" Command="{Binding ClearCommand}"
+                    ToolTip.Tip="Clear the current view">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconTrash}"/>
+                    <TextBlock Text="Clear view" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <!-- Toolbar: live badge + filter chips -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,16" VerticalAlignment="Center">
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="20" Padding="11,6" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Live — streaming engine events" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+            </Border>
+            <Button Classes="fchip" Classes.on="{Binding IsAll}" Command="{Binding SetFilterCommand}" CommandParameter="all" Content="All"/>
+            <Button Classes="fchip" Classes.on="{Binding IsContainers}" Command="{Binding SetFilterCommand}" CommandParameter="containers" Content="Containers"/>
+            <Button Classes="fchip" Classes.on="{Binding IsImages}" Command="{Binding SetFilterCommand}" CommandParameter="images" Content="Images"/>
+            <Button Classes="fchip" Classes.on="{Binding IsVolumes}" Command="{Binding SetFilterCommand}" CommandParameter="volumes" Content="Volumes"/>
+            <Button Classes="fchip" Classes.on="{Binding IsNetworks}" Command="{Binding SetFilterCommand}" CommandParameter="networks" Content="Networks"/>
+        </StackPanel>
+
+        <!-- Feed -->
+        <Border Grid.Row="2" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+            <Panel>
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ActivityEntry">
+                                <Border Classes="evrow" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                    <Grid Margin="18,10" ColumnDefinitions="72,Auto,*,Auto" VerticalAlignment="Center">
+                                        <TextBlock Grid.Column="0" Text="{Binding Time}" FontFamily="{StaticResource Mono}"
+                                                   FontSize="12" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+
+                                        <Panel Grid.Column="1" Width="32" Height="32">
+                                            <Border CornerRadius="9" Opacity="0.16"
+                                                    Background="{Binding AccentKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"/>
+                                            <Path Classes="icon" Width="16" Height="16"
+                                                  Stroke="{Binding AccentKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"
+                                                  Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Panel>
+
+                                        <StackPanel Grid.Column="2" Margin="14,0" VerticalAlignment="Center" Spacing="2">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding ActionText}" FontSize="13.5" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Text}"/>
+                                                <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="13"
+                                                           FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding KindLabel}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                                       Foreground="{DynamicResource TextFaint}"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <Border Width="16" Height="16" CornerRadius="4" Background="{DynamicResource Surface2}">
+                                                    <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontSize="9"
+                                                               FontWeight="Bold" Foreground="{DynamicResource TextDim}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding Backend}" FontSize="11" Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Ago}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                                       Foreground="{DynamicResource TextFaint}" MinWidth="64" TextAlignment="Right"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Empty state -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="14"
+                            IsVisible="{Binding IsEmpty}" Margin="0,40">
+                    <Border Width="64" Height="64" CornerRadius="16" Background="{DynamicResource Surface2}" HorizontalAlignment="Center">
+                        <Path Classes="icon" Width="28" Height="28" Stroke="{DynamicResource TextFaint}"
+                              Data="{StaticResource IconActivity}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="No activity yet" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Container, image, volume and network events will appear here as they happen."
+                                   FontSize="12.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+            </Panel>
+        </Border>
+    </Grid>
+</UserControl>

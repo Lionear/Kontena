@@ -20,6 +20,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private IContainerEngine? _engine;
     private string _activeBackend = string.Empty;
     private ContainerDetailViewModel? _detail;
+    private readonly ActivityLog _activityLog = new();
 
     /// <summary>Design-time / default ctor uses a fake-only registry.</summary>
     public MainWindowViewModel()
@@ -60,6 +61,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private NetworksViewModel? _networks;
     [ObservableProperty] private ComposeProjectsViewModel? _composeProjects;
     [ObservableProperty] private SettingsViewModel? _settingsPage;
+    [ObservableProperty] private ActivityViewModel? _activity;
 
     /// <summary>The page shown in the content area.</summary>
     [ObservableProperty] private object? _currentPage;
@@ -252,6 +254,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private async Task ActivateAsync(IEngineProvider provider)
     {
         Containers?.StopWatching();
+        _activityLog.Detach();
         (_engine as IDisposable)?.Dispose();
 
         IsReady = false;
@@ -280,6 +283,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Volumes = new VolumesViewModel(_engine);
         Networks = new NetworksViewModel(_engine);
         ComposeProjects = new ComposeProjectsViewModel(_engine) { RequestOpenDetail = ShowContainerDetail };
+        Activity = new ActivityViewModel(_activityLog);
 
         SearchText = string.Empty;
         CurrentPage = Containers;
@@ -289,8 +293,34 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         await Containers.LoadAsync();
         IsReady = true;
         Containers.StartWatching();
+        _activityLog.Attach(_engine, _activeBackend, ResolveEventName);
 
         await UpdateNavCountsAsync();
+    }
+
+    /// <summary>Best-effort friendly name for an event's resource, from the loaded container list.</summary>
+    private string? ResolveEventName(EngineEvent ev)
+    {
+        if (ev.ResourceKind != ResourceKind.Container)
+            return null;
+
+        return Containers?.Items.FirstOrDefault(c =>
+            c.Id == ev.ResourceId
+            || c.Id.StartsWith(ev.ResourceId, StringComparison.Ordinal)
+            || ev.ResourceId.StartsWith(c.Id, StringComparison.Ordinal))?.Name;
+    }
+
+    [RelayCommand]
+    private void ShowActivity()
+    {
+        if (Activity is null)
+            return;
+
+        DisposeDetail();
+        CurrentPage = Activity;
+        SearchText = Activity.SearchText;
+        foreach (var item in NavItems)
+            item.IsSelected = false;
     }
 
     [RelayCommand]
@@ -451,6 +481,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         DisposeDetail();
         CloseDialog();
         Containers?.Dispose();
+        _activityLog.Dispose();
         (_engine as IDisposable)?.Dispose();
         GC.SuppressFinalize(this);
     }

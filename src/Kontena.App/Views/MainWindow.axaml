@@ -95,7 +95,7 @@
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Bottom" Spacing="2">
-                    <Button Classes="nav">
+                    <Button Classes="nav" Command="{Binding ShowActivityCommand}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                   Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconActivity}"/>
