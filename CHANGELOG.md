@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.0] - 2026-07-20
+
 ### Added
 
 - **Backend-agnostic container management** — one UI over the Container Engine Abstraction Layer
@@ -29,9 +33,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Graceful states** — an empty state with quick-start, a no-match note, and an engine-down state
   with reconnect and available-engine fallback.
 
-<!--
-Add finished work above under the right heading (Added / Changed / Fixed / Removed).
-Keep bullets user-facing. Never write a version heading by hand — a v-tag release rolls this section.
--->
-
-[Unreleased]: https://github.com/Lionear/Kontena/commits/main
+[Unreleased]: https://github.com/Lionear/Kontena/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Lionear/Kontena/releases/tag/v0.1.0
