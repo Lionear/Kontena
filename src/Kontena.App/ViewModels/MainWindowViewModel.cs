@@ -130,7 +130,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         RebuildEngineList();
 
         DisposeDetail();
-        Dialog = null;
+        CloseDialog();
 
         Containers = new ContainersViewModel(_engine)
         {
@@ -206,11 +206,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             });
     }
 
-    private void CloseDialog() => Dialog = null;
+    private void CloseDialog()
+    {
+        (Dialog as IDisposable)?.Dispose();
+        Dialog = null;
+    }
 
     public void Dispose()
     {
         DisposeDetail();
+        CloseDialog();
         Containers?.Dispose();
         (_engine as IDisposable)?.Dispose();
         GC.SuppressFinalize(this);

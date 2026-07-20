@@ -276,6 +276,53 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             return _client.Images.TagImageAsync(id, new ImageTagParameters { RepositoryName = repo, Tag = tag }, ct);
         });
 
+    public async ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default)
+    {
+        ImageInspectResponse image;
+        try
+        {
+            image = await _client.Images.InspectImageAsync(reference, ct).ConfigureAwait(false);
+        }
+        catch (DockerImageNotFoundException)
+        {
+            return null;
+        }
+        catch (DockerApiException api) when (api.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            throw Map(ex);
+        }
+
+        var ports = new List<KontenaPort>();
+        foreach (var key in image.Config?.ExposedPorts?.Keys ?? [])
+        {
+            // key looks like "5432/tcp"
+            var slash = key.IndexOf('/', StringComparison.Ordinal);
+            var portText = slash >= 0 ? key[..slash] : key;
+            var protocol = slash >= 0 ? key[(slash + 1)..] : "tcp";
+            if (int.TryParse(portText, out var port))
+                ports.Add(new KontenaPort(null, port, protocol));
+        }
+
+        var env = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var entry in image.Config?.Env ?? [])
+        {
+            var eq = entry.IndexOf('=', StringComparison.Ordinal);
+            if (eq > 0)
+                env[entry[..eq]] = entry[(eq + 1)..];
+        }
+
+        return new ImageConfig
+        {
+            ExposedPorts = ports,
+            Volumes = image.Config?.Volumes?.Keys.ToList() ?? [],
+            Environment = env,
+        };
+    }
+
     public ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default) =>
         Exec(async () =>
         {

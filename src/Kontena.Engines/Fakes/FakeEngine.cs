@@ -215,6 +215,21 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+            return ValueTask.FromResult<ImageConfig?>(null);
+
+        // Pretend every known-ish image exposes a port and declares a data volume,
+        // so the Run modal's pre-fill can be exercised without a real engine.
+        return ValueTask.FromResult<ImageConfig?>(new ImageConfig
+        {
+            ExposedPorts = [new PortBinding(null, 5432, "tcp")],
+            Volumes = ["/var/lib/data"],
+            Environment = new Dictionary<string, string> { ["APP_ENV"] = "production" },
+        });
+    }
+
     public ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default)
     {
         var unused = _images.Where(kv => !kv.Value.InUse).ToList();

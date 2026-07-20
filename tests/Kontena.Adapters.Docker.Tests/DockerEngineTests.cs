@@ -143,6 +143,21 @@ public class DockerEngineTests
     }
 
     [SkippableFact]
+    public async Task Inspect_image_returns_config_for_present_and_null_for_missing()
+    {
+        using var engine = await ConnectOrSkipAsync();
+
+        var img = (await engine.ListImagesAsync()).FirstOrDefault();
+        Skip.If(img is null, "No images to inspect on this host.");
+
+        var present = await engine.InspectImageAsync($"{img!.Repository}:{img.Tag}");
+        Assert.NotNull(present);
+
+        var missing = await engine.InspectImageAsync("kontena/definitely-not-real:0");
+        Assert.Null(missing);
+    }
+
+    [SkippableFact]
     public async Task Inspect_returns_structured_config_for_a_container()
     {
         using var engine = await ConnectOrSkipAsync();

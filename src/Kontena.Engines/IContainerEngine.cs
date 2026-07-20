@@ -78,6 +78,12 @@ public interface IContainerEngine
         string reference, CancellationToken ct = default);
 
     ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default);
+
+    /// <summary>
+    /// Read an image's baked-in config (exposed ports, declared volumes, env) to
+    /// pre-fill the Run flow. Returns null when the image is not present locally.
+    /// </summary>
+    ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default);
     ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default);
 
     /// <summary>Remove unused images. <paramref name="allUnused"/> also removes tagged

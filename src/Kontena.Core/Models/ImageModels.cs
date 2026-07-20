@@ -22,6 +22,23 @@ public sealed record ImageSummary
     public bool InUse { get; init; }
 }
 
+/// <summary>
+/// The bits of an image's baked-in configuration the Run flow uses to scaffold
+/// sensible defaults: the ports it exposes and the volume mount points it declares.
+/// </summary>
+public sealed record ImageConfig
+{
+    /// <summary>Ports the image declares as exposed (container-side only).</summary>
+    public IReadOnlyList<PortBinding> ExposedPorts { get; init; } = [];
+
+    /// <summary>Mount points the image declares as volumes (container paths).</summary>
+    public IReadOnlyList<string> Volumes { get; init; } = [];
+
+    /// <summary>Environment defaults baked into the image (KEY → value).</summary>
+    public IReadOnlyDictionary<string, string> Environment { get; init; } =
+        new Dictionary<string, string>();
+}
+
 /// <summary>Outcome of a prune operation.</summary>
 /// <param name="ItemsDeleted">How many items were removed.</param>
 /// <param name="SpaceReclaimedBytes">Disk space freed, in bytes.</param>

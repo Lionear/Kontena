@@ -164,6 +164,25 @@ public class FakeEngineTests
     }
 
     [Fact]
+    public async Task Inspect_image_returns_ports_and_volumes_for_prefill()
+    {
+        var engine = NewEngine();
+
+        var config = await engine.InspectImageAsync("nginx:latest");
+
+        Assert.NotNull(config);
+        Assert.NotEmpty(config!.ExposedPorts);
+        Assert.NotEmpty(config.Volumes);
+    }
+
+    [Fact]
+    public async Task Inspect_image_empty_reference_returns_null()
+    {
+        var engine = NewEngine();
+        Assert.Null(await engine.InspectImageAsync(""));
+    }
+
+    [Fact]
     public async Task Exec_session_echoes_input_and_exits_on_exit()
     {
         var engine = NewEngine();

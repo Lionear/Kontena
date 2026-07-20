@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text;
+using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Models;
@@ -12,7 +14,7 @@ namespace Kontena.App.ViewModels;
 /// engine-flavoured command preview, and creates the container via the CEAL
 /// (which auto-pulls a missing image). Hosted as an overlay by the shell.
 /// </summary>
-public partial class RunContainerViewModel : ViewModelBase
+public partial class RunContainerViewModel : ViewModelBase, IDisposable
 {
     private readonly IContainerEngine _engine;
     private readonly Action _onClose;
@@ -76,6 +78,85 @@ public partial class RunContainerViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsImagePulled));
         OnPropertyChanged(nameof(CanRun));
         UpdatePreview();
+        SchedulePrefill();
+    }
+
+    // ── Pre-fill from image metadata ────────────────────────────────────────────
+
+    private CancellationTokenSource? _prefillCts;
+
+    /// <summary>
+    /// A short debounce after typing: if the image is present locally, inspect it
+    /// and scaffold its exposed ports and declared volume mounts — but only while
+    /// the user hasn't started filling those in themselves.
+    /// </summary>
+    private void SchedulePrefill()
+    {
+        _prefillCts?.Cancel();
+        _prefillCts = new CancellationTokenSource();
+        _ = PrefillAsync(Image.Trim(), _prefillCts.Token);
+    }
+
+    private async Task PrefillAsync(string reference, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(400, ct);
+
+            if (string.IsNullOrWhiteSpace(reference) || !_localImages.Contains(reference))
+                return;
+
+            var config = await _engine.InspectImageAsync(reference, ct);
+            if (config is null || ct.IsCancellationRequested)
+                return;
+
+            if (Ports.Count == 0 && config.ExposedPorts.Count > 0)
+            {
+                foreach (var port in config.ExposedPorts)
+                {
+                    Ports.Add(new PortRow(UpdatePreview)
+                    {
+                        Host = port.ContainerPort.ToString(CultureInfo.InvariantCulture),
+                        Container = $"{port.ContainerPort}/{port.Protocol}",
+                    });
+                }
+            }
+
+            if (Volumes.Count == 0 && config.Volumes.Count > 0)
+            {
+                foreach (var destination in config.Volumes)
+                {
+                    Volumes.Add(new VolumeRow(UpdatePreview)
+                    {
+                        Source = SuggestVolumeName(reference, destination),
+                        Destination = destination,
+                    });
+                }
+            }
+
+            UpdatePreview();
+        }
+        catch (OperationCanceledException)
+        {
+            // superseded by a newer keystroke
+        }
+        catch
+        {
+            // pre-fill is best-effort — never block the modal on it
+        }
+    }
+
+    /// <summary>Suggest a volume name like "postgres-data" from the image + mount point.</summary>
+    private static string SuggestVolumeName(string reference, string destination)
+    {
+        var repo = reference.Split(':')[0];
+        var name = repo.Contains('/') ? repo[(repo.LastIndexOf('/') + 1)..] : repo;
+
+        var leaf = destination.Trim('/');
+        if (leaf.Contains('/'))
+            leaf = leaf[(leaf.LastIndexOf('/') + 1)..];
+
+        return string.IsNullOrEmpty(leaf) ? $"{name}-data" : $"{name}-{leaf}";
     }
 
     partial void OnContainerNameChanged(string value) => UpdatePreview();
@@ -262,6 +343,14 @@ public partial class RunContainerViewModel : ViewModelBase
         "unless-stopped" => RestartPolicy.UnlessStopped,
         _ => RestartPolicy.No,
     };
+
+    public void Dispose()
+    {
+        _prefillCts?.Cancel();
+        _prefillCts?.Dispose();
+        _prefillCts = null;
+        GC.SuppressFinalize(this);
+    }
 }
 
 /// <summary>A host→container port row in the Run modal.</summary>
