@@ -24,6 +24,14 @@ internal static class Format
         return $"{value} {units[u]}";
     }
 
+    /// <summary>Human name for a <c>kontena.source</c> label value.</summary>
+    public static string ManagedSource(string? source) => source switch
+    {
+        null or "" => "another tool",
+        "sqlexplorer" => "SQL Explorer",
+        _ => char.ToUpperInvariant(source[0]) + source[1..],
+    };
+
     public static string Age(DateTimeOffset when)
     {
         var delta = DateTimeOffset.UtcNow - when;

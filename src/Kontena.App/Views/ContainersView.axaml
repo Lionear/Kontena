@@ -197,6 +197,12 @@
                                                     </Border>
                                                     <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                                Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                                    <Border Background="{DynamicResource PrimarySoft}" CornerRadius="20" Padding="7,1"
+                                                            VerticalAlignment="Center" IsVisible="{Binding IsManaged}"
+                                                            ToolTip.Tip="Carries a kontena.managed label — excluded from Kontena's prune">
+                                                        <TextBlock Text="{Binding ManagedByText}" FontSize="10" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource Primary}"/>
+                                                    </Border>
                                                 </StackPanel>
                                             </StackPanel>
                                         </Button>

@@ -63,6 +63,10 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
     public bool IsRunning => _c.State == ContainerState.Running;
     public bool IsNotRunning => !IsRunning;
 
+    /// <summary>True when another app (e.g. SQL Explorer) manages this container.</summary>
+    public bool IsManaged => _c.IsManagedExternally;
+    public string ManagedByText => $"Managed · {Format.ManagedSource(_c.ManagedSource)}";
+
     public string StateText => string.IsNullOrWhiteSpace(_c.Status) ? _c.State.ToString() : _c.Status;
     public string StateLabel => _c.State.ToString();
 

@@ -28,6 +28,8 @@ public partial class ContainerRowViewModel : ObservableObject
         OnPropertyChanged(nameof(PortsText));
         OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(IsNotRunning));
+        OnPropertyChanged(nameof(IsManaged));
+        OnPropertyChanged(nameof(ManagedByText));
         OnPropertyChanged(nameof(StatusBrush));
 
         if (!IsRunning)
@@ -48,6 +50,10 @@ public partial class ContainerRowViewModel : ObservableObject
 
     public bool IsRunning => _c.State == ContainerState.Running;
     public bool IsNotRunning => !IsRunning;
+
+    /// <summary>True when another app (e.g. SQL Explorer) manages this container.</summary>
+    public bool IsManaged => _c.IsManagedExternally;
+    public string ManagedByText => $"Managed · {Format.ManagedSource(_c.ManagedSource)}";
 
     public string StatusText => string.IsNullOrWhiteSpace(_c.Status) ? _c.State.ToString() : _c.Status;
 

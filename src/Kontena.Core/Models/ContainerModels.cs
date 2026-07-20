@@ -31,6 +31,20 @@ public sealed record ContainerSummary
     public IReadOnlyDictionary<string, string> Labels { get; init; } =
         new Dictionary<string, string>();
 
+    /// <summary>Label marking a container as managed by a Kontena-ecosystem tool.</summary>
+    public const string ManagedLabel = "kontena.managed";
+
+    /// <summary>Label naming the owning app (e.g. "sqlexplorer").</summary>
+    public const string SourceLabel = "kontena.source";
+
+    /// <summary>True when another Kontena-ecosystem app owns this container (don't auto-clean it).</summary>
+    public bool IsManagedExternally =>
+        Labels.TryGetValue(ManagedLabel, out var value)
+        && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Which app manages this container (e.g. "sqlexplorer"), when externally managed.</summary>
+    public string? ManagedSource => Labels.GetValueOrDefault(SourceLabel);
+
     /// <summary>When the container was created (UTC).</summary>
     public DateTimeOffset CreatedAt { get; init; }
 

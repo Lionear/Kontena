@@ -507,6 +507,32 @@ public sealed class FakeEngine : IContainerEngine
             ContainerState.Running, "Up 40 minutes", new PortBinding(9090, 9090));
         AddComposeContainer("monitoring", "grafana", mon, "grafana/grafana:11.2.0",
             ContainerState.Exited, "Exited (1)", new PortBinding(3000, 3000));
+
+        // A container owned by another Kontena-ecosystem app (SQL Explorer), via labels.
+        AddManagedContainer("sqlx-postgres-dev", "postgres:16", ContainerState.Running,
+            "Up 1 hour", "sqlexplorer", new PortBinding(55432, 5432));
+    }
+
+    private void AddManagedContainer(
+        string name, string image, ContainerState state, string status, string source, params PortBinding[] ports)
+    {
+        var id = NextId();
+        _containers[id] = new ContainerSummary
+        {
+            Id = id,
+            Name = name,
+            Image = image,
+            State = state,
+            Status = status,
+            Ports = ports,
+            Labels = new Dictionary<string, string>
+            {
+                [ContainerSummary.ManagedLabel] = "true",
+                [ContainerSummary.SourceLabel] = source,
+            },
+            CreatedAt = DateTimeOffset.UtcNow,
+            Backend = Backend,
+        };
     }
 
     private void AddComposeContainer(

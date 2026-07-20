@@ -36,6 +36,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     private void PullImage() => RequestPullImage?.Invoke();
 
     private readonly List<ContainerRowViewModel> _all = [];
+    private List<string> _prunableIds = [];
 
     // Event-driven refresh: engine events (from CLI or any other app) mark the
     // list dirty; a debounce loop reloads ~250ms after the last event.
@@ -177,8 +178,17 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
             RunningCount = list.Count(c => c.State == ContainerState.Running);
             StoppedCount = list.Count - RunningCount;
 
-            HasStopped = StoppedCount > 0;
-            PruneSummary = $"Remove {StoppedCount} stopped container{(StoppedCount == 1 ? "" : "s")}?";
+            // Prune only stopped containers we own — never externally-managed ones (e.g. SQL Explorer's).
+            _prunableIds = list
+                .Where(c => c.State != ContainerState.Running && !c.IsManagedExternally)
+                .Select(c => c.Id)
+                .ToList();
+            var prunable = _prunableIds.Count;
+            var managedSkipped = StoppedCount - prunable;
+
+            HasStopped = prunable > 0;
+            PruneSummary = $"Remove {prunable} stopped container{(prunable == 1 ? "" : "s")}?"
+                + (managedSkipped > 0 ? $"  ({managedSkipped} externally-managed skipped)" : "");
             if (!HasStopped)
                 PruneArmed = false;
 
@@ -345,8 +355,15 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     private async Task PruneAsync()
     {
         PruneArmed = false;
-        try { await _engine.PruneContainersAsync(); }
-        catch { /* nothing to prune or engine hiccup */ }
+
+        // Remove only the containers we own; externally-managed ones are left untouched.
+        // (A plain engine prune would delete every stopped container, including those.)
+        foreach (var id in _prunableIds)
+        {
+            try { await _engine.RemoveContainerAsync(id, force: false); }
+            catch { /* one failure must not stop the rest */ }
+        }
+
         await LoadAsync();
     }
 

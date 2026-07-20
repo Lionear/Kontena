@@ -25,11 +25,24 @@ public class FakeEngineTests
     public async Task Lists_seeded_containers()
     {
         var all = await NewEngine().ListContainersAsync(all: true);
-        Assert.Equal(11, all.Count);
+        Assert.Equal(12, all.Count);
 
         var running = await NewEngine().ListContainersAsync(all: false);
         Assert.All(running, c => Assert.Equal(ContainerState.Running, c.State));
-        Assert.Equal(8, running.Count);
+        Assert.Equal(9, running.Count);
+    }
+
+    [Fact]
+    public async Task Externally_managed_container_is_recognized_by_labels()
+    {
+        var all = await NewEngine().ListContainersAsync(all: true);
+
+        var managed = all.Where(c => c.IsManagedExternally).ToList();
+        Assert.NotEmpty(managed);
+        Assert.All(managed, c => Assert.Equal("sqlexplorer", c.ManagedSource));
+
+        var own = all.First(c => c.Name == "api-gateway");
+        Assert.False(own.IsManagedExternally);
     }
 
     [Fact]

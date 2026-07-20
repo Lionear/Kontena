@@ -40,6 +40,10 @@
                             </Border>
                             <TextBlock Text="{Binding Backend}" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                         </StackPanel>
+                        <Border Background="{DynamicResource PrimarySoft}" CornerRadius="20" Padding="10,4" VerticalAlignment="Center"
+                                IsVisible="{Binding IsManaged}" ToolTip.Tip="Carries a kontena.managed label — excluded from Kontena's prune">
+                            <TextBlock Text="{Binding ManagedByText}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Primary}"/>
+                        </Border>
                     </StackPanel>
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
