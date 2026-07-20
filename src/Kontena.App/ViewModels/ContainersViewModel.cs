@@ -64,6 +64,10 @@ public partial class ContainersViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>True once the first container list has been fetched (drives the loading state).</summary>
+    [ObservableProperty]
+    private bool _hasLoaded;
+
     [RelayCommand]
     public async Task LoadAsync()
     {
@@ -81,35 +85,72 @@ public partial class ContainersViewModel : ViewModelBase, IDisposable
             RunningCount = list.Count(c => c.State == ContainerState.Running);
             StoppedCount = list.Count - RunningCount;
 
-            double cpu = 0;
-            long mem = 0;
-            foreach (var row in _all.Where(r => r.IsRunning))
-            {
-                try
-                {
-                    using var statsCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                    await foreach (var s in _engine.StreamStatsAsync(row.Id, statsCts.Token))
-                    {
-                        row.ApplyStats(s);
-                        cpu += s.CpuPercent;
-                        mem += s.MemoryUsedBytes;
-                        break; // one sample is enough for the overview
-                    }
-                }
-                catch
-                {
-                    // A single container's stats failing must never sink the whole list.
-                }
-            }
-
-            CpuTotalText = $"{cpu:0}%";
-            MemTotalText = $"{mem / 1_000_000} MB";
-
-            ApplyFilter();
+            HasLoaded = true;
+            ApplyFilter(); // show the list immediately — do NOT wait for stats
         }
         finally
         {
             IsBusy = false;
+        }
+
+        // Stats are slower (a live sample per container), so fetch them in the
+        // background and update rows as they arrive. The list is already visible.
+        _ = RefreshStatsAsync();
+    }
+
+    private int _statsGeneration;
+
+    private async Task RefreshStatsAsync()
+    {
+        var generation = ++_statsGeneration;
+
+        var running = _all.Where(r => r.IsRunning).ToList();
+        if (running.Count == 0)
+        {
+            CpuTotalText = "0%";
+            MemTotalText = "0 MB";
+            return;
+        }
+
+        var samples = await Task.WhenAll(running.Select(SampleAsync));
+
+        if (generation != _statsGeneration)
+            return; // a newer refresh started while we were sampling
+
+        double cpu = 0;
+        long mem = 0;
+        foreach (var s in samples)
+        {
+            if (s is null) continue;
+            cpu += s.CpuPercent;
+            mem += s.MemoryUsedBytes;
+        }
+
+        CpuTotalText = $"{cpu:0}%";
+        MemTotalText = $"{mem / 1_000_000} MB";
+    }
+
+    private async Task<ContainerStats?> SampleAsync(ContainerRowViewModel row)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            ContainerStats? last = null;
+            var count = 0;
+            await foreach (var s in _engine.StreamStatsAsync(row.Id, cts.Token))
+            {
+                last = s;
+                row.ApplyStats(s);
+                if (++count >= 2) // second sample → accurate CPU% (needs a delta)
+                    break;
+            }
+
+            return last;
+        }
+        catch
+        {
+            // One container's stats failing must never affect the others.
+            return null;
         }
     }
 

@@ -297,8 +297,19 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Loading state (until the first list arrives) -->
+                    <StackPanel Margin="0,90,0,0" Spacing="16" HorizontalAlignment="Center"
+                                IsVisible="{Binding !IsReady}">
+                        <ProgressBar IsIndeterminate="True" Width="220" Height="4"
+                                     Foreground="{StaticResource Primary}"
+                                     Background="{StaticResource Surface2}"/>
+                        <TextBlock Text="Connecting to your container engine…"
+                                   Foreground="{StaticResource TextDim}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+
                     <!-- Stat cards -->
-                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14">
+                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14"
+                          IsVisible="{Binding IsReady}">
                         <Border Grid.Column="0" Classes="card">
                             <StackPanel Spacing="6">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
@@ -347,7 +358,8 @@
 
                     <!-- Container table -->
                     <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
-                            BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                            BorderThickness="1" CornerRadius="10" ClipToBounds="True"
+                            IsVisible="{Binding IsReady}">
                         <StackPanel>
                             <!-- Header row -->
                             <Border Background="#141821" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">

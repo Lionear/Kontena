@@ -49,6 +49,10 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _engineChip = "?";
 
+    /// <summary>False until the first container list is on screen (drives the loading state).</summary>
+    [ObservableProperty]
+    private bool _isReady;
+
     private async Task InitAsync()
     {
         try
@@ -70,6 +74,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
             Containers = new ContainersViewModel(_engine);
             await Containers.LoadAsync();
+            IsReady = true;
             Containers.StartWatching();
 
             var ci = CultureInfo.InvariantCulture;
