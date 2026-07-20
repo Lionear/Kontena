@@ -22,6 +22,11 @@ public sealed record ImageSummary
     public bool InUse { get; init; }
 }
 
+/// <summary>Outcome of a prune operation.</summary>
+/// <param name="ItemsDeleted">How many items were removed.</param>
+/// <param name="SpaceReclaimedBytes">Disk space freed, in bytes.</param>
+public sealed record PruneResult(int ItemsDeleted, long SpaceReclaimedBytes);
+
 /// <summary>Progress update while pulling an image.</summary>
 /// <param name="Reference">Image reference being pulled.</param>
 /// <param name="Status">Human-readable status line.</param>

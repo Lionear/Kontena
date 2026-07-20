@@ -18,6 +18,9 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private string _summary = string.Empty;
+    [ObservableProperty] private bool _hasUnused;
+    [ObservableProperty] private bool _pruneArmed;
+    [ObservableProperty] private string _pruneSummary = string.Empty;
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
@@ -33,11 +36,32 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
         }
 
         var total = list.Sum(i => i.SizeBytes);
-        var unused = list.Count(i => !i.InUse);
-        Summary = $"{list.Count} images · {Format.Size(total)} on disk · {unused} unused";
+        var unused = list.Where(i => !i.InUse).ToList();
+        Summary = $"{list.Count} images · {Format.Size(total)} on disk · {unused.Count} unused";
+
+        HasUnused = unused.Count > 0;
+        var reclaim = Format.Size(unused.Sum(i => i.SizeBytes));
+        PruneSummary = $"Remove {unused.Count} unused image{(unused.Count == 1 ? "" : "s")} and free ~{reclaim}?";
+        if (!HasUnused)
+            PruneArmed = false;
 
         HasLoaded = true;
         ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void ArmPrune() => PruneArmed = HasUnused;
+
+    [RelayCommand]
+    private void CancelPrune() => PruneArmed = false;
+
+    [RelayCommand]
+    private async Task PruneAsync()
+    {
+        PruneArmed = false;
+        try { await _engine.PruneImagesAsync(allUnused: true); }
+        catch { /* nothing to prune or engine hiccup */ }
+        await LoadAsync();
     }
 
     public async Task DeleteAsync(string id)

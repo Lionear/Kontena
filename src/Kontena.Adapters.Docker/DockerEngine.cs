@@ -242,6 +242,23 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             return _client.Images.TagImageAsync(id, new ImageTagParameters { RepositoryName = repo, Tag = tag }, ct);
         });
 
+    public ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var parameters = new ImagesPruneParameters();
+            if (allUnused)
+            {
+                // dangling=false prunes every image not used by a container (docker image prune -a).
+                parameters.Filters = new Dictionary<string, IDictionary<string, bool>>
+                {
+                    ["dangling"] = new Dictionary<string, bool> { ["false"] = true },
+                };
+            }
+
+            var response = await _client.Images.PruneImagesAsync(parameters, ct).ConfigureAwait(false);
+            return new PruneResult(response.ImagesDeleted?.Count ?? 0, (long)response.SpaceReclaimed);
+        });
+
     // ── Volumes ─────────────────────────────────────────────────────────────
 
     public ValueTask<IReadOnlyList<VolumeSummary>> ListVolumesAsync(CancellationToken ct = default) =>

@@ -105,6 +105,21 @@ public class FakeEngineTests
     }
 
     [Fact]
+    public async Task Prune_removes_unused_images_and_reports_reclaim()
+    {
+        var engine = NewEngine();
+        var unusedBefore = (await engine.ListImagesAsync()).Count(i => !i.InUse);
+
+        var result = await engine.PruneImagesAsync();
+
+        Assert.Equal(unusedBefore, result.ItemsDeleted);
+        Assert.True(result.SpaceReclaimedBytes > 0);
+
+        var after = await engine.ListImagesAsync();
+        Assert.All(after, i => Assert.True(i.InUse));
+    }
+
+    [Fact]
     public async Task Removing_missing_container_throws_not_found()
     {
         var engine = NewEngine();

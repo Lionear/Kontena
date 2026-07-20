@@ -66,6 +66,11 @@ public interface IContainerEngine
     ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default);
     ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default);
 
+    /// <summary>Remove unused images. <paramref name="allUnused"/> also removes tagged
+    /// images not used by any container (not just dangling ones).</summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsPrune"/>.</remarks>
+    ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default);
+
     // ── Volumes ─────────────────────────────────────────────────────────────
 
     ValueTask<IReadOnlyList<VolumeSummary>> ListVolumesAsync(CancellationToken ct = default);

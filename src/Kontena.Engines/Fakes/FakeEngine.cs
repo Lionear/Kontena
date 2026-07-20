@@ -155,6 +155,19 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default)
+    {
+        var unused = _images.Where(kv => !kv.Value.InUse).ToList();
+        long reclaimed = 0;
+        foreach (var kv in unused)
+        {
+            reclaimed += kv.Value.SizeBytes;
+            _images.Remove(kv.Key);
+        }
+
+        return ValueTask.FromResult(new PruneResult(unused.Count, reclaimed));
+    }
+
     // ── Volumes ─────────────────────────────────────────────────────────────
 
     public ValueTask<IReadOnlyList<VolumeSummary>> ListVolumesAsync(CancellationToken ct = default)
