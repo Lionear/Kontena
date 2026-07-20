@@ -174,7 +174,7 @@
                                   Stroke="{StaticResource TextFaint}" Data="{StaticResource IconSearch}"
                                   VerticalAlignment="Center"/>
                             <TextBox Classes="bare" Margin="9,0,0,0"
-                                     Watermark="Search containers, images, volumes…"
+                                     PlaceholderText="Search containers, images, volumes…"
                                      Text="{Binding Containers.SearchText, Mode=TwoWay}"/>
                         </DockPanel>
                     </Border>

@@ -7,6 +7,7 @@
     <Project Path="src/Kontena.Engines/Kontena.Engines.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj" />
     <Project Path="tests/Kontena.Core.Tests/Kontena.Core.Tests.csproj" />
     <Project Path="tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj" />
   </Folder>
