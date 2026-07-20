@@ -1,0 +1,323 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.ContainerDetailView"
+             x:DataType="vm:ContainerDetailViewModel"
+             x:Name="Root">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                BorderThickness="0,0,0,1" Padding="24,16,24,0">
+            <StackPanel Spacing="0">
+
+                <!-- Title row + actions -->
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                    <Button Grid.Column="0" Classes="qa" Width="32" Height="32" Command="{Binding BackCommand}" ToolTip.Tip="Back">
+                        <Path Classes="icon" Width="16" Height="16" Stroke="{StaticResource TextDim}" Data="{StaticResource IconArrowLeft}"/>
+                    </Button>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="19" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
+                        <Border Background="#1E232C" CornerRadius="20" Padding="10,4" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding StateLabel}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Border Width="17" Height="17" CornerRadius="4" Background="{StaticResource DockerChip}">
+                                <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}" FontSize="9" FontWeight="Bold"
+                                           Foreground="{StaticResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="{Binding Backend}" FontSize="11" Foreground="{StaticResource TextFaint}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Classes="ghost" Padding="12,8" Command="{Binding RestartCommand}" IsVisible="{Binding IsRunning}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextDim}" Data="{StaticResource IconRestart}"/>
+                                <TextBlock Text="Restart" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost" Padding="12,8" Command="{Binding StopCommand}" IsVisible="{Binding IsRunning}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextDim}" Data="{StaticResource IconStop}"/>
+                                <TextBlock Text="Stop" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost" Padding="12,8" Command="{Binding StartCommand}" IsVisible="{Binding IsNotRunning}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource Success}" Data="{StaticResource IconPlay}"/>
+                                <TextBlock Text="Start" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost" Padding="12,8" Command="{Binding ShellCommand}"
+                                IsVisible="{Binding SupportsExec}" IsEnabled="{Binding IsRunning}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextDim}" Data="{StaticResource IconTerminal}"/>
+                                <TextBlock Text="Shell" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost" Padding="12,8" Command="{Binding RemoveCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{StaticResource Danger}" Data="{StaticResource IconTrash}"/>
+                                <TextBlock Text="Remove" Foreground="{StaticResource Danger}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Meta strip -->
+                <StackPanel Orientation="Horizontal" Spacing="28" Margin="0,16,0,0">
+                    <StackPanel Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="icon" Width="12" Height="12" Stroke="{StaticResource TextFaint}" Data="{StaticResource IconTag}"/>
+                            <TextBlock Text="IMAGE" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding ImageText}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                   Foreground="{StaticResource Text}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <StackPanel Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="icon" Width="12" Height="12" Stroke="{StaticResource TextFaint}" Data="{StaticResource IconHash}"/>
+                            <TextBlock Text="ID" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding ShortId}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{StaticResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="icon" Width="12" Height="12" Stroke="{StaticResource TextFaint}" Data="{StaticResource IconNetwork}"/>
+                            <TextBlock Text="PORTS" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding PortsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{StaticResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="icon" Width="12" Height="12" Stroke="{StaticResource TextFaint}" Data="{StaticResource IconClock}"/>
+                            <TextBlock Text="CREATED" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding CreatedText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{StaticResource TextDim}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Tabs -->
+                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                    <Button Classes="tab" Classes.on="{Binding IsLogsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="logs">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconLogs}"/>
+                            <TextBlock Text="Logs" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsStatsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="stats"
+                            IsVisible="{Binding SupportsStats}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconGauge}"/>
+                            <TextBlock Text="Stats" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsTerminalSelected}" Command="{Binding SelectTabCommand}" CommandParameter="terminal">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconTerminal}"/>
+                            <TextBlock Text="Terminal" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsInspectSelected}" Command="{Binding SelectTabCommand}" CommandParameter="inspect">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
+                            <TextBlock Text="Inspect" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Live stat strip -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" ColumnSpacing="12" Margin="24,16"
+              IsVisible="{Binding SupportsStats}">
+            <Border Grid.Column="0" Classes="card" Padding="14,12">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Path Classes="icon" Width="20" Height="20" Stroke="{StaticResource Info}" Data="{StaticResource IconCpu}" VerticalAlignment="Center"/>
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="CPU" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        <TextBlock Text="{Binding CpuText}" FontSize="17" FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
+                                   Foreground="{StaticResource Text}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="card" Padding="14,12">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Path Classes="icon" Width="20" Height="20" Stroke="{StaticResource Accent}" Data="{StaticResource IconActivity}" VerticalAlignment="Center"/>
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="Memory" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding MemUsedText}" FontSize="17" FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
+                                       Foreground="{StaticResource Text}"/>
+                            <TextBlock Text="{Binding MemLimitText}" FontSize="12" FontFamily="{StaticResource Mono}"
+                                       Foreground="{StaticResource TextFaint}" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Classes="card" Padding="14,12">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Path Classes="icon" Width="20" Height="20" Stroke="{StaticResource Success}" Data="{StaticResource IconDownload}" VerticalAlignment="Center"/>
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="Net I/O ↓/↑" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        <TextBlock Text="{Binding NetIoText}" FontSize="17" FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
+                                   Foreground="{StaticResource Text}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Classes="card" Padding="14,12">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Path Classes="icon" Width="20" Height="20" Stroke="{StaticResource Warn}" Data="{StaticResource IconDatabase}" VerticalAlignment="Center"/>
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="Block I/O r/w" FontSize="11" Foreground="{StaticResource TextFaint}"/>
+                        <TextBlock Text="{Binding BlockIoText}" FontSize="17" FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
+                                   Foreground="{StaticResource Text}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Tab content -->
+        <Panel Grid.Row="2" Margin="24,0,24,24">
+
+            <!-- Logs -->
+            <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsLogsSelected}">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="0,0,0,12">
+                    <Border Grid.Column="0" Height="34" HorizontalAlignment="Stretch" Margin="0,0,8,0"
+                            Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            CornerRadius="8" Padding="11,0">
+                        <DockPanel LastChildFill="True">
+                            <Path DockPanel.Dock="Left" Classes="icon" Width="14" Height="14" Stroke="{StaticResource TextFaint}"
+                                  Data="{StaticResource IconSearch}" VerticalAlignment="Center"/>
+                            <TextBox Classes="bare" Margin="8,0,0,0" PlaceholderText="Filter log lines…"
+                                     Text="{Binding LogFilter, Mode=TwoWay}"
+                                     VerticalAlignment="Center" Background="Transparent" BorderThickness="0"/>
+                        </DockPanel>
+                    </Border>
+                    <Button Grid.Column="1" Classes="pill" Classes.on="{Binding AutoScroll}" Margin="8,0,0,0"
+                            Command="{Binding ToggleFollowCommand}">Follow</Button>
+                    <Button Grid.Column="2" Classes="pill" Classes.on="{Binding ShowTimestamps}" Margin="8,0,0,0"
+                            Command="{Binding ToggleTimestampsCommand}">Timestamps</Button>
+                    <Button Grid.Column="3" Classes="pill" Classes.on="{Binding Wrap}" Margin="8,0,0,0"
+                            Command="{Binding ToggleWrapCommand}">Wrap</Button>
+                    <Button Grid.Column="4" Classes="pill" Margin="8,0,0,0" Command="{Binding ClearLogsCommand}">Clear</Button>
+                </Grid>
+
+                <Border Grid.Row="1" Background="#0A0D12" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="10"
+                        ClipToBounds="True">
+                    <ListBox x:Name="LogList" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
+                             SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="MinHeight" Value="0"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="#12FFFFFF"/>
+                            </Style>
+                        </ListBox.Styles>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LogLineViewModel">
+                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                    <TextBlock Text="{Binding Timestamp}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                               LineHeight="21" Foreground="{StaticResource TextFaint}"
+                                               IsVisible="{Binding #Root.((vm:ContainerDetailViewModel)DataContext).ShowTimestamps}"/>
+                                    <TextBlock Text="{Binding Level}" FontFamily="{StaticResource Mono}" FontSize="12.5" FontWeight="Bold"
+                                               LineHeight="21" Foreground="{Binding LevelBrush}" IsVisible="{Binding HasLevel}"/>
+                                    <TextBlock Text="{Binding Message}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="21"
+                                               Foreground="{Binding MessageBrush}"
+                                               TextWrapping="{Binding #Root.((vm:ContainerDetailViewModel)DataContext).LogWrapping}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Grid>
+
+            <!-- Stats -->
+            <ScrollViewer IsVisible="{Binding IsStatsSelected}">
+                <StackPanel Spacing="16">
+                    <Border Classes="card">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Memory" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource Text}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding MemUsedText}" FontFamily="{StaticResource Mono}" FontSize="13"
+                                               Foreground="{StaticResource Text}"/>
+                                    <TextBlock Text="{Binding MemLimitText}" FontFamily="{StaticResource Mono}" FontSize="13"
+                                               Foreground="{StaticResource TextFaint}"/>
+                                </StackPanel>
+                            </Grid>
+                            <ProgressBar Value="{Binding MemPercent}" Maximum="100" Height="8" CornerRadius="4"
+                                         Foreground="{StaticResource Accent}" Background="{StaticResource Surface2}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="card">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="CPU" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource Text}"/>
+                            <ProgressBar Value="{Binding CpuPercent}" Maximum="100" Height="8" CornerRadius="4"
+                                         Foreground="{StaticResource Info}" Background="{StaticResource Surface2}"/>
+                            <TextBlock Text="{Binding CpuText}" FontFamily="{StaticResource Mono}" FontSize="13" Foreground="{StaticResource TextDim}"/>
+                        </StackPanel>
+                    </Border>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <Border Grid.Column="0" Classes="card">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Network I/O (rx / tx)" FontSize="12" Foreground="{StaticResource TextFaint}"/>
+                                <TextBlock Text="{Binding NetIoText}" FontFamily="{StaticResource Mono}" FontSize="15"
+                                           Foreground="{StaticResource Text}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Classes="card">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Block I/O (read / write)" FontSize="12" Foreground="{StaticResource TextFaint}"/>
+                                <TextBlock Text="{Binding BlockIoText}" FontFamily="{StaticResource Mono}" FontSize="15"
+                                           Foreground="{StaticResource Text}"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Terminal (placeholder) -->
+            <StackPanel IsVisible="{Binding IsTerminalSelected}" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+                <Border Width="52" Height="52" CornerRadius="12" Background="{StaticResource Surface2}" HorizontalAlignment="Center">
+                    <Path Classes="icon" Width="24" Height="24" Stroke="{StaticResource TextDim}" Data="{StaticResource IconTerminal}"/>
+                </Border>
+                <TextBlock Text="Interactive shell is coming soon" FontSize="14.5" FontWeight="SemiBold"
+                           Foreground="{StaticResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="An attached exec session (stdin/stdout) needs a streaming CEAL contract — tracked as KON-35."
+                           FontSize="12.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" MaxWidth="380"
+                           TextAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <!-- Inspect (placeholder) -->
+            <StackPanel IsVisible="{Binding IsInspectSelected}" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+                <Border Width="52" Height="52" CornerRadius="12" Background="{StaticResource Surface2}" HorizontalAlignment="Center">
+                    <Path Classes="icon" Width="24" Height="24" Stroke="{StaticResource TextDim}" Data="{StaticResource IconInfo}"/>
+                </Border>
+                <TextBlock Text="Full inspect is coming soon" FontSize="14.5" FontWeight="SemiBold"
+                           Foreground="{StaticResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="Raw container config needs an InspectContainerAsync call added to the CEAL — tracked as KON-36."
+                           FontSize="12.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" MaxWidth="380"
+                           TextAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Panel>
+    </Grid>
+</UserControl>

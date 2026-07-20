@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Core.Models;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
 
@@ -13,6 +14,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private IReadOnlyList<EngineProbe> _probes = [];
     private IContainerEngine? _engine;
     private string _activeBackend = string.Empty;
+    private ContainerDetailViewModel? _detail;
 
     /// <summary>Design-time / default ctor uses a fake-only registry.</summary>
     public MainWindowViewModel()
@@ -80,6 +82,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (page is null)
             return;
 
+        DisposeDetail();
         CurrentPage = page;
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
@@ -119,7 +122,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
         RebuildEngineList();
 
-        Containers = new ContainersViewModel(_engine);
+        DisposeDetail();
+
+        Containers = new ContainersViewModel(_engine) { RequestOpenDetail = ShowContainerDetail };
         Images = new ImagesViewModel(_engine);
         Volumes = new VolumesViewModel(_engine);
         Networks = new NetworksViewModel(_engine);
@@ -141,6 +146,32 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (CurrentPage is IListPage page)
             await page.LoadAsync();
+    }
+
+    private void ShowContainerDetail(ContainerSummary summary)
+    {
+        if (_engine is null)
+            return;
+
+        DisposeDetail();
+        _detail = new ContainerDetailViewModel(_engine, summary, ShowContainers);
+        CurrentPage = _detail;
+    }
+
+    private void ShowContainers()
+    {
+        DisposeDetail();
+        if (Containers is null)
+            return;
+
+        CurrentPage = Containers;
+        SearchText = Containers.SearchText;
+    }
+
+    private void DisposeDetail()
+    {
+        _detail?.Dispose();
+        _detail = null;
     }
 
     [RelayCommand]

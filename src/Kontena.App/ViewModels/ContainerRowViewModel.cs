@@ -37,6 +37,9 @@ public partial class ContainerRowViewModel : ObservableObject
         }
     }
 
+    /// <summary>The underlying summary, handed to the detail page when opened.</summary>
+    public ContainerSummary Summary => _c;
+
     public string Id => _c.Id;
     public string Name => _c.Name;
     public string Image => _c.Image;
@@ -73,6 +76,9 @@ public partial class ContainerRowViewModel : ObservableObject
         CpuText = $"{s.CpuPercent:0.0}%";
         MemText = $"{s.MemoryUsedBytes / 1_000_000} MB";
     }
+
+    [RelayCommand]
+    private void Open() => _parent.OpenDetail(this);
 
     [RelayCommand]
     private Task Start() => _parent.StartAsync(Id);

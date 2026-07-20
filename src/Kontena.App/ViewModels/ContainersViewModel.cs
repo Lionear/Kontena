@@ -15,6 +15,11 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
     public ContainersViewModel(IContainerEngine engine) => _engine = engine;
 
+    /// <summary>Raised when a row is opened; the shell swaps in the detail page.</summary>
+    public Action<ContainerSummary>? RequestOpenDetail { get; set; }
+
+    public void OpenDetail(ContainerRowViewModel row) => RequestOpenDetail?.Invoke(row.Summary);
+
     private readonly List<ContainerRowViewModel> _all = [];
 
     // Event-driven refresh: engine events (from CLI or any other app) mark the
