@@ -142,6 +142,24 @@ internal static class Program
                 }
                 break;
 
+            case "pod":
+            case "pod-logs":
+                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("pods");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodsViewModel pods)
+                {
+                    pods.Pods.FirstOrDefault()?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                }
+                if (scene == "pod-logs" && vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
+                {
+                    detailVm.SelectTabCommand.Execute("logs");
+                    Settle(rounds: 30);
+                }
+                break;
+
             case "run":
                 vm.Containers?.RunContainerCommand.Execute(null);
                 break;

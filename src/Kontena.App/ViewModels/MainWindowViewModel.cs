@@ -8,6 +8,7 @@ using Kontena.App.Services;
 using Kontena.Core;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Core.Orchestration.Models;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
 
@@ -23,6 +24,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
     private ContainerDetailViewModel? _detail;
+    private ClusterPodDetailViewModel? _podDetail;
     private readonly ActivityLog _activityLog = new();
 
     /// <summary>Design-time / default ctor uses a fake-only registry.</summary>
@@ -422,7 +424,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             "nodes" => new ClusterNodesViewModel(_cluster),
             "namespaces" => new ClusterNamespacesViewModel(_cluster),
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace),
-            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace),
+            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace),
             _ => new ClusterOverviewViewModel(_cluster),
         };
@@ -581,6 +583,23 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         _detail?.Dispose();
         _detail = null;
+        _podDetail?.Dispose();
+        _podDetail = null;
+    }
+
+    /// <summary>Open the pod-detail page for a pod (logs / shell / events / YAML).</summary>
+    private void ShowPodDetail(Pod pod)
+    {
+        if (_cluster is null)
+            return;
+
+        DisposeDetail();
+
+        var current = _store.Load();
+        var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
+
+        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, () => NavigateCluster("pods"), font);
+        CurrentPage = _podDetail;
     }
 
     private async Task ShowRunDialogAsync(string? initialImage = null)

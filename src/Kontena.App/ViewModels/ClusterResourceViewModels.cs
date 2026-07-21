@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia.Media;
+using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Orchestration;
 using Kontena.Core.Orchestration.Models;
 
@@ -80,11 +81,16 @@ public partial class ClusterPodsViewModel : ViewModelBase
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
+    private readonly Action<Pod>? _onOpenDetail;
 
-    public ClusterPodsViewModel(IClusterEngine cluster, string? @namespace)
+    /// <param name="onOpenDetail">Invoked when a pod row is opened; the shell wires this to the
+    /// pod-detail page. Passed via the constructor (not an init-property) so it is set before the
+    /// fire-and-forget load builds the rows.</param>
+    public ClusterPodsViewModel(IClusterEngine cluster, string? @namespace, Action<Pod>? onOpenDetail = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
     }
 
@@ -94,7 +100,7 @@ public partial class ClusterPodsViewModel : ViewModelBase
     {
         Pods.Clear();
         foreach (var p in await _cluster.ListPodsAsync(_namespace))
-            Pods.Add(new PodRow(p));
+            Pods.Add(new PodRow(p, _onOpenDetail));
     }
 }
 
@@ -186,10 +192,15 @@ public sealed class WorkloadRow
     public IBrush StatusBrush { get; }
 }
 
-public sealed class PodRow
+public sealed partial class PodRow
 {
-    public PodRow(Pod p)
+    private readonly Pod _pod;
+    private readonly Action<Pod>? _open;
+
+    public PodRow(Pod p, Action<Pod>? open = null)
     {
+        _pod = p;
+        _open = open;
         Name = p.Name;
         Namespace = p.Namespace;
         Ready = $"{p.ReadyContainers}/{p.Containers.Count}";
@@ -215,6 +226,9 @@ public sealed class PodRow
     public string Node { get; }
     public string Age { get; }
     public IBrush StatusBrush { get; }
+
+    [RelayCommand]
+    private void Open() => _open?.Invoke(_pod);
 }
 
 public sealed class ServiceRow
