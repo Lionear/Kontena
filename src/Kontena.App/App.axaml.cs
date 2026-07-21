@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Kontena.Adapters.Docker;
+using Kontena.Adapters.Podman;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;

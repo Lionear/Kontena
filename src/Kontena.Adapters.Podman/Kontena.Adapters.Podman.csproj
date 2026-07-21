@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Kontena.Core\Kontena.Core.csproj" />
     <ProjectReference Include="..\Kontena.Engines\Kontena.Engines.csproj" />
+    <!-- Podman speaks the Docker API, so its provider reuses the Docker adapter's DockerEngine. -->
+    <ProjectReference Include="..\Kontena.Adapters.Docker\Kontena.Adapters.Docker.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

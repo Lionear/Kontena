@@ -1,6 +1,7 @@
+using Kontena.Adapters.Docker;
 using Kontena.Engines;
 
-namespace Kontena.Adapters.Docker;
+namespace Kontena.Adapters.Podman;
 
 /// <summary>
 /// Built-in provider for Podman. Podman exposes a Docker-compatible API socket, so it
