@@ -13,10 +13,10 @@ namespace Kontena.App.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
-    private readonly EngineRegistry _registry;
+    private readonly BackendRegistry _registry;
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
-    private IReadOnlyList<EngineProbe> _probes = [];
+    private IReadOnlyList<BackendProbe> _probes = [];
     private IContainerEngine? _engine;
     private string _activeBackend = string.Empty;
     private ContainerDetailViewModel? _detail;
@@ -24,16 +24,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     /// <summary>Design-time / default ctor uses a fake-only registry.</summary>
     public MainWindowViewModel()
-        : this(new EngineRegistry([new FakeEngineProvider()]))
+        : this(new BackendRegistry([new FakeEngineProvider()]))
     {
     }
 
-    public MainWindowViewModel(EngineRegistry registry)
+    public MainWindowViewModel(BackendRegistry registry)
         : this(registry, new SettingsStore(), new KontenaSettings())
     {
     }
 
-    public MainWindowViewModel(EngineRegistry registry, SettingsStore store, KontenaSettings settings)
+    public MainWindowViewModel(BackendRegistry registry, SettingsStore store, KontenaSettings settings)
     {
         _registry = registry;
         _store = store;
@@ -89,6 +89,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private string _engineName = "Connecting…";
     [ObservableProperty] private string _engineChip = "?";
+
+    /// <summary>Second line of the sidebar pill — the active backend's version/kind.</summary>
+    [ObservableProperty] private string _engineDetail = string.Empty;
+
+    /// <summary>Third line of the sidebar pill — the active backend's endpoint (socket/URL).</summary>
+    [ObservableProperty] private string _engineEndpoint = string.Empty;
 
     /// <summary>False until the first page is on screen (drives the connecting state).</summary>
     [ObservableProperty] private bool _isReady;
@@ -245,6 +251,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         EngineDownDetail = detail;
         EngineName = "No engine";
         EngineChip = "!";
+        EngineDetail = "not connected";
+        EngineEndpoint = string.Empty;
         CurrentPage = null;
     }
 
@@ -256,7 +264,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         await InitAsync();
     }
 
-    private async Task ActivateAsync(IEngineProvider provider)
+    private async Task ActivateAsync(IBackendProvider provider)
     {
         Containers?.StopWatching();
         _activityLog.Detach();
@@ -553,6 +561,22 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         foreach (var probe in _probes)
         {
             var isActive = probe.Provider.Backend == _activeBackend;
+            if (isActive)
+            {
+                // Detail is "{version} · {endpoint}" — split it so the endpoint sits on its own line.
+                var detail = probe.Detail ?? string.Empty;
+                var sep = detail.IndexOf(" · ", StringComparison.Ordinal);
+                if (sep >= 0)
+                {
+                    EngineDetail = detail[..sep];
+                    EngineEndpoint = detail[(sep + 3)..];
+                }
+                else
+                {
+                    EngineDetail = string.IsNullOrEmpty(detail) ? "engine" : detail;
+                    EngineEndpoint = string.Empty;
+                }
+            }
             Engines.Add(new EngineOption
             {
                 Backend = probe.Provider.Backend,

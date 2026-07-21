@@ -5,12 +5,12 @@ using Xunit;
 
 namespace Kontena.Engines.Tests;
 
-public class EngineRegistryTests
+public class BackendRegistryTests
 {
     [Fact]
     public async Task Probes_a_working_provider_as_connected()
     {
-        var probe = await EngineRegistry.ProbeAsync(new FakeEngineProvider());
+        var probe = await BackendRegistry.ProbeAsync(new FakeEngineProvider());
 
         Assert.True(probe.Connected);
         Assert.Equal("fake", probe.Provider.Backend);
@@ -19,7 +19,7 @@ public class EngineRegistryTests
     [Fact]
     public async Task Probes_an_unreachable_provider_as_not_connected()
     {
-        var probe = await EngineRegistry.ProbeAsync(new UnreachableProvider());
+        var probe = await BackendRegistry.ProbeAsync(new UnreachableProvider());
 
         Assert.False(probe.Connected);
         Assert.Equal("Not connected", probe.Detail);
@@ -28,7 +28,7 @@ public class EngineRegistryTests
     [Fact]
     public async Task ProbeAll_returns_one_result_per_provider()
     {
-        var registry = new EngineRegistry([new FakeEngineProvider(), new UnreachableProvider()]);
+        var registry = new BackendRegistry([new FakeEngineProvider(), new UnreachableProvider()]);
 
         var probes = await registry.ProbeAllAsync();
 
@@ -39,13 +39,13 @@ public class EngineRegistryTests
     [Fact]
     public void Register_adds_a_provider()
     {
-        var registry = new EngineRegistry([new FakeEngineProvider()]);
+        var registry = new BackendRegistry([new FakeEngineProvider()]);
         registry.Register(new UnreachableProvider());
 
         Assert.Equal(2, registry.Providers.Count);
     }
 
-    private sealed class UnreachableProvider : IEngineProvider
+    private sealed class UnreachableProvider : IBackendProvider
     {
         public string Backend => "dead";
         public string DisplayName => "Dead";

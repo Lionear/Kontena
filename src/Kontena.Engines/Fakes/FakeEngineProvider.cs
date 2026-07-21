@@ -1,7 +1,7 @@
 namespace Kontena.Engines.Fakes;
 
 /// <summary>Provider for the in-memory <see cref="FakeEngine"/> (dev/demo fallback).</summary>
-public sealed class FakeEngineProvider : IEngineProvider
+public sealed class FakeEngineProvider : IBackendProvider
 {
     private readonly string _backend;
     private readonly string _displayName;

@@ -28,7 +28,7 @@ public partial class App : Application
             DensityApplier.Apply(settings.CompactDensity);
 
             // Provider-based: the registry discovers backends (and, later, plugins).
-            var providers = new List<IEngineProvider>
+            var providers = new List<IBackendProvider>
             {
                 new DockerEngineProvider(),
                 new PodmanEngineProvider(),
@@ -43,7 +43,7 @@ public partial class App : Application
                 providers.Add(new FakeEngineProvider());
 #endif
 
-            var registry = new EngineRegistry(providers);
+            var registry = new BackendRegistry(providers);
 
             desktop.MainWindow = new MainWindow
             {

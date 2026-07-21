@@ -45,7 +45,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     private readonly Action _onInstallPodman;
 
     public OnboardingViewModel(
-        IReadOnlyList<EngineProbe> probes,
+        IReadOnlyList<BackendProbe> probes,
         string fakeBackend,
         bool autoDetect,
         Action<string?> onContinue,

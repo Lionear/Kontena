@@ -3,7 +3,7 @@ using Kontena.Engines;
 namespace Kontena.Adapters.Docker;
 
 /// <summary>Built-in provider for the Docker engine.</summary>
-public sealed class DockerEngineProvider : IEngineProvider
+public sealed class DockerEngineProvider : IBackendProvider
 {
     public string Backend => "docker";
     public string DisplayName => "Docker";

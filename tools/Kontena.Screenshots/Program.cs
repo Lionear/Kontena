@@ -65,7 +65,7 @@ internal static class Program
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
-            var registry = new EngineRegistry([new FakeEngineProvider("docker", "Docker", "D")]);
+            var registry = new BackendRegistry([new FakeEngineProvider("docker", "Docker", "D")]);
             var viewModel = new MainWindowViewModel(registry, new SettingsStore(), settings);
 
             var window = new MainWindow

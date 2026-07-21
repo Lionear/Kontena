@@ -7,7 +7,7 @@ namespace Kontena.Adapters.Podman;
 /// Built-in provider for Podman. Podman exposes a Docker-compatible API socket, so it
 /// reuses <see cref="DockerEngine"/> pointed at the Podman socket with a Podman identity.
 /// </summary>
-public sealed class PodmanEngineProvider : IEngineProvider
+public sealed class PodmanEngineProvider : IBackendProvider
 {
     public string Backend => "podman";
     public string DisplayName => "Podman";
