@@ -32,6 +32,18 @@ internal static class Format
         _ => char.ToUpperInvariant(source[0]) + source[1..],
     };
 
+    /// <summary>Compact, k8s-style age from a duration, e.g. "9d", "30h", "12m", "45s".</summary>
+    public static string Duration(TimeSpan age)
+    {
+        if (age < TimeSpan.Zero)
+            age = TimeSpan.Zero;
+
+        if (age.TotalDays >= 1) return $"{(int)age.TotalDays}d";
+        if (age.TotalHours >= 1) return $"{(int)age.TotalHours}h";
+        if (age.TotalMinutes >= 1) return $"{(int)age.TotalMinutes}m";
+        return $"{(int)age.TotalSeconds}s";
+    }
+
     public static string Age(DateTimeOffset when)
     {
         var delta = DateTimeOffset.UtcNow - when;

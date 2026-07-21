@@ -202,6 +202,12 @@
             <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        <!-- Table column header (cluster resource grids) -->
+        <Style Selector="TextBlock.colhead">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
         <Style Selector="TextBlock.ivalue">
             <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
             <Setter Property="FontSize" Value="12.5"/>
