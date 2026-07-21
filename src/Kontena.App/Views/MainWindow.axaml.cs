@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Kontena.App.Services;
 
 namespace Kontena.App.Views;
@@ -61,8 +62,11 @@ public partial class MainWindow : Window
     }
 
     // Picking a backend (or the "add…" row) should dismiss the switcher flyout — a Button click
-    // inside a Flyout doesn't close it on its own.
-    private void OnSwitcherItemClick(object? sender, RoutedEventArgs e) => BackendPill.Flyout?.Hide();
+    // inside a Flyout doesn't close it on its own. Defer the close to the next dispatcher tick so
+    // the button's Command (the actual switch) runs first; hiding synchronously here cancels the
+    // click before the command executes.
+    private void OnSwitcherItemClick(object? sender, RoutedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
