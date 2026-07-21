@@ -414,19 +414,23 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
 
-        // Overview is a real view; the per-resource browsers land in KON-73.
+        // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker. Pod detail,
+        // workload actions, and the apply flow are their own tickets (KON-69/70/71).
         CurrentPage = key switch
         {
             "overview" => new ClusterOverviewViewModel(_cluster),
-            "nodes" => new ClusterPlaceholderViewModel("Nodes"),
-            "namespaces" => new ClusterPlaceholderViewModel("Namespaces"),
-            "workloads" => new ClusterPlaceholderViewModel("Workloads"),
-            "pods" => new ClusterPlaceholderViewModel("Pods"),
-            "services" => new ClusterPlaceholderViewModel("Services"),
+            "nodes" => new ClusterNodesViewModel(_cluster),
+            "namespaces" => new ClusterNamespacesViewModel(_cluster),
+            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace),
+            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace),
+            "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace),
             _ => new ClusterOverviewViewModel(_cluster),
         };
         SearchText = string.Empty;
     }
+
+    /// <summary>The namespace filter, or null when "All namespaces" is selected.</summary>
+    private string? ActiveNamespace => SelectedNamespace is null or AllNamespaces ? null : SelectedNamespace;
 
     private async Task UpdateClusterNavCountsAsync()
     {
@@ -444,8 +448,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     partial void OnSelectedNamespaceChanged(string? value)
     {
-        if (IsClusterMode)
-            _ = UpdateClusterNavCountsAsync();
+        if (!IsClusterMode)
+            return;
+
+        // Reload the visible namespaced grid and refresh the nav counts.
+        var key = NavItems.FirstOrDefault(i => i.IsSelected)?.Key ?? "overview";
+        NavigateCluster(key);
+        _ = UpdateClusterNavCountsAsync();
     }
 
     /// <summary>Best-effort friendly name for an event's resource, from the loaded container list.</summary>

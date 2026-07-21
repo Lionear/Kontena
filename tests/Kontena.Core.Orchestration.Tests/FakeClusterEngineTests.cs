@@ -15,7 +15,7 @@ public class FakeClusterEngineTests
     [Fact]
     public void Is_a_backend_and_reports_its_id()
     {
-        IBackend backend = NewCluster();
+        var backend = Assert.IsAssignableFrom<IBackend>(NewCluster());
         Assert.Equal("kubernetes", backend.Backend);
     }
 

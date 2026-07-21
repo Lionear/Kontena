@@ -127,9 +127,19 @@ internal static class Program
                 break;
 
             case "cluster":
+            case "cluster-nodes":
+            case "cluster-namespaces":
+            case "cluster-workloads":
+            case "cluster-pods":
+            case "cluster-services":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                if (scene.StartsWith("cluster-", StringComparison.Ordinal))
+                {
+                    vm.NavigateCommand.Execute(scene["cluster-".Length..]);
+                    Settle(rounds: 30);
+                }
                 break;
 
             case "run":
