@@ -160,6 +160,48 @@ internal static class Program
                 }
                 break;
 
+            case "scale":
+                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("workloads");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel wl)
+                {
+                    wl.Workloads.FirstOrDefault(w => w.CanScale)?.ScaleCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+                break;
+
+            case "restart":
+                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("workloads");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel wlr)
+                {
+                    wlr.Workloads.FirstOrDefault(w => w.CanRestart)?.RestartCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+                break;
+
+            case "portforward":
+            case "portforward-active":
+                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("services");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterServicesViewModel svc)
+                {
+                    svc.Services.FirstOrDefault(s => s.CanForward)?.ForwardCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+                if (scene == "portforward-active" && vm.Dialog is Kontena.App.ViewModels.PortForwardViewModel pf)
+                {
+                    pf.StartCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+                break;
+
             case "run":
                 vm.Containers?.RunContainerCommand.Execute(null);
                 break;
