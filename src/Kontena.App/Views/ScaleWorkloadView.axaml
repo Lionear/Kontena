@@ -6,6 +6,23 @@
              mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="280"
              x:Class="Kontena.App.Views.ScaleWorkloadView"
              x:DataType="vm:ScaleWorkloadViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Button.stepper">
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="Button.stepper:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+    </UserControl.Styles>
+
     <Border Width="460" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
             BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <StackPanel>
@@ -17,22 +34,27 @@
                     </TextBlock>
                 </StackPanel>
 
-                <StackPanel Spacing="8">
+                <StackPanel Spacing="9">
                     <TextBlock Text="Replicas" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                        <Button Classes="qa" Width="38" Height="38" Command="{Binding DecrementCommand}">
-                            <TextBlock Text="−" FontSize="20" Foreground="{DynamicResource TextDim}"/>
-                        </Button>
-                        <Border Width="86" Height="38" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="8">
-                            <TextBlock Text="{Binding Replicas}" FontFamily="{StaticResource Mono}" FontSize="18" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Text}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                        <Border Height="42" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Classes="stepper" Command="{Binding DecrementCommand}">
+                                    <TextBlock Text="−" FontSize="19"/>
+                                </Button>
+                                <Border Width="1" Background="{DynamicResource Border}"/>
+                                <TextBlock Text="{Binding Replicas}" Width="64" FontFamily="{StaticResource Mono}" FontSize="17"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+                                <Border Width="1" Background="{DynamicResource Border}"/>
+                                <Button Classes="stepper" Command="{Binding IncrementCommand}">
+                                    <TextBlock Text="+" FontSize="17"/>
+                                </Button>
+                            </StackPanel>
                         </Border>
-                        <Button Classes="qa" Width="38" Height="38" Command="{Binding IncrementCommand}">
-                            <TextBlock Text="+" FontSize="18" Foreground="{DynamicResource TextDim}"/>
-                        </Button>
                         <TextBlock VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource TextFaint}">
-                            <Run Text="currently "/><Run Text="{Binding CurrentReplicas}" FontFamily="{StaticResource Mono}"/>
+                            <Run Text="currently "/><Run Text="{Binding CurrentReplicas}" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"/>
                         </TextBlock>
                     </StackPanel>
                 </StackPanel>
