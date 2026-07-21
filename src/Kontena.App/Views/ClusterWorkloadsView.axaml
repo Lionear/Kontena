@@ -12,7 +12,7 @@
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="2*,1.2*,1*,0.8*,1.1*,0.7*,Auto">
+                        <Grid ColumnDefinitions="2*,1.2*,1*,0.8*,1.1*,0.7*,168">
                             <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
                             <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
                             <TextBlock Grid.Column="2" Text="KIND" Classes="colhead"/>
@@ -26,7 +26,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:WorkloadRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="2*,1.2*,1*,0.8*,1.1*,0.7*,Auto">
+                                    <Grid ColumnDefinitions="2*,1.2*,1*,0.8*,1.1*,0.7*,168">
                                         <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="2" Text="{Binding Kind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
