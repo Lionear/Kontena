@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Kontena.App.Services;
 
 namespace Kontena.App.Views;
@@ -58,6 +59,10 @@ public partial class MainWindow : Window
         _normalX = Position.X;
         _normalY = Position.Y;
     }
+
+    // Picking a backend (or the "add…" row) should dismiss the switcher flyout — a Button click
+    // inside a Flyout doesn't close it on its own.
+    private void OnSwitcherItemClick(object? sender, RoutedEventArgs e) => BackendPill.Flyout?.Hide();
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
