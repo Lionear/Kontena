@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Docker.DotNet;
 using Docker.DotNet.Models;
+using Kontena.Core.Models;
 using Kontena.Engines;
 
 namespace Kontena.Adapters.Docker;

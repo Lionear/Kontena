@@ -1,18 +1,26 @@
 namespace Kontena.Core.Models;
 
-/// <summary>Identity and health of a connected engine.</summary>
-public sealed record EngineInfo
+/// <summary>
+/// Identity and health of a connected backend — engine or cluster. This is the shared
+/// shape the switcher chrome and title bar read for any backend; richer per-axis detail
+/// (e.g. a cluster's distribution and node count) lives on derived records like
+/// <c>ClusterInfo</c>. Returned by <see cref="IBackend.GetInfoAsync"/>.
+/// </summary>
+public record BackendInfo
 {
-    /// <summary>Backend id, e.g. "docker" or "podman".</summary>
+    /// <summary>Backend id, e.g. "docker", "podman", "kubernetes".</summary>
     public required string Backend { get; init; }
 
-    /// <summary>Display name, e.g. "Docker".</summary>
+    /// <summary>Display name, e.g. "Docker" or a kube-context name.</summary>
     public required string DisplayName { get; init; }
 
-    /// <summary>Engine version string.</summary>
+    /// <summary>Human label for the kind of backend, e.g. "container engine" or "Kubernetes".</summary>
+    public string Kind { get; init; } = string.Empty;
+
+    /// <summary>Backend version string (engine version, or cluster server version).</summary>
     public string Version { get; init; } = string.Empty;
 
-    /// <summary>Endpoint Kontena talks to (socket path or pipe).</summary>
+    /// <summary>Endpoint Kontena talks to (socket path, pipe, or API server URL).</summary>
     public string Endpoint { get; init; } = string.Empty;
 
     /// <summary>Current connection state.</summary>

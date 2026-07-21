@@ -57,14 +57,15 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         ? new Uri("npipe://./pipe/docker_engine")
         : new Uri("unix:///var/run/docker.sock");
 
-    public ValueTask<EngineInfo> GetInfoAsync(CancellationToken ct = default) =>
+    public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         Exec(async () =>
         {
             var version = await _client.System.GetVersionAsync(ct).ConfigureAwait(false);
-            return new EngineInfo
+            return new BackendInfo
             {
                 Backend = _backend,
                 DisplayName = _displayName,
+                Kind = "container engine",
                 Version = version.Version,
                 Endpoint = _endpoint.ToString(),
                 ConnectionState = EngineConnectionState.Connected,

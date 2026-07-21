@@ -40,11 +40,12 @@ public sealed class FakeEngine : IContainerEngine
         SupportsEvents = true,
     };
 
-    public ValueTask<EngineInfo> GetInfoAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult(new EngineInfo
+    public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult(new BackendInfo
         {
             Backend = Backend,
             DisplayName = _displayName,
+            Kind = "container engine",
             Version = "0.1.0",
             Endpoint = "memory://",
             ConnectionState = EngineConnectionState.Connected,

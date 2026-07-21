@@ -1,3 +1,4 @@
+using Kontena.Core;
 using Kontena.Core.Models;
 
 namespace Kontena.Engines;
@@ -18,19 +19,10 @@ namespace Kontena.Engines;
 /// Every operation is asynchronous and honors its <see cref="CancellationToken"/>.
 /// Failures surface as typed <see cref="Kontena.Core.Errors.EngineException"/>s.
 /// </summary>
-public interface IContainerEngine
+public interface IContainerEngine : IBackend
 {
-    /// <summary>Backend id, e.g. "docker" or "podman".</summary>
-    string Backend { get; }
-
     /// <summary>What this engine supports; the UI queries this to adapt.</summary>
     EngineCapabilities Capabilities { get; }
-
-    /// <summary>Identity and current health of the engine.</summary>
-    ValueTask<EngineInfo> GetInfoAsync(CancellationToken ct = default);
-
-    /// <summary>Lightweight connectivity check. Throws when unreachable.</summary>
-    ValueTask PingAsync(CancellationToken ct = default);
 
     // ── Containers ──────────────────────────────────────────────────────────
 

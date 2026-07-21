@@ -4,12 +4,14 @@
     <Project Path="src/Kontena.Adapters.Podman/Kontena.Adapters.Podman.csproj" />
     <Project Path="src/Kontena.App/Kontena.App.csproj" />
     <Project Path="src/Kontena.Core/Kontena.Core.csproj" />
+    <Project Path="src/Kontena.Core.Orchestration/Kontena.Core.Orchestration.csproj" />
     <Project Path="src/Kontena.Engines/Kontena.Engines.csproj" />
     <Project Path="src/Kontena.Sdk/Kontena.Sdk.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj" />
     <Project Path="tests/Kontena.Core.Tests/Kontena.Core.Tests.csproj" />
+    <Project Path="tests/Kontena.Core.Orchestration.Tests/Kontena.Core.Orchestration.Tests.csproj" />
     <Project Path="tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj" />
   </Folder>
 </Solution>

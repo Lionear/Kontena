@@ -1,4 +1,4 @@
-namespace Kontena.Engines;
+namespace Kontena.Core.Models;
 
 /// <summary>
 /// A live, attached exec session: a duplex byte channel to a process running
@@ -9,8 +9,9 @@ namespace Kontena.Engines;
 /// <see cref="ResizeAsync"/>, and read <see cref="ExitCode"/> once the process
 /// ends. Disposing tears the session down and detaches from the container.
 /// </para>
-/// This is the streaming counterpart to <see cref="IContainerEngine.ExecAsync"/>,
-/// which only runs a one-shot command and returns its exit code.
+/// This is the streaming counterpart to a one-shot exec (which just runs a
+/// command and returns its exit code). Shared by both the CEAL (container exec)
+/// and the OAL (pod exec) — the duplex PTY channel is identical.
 /// </summary>
 public interface IExecSession : IAsyncDisposable
 {

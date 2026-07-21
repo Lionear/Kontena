@@ -1,5 +1,6 @@
 using System.Text;
 using System.Threading.Channels;
+using Kontena.Core.Models;
 
 namespace Kontena.Engines.Fakes;
 
