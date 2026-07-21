@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Formats.Tar;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
@@ -345,79 +344,40 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
     public async IAsyncEnumerable<BuildProgress> BuildImageAsync(
         BuildRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var parameters = new ImageBuildParameters
+        if (!Directory.Exists(request.ContextPath))
         {
-            Tags = [request.Tag],
-            Dockerfile = request.Dockerfile,
-            Target = string.IsNullOrWhiteSpace(request.Target) ? null : request.Target,
-            BuildArgs = new Dictionary<string, string>(request.BuildArgs),
-            NoCache = request.NoCache,
-            Pull = request.Pull ? "true" : null,
-            Remove = true,
-        };
-
-        // Docker's /build endpoint wants the context as a tar stream.
-        using var context = new MemoryStream();
-        var tarError = default(string);
-        try
-        {
-            TarFile.CreateFromDirectory(request.ContextPath, context, includeBaseDirectory: false);
-            context.Position = 0;
-        }
-        catch (Exception ex)
-        {
-            tarError = $"Could not read build context: {ex.Message}";
-        }
-
-        if (tarError is not null)
-        {
-            yield return new BuildProgress(string.Empty, tarError);
+            yield return new BuildProgress(string.Empty, $"Build context not found: {request.ContextPath}");
             yield break;
         }
 
-        var channel = Channel.CreateUnbounded<BuildProgress>();
-        var progress = new ChannelBuildProgress(channel.Writer);
+        // Drive the engine's `build` CLI from the context dir: it honors .dockerignore natively
+        // and streams the context itself — no in-memory tar. Docker gets BuildKit's fine-grained,
+        // line-based progress; Podman drives Buildah (which prints its own STEP output).
+        var isDocker = string.Equals(_backend, "docker", StringComparison.Ordinal);
+        var dockerfile = string.IsNullOrWhiteSpace(request.Dockerfile) ? "Dockerfile" : request.Dockerfile;
 
-        var build = Task.Run(async () =>
+        var args = new List<string> { "build" };
+        if (isDocker)
+            args.Add("--progress=plain");
+        args.Add("-f"); args.Add(dockerfile);
+        args.Add("-t"); args.Add(request.Tag);
+        if (!string.IsNullOrWhiteSpace(request.Target)) { args.Add("--target"); args.Add(request.Target!); }
+        if (request.NoCache) args.Add("--no-cache");
+        if (request.Pull) args.Add("--pull");
+        foreach (var (key, value) in request.BuildArgs)
         {
-            try
-            {
-                await _client.Images.BuildImageFromDockerfileAsync(
-                    parameters, context, null, null, progress, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                channel.Writer.TryWrite(new BuildProgress(string.Empty, ex.Message));
-            }
-            finally
-            {
-                channel.Writer.TryComplete();
-            }
-        }, CancellationToken.None);
-
-        await foreach (var item in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            yield return item;
-
-        try { await build.ConfigureAwait(false); }
-        catch { /* surfaced through the channel already */ }
-    }
-
-    /// <summary>Forwards Docker build messages to a channel, in order, on the reading thread.</summary>
-    private sealed class ChannelBuildProgress(ChannelWriter<BuildProgress> writer) : IProgress<JSONMessage>
-    {
-        public void Report(JSONMessage message)
-        {
-            var error = message.Error?.Message ?? message.ErrorMessage;
-            if (!string.IsNullOrEmpty(error))
-            {
-                writer.TryWrite(new BuildProgress(string.Empty, error));
-                return;
-            }
-
-            var text = (message.Stream ?? message.Status ?? string.Empty).TrimEnd('\n', '\r');
-            if (text.Length > 0)
-                writer.TryWrite(new BuildProgress(text));
+            args.Add("--build-arg");
+            args.Add($"{key}={value}");
         }
+        args.Add("."); // context = working dir; its .dockerignore applies
+
+        var env = isDocker
+            ? new Dictionary<string, string> { ["DOCKER_BUILDKIT"] = "1" }
+            : null;
+
+        await foreach (var line in RunCliAsync(_backend, args, request.ContextPath, env, "build", ct)
+                           .ConfigureAwait(false))
+            yield return new BuildProgress(line.Text, line.Error);
     }
 
     // ── Volumes ─────────────────────────────────────────────────────────────
@@ -637,18 +597,23 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         if (request.Build) args.Add("--build");
         if (request.ForceRecreate) args.Add("--force-recreate");
 
-        await foreach (var line in RunComposeAsync(_backend, args, Path.GetDirectoryName(file), ct)
+        await foreach (var line in RunCliAsync(_backend, args, Path.GetDirectoryName(file), null, "compose", ct)
                            .ConfigureAwait(false))
-            yield return line;
+            yield return new ComposeProgress(line.Text, line.Error);
     }
 
+    /// <summary>One merged stdout/stderr line from a CLI run; <see cref="Error"/> marks a failure.</summary>
+    private readonly record struct CliLine(string Text, string? Error);
+
     /// <summary>
-    /// Run the engine's Compose CLI, merging stdout and stderr into a single line stream.
-    /// Compose writes progress to stderr, so both are surfaced. A non-zero exit and a
-    /// missing CLI both come back as an error <see cref="ComposeProgress"/> line.
+    /// Run an external CLI (<c>docker</c>/<c>podman</c> with a subcommand), merging stdout and
+    /// stderr into a single line stream — both matter, since Compose and BuildKit write progress
+    /// to stderr. Cancellation kills the whole process tree; a non-zero exit and a missing CLI
+    /// both surface as an error line. <paramref name="what"/> names the subcommand for that message.
     /// </summary>
-    private static async IAsyncEnumerable<ComposeProgress> RunComposeAsync(
+    private static async IAsyncEnumerable<CliLine> RunCliAsync(
         string exe, IReadOnlyList<string> args, string? workingDir,
+        IReadOnlyDictionary<string, string>? env, string what,
         [EnumeratorCancellation] CancellationToken ct)
     {
         var psi = new ProcessStartInfo
@@ -663,6 +628,9 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             psi.WorkingDirectory = workingDir;
         foreach (var a in args)
             psi.ArgumentList.Add(a);
+        if (env is not null)
+            foreach (var (key, value) in env)
+                psi.Environment[key] = value;
 
         var process = new Process { StartInfo = psi };
 
@@ -679,8 +647,8 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         if (startError is not null)
         {
             process.Dispose();
-            yield return new ComposeProgress(
-                $"Could not start '{exe} compose' — is the {exe} CLI (with the Compose plugin) installed and on PATH?  ({startError})",
+            yield return new CliLine(
+                $"Could not start '{exe} {what}' — is the {exe} CLI installed and on PATH?  ({startError})",
                 "cli-missing");
             yield break;
         }
@@ -691,7 +659,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             catch { /* already gone */ }
         });
 
-        var channel = Channel.CreateUnbounded<ComposeProgress>(new UnboundedChannelOptions { SingleReader = true });
+        var channel = Channel.CreateUnbounded<CliLine>(new UnboundedChannelOptions { SingleReader = true });
 
         async Task PumpAsync(TextReader reader)
         {
@@ -699,7 +667,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             {
                 string? line;
                 while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
-                    channel.Writer.TryWrite(new ComposeProgress(line));
+                    channel.Writer.TryWrite(new CliLine(line, null));
             }
             catch (OperationCanceledException) { /* stream torn down on cancel */ }
         }
@@ -720,8 +688,8 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 try { code = process.ExitCode; }
                 catch { /* killed before exit */ }
                 if (code != 0 && !ct.IsCancellationRequested)
-                    channel.Writer.TryWrite(new ComposeProgress(
-                        $"Compose exited with code {code.ToString(System.Globalization.CultureInfo.InvariantCulture)}.", "exit-nonzero"));
+                    channel.Writer.TryWrite(new CliLine(
+                        $"{exe} {what} exited with code {code.ToString(System.Globalization.CultureInfo.InvariantCulture)}.", "exit-nonzero"));
                 channel.Writer.TryComplete();
                 process.Dispose();
             }

@@ -102,9 +102,32 @@
                         </StackPanel>
                         <StackPanel>
                             <TextBlock Classes="flabel" Text="Build context  (defaults to the Dockerfile's folder)"/>
-                            <Grid ColumnDefinitions="*,Auto">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
                                 <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding ContextPath, Mode=TwoWay}" PlaceholderText="/path/to/context"/>
-                                <Button Grid.Column="1" Classes="ghost" Padding="12,8" Margin="8,0,0,0" Click="OnBrowseContextClick" ToolTip.Tip="Choose folder">
+                                <Button Grid.Column="1" Classes="ghost" Padding="12,8" Margin="8,0,0,0"
+                                        IsVisible="{Binding HasRecentContexts}" ToolTip.Tip="Recent contexts">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconClock}"/>
+                                        <TextBlock Text="Recent" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <ItemsControl ItemsSource="{Binding RecentContexts}" MaxWidth="460">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="x:String">
+                                                        <Button Classes="link" Padding="6,5" HorizontalAlignment="Stretch"
+                                                                Command="{Binding #BuildRoot.((vm:BuildImageViewModel)DataContext).UseRecentContextCommand}"
+                                                                CommandParameter="{Binding}">
+                                                            <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                                       Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <Button Grid.Column="2" Classes="ghost" Padding="12,8" Margin="8,0,0,0" Click="OnBrowseContextClick" ToolTip.Tip="Choose folder">
                                     <StackPanel Orientation="Horizontal" Spacing="7">
                                         <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconFolder}"/>
                                         <TextBlock Text="Browse" VerticalAlignment="Center"/>

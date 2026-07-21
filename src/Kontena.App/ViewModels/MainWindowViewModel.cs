@@ -473,11 +473,28 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (_engine is null)
             return;
 
-        Dialog = new BuildImageViewModel(_engine, CloseDialog, onRun: image =>
-        {
-            CloseDialog();
-            _ = ShowRunDialogAsync(image);
-        });
+        Dialog = new BuildImageViewModel(_engine, CloseDialog,
+            onRun: image =>
+            {
+                CloseDialog();
+                _ = ShowRunDialogAsync(image);
+            },
+            recentContexts: _settings.RecentBuildContexts,
+            onContextUsed: RecordRecentContext);
+    }
+
+    /// <summary>Remember a just-used build context, most-recent first, capped to a short list.</summary>
+    private void RecordRecentContext(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        var recent = new List<string> { path };
+        recent.AddRange(_settings.RecentBuildContexts
+            .Where(c => !string.Equals(c, path, StringComparison.Ordinal)));
+
+        _settings = _settings with { RecentBuildContexts = recent.Take(6).ToList() };
+        _store.Save(_settings);
     }
 
     private void ShowComposeUpDialog()

@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **BuildKit build output** — the Build flow now drives the engine's `build` CLI with BuildKit
+  (parallel stages, per-step cache hits, fine-grained progress) instead of the classic builder.
+  The build context is read directly from disk, so `.dockerignore` is honoured natively and large
+  contexts no longer inflate an in-memory tar. Recently used build contexts are remembered and
+  offered as quick-picks. (KON-60)
 - **Run modal recipes** — a curated, data-driven catalog for popular images (postgres, mysql,
   mariadb, mongo, redis, rabbitmq, nginx, …) pre-fills the *required* environment variables that
   image metadata can't express, plus a suggested name and default ports/volumes. Required-but-empty

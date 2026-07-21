@@ -31,12 +31,17 @@ public class KontenaSettingsTests
             DefaultEngine = "podman",
             LaunchAtLogin = true,
             TerminalLigatures = true,
+            RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
         };
 
         var json = JsonSerializer.Serialize(original, Options);
         var restored = JsonSerializer.Deserialize<KontenaSettings>(json, Options);
 
-        Assert.Equal(original, restored);
+        Assert.NotNull(restored);
+        // The list is a reference-typed member (record equality won't compare its contents),
+        // so verify it by sequence, then compare the scalar members with the lists aligned.
+        Assert.Equal(original.RecentBuildContexts, restored!.RecentBuildContexts);
+        Assert.Equal(original with { RecentBuildContexts = restored.RecentBuildContexts }, restored);
     }
 
     [Fact]

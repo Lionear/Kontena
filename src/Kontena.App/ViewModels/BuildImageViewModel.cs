@@ -24,17 +24,40 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
     private readonly IContainerEngine _engine;
     private readonly Action _onClose;
     private readonly Action<string> _onRun;
+    private readonly Action<string>? _onContextUsed;
     private readonly Stopwatch _elapsed = new();
 
     private CancellationTokenSource? _cts;
     private BuildStepViewModel? _current;
     private bool _cacheHit;
 
-    public BuildImageViewModel(IContainerEngine engine, Action onClose, Action<string> onRun)
+    public BuildImageViewModel(
+        IContainerEngine engine,
+        Action onClose,
+        Action<string> onRun,
+        IReadOnlyList<string>? recentContexts = null,
+        Action<string>? onContextUsed = null)
     {
         _engine = engine;
         _onClose = onClose;
         _onRun = onRun;
+        _onContextUsed = onContextUsed;
+
+        if (recentContexts is not null)
+            foreach (var path in recentContexts)
+                RecentContexts.Add(path);
+    }
+
+    /// <summary>Recently used build-context folders, offered as quick-picks.</summary>
+    public ObservableCollection<string> RecentContexts { get; } = [];
+
+    public bool HasRecentContexts => RecentContexts.Count > 0;
+
+    [RelayCommand]
+    private void UseRecentContext(string path)
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+            ContextPath = path;
     }
 
     // ── Config ────────────────────────────────────────────────────────────────
@@ -209,7 +232,8 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
             ProgressPercent = step.Total > 0 ? 100.0 * step.Number / step.Total : 0;
             StatusLine = $"Step {step.Number} of {step.Total} · {step.Instruction}";
         }
-        else if (line.Contains("Using cache", StringComparison.Ordinal))
+        else if (line.Contains("Using cache", StringComparison.Ordinal) // classic
+                 || line.Contains("CACHED", StringComparison.Ordinal))   // BuildKit
         {
             _cacheHit = true;
         }
@@ -224,6 +248,7 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
         ProgressPercent = 100;
         StatusLine = $"Built {Tag.Trim()}";
         ElapsedText = FormatElapsed(_elapsed.Elapsed);
+        _onContextUsed?.Invoke(ContextPath.Trim());
     }
 
     private void Fail(string message)
@@ -257,23 +282,58 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void Close() => _onClose();
 
+    /// <summary>
+    /// Recognise a step-start line across builders: classic (<c>Step 3/14 : RUN …</c>),
+    /// Buildah/Podman (<c>STEP 3/14: RUN …</c>) and BuildKit plain (<c>#12 [4/6] RUN …</c>).
+    /// </summary>
     private static (int Number, int Total, string Instruction)? ParseStep(string line)
     {
-        if (!line.StartsWith("Step ", StringComparison.Ordinal))
-            return null;
+        var s = line.Trim();
 
-        var colon = line.IndexOf(" : ", StringComparison.Ordinal);
-        if (colon < 0)
-            return null;
+        // Classic builder: "Step 3/14 : RUN ..."
+        if (s.StartsWith("Step ", StringComparison.Ordinal))
+        {
+            var colon = s.IndexOf(" : ", StringComparison.Ordinal);
+            return colon > 0 && TryCounts(s["Step ".Length..colon], out var n, out var m)
+                ? (n, m, s[(colon + 3)..].Trim())
+                : null;
+        }
 
-        var counts = line["Step ".Length..colon].Trim();
-        var slash = counts.IndexOf('/');
-        if (slash < 0
-            || !int.TryParse(counts[..slash], out var n)
-            || !int.TryParse(counts[(slash + 1)..], out var m))
-            return null;
+        // Buildah (Podman): "STEP 3/14: RUN ..."
+        if (s.StartsWith("STEP ", StringComparison.Ordinal))
+        {
+            var colon = s.IndexOf(':', StringComparison.Ordinal);
+            return colon > 0 && TryCounts(s["STEP ".Length..colon], out var n, out var m)
+                ? (n, m, s[(colon + 1)..].Trim())
+                : null;
+        }
 
-        return (n, m, line[(colon + 3)..].Trim());
+        // BuildKit --progress=plain: "#12 [4/6] RUN ..." or "#12 [builder 4/6] RUN ..."
+        if (s.StartsWith('#'))
+        {
+            var open = s.IndexOf('[', StringComparison.Ordinal);
+            var close = s.IndexOf(']', StringComparison.Ordinal);
+            if (open > 0 && close > open)
+            {
+                var inside = s[(open + 1)..close].Trim();
+                var space = inside.LastIndexOf(' '); // drop an optional stage name
+                var counts = space >= 0 ? inside[(space + 1)..] : inside;
+                if (TryCounts(counts, out var n, out var m))
+                    return (n, m, s[(close + 1)..].Trim());
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryCounts(string text, out int number, out int total)
+    {
+        number = total = 0;
+        var t = text.Trim();
+        var slash = t.IndexOf('/');
+        return slash > 0
+            && int.TryParse(t[..slash].Trim(), out number)
+            && int.TryParse(t[(slash + 1)..].Trim(), out total);
     }
 
     private static string FormatElapsed(TimeSpan elapsed) =>

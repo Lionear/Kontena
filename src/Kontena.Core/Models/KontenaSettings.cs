@@ -42,6 +42,9 @@ public sealed record KontenaSettings
     /// <summary>Enable programming-font ligatures in the terminal.</summary>
     public bool TerminalLigatures { get; init; } = true;
 
+    /// <summary>Recently used build-context folders, most-recent first (for the Build modal).</summary>
+    public IReadOnlyList<string> RecentBuildContexts { get; init; } = [];
+
     // ── Window placement (restored on launch) ─────────────────────────────────
 
     public double? WindowWidth { get; init; }
