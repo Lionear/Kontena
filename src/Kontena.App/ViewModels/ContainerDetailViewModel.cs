@@ -15,7 +15,7 @@ namespace Kontena.App.ViewModels;
 /// (Terminal and Inspect are placeholders pending KON-35 / KON-36). Streams logs
 /// and stats from the active engine over the CEAL for as long as it is on screen.
 /// </summary>
-public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
+public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITerminalHost
 {
     private const int MaxLogLines = 2000;
 

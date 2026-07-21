@@ -25,7 +25,7 @@ namespace Kontena.App.Views;
     Justification = "Control lifetime is bound to DetachedFromVisualTree, which tears the session and CTS down; controls are not IDisposable.")]
 public partial class TerminalView : UserControl
 {
-    private ContainerDetailViewModel? _vm;
+    private ITerminalHost? _vm;
     private IExecSession? _session;
     private CancellationTokenSource? _cts;
     private bool _started;
@@ -42,7 +42,7 @@ public partial class TerminalView : UserControl
         if (_vm is not null)
             _vm.PropertyChanged -= OnVmPropertyChanged;
 
-        _vm = DataContext as ContainerDetailViewModel;
+        _vm = DataContext as ITerminalHost;
 
         if (_vm is not null)
         {
@@ -59,8 +59,8 @@ public partial class TerminalView : UserControl
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ContainerDetailViewModel.SelectedTab)
-            or nameof(ContainerDetailViewModel.CanOpenTerminal))
+        if (e.PropertyName is nameof(ITerminalHost.IsTerminalSelected)
+            or nameof(ITerminalHost.CanOpenTerminal))
             MaybeStart();
     }
 
