@@ -206,7 +206,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             _settings.AutoDetectEngines,
             onContinue: backend => _ = CompleteOnboardingAsync(backend),
             onSkip: () => _ = CompleteOnboardingAsync(null),
-            onInstallPodman: () => OpenUrl("https://podman.io/docs/installation"));
+            onInstallPodman: () => Browser.OpenUrl("https://podman.io/docs/installation"));
         IsOnboarding = true;
     }
 
@@ -236,18 +236,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         await ConnectPreferredAsync();
-    }
-
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch
-        {
-            // Best-effort: opening a browser isn't critical to onboarding.
-        }
     }
 
     private void EnterEngineDown(string detail)

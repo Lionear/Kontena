@@ -373,6 +373,33 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Ports -->
+                        <Border Classes="card" IsVisible="{Binding HasPorts}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Ports" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                <ItemsControl ItemsSource="{Binding PortItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:PortItem">
+                                            <Panel Margin="0,3" HorizontalAlignment="Left">
+                                                <!-- Published TCP port — opens in the browser -->
+                                                <Button Classes="link" Command="{Binding OpenCommand}"
+                                                        IsVisible="{Binding IsOpenable}" ToolTip.Tip="{Binding Url}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                                        <TextBlock Text="{Binding Text}" Classes="ivalue"
+                                                                   FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Primary}"/>
+                                                        <TextBlock Text="↗" FontSize="12" Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
+                                                <!-- UDP / unpublished — shown, not clickable -->
+                                                <TextBlock Text="{Binding Text}" Classes="ivalue" FontFamily="{StaticResource Mono}"
+                                                           Foreground="{DynamicResource TextDim}" IsVisible="{Binding !IsOpenable}"/>
+                                            </Panel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
                         <!-- Networks -->
                         <Border Classes="card" IsVisible="{Binding HasNetworks}">
                             <StackPanel Spacing="10">

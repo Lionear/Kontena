@@ -4,6 +4,7 @@ using System.Threading;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Services;
 using Kontena.Core.Models;
 using Kontena.Engines;
 
@@ -121,10 +122,19 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
     public IReadOnlyList<InspectMount> Mounts => Inspect?.Mounts ?? [];
     public IReadOnlyList<InspectNetwork> Networks => Inspect?.Networks ?? [];
 
+    /// <summary>Published ports, host-port first. Sourced from the summary (always available).</summary>
+    public IReadOnlyList<PortItem> PortItems =>
+        _c.Ports
+          .OrderBy(p => p.HostPort ?? int.MaxValue)
+          .ThenBy(p => p.ContainerPort)
+          .Select(p => new PortItem(p))
+          .ToList();
+
     public bool HasEnvironment => EnvironmentItems.Count > 0;
     public bool HasLabels => LabelItems.Count > 0;
     public bool HasMounts => Mounts.Count > 0;
     public bool HasNetworks => Networks.Count > 0;
+    public bool HasPorts => PortItems.Count > 0;
     public bool HasCommand => !string.IsNullOrWhiteSpace(Inspect?.Command);
 
     public string RestartPolicyText => Inspect?.RestartPolicy switch
@@ -407,6 +417,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsNotRunning));
         OnPropertyChanged(nameof(CanOpenTerminal));
         OnPropertyChanged(nameof(PortsText));
+        OnPropertyChanged(nameof(PortItems));
+        OnPropertyChanged(nameof(HasPorts));
         OnPropertyChanged(nameof(ImageText));
     }
 
@@ -421,3 +433,32 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable
 
 /// <summary>A single key/value row (environment variable or label) in the Inspect tab.</summary>
 public sealed record KeyValueItem(string Key, string Value);
+
+/// <summary>A published port mapping row in the Inspect tab, with a browser affordance.</summary>
+public sealed partial class PortItem
+{
+    private readonly PortBinding _p;
+
+    public PortItem(PortBinding binding) => _p = binding;
+
+    /// <summary>Display text, e.g. <c>:8080 → 80/tcp</c> or <c>80/tcp</c> when unpublished.</summary>
+    public string Text => _p.HostPort is { } host
+        ? $":{host} → {_p.ContainerPort}/{_p.Protocol}"
+        : $"{_p.ContainerPort}/{_p.Protocol} (not published)";
+
+    /// <summary>Only published TCP ports can be opened in a browser.</summary>
+    public bool IsOpenable =>
+        _p.HostPort is not null
+        && string.Equals(_p.Protocol, "tcp", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The URL to open for a published TCP port; null otherwise.</summary>
+    public string? Url => IsOpenable ? $"http://localhost:{_p.HostPort}" : null;
+
+    /// <summary>Open this port in the browser (best-effort). Disabled for non-openable ports.</summary>
+    [RelayCommand(CanExecute = nameof(IsOpenable))]
+    private void Open()
+    {
+        if (Url is { } url)
+            Browser.OpenUrl(url);
+    }
+}
