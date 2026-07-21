@@ -11,10 +11,19 @@
         <StackPanel Margin="24,22" Spacing="18">
 
             <!-- Header -->
-            <StackPanel Spacing="4">
-                <TextBlock Text="Compose projects" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextDim}"/>
-            </StackPanel>
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Text="Compose projects" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+                <Button Grid.Column="1" Classes="primary" VerticalAlignment="Center"
+                        Command="{Binding NewProjectCommand}" IsVisible="{Binding SupportsCompose}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource PrimaryInk}" Data="{StaticResource IconPlus}"/>
+                        <TextBlock Text="New project" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
 
             <!-- Empty state -->
             <StackPanel IsVisible="{Binding IsEmpty}" Margin="0,54,0,0" Spacing="16" HorizontalAlignment="Center" MaxWidth="520">
@@ -58,6 +67,9 @@
                                                        Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Button Classes="qa" Command="{Binding LogsCommand}" ToolTip.Tip="Logs (all services)">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconLogs}"/>
+                                            </Button>
                                             <Button Classes="qa" Command="{Binding StartCommand}" IsVisible="{Binding HasStopped}" ToolTip.Tip="Start all">
                                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Success}" Data="{StaticResource IconPlay}"/>
                                             </Button>
@@ -66,6 +78,10 @@
                                             </Button>
                                             <Button Classes="qa" Command="{Binding StopCommand}" ToolTip.Tip="Stop all">
                                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconStop}"/>
+                                            </Button>
+                                            <Border Width="1" Height="18" Background="{DynamicResource Border}" Margin="2,0" VerticalAlignment="Center"/>
+                                            <Button Classes="qa" Command="{Binding DownCommand}" ToolTip.Tip="Down — stop &amp; remove the project">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Danger}" Data="{StaticResource IconTrash}"/>
                                             </Button>
                                         </StackPanel>
                                     </Grid>

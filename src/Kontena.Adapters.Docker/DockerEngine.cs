@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Formats.Tar;
 using System.Net;
 using System.Net.Http;
@@ -45,7 +46,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
     {
         Rootless = false,
         SupportsBuild = true,
-        SupportsCompose = false,
+        SupportsCompose = true,
         SupportsExec = true,
         SupportsPrune = true,
         SupportsGpu = false,
@@ -608,6 +609,131 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         finally
         {
             await linked.CancelAsync().ConfigureAwait(false);
+            await SwallowAsync(pump).ConfigureAwait(false);
+        }
+    }
+
+    // ── Compose ─────────────────────────────────────────────────────────────
+
+    public async IAsyncEnumerable<ComposeProgress> ComposeUpAsync(
+        ComposeUpRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var file = request.ComposeFilePath;
+        if (string.IsNullOrWhiteSpace(file) || !File.Exists(file))
+        {
+            yield return new ComposeProgress($"Compose file not found: {file}", "not-found");
+            yield break;
+        }
+
+        // `docker compose` (Compose v2 plugin); Podman speaks the same via `podman compose`.
+        var args = new List<string> { "compose", "-f", file };
+        if (!string.IsNullOrWhiteSpace(request.ProjectName))
+        {
+            args.Add("-p");
+            args.Add(request.ProjectName!);
+        }
+        args.Add("up");
+        args.Add("-d");
+        if (request.Build) args.Add("--build");
+        if (request.ForceRecreate) args.Add("--force-recreate");
+
+        await foreach (var line in RunComposeAsync(_backend, args, Path.GetDirectoryName(file), ct)
+                           .ConfigureAwait(false))
+            yield return line;
+    }
+
+    /// <summary>
+    /// Run the engine's Compose CLI, merging stdout and stderr into a single line stream.
+    /// Compose writes progress to stderr, so both are surfaced. A non-zero exit and a
+    /// missing CLI both come back as an error <see cref="ComposeProgress"/> line.
+    /// </summary>
+    private static async IAsyncEnumerable<ComposeProgress> RunComposeAsync(
+        string exe, IReadOnlyList<string> args, string? workingDir,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = exe,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        if (!string.IsNullOrEmpty(workingDir))
+            psi.WorkingDirectory = workingDir;
+        foreach (var a in args)
+            psi.ArgumentList.Add(a);
+
+        var process = new Process { StartInfo = psi };
+
+        string? startError = null;
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            startError = ex.Message;
+        }
+
+        if (startError is not null)
+        {
+            process.Dispose();
+            yield return new ComposeProgress(
+                $"Could not start '{exe} compose' — is the {exe} CLI (with the Compose plugin) installed and on PATH?  ({startError})",
+                "cli-missing");
+            yield break;
+        }
+
+        await using var kill = ct.Register(() =>
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch { /* already gone */ }
+        });
+
+        var channel = Channel.CreateUnbounded<ComposeProgress>(new UnboundedChannelOptions { SingleReader = true });
+
+        async Task PumpAsync(TextReader reader)
+        {
+            try
+            {
+                string? line;
+                while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
+                    channel.Writer.TryWrite(new ComposeProgress(line));
+            }
+            catch (OperationCanceledException) { /* stream torn down on cancel */ }
+        }
+
+        var pump = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.WhenAll(
+                    PumpAsync(process.StandardOutput),
+                    PumpAsync(process.StandardError)).ConfigureAwait(false);
+                await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { /* cancelled */ }
+            finally
+            {
+                int code = -1;
+                try { code = process.ExitCode; }
+                catch { /* killed before exit */ }
+                if (code != 0 && !ct.IsCancellationRequested)
+                    channel.Writer.TryWrite(new ComposeProgress(
+                        $"Compose exited with code {code.ToString(System.Globalization.CultureInfo.InvariantCulture)}.", "exit-nonzero"));
+                channel.Writer.TryComplete();
+                process.Dispose();
+            }
+        }, ct);
+
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                yield return item;
+        }
+        finally
+        {
             await SwallowAsync(pump).ConfigureAwait(false);
         }
     }

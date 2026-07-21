@@ -418,6 +418,49 @@ public sealed class FakeEngine : IContainerEngine
         await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
     }
 
+    public async IAsyncEnumerable<ComposeProgress> ComposeUpAsync(
+        ComposeUpRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var project = string.IsNullOrWhiteSpace(request.ProjectName)
+            ? DeriveProjectName(request.ComposeFilePath)
+            : request.ProjectName!;
+        var fileName = Path.GetFileName(request.ComposeFilePath);
+
+        yield return new ComposeProgress($"parsing {fileName}");
+        await Task.Delay(120, ct).ConfigureAwait(false);
+
+        var netName = $"{project}_default";
+        yield return new ComposeProgress($"Network {netName}  Created");
+        AddNetwork(netName, "bridge", "172.30.0.0/16", builtIn: false, []);
+
+        (string Service, string Image, PortBinding Port)[] services =
+        [
+            ("web", "nginx:1.27-alpine", new PortBinding(8080, 80)),
+            ("api", "ghcr.io/demo/api:latest", new PortBinding(3000, 3000)),
+            ("db", "postgres:16", new PortBinding(5432, 5432)),
+        ];
+
+        foreach (var (service, image, port) in services)
+        {
+            ct.ThrowIfCancellationRequested();
+            var containerName = $"{project}-{service}-1";
+            yield return new ComposeProgress($"Container {containerName}  Creating");
+            await Task.Delay(90, ct).ConfigureAwait(false);
+            AddComposeContainer(project, service, request.ComposeFilePath, image,
+                ContainerState.Running, "Up now", port);
+            yield return new ComposeProgress($"Container {containerName}  Started");
+        }
+
+        yield return new ComposeProgress($"Project \"{project}\" is up — {services.Length} services running.");
+    }
+
+    private static string DeriveProjectName(string composeFilePath)
+    {
+        var dir = Path.GetDirectoryName(composeFilePath);
+        var name = string.IsNullOrEmpty(dir) ? null : Path.GetFileName(dir.TrimEnd('/', '\\'));
+        return string.IsNullOrWhiteSpace(name) ? "project" : name.ToLowerInvariant();
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private string NextId() => $"fake{Interlocked.Increment(ref _idSeed):x}00000000";

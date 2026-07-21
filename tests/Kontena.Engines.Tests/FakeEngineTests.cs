@@ -297,4 +297,49 @@ public class FakeEngineTests
                 cts.Cancel();
         });
     }
+
+    [Fact]
+    public async Task ComposeUp_streams_progress_and_creates_the_project_services()
+    {
+        var engine = NewEngine();
+        var request = new ComposeUpRequest
+        {
+            ComposeFilePath = "/home/rick/dev/shop/docker-compose.yml",
+            ProjectName = "shop",
+        };
+
+        var lines = new List<ComposeProgress>();
+        await foreach (var progress in engine.ComposeUpAsync(request))
+            lines.Add(progress);
+
+        Assert.NotEmpty(lines);
+        Assert.All(lines, l => Assert.Null(l.Error));
+
+        // The project's services now exist, grouped by the Compose project label.
+        var services = (await engine.ListContainersAsync())
+            .Where(c => c.Labels.GetValueOrDefault("com.docker.compose.project") == "shop")
+            .ToList();
+        Assert.NotEmpty(services);
+        Assert.All(services, c => Assert.Equal(ContainerState.Running, c.State));
+    }
+
+    [Fact]
+    public async Task ComposeUp_defaults_the_project_name_from_the_file_folder()
+    {
+        var engine = NewEngine();
+        var request = new ComposeUpRequest
+        {
+            ComposeFilePath = "/home/rick/dev/Ashenmoon/compose.yaml",
+        };
+
+        await foreach (var _ in engine.ComposeUpAsync(request)) { }
+
+        var projects = (await engine.ListContainersAsync())
+            .Select(c => c.Labels.GetValueOrDefault("com.docker.compose.project"))
+            .Distinct()
+            .ToList();
+
+        // Derived from the parent folder name, lower-cased ("Ashenmoon" -> "ashenmoon").
+        Assert.Contains("ashenmoon", projects);
+    }
 }

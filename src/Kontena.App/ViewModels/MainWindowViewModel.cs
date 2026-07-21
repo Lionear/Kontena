@@ -287,7 +287,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         };
         Volumes = new VolumesViewModel(_engine);
         Networks = new NetworksViewModel(_engine);
-        ComposeProjects = new ComposeProjectsViewModel(_engine) { RequestOpenDetail = ShowContainerDetail };
+        ComposeProjects = new ComposeProjectsViewModel(_engine)
+        {
+            RequestOpenDetail = ShowContainerDetail,
+            RequestNewProject = ShowComposeUpDialog,
+            RequestProjectLogs = ShowComposeLogsDialog,
+        };
         Activity = new ActivityViewModel(_activityLog);
 
         SearchText = string.Empty;
@@ -473,6 +478,29 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             CloseDialog();
             _ = ShowRunDialogAsync(image);
         });
+    }
+
+    private void ShowComposeUpDialog()
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new ComposeUpViewModel(_engine, CloseDialog, onUp: RefreshComposeAsync);
+    }
+
+    private void ShowComposeLogsDialog(ComposeProjectViewModel project)
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new ComposeLogsViewModel(_engine, project.Name, project.LogSources, CloseDialog);
+    }
+
+    private async Task RefreshComposeAsync()
+    {
+        if (ComposeProjects is { HasLoaded: true })
+            await ComposeProjects.LoadAsync();
+        await UpdateNavCountsAsync();
     }
 
     private void CloseDialog()

@@ -113,6 +113,18 @@ public interface IContainerEngine
         CreateNetworkRequest request, CancellationToken ct = default);
     ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default);
 
+    // ── Compose ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Bring a Compose project up from a compose file, streaming the toolchain's
+    /// per-service create / pull / build output until it completes. "Down", combined
+    /// start/stop, and aggregated logs are composed from the container primitives above
+    /// (by <c>com.docker.compose.project</c> label), so only "up" needs engine-native Compose.
+    /// </summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsCompose"/>.</remarks>
+    IAsyncEnumerable<ComposeProgress> ComposeUpAsync(
+        ComposeUpRequest request, CancellationToken ct = default);
+
     // ── Streams ─────────────────────────────────────────────────────────────
 
     /// <summary>Stream a container's logs. <paramref name="follow"/> keeps it open.</summary>

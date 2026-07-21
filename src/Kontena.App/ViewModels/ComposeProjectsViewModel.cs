@@ -21,10 +21,28 @@ public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
     private readonly IContainerEngine _engine;
     private readonly List<ComposeProjectViewModel> _all = [];
 
-    public ComposeProjectsViewModel(IContainerEngine engine) => _engine = engine;
+    public ComposeProjectsViewModel(IContainerEngine engine)
+    {
+        _engine = engine;
+        SupportsCompose = engine.Capabilities.SupportsCompose;
+    }
+
+    /// <summary>Whether the active engine can bring projects up from a compose file.</summary>
+    public bool SupportsCompose { get; }
 
     /// <summary>Opens a service's container in the detail page (set by the shell).</summary>
     public Action<ContainerSummary>? RequestOpenDetail { get; set; }
+
+    /// <summary>Opens the "New Compose project" (up-from-file) modal (set by the shell).</summary>
+    public Action? RequestNewProject { get; set; }
+
+    /// <summary>Opens the aggregated-logs modal for a project (set by the shell).</summary>
+    public Action<ComposeProjectViewModel>? RequestProjectLogs { get; set; }
+
+    [RelayCommand]
+    private void NewProject() => RequestNewProject?.Invoke();
+
+    public void OpenLogs(ComposeProjectViewModel project) => RequestProjectLogs?.Invoke(project);
 
     public ObservableCollection<ComposeProjectViewModel> Items { get; } = [];
 
@@ -100,6 +118,28 @@ public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
         await LoadAsync();
     }
 
+    /// <summary>
+    /// "Down": stop and remove the project's containers (matching <c>docker compose down</c>),
+    /// then best-effort remove its Compose networks (<c>&lt;project&gt;_*</c>). Built from the
+    /// container primitives, so it works on every backend without the Compose CLI.
+    /// </summary>
+    public async Task DownProjectAsync(string project, IReadOnlyList<string> ids)
+    {
+        foreach (var id in ids)
+            try { await _engine.RemoveContainerAsync(id, force: true); } catch { /* keep going */ }
+
+        try
+        {
+            var networks = await _engine.ListNetworksAsync();
+            foreach (var network in networks.Where(n =>
+                         !n.IsBuiltIn && n.Name.StartsWith($"{project}_", StringComparison.Ordinal)))
+                try { await _engine.RemoveNetworkAsync(network.Id); } catch { /* keep going */ }
+        }
+        catch { /* network cleanup is best-effort */ }
+
+        await LoadAsync();
+    }
+
     public async Task RestartProjectAsync(IReadOnlyList<string> ids)
     {
         foreach (var id in ids)
@@ -135,9 +175,15 @@ public sealed partial class ComposeProjectViewModel : ObservableObject
             .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))
             ?.Split(',')[0] ?? string.Empty;
 
-        Services = containers
+        var ordered = containers
             .OrderBy(c => c.Labels.GetValueOrDefault(ComposeProjectsViewModel.ServiceLabel), StringComparer.OrdinalIgnoreCase)
-            .Select(c => new ComposeServiceViewModel(c, parent))
+            .ToList();
+
+        Services = ordered.Select(c => new ComposeServiceViewModel(c, parent)).ToList();
+
+        LogSources = ordered
+            .Select(c => new ComposeLogSource(
+                c.Labels.GetValueOrDefault(ComposeProjectsViewModel.ServiceLabel, c.Name), c.Id))
             .ToList();
 
         _ids = containers.Select(c => c.Id).ToList();
@@ -150,6 +196,9 @@ public sealed partial class ComposeProjectViewModel : ObservableObject
     public string Name { get; }
     public string ConfigFile { get; }
     public IReadOnlyList<ComposeServiceViewModel> Services { get; }
+
+    /// <summary>Per-service (name, container-id) pairs for the aggregated-logs view.</summary>
+    public IReadOnlyList<ComposeLogSource> LogSources { get; }
 
     public int RunningCount { get; }
     public int TotalCount { get; }
@@ -171,6 +220,12 @@ public sealed partial class ComposeProjectViewModel : ObservableObject
 
     [RelayCommand]
     private Task Stop() => _parent.StopProjectAsync(_ids);
+
+    [RelayCommand]
+    private Task Down() => _parent.DownProjectAsync(Name, _ids);
+
+    [RelayCommand]
+    private void Logs() => _parent.OpenLogs(this);
 }
 
 /// <summary>One service within a Compose project (a single container).</summary>

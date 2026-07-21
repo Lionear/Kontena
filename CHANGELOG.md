@@ -9,7 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Compose: bring projects up from a file** — a "New project" flow that picks a compose file and
+  streams `up` output live over the CEAL (driving the engine's Compose CLI), plus per-project
+  **Down** (stop & remove containers and the project network) and **aggregated logs** (a combined,
+  colour-per-service stream). (KON-59)
+- **Clickable ports in Inspect** — the container Inspect tab now lists published port mappings, and
+  published TCP ports open in the browser with one click. (KON-63)
 
 ## [0.1.0] - 2026-07-20
 
