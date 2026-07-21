@@ -416,16 +416,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
 
-        // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker. Pod detail,
-        // workload actions, and the apply flow are their own tickets (KON-69/70/71).
+        // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker. The apply flow
+        // is its own ticket (KON-69).
         CurrentPage = key switch
         {
             "overview" => new ClusterOverviewViewModel(_cluster),
             "nodes" => new ClusterNodesViewModel(_cluster),
             "namespaces" => new ClusterNamespacesViewModel(_cluster),
-            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace),
+            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload),
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail),
-            "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace),
+            "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward),
             _ => new ClusterOverviewViewModel(_cluster),
         };
         SearchText = string.Empty;
@@ -433,6 +433,71 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     /// <summary>The namespace filter, or null when "All namespaces" is selected.</summary>
     private string? ActiveNamespace => SelectedNamespace is null or AllNamespaces ? null : SelectedNamespace;
+
+    /// <summary>Rebuild the currently-selected cluster page (e.g. after an action mutates it).</summary>
+    private void ReloadCurrentClusterPage()
+    {
+        if (!IsClusterMode)
+            return;
+
+        var key = NavItems.FirstOrDefault(i => i.IsSelected)?.Key ?? "overview";
+        NavigateCluster(key);
+        _ = UpdateClusterNavCountsAsync();
+    }
+
+    // ── Workload actions (KON-71) ───────────────────────────────────────────
+
+    private void ShowScaleDialog(Workload workload)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new ScaleWorkloadViewModel(_cluster, workload, CloseDialog, onDone: () =>
+        {
+            CloseDialog();
+            ReloadCurrentClusterPage();
+            return Task.CompletedTask;
+        });
+    }
+
+    private void ConfirmRestartWorkload(Workload workload)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new ConfirmViewModel(
+            "Restart rollout",
+            $"Roll out a restart of {workload.Kind} \"{workload.Name}\" in {workload.Namespace}? Its pods are recreated" +
+            " a few at a time so the workload stays available.",
+            "Restart",
+            onConfirm: async () =>
+            {
+                var reference = new ResourceRef(new GroupVersionKind("apps", "v1", workload.Kind.ToString()), workload.Namespace, workload.Name);
+                await _cluster.RolloutRestartAsync(reference);
+                CloseDialog();
+                ReloadCurrentClusterPage();
+            },
+            onClose: CloseDialog);
+    }
+
+    private void ShowServicePortForward(Service service)
+    {
+        if (_cluster is null)
+            return;
+
+        var reference = new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name);
+        var ports = service.Ports.Select(p => p.Port).ToList();
+        Dialog = new PortForwardViewModel(_cluster, reference, $"{service.Name} · {service.Namespace}", ports, CloseDialog);
+    }
+
+    private void ShowPodPortForward(Pod pod)
+    {
+        if (_cluster is null)
+            return;
+
+        var reference = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
+        Dialog = new PortForwardViewModel(_cluster, reference, $"{pod.Name} · {pod.Namespace}", [], CloseDialog);
+    }
 
     private async Task UpdateClusterNavCountsAsync()
     {
@@ -598,7 +663,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         var current = _store.Load();
         var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
 
-        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, () => NavigateCluster("pods"), font);
+        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, () => NavigateCluster("pods"), font, ShowPodPortForward);
         CurrentPage = _podDetail;
     }
 

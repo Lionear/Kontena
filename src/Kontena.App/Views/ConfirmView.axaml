@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="220"
+             x:Class="Kontena.App.Views.ConfirmView"
+             x:DataType="vm:ConfirmViewModel">
+    <Border Width="480" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+            <StackPanel Margin="24,22,24,20" Spacing="10">
+                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock Text="{Binding Message}" FontSize="13" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" LineHeight="19"/>
+                <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Border Height="1" Background="{DynamicResource Border}"/>
+            <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
+                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CancelCommand}">Cancel</Button>
+                <Button Grid.Column="2" Classes="primary" Command="{Binding ConfirmCommand}" IsEnabled="{Binding !IsBusy}"
+                        Content="{Binding ConfirmLabel}"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

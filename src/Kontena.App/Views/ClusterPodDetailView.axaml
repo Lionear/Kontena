@@ -14,7 +14,8 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16">
             <StackPanel Spacing="14">
-                <StackPanel Orientation="Horizontal" Spacing="12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
                     <Button Classes="qa" Width="34" Height="34" Command="{Binding BackCommand}" ToolTip.Tip="Back to pods">
                         <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconArrowLeft}"/>
                     </Button>
@@ -38,11 +39,15 @@
                             <TextBlock Text="{Binding MemText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                         </StackPanel>
                     </StackPanel>
+                  </StackPanel>
 
-                    <!-- Container picker -->
+                  <!-- Right-side actions -->
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <Button Classes="pill" Command="{Binding PortForwardCommand}" IsVisible="{Binding CanPortForward}">Port forward</Button>
                     <ComboBox ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer, Mode=TwoWay}"
-                              MinWidth="150" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                </StackPanel>
+                              MinWidth="150" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
 
                 <!-- Meta strip -->
                 <StackPanel Orientation="Horizontal" Spacing="28">

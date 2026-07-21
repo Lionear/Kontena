@@ -24,6 +24,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private readonly IClusterEngine _cluster;
     private readonly Pod _pod;
     private readonly Action _onBack;
+    private readonly Action<Pod>? _onForward;
     private readonly ResourceRef _ref;
     private readonly List<LogLineViewModel> _all = [];
 
@@ -31,15 +32,17 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private CancellationTokenSource? _logCts;      // per-container log stream
 
     public ClusterPodDetailViewModel(
-        IClusterEngine cluster, Pod pod, Action onBack, TerminalFont terminalFont)
+        IClusterEngine cluster, Pod pod, Action onBack, TerminalFont terminalFont, Action<Pod>? onForward = null)
     {
         _cluster = cluster;
         _pod = pod;
         _onBack = onBack;
+        _onForward = onForward;
         _ref = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
 
         SupportsExec = cluster.Capabilities.Exec;
         SupportsMetrics = cluster.Capabilities.Metrics;
+        SupportsPortForward = cluster.Capabilities.PortForward;
 
         TerminalFontFamily = $"{terminalFont.Family}, monospace";
         TerminalFontSize = terminalFont.Size;
@@ -96,6 +99,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     public bool SupportsExec { get; }
     public bool SupportsMetrics { get; }
+    public bool SupportsPortForward { get; }
 
     // ── Containers ─────────────────────────────────────────────────────────────
 
@@ -307,6 +311,12 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
             Command = ["/bin/sh"],
             Tty = true,
         }, ct);
+
+    /// <summary>Whether a port-forward can be started (a running pod on a cluster that supports it).</summary>
+    public bool CanPortForward => _onForward is not null && SupportsPortForward && IsRunning;
+
+    [RelayCommand]
+    private void PortForward() => _onForward?.Invoke(_pod);
 
     [RelayCommand]
     private void Back() => _onBack();

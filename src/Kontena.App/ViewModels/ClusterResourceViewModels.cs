@@ -58,11 +58,17 @@ public partial class ClusterWorkloadsViewModel : ViewModelBase
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
+    private readonly Action<Workload>? _onScale;
+    private readonly Action<Workload>? _onRestart;
 
-    public ClusterWorkloadsViewModel(IClusterEngine cluster, string? @namespace)
+    public ClusterWorkloadsViewModel(
+        IClusterEngine cluster, string? @namespace,
+        Action<Workload>? onScale = null, Action<Workload>? onRestart = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        _onScale = onScale;
+        _onRestart = onRestart;
         _ = LoadAsync();
     }
 
@@ -72,7 +78,7 @@ public partial class ClusterWorkloadsViewModel : ViewModelBase
     {
         Workloads.Clear();
         foreach (var w in await _cluster.ListWorkloadsAsync(null, _namespace))
-            Workloads.Add(new WorkloadRow(w));
+            Workloads.Add(new WorkloadRow(w, _onScale, _onRestart));
     }
 }
 
@@ -110,10 +116,13 @@ public partial class ClusterServicesViewModel : ViewModelBase
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
 
-    public ClusterServicesViewModel(IClusterEngine cluster, string? @namespace)
+    private readonly Action<Service>? _onForward;
+
+    public ClusterServicesViewModel(IClusterEngine cluster, string? @namespace, Action<Service>? onForward = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        _onForward = onForward;
         _ = LoadAsync();
     }
 
@@ -123,7 +132,7 @@ public partial class ClusterServicesViewModel : ViewModelBase
     {
         Services.Clear();
         foreach (var s in await _cluster.ListServicesAsync(_namespace))
-            Services.Add(new ServiceRow(s));
+            Services.Add(new ServiceRow(s, _onForward));
     }
 }
 
@@ -164,16 +173,26 @@ public sealed class NodeCardRow
 
 public sealed record NamespaceRow(string Name, string Status, string Age);
 
-public sealed class WorkloadRow
+public sealed partial class WorkloadRow
 {
-    public WorkloadRow(Workload w)
+    private readonly Workload _workload;
+    private readonly Action<Workload>? _onScale;
+    private readonly Action<Workload>? _onRestart;
+
+    public WorkloadRow(Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null)
     {
+        _workload = w;
+        _onScale = onScale;
+        _onRestart = onRestart;
+
         Name = w.Name;
         Namespace = w.Namespace;
         Kind = w.Kind.ToString();
         Ready = $"{w.Ready}/{w.Desired}";
         Status = w.RolloutStatus.ToString();
         Age = Format.Duration(w.Age);
+        CanScale = w.IsScalable;
+        CanRestart = w.Kind is WorkloadKind.Deployment or WorkloadKind.StatefulSet or WorkloadKind.DaemonSet;
         StatusBrush = new SolidColorBrush(Color.Parse(w.RolloutStatus switch
         {
             RolloutStatus.Complete => "#34D399",
@@ -189,7 +208,15 @@ public sealed class WorkloadRow
     public string Ready { get; }
     public string Status { get; }
     public string Age { get; }
+    public bool CanScale { get; }
+    public bool CanRestart { get; }
     public IBrush StatusBrush { get; }
+
+    [RelayCommand]
+    private void Scale() => _onScale?.Invoke(_workload);
+
+    [RelayCommand]
+    private void Restart() => _onRestart?.Invoke(_workload);
 }
 
 public sealed partial class PodRow
@@ -231,10 +258,16 @@ public sealed partial class PodRow
     private void Open() => _open?.Invoke(_pod);
 }
 
-public sealed class ServiceRow
+public sealed partial class ServiceRow
 {
-    public ServiceRow(Service s)
+    private readonly Service _service;
+    private readonly Action<Service>? _onForward;
+
+    public ServiceRow(Service s, Action<Service>? onForward = null)
     {
+        _service = s;
+        _onForward = onForward;
+
         Name = s.Name;
         Namespace = s.Namespace;
         Type = s.Type.ToString();
@@ -243,6 +276,7 @@ public sealed class ServiceRow
             ? "—"
             : string.Join("  ", s.Ports.Select(p => p.NodePort is int np ? $"{p.Port}:{np}/{p.Protocol}" : $"{p.Port}/{p.Protocol}"));
         Age = Format.Duration(s.Age);
+        CanForward = s.Ports.Count > 0;
     }
 
     public string Name { get; }
@@ -251,4 +285,8 @@ public sealed class ServiceRow
     public string ClusterIp { get; }
     public string Ports { get; }
     public string Age { get; }
+    public bool CanForward { get; }
+
+    [RelayCommand]
+    private void Forward() => _onForward?.Invoke(_service);
 }
