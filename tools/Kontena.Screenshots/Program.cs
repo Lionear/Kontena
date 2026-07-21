@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Kontena.App;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
@@ -65,7 +66,13 @@ internal static class Program
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
-            var registry = new BackendRegistry([new FakeEngineProvider("docker", "Docker", "D")]);
+            var registry = new BackendRegistry(
+            [
+                new FakeEngineProvider("docker", "Docker", "D"),
+                new FakeClusterProvider("prod-eu-west", "GKE"),
+                new FakeClusterProvider("staging", "EKS"),
+                new FakeClusterProvider("minikube", "MK"),
+            ]);
             var viewModel = new MainWindowViewModel(registry, new SettingsStore(), settings);
 
             var window = new MainWindow
@@ -117,6 +124,12 @@ internal static class Program
 
             case "settings":
                 vm.ShowSettingsCommand.Execute(null);
+                break;
+
+            case "cluster":
+                // Switch to the fake cluster → the whole UI enters cluster mode.
+                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 break;
 
             case "run":

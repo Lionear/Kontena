@@ -1,3 +1,5 @@
+using Kontena.Core;
+
 namespace Kontena.Engines.Fakes;
 
 /// <summary>Provider for the in-memory <see cref="FakeEngine"/> (dev/demo fallback).</summary>
@@ -22,5 +24,6 @@ public sealed class FakeEngineProvider : IBackendProvider
     public string Backend => _backend;
     public string DisplayName => _displayName;
     public string Chip => _chip;
-    public IContainerEngine CreateEngine() => new FakeEngine(backend: _backend, displayName: _displayName);
+    public BackendKind Kind => BackendKind.Engine;
+    public IBackend CreateBackend() => new FakeEngine(backend: _backend, displayName: _displayName);
 }

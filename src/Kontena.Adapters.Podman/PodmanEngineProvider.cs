@@ -1,4 +1,5 @@
 using Kontena.Adapters.Docker;
+using Kontena.Core;
 using Kontena.Engines;
 
 namespace Kontena.Adapters.Podman;
@@ -12,8 +13,9 @@ public sealed class PodmanEngineProvider : IBackendProvider
     public string Backend => "podman";
     public string DisplayName => "Podman";
     public string Chip => "P";
+    public BackendKind Kind => BackendKind.Engine;
 
-    public IContainerEngine CreateEngine() => new DockerEngine(PodmanEndpoint(), "podman", "Podman");
+    public IBackend CreateBackend() => new DockerEngine(PodmanEndpoint(), "podman", "Podman");
 
     private static Uri PodmanEndpoint()
     {

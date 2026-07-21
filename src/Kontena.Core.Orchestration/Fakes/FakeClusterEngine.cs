@@ -24,15 +24,18 @@ public sealed class FakeClusterEngine : IClusterEngine
 
     private string _activeContext;
 
-    public FakeClusterEngine()
+    /// <param name="context">Which seeded context to start on; defaults to the first.</param>
+    public FakeClusterEngine(string? context = null)
     {
         _contexts =
         [
-            new KubeContext { Name = "prod-eu-west", Cluster = "gke_prod", User = "gke-user", Namespace = "default", IsCurrent = true },
+            new KubeContext { Name = "prod-eu-west", Cluster = "gke_prod", User = "gke-user", Namespace = "default" },
             new KubeContext { Name = "staging", Cluster = "eks_staging", User = "eks-user", Namespace = "default" },
             new KubeContext { Name = "minikube", Cluster = "minikube", User = "minikube", Namespace = "default" },
         ];
-        _activeContext = _contexts[0].Name;
+        _activeContext = context is not null && _contexts.Any(c => c.Name == context) ? context : _contexts[0].Name;
+        for (var i = 0; i < _contexts.Count; i++)
+            _contexts[i] = _contexts[i] with { IsCurrent = _contexts[i].Name == _activeContext };
 
         _nodes =
         [

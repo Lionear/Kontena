@@ -1,0 +1,111 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterOverviewView"
+             x:DataType="vm:ClusterOverviewViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="20">
+
+            <!-- Header -->
+            <StackPanel Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ClusterName}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="9,3" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Distribution}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                    </Border>
+                    <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}"
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="Cluster overview" FontSize="13" Foreground="{DynamicResource TextDim}"/>
+            </StackPanel>
+
+            <!-- Stat cards -->
+            <Grid ColumnDefinitions="*,*,*,*,*" >
+                <Grid.Styles>
+                    <Style Selector="Border.stat">
+                        <Setter Property="Background" Value="{DynamicResource Surface}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="CornerRadius" Value="10"/>
+                        <Setter Property="Padding" Value="16,14"/>
+                        <Setter Property="Margin" Value="0,0,10,0"/>
+                    </Style>
+                </Grid.Styles>
+                <Border Grid.Column="0" Classes="stat">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Nodes" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding NodeCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Classes="stat">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Namespaces" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding NamespaceCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Classes="stat">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Workloads" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding WorkloadCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="3" Classes="stat">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Pods" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding PodCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="4" Classes="stat" Margin="0">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Services" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding ServiceCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Nodes table -->
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="2*,1.4*,1*,1.2*,1.2*">
+                            <TextBlock Grid.Column="0" Text="NODE" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="1" Text="ROLES" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="2" Text="STATUS" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="3" Text="VERSION" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="4" Text="CPU" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Nodes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:NodeRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                    <Grid ColumnDefinitions="2*,1.4*,1*,1.2*,1.2*">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Roles}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Ellipse Width="7" Height="7" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="3" Text="{Binding Version}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding Cpu}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- Honest note -->
+            <Border Background="{DynamicResource PrimarySoft}" CornerRadius="10" Padding="14,11">
+                <TextBlock Text="Full resource browsers — nodes, namespaces, workloads, pods, services, plus the YAML apply/dry-run flow — land in KON-73. This overview and the grouped switcher ship now."
+                           Foreground="{DynamicResource TextDim}" FontSize="12.5" TextWrapping="Wrap"/>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

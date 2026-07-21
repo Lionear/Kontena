@@ -5,7 +5,9 @@ using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Core;
 using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
 
@@ -18,6 +20,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private KontenaSettings _settings;
     private IReadOnlyList<BackendProbe> _probes = [];
     private IContainerEngine? _engine;
+    private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
     private ContainerDetailViewModel? _detail;
     private readonly ActivityLog _activityLog = new();
@@ -39,16 +42,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _store = store;
         _settings = settings;
 
-        NavItems =
-        [
-            new NavItem("containers", "Containers", "IconContainer") { IsSelected = true },
-            new NavItem("images", "Images", "IconLayers"),
-            new NavItem("volumes", "Volumes", "IconDatabase"),
-            new NavItem("networks", "Networks", "IconNetwork"),
-            new NavItem("projects", "Projects", "IconBox"),
-        ];
-        foreach (var item in NavItems)
-            item.Command = NavigateCommand;
+        NavItems = [];
+        SetEngineNav();
 
         SyncThemeToggleIcon();
         _ = InitAsync();
@@ -84,8 +79,25 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<NavItem> NavItems { get; }
 
-    /// <summary>Engines shown in the backend-switcher dropdown.</summary>
+    /// <summary>Container engines shown in the switcher's "Container engines" group.</summary>
     public ObservableCollection<EngineOption> Engines { get; } = [];
+
+    /// <summary>Clusters shown in the switcher's "Clusters · Orchestrators" group.</summary>
+    public ObservableCollection<EngineOption> Clusters { get; } = [];
+
+    /// <summary>Whether any clusters are known (drives the popover's Clusters section).</summary>
+    public bool HasClusters => Clusters.Count > 0;
+
+    /// <summary>True when a cluster (OAL) is active — swaps the nav and shows the namespace picker.</summary>
+    [ObservableProperty] private bool _isClusterMode;
+
+    /// <summary>Namespaces for the cluster-mode picker; the first entry is "All namespaces".</summary>
+    public ObservableCollection<string> Namespaces { get; } = [];
+
+    /// <summary>The selected namespace filter in cluster mode.</summary>
+    [ObservableProperty] private string? _selectedNamespace;
+
+    private const string AllNamespaces = "All namespaces";
 
     [ObservableProperty] private string _engineName = "Connecting…";
     [ObservableProperty] private string _engineChip = "?";
@@ -131,6 +143,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void Navigate(string key)
     {
+        if (IsClusterMode)
+        {
+            NavigateCluster(key);
+            return;
+        }
+
         IListPage? page = key switch
         {
             "images" => Images,
@@ -187,10 +205,14 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (demo is not null) { await ActivateAsync(demo.Provider); return; }
         }
 
+        // Auto-connect only ever picks a container engine; clusters are entered explicitly via
+        // the switcher (they change the whole UI mode). Cluster onboarding is KON-72.
         var real = _probes.FirstOrDefault(p =>
-                       p.Connected && p.Provider.Backend != FakeBackend
+                       p.Connected && p.Provider.Kind == BackendKind.Engine
+                       && p.Provider.Backend != FakeBackend
                        && p.Provider.Backend == _settings.DefaultEngine)
-                   ?? _probes.FirstOrDefault(p => p.Connected && p.Provider.Backend != FakeBackend);
+                   ?? _probes.FirstOrDefault(p =>
+                       p.Connected && p.Provider.Kind == BackendKind.Engine && p.Provider.Backend != FakeBackend);
 
         if (real is null)
         {
@@ -207,7 +229,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         IsEngineDown = false;
         CurrentPage = null;
         Onboarding = new OnboardingViewModel(
-            _probes,
+            _probes.Where(p => p.Provider.Kind == BackendKind.Engine).ToList(),
             FakeBackend,
             _settings.AutoDetectEngines,
             onContinue: backend => _ = CompleteOnboardingAsync(backend),
@@ -249,6 +271,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         IsReady = false;
         IsEngineDown = true;
         EngineDownDetail = detail;
+        IsClusterMode = false;
         EngineName = "No engine";
         EngineChip = "!";
         EngineDetail = "not connected";
@@ -269,18 +292,33 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Containers?.StopWatching();
         _activityLog.Detach();
         (_engine as IDisposable)?.Dispose();
+        (_cluster as IDisposable)?.Dispose();
+        _engine = null;
+        _cluster = null;
 
         IsReady = false;
         IsEngineDown = false;
-        _engine = provider.CreateEngine();
+
+        var backend = provider.CreateBackend();
         _activeBackend = provider.Backend;
         EngineName = provider.DisplayName;
         EngineChip = provider.Chip;
 
         RebuildEngineList();
-
         DisposeDetail();
         CloseDialog();
+
+        if (backend is IClusterEngine cluster)
+            await EnterClusterModeAsync(cluster);
+        else if (backend is IContainerEngine engine)
+            await EnterEngineModeAsync(engine);
+    }
+
+    private async Task EnterEngineModeAsync(IContainerEngine engine)
+    {
+        _engine = engine;
+        IsClusterMode = false;
+        SetEngineNav();
 
         Containers = new ContainersViewModel(_engine)
         {
@@ -305,8 +343,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         SearchText = string.Empty;
         CurrentPage = Containers;
-        foreach (var item in NavItems)
-            item.IsSelected = item.Key == "containers";
 
         await Containers.LoadAsync();
         IsReady = true;
@@ -314,6 +350,102 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _activityLog.Attach(_engine, _activeBackend, ResolveEventName);
 
         await UpdateNavCountsAsync();
+    }
+
+    private async Task EnterClusterModeAsync(IClusterEngine cluster)
+    {
+        _cluster = cluster;
+        IsClusterMode = true;
+        SetClusterNav();
+
+        // The engine-only pages don't apply in cluster mode.
+        Containers = null;
+        Images = null;
+        Volumes = null;
+        Networks = null;
+        ComposeProjects = null;
+        Activity = null;
+
+        Namespaces.Clear();
+        Namespaces.Add(AllNamespaces);
+        foreach (var ns in await cluster.ListNamespacesAsync())
+            Namespaces.Add(ns.Name);
+
+        SearchText = string.Empty;
+        CurrentPage = new ClusterOverviewViewModel(cluster);
+        SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
+        await UpdateClusterNavCountsAsync();
+        IsReady = true;
+    }
+
+    /// <summary>The engine (CEAL) sidebar nav — Containers/Images/Volumes/Networks/Projects.</summary>
+    private void SetEngineNav()
+    {
+        NavItems.Clear();
+        NavItems.Add(new NavItem("containers", "Containers", "IconContainer") { IsSelected = true });
+        NavItems.Add(new NavItem("images", "Images", "IconLayers"));
+        NavItems.Add(new NavItem("volumes", "Volumes", "IconDatabase"));
+        NavItems.Add(new NavItem("networks", "Networks", "IconNetwork"));
+        NavItems.Add(new NavItem("projects", "Projects", "IconBox"));
+        foreach (var item in NavItems)
+            item.Command = NavigateCommand;
+    }
+
+    /// <summary>The cluster (OAL) sidebar nav — the Kubernetes resource tree.</summary>
+    private void SetClusterNav()
+    {
+        NavItems.Clear();
+        NavItems.Add(new NavItem("overview", "Overview", "IconGauge") { IsSelected = true });
+        NavItems.Add(new NavItem("nodes", "Nodes", "IconCpu"));
+        NavItems.Add(new NavItem("namespaces", "Namespaces", "IconBox"));
+        NavItems.Add(new NavItem("workloads", "Workloads", "IconLayers"));
+        NavItems.Add(new NavItem("pods", "Pods", "IconContainer"));
+        NavItems.Add(new NavItem("services", "Services", "IconNetwork"));
+        foreach (var item in NavItems)
+            item.Command = NavigateCommand;
+    }
+
+    private void NavigateCluster(string key)
+    {
+        if (_cluster is null)
+            return;
+
+        DisposeDetail();
+        foreach (var item in NavItems)
+            item.IsSelected = item.Key == key;
+
+        // Overview is a real view; the per-resource browsers land in KON-73.
+        CurrentPage = key switch
+        {
+            "overview" => new ClusterOverviewViewModel(_cluster),
+            "nodes" => new ClusterPlaceholderViewModel("Nodes"),
+            "namespaces" => new ClusterPlaceholderViewModel("Namespaces"),
+            "workloads" => new ClusterPlaceholderViewModel("Workloads"),
+            "pods" => new ClusterPlaceholderViewModel("Pods"),
+            "services" => new ClusterPlaceholderViewModel("Services"),
+            _ => new ClusterOverviewViewModel(_cluster),
+        };
+        SearchText = string.Empty;
+    }
+
+    private async Task UpdateClusterNavCountsAsync()
+    {
+        if (_cluster is null)
+            return;
+
+        var ci = CultureInfo.InvariantCulture;
+        var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
+        NavItems[1].Count = (await _cluster.ListNodesAsync()).Count.ToString(ci);
+        NavItems[2].Count = (await _cluster.ListNamespacesAsync()).Count.ToString(ci);
+        NavItems[3].Count = (await _cluster.ListWorkloadsAsync(null, ns)).Count.ToString(ci);
+        NavItems[4].Count = (await _cluster.ListPodsAsync(ns)).Count.ToString(ci);
+        NavItems[5].Count = (await _cluster.ListServicesAsync(ns)).Count.ToString(ci);
+    }
+
+    partial void OnSelectedNamespaceChanged(string? value)
+    {
+        if (IsClusterMode)
+            _ = UpdateClusterNavCountsAsync();
     }
 
     /// <summary>Best-effort friendly name for an event's resource, from the loaded container list.</summary>
@@ -375,10 +507,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void BuildSettingsPage()
     {
-        var engines = _probes.Select(p => new EngineListItem(
-            p.Provider.Backend, p.Provider.DisplayName, p.Provider.Chip,
-            p.Detail ?? string.Empty, p.Connected,
-            p.Provider.Backend == _settings.DefaultEngine)).ToList();
+        var engines = _probes
+            .Where(p => p.Provider.Kind == BackendKind.Engine)
+            .Select(p => new EngineListItem(
+                p.Provider.Backend, p.Provider.DisplayName, p.Provider.Chip,
+                p.Detail ?? string.Empty, p.Connected,
+                p.Provider.Backend == _settings.DefaultEngine)).ToList();
 
         SettingsPage = new SettingsViewModel(_store, _settings, engines);
     }
@@ -541,6 +675,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Containers?.Dispose();
         _activityLog.Dispose();
         (_engine as IDisposable)?.Dispose();
+        (_cluster as IDisposable)?.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -558,6 +693,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void RebuildEngineList()
     {
         Engines.Clear();
+        Clusters.Clear();
         foreach (var probe in _probes)
         {
             var isActive = probe.Provider.Backend == _activeBackend;
@@ -577,7 +713,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                     EngineEndpoint = string.Empty;
                 }
             }
-            Engines.Add(new EngineOption
+
+            var option = new EngineOption
             {
                 Backend = probe.Provider.Backend,
                 Name = probe.Provider.DisplayName,
@@ -586,8 +723,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 IsActive = isActive,
                 IsConnected = probe.Connected,
                 SwitchCommand = probe.Connected && !isActive ? SwitchEngineCommand : null,
-            });
+            };
+
+            (probe.Provider.Kind == BackendKind.Cluster ? Clusters : Engines).Add(option);
         }
+
+        OnPropertyChanged(nameof(HasClusters));
     }
 
     private async Task UpdateNavCountsAsync()

@@ -1,3 +1,5 @@
+using Kontena.Core;
+
 namespace Kontena.Engines;
 
 /// <summary>
@@ -25,12 +27,12 @@ public sealed class BackendRegistry
     /// <summary>Create the provider's engine, ping it, and report whether it answered.</summary>
     public static async Task<BackendProbe> ProbeAsync(IBackendProvider provider, CancellationToken ct = default)
     {
-        IContainerEngine? engine = null;
+        IBackend? backend = null;
         try
         {
-            engine = provider.CreateEngine();
-            await engine.PingAsync(ct).ConfigureAwait(false);
-            var info = await engine.GetInfoAsync(ct).ConfigureAwait(false);
+            backend = provider.CreateBackend();
+            await backend.PingAsync(ct).ConfigureAwait(false);
+            var info = await backend.GetInfoAsync(ct).ConfigureAwait(false);
             var detail = string.IsNullOrEmpty(info.Version) ? info.Endpoint : $"{info.Version} · {info.Endpoint}";
             return new BackendProbe(provider, true, detail);
         }
@@ -40,7 +42,7 @@ public sealed class BackendRegistry
         }
         finally
         {
-            (engine as IDisposable)?.Dispose();
+            (backend as IDisposable)?.Dispose();
         }
     }
 }

@@ -1,3 +1,5 @@
+using Kontena.Core;
+
 namespace Kontena.Engines;
 
 /// <summary>
@@ -13,15 +15,19 @@ namespace Kontena.Engines;
 /// </summary>
 public interface IBackendProvider
 {
-    /// <summary>Stable backend id, e.g. "docker", "podman".</summary>
+    /// <summary>Stable backend id, e.g. "docker", "podman", "kubernetes:prod-eu-west".</summary>
     string Backend { get; }
 
-    /// <summary>Human-facing name shown in the switcher, e.g. "Docker".</summary>
+    /// <summary>Human-facing name shown in the switcher, e.g. "Docker" or a kube-context name.</summary>
     string DisplayName { get; }
 
-    /// <summary>Single-letter chip for the switcher, e.g. "D".</summary>
+    /// <summary>Single-letter/short chip for the switcher, e.g. "D", "P", "K8s".</summary>
     string Chip { get; }
 
-    /// <summary>Create a fresh engine instance for this backend.</summary>
-    IContainerEngine CreateEngine();
+    /// <summary>Which axis this backend belongs to — drives switcher grouping and UI mode.</summary>
+    BackendKind Kind { get; }
+
+    /// <summary>Create a fresh backend instance — an <see cref="IContainerEngine"/> for
+    /// <see cref="BackendKind.Engine"/>, an <c>IClusterEngine</c> for <see cref="BackendKind.Cluster"/>.</summary>
+    IBackend CreateBackend();
 }

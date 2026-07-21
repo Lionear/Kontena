@@ -34,13 +34,23 @@ public partial class App : Application
                 new PodmanEngineProvider(),
             };
 
-            // The in-memory demo backend is a dev/testing aid — never shipped to users.
+            // The in-memory demo backends are a dev/testing aid — never shipped to users.
             // Available in Debug builds, or opt-in from a release build for demos/screenshots.
+            // The fake clusters populate the switcher's "Clusters" group so the OAL UI can be
+            // built before a real Kubernetes adapter exists (KON-67/68).
+            void AddDemoBackends()
+            {
+                providers.Add(new FakeEngineProvider());
+                providers.Add(new FakeClusterProvider("prod-eu-west", "GKE"));
+                providers.Add(new FakeClusterProvider("staging", "EKS"));
+                providers.Add(new FakeClusterProvider("minikube", "MK"));
+            }
+
 #if DEBUG
-            providers.Add(new FakeEngineProvider());
+            AddDemoBackends();
 #else
             if (Environment.GetEnvironmentVariable("KONTENA_FAKE_ENGINE") == "1")
-                providers.Add(new FakeEngineProvider());
+                AddDemoBackends();
 #endif
 
             var registry = new BackendRegistry(providers);

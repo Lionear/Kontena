@@ -1,3 +1,4 @@
+using Kontena.Core;
 using Kontena.Core.Errors;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
@@ -50,6 +51,7 @@ public class BackendRegistryTests
         public string Backend => "dead";
         public string DisplayName => "Dead";
         public string Chip => "X";
-        public IContainerEngine CreateEngine() => throw new EngineUnreachableException("no engine");
+        public BackendKind Kind => BackendKind.Engine;
+        public IBackend CreateBackend() => throw new EngineUnreachableException("no engine");
     }
 }
