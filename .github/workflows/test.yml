@@ -1,11 +1,12 @@
 name: Tests
 
-# Runs the unit tests on every PR and on pushes to main, so a regression is caught before it reaches
-# a build. The Docker adapter suite talks to a real engine when one is present and skips cleanly when
-# it isn't (SkippableFact), so it stays green on runners without Docker.
+# Runs the unit tests on every PR and on pushes to main and develop, so a regression is caught before
+# it reaches a build. develop is the integration branch (feature branches PR into it; develop promotes
+# to main for releases). The Docker adapter suite talks to a real engine when one is present and skips
+# cleanly when it isn't (SkippableFact), so it stays green on runners without Docker.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     paths-ignore:
       - "**.md"
       - "docs/**"
