@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dev-only screenshot renderer for the README / website (not shipped). Reuses the real App
+       (its XAML styles, views and view models) but drives the window under Avalonia's headless +
+       Skia backend, so it captures pixel-accurate PNGs with no display and no real engine — the
+       built-in in-memory FakeEngine supplies the demo data. Keeping Avalonia.Headless in this
+       separate tool project keeps that dependency out of the shipped Kontena.App binaries. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Kontena.Screenshots</RootNamespace>
+    <!-- The App project is analyzed on its own; the renderer is a throwaway harness. -->
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kontena.App\Kontena.App.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" Version="12.0.3" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.3" />
+  </ItemGroup>
+
+</Project>

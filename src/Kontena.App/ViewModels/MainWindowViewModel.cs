@@ -173,6 +173,14 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>Activate the saved default engine, else the first connected real one, else engine-down.</summary>
     private async Task ConnectPreferredAsync()
     {
+        // The screenshot renderer boots straight into its (single) demo provider, whatever
+        // identity it presents, so captures never depend on a real Docker/Podman socket.
+        if (Environment.GetEnvironmentVariable("KONTENA_SCREENSHOT") == "1")
+        {
+            var demo = _probes.FirstOrDefault(p => p.Connected) ?? (_probes.Count > 0 ? _probes[0] : null);
+            if (demo is not null) { await ActivateAsync(demo.Provider); return; }
+        }
+
         var real = _probes.FirstOrDefault(p =>
                        p.Connected && p.Provider.Backend != FakeBackend
                        && p.Provider.Backend == _settings.DefaultEngine)

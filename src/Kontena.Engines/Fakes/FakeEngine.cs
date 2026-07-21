@@ -16,13 +16,17 @@ public sealed class FakeEngine : IContainerEngine
     private readonly Dictionary<string, VolumeSummary> _volumes = [];
     private readonly Dictionary<string, NetworkSummary> _networks = [];
     private int _idSeed = 1000;
+    private readonly string _backend;
+    private readonly string _displayName;
 
-    public FakeEngine(bool seed = true)
+    public FakeEngine(bool seed = true, string backend = "fake", string displayName = "Fake engine")
     {
+        _backend = backend;
+        _displayName = displayName;
         if (seed) Seed();
     }
 
-    public string Backend => "fake";
+    public string Backend => _backend;
 
     public EngineCapabilities Capabilities { get; } = new()
     {
@@ -40,7 +44,7 @@ public sealed class FakeEngine : IContainerEngine
         ValueTask.FromResult(new EngineInfo
         {
             Backend = Backend,
-            DisplayName = "Fake engine",
+            DisplayName = _displayName,
             Version = "0.1.0",
             Endpoint = "memory://",
             ConnectionState = EngineConnectionState.Connected,
