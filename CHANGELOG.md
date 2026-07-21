@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Run modal recipes** — a curated, data-driven catalog for popular images (postgres, mysql,
+  mariadb, mongo, redis, rabbitmq, nginx, …) pre-fills the *required* environment variables that
+  image metadata can't express, plus a suggested name and default ports/volumes. Required-but-empty
+  variables are flagged and block Run with an inline reason. (KON-58)
 - **Compose: bring projects up from a file** — a "New project" flow that picks a compose file and
   streams `up` output live over the CEAL (driving the engine's Compose CLI), plus per-project
   **Down** (stop & remove containers and the project network) and **aggregated logs** (a combined,

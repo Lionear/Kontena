@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Services;
 using Kontena.Core.Models;
 using Kontena.Engines;
 
@@ -84,7 +85,30 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
     /// <summary>Show the "why pull now" hint while a not-yet-local image is entered.</summary>
     public bool ShowPullHint => IsImagePulled && !IsPulling;
 
-    public bool CanRun => !string.IsNullOrWhiteSpace(Image) && !IsBusy && !IsPulling;
+    public bool CanRun =>
+        !string.IsNullOrWhiteSpace(Image) && !IsBusy && !IsPulling && !HasUnsatisfiedRequiredEnv;
+
+    /// <summary>A recipe matched the entered image and pre-filled its known configuration.</summary>
+    [ObservableProperty] private string? _recipeName;
+
+    public bool HasRecipe => !string.IsNullOrWhiteSpace(RecipeName);
+    public string RecipeHint => $"Pre-filled from the {RecipeName} recipe — required variables are marked.";
+
+    partial void OnRecipeNameChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasRecipe));
+        OnPropertyChanged(nameof(RecipeHint));
+    }
+
+    /// <summary>True while a required recipe variable is still empty — blocks Run.</summary>
+    public bool HasUnsatisfiedRequiredEnv =>
+        EnvVars.Any(e => e.IsRequired && string.IsNullOrWhiteSpace(e.Value));
+
+    /// <summary>Inline reason shown when Run is blocked on a required variable.</summary>
+    public string? RunBlockReason =>
+        EnvVars.FirstOrDefault(e => e.IsRequired && string.IsNullOrWhiteSpace(e.Value)) is { } missing
+            ? $"{missing.Key} is required."
+            : null;
 
     partial void OnImageChanged(string value)
     {
@@ -169,11 +193,14 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         try
         {
             await Task.Delay(400, ct);
+            ct.ThrowIfCancellationRequested();
 
-            if (string.IsNullOrWhiteSpace(reference) || !_localImages.Contains(reference))
-                return;
+            // The recipe catalog matches on the typed name — no pull needed. Metadata
+            // scaffolding (ports/volumes) still waits until the image is present locally.
+            ApplyRecipe(reference);
 
-            await ScaffoldFromImageAsync(reference, ct);
+            if (!string.IsNullOrWhiteSpace(reference) && _localImages.Contains(reference))
+                await ScaffoldFromImageAsync(reference, ct);
         }
         catch (OperationCanceledException)
         {
@@ -183,6 +210,76 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         {
             // pre-fill is best-effort — never block the modal on it
         }
+    }
+
+    /// <summary>
+    /// Apply the curated recipe (if any) for the entered image: required env rows (empty,
+    /// flagged), a suggested name, and default ports/volumes — layered on top of, and never
+    /// overwriting, what the user or image metadata already provided.
+    /// </summary>
+    private void ApplyRecipe(string reference)
+    {
+        var recipe = RecipeCatalog.Match(reference);
+        if (string.Equals(RecipeName, recipe?.SuggestedName, StringComparison.Ordinal)
+            && (recipe is null) == (RecipeName is null))
+            return; // same recipe as before — nothing to re-apply
+
+        // Drop env rows a previous recipe added that the user never touched.
+        for (var i = EnvVars.Count - 1; i >= 0; i--)
+            if (EnvVars[i].FromRecipe && string.IsNullOrWhiteSpace(EnvVars[i].Value))
+                EnvVars.RemoveAt(i);
+
+        RecipeName = recipe?.SuggestedName;
+
+        if (recipe is null)
+        {
+            UpdatePreview();
+            return;
+        }
+
+        foreach (var env in recipe.Environment)
+        {
+            if (EnvVars.Any(e => string.Equals(e.Key.Trim(), env.Key, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            EnvVars.Add(new EnvRow(UpdatePreview)
+            {
+                Key = env.Key,
+                IsRequired = env.Required,
+                ValuePlaceholder = env.Placeholder ?? "value",
+                FromRecipe = true,
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(ContainerName) && !string.IsNullOrWhiteSpace(recipe.SuggestedName))
+            ContainerName = recipe.SuggestedName;
+
+        if (Ports.Count == 0)
+        {
+            foreach (var port in recipe.DefaultPorts)
+            {
+                var host = (port.HostPort ?? port.ContainerPort).ToString(CultureInfo.InvariantCulture);
+                Ports.Add(new PortRow(UpdatePreview)
+                {
+                    Host = host,
+                    Container = $"{port.ContainerPort}/{port.Protocol}",
+                });
+            }
+        }
+
+        if (Volumes.Count == 0)
+        {
+            foreach (var destination in recipe.DefaultVolumes)
+            {
+                Volumes.Add(new VolumeRow(UpdatePreview)
+                {
+                    Source = SuggestVolumeName(reference, destination),
+                    Destination = destination,
+                });
+            }
+        }
+
+        UpdatePreview();
     }
 
     private async Task ScaffoldFromImageAsync(string reference, CancellationToken ct)
@@ -323,6 +420,11 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         sb.Append(' ').Append(string.IsNullOrWhiteSpace(Image) ? "<image>" : Image.Trim());
 
         CommandPreview = sb.ToString();
+
+        // Required-env state feeds the Run button and its inline reason.
+        OnPropertyChanged(nameof(HasUnsatisfiedRequiredEnv));
+        OnPropertyChanged(nameof(RunBlockReason));
+        OnPropertyChanged(nameof(CanRun));
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -440,6 +542,15 @@ public partial class EnvRow(Action changed) : ObservableObject
 {
     [ObservableProperty] private string _key = string.Empty;
     [ObservableProperty] private string _value = string.Empty;
+
+    /// <summary>A recipe marked this variable required — Run is blocked until it has a value.</summary>
+    public bool IsRequired { get; init; }
+
+    /// <summary>Placeholder shown in the value box (a recipe hint, or "value").</summary>
+    public string ValuePlaceholder { get; init; } = "value";
+
+    /// <summary>True when a recipe added this row (so it can be cleared if the recipe changes).</summary>
+    public bool FromRecipe { get; init; }
 
     partial void OnKeyChanged(string value) => changed();
     partial void OnValueChanged(string value) => changed();

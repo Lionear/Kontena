@@ -176,15 +176,27 @@
                     <!-- Environment -->
                     <StackPanel>
                         <TextBlock Classes="flabel" Text="Environment variables"/>
+                        <Border IsVisible="{Binding HasRecipe}" Background="{DynamicResource PrimarySoft}" CornerRadius="7"
+                                Padding="10,6" Margin="0,0,0,8">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="13" Height="13" Stroke="{DynamicResource Primary}" Data="{StaticResource IconInfo}"
+                                      VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding RecipeHint}" FontSize="12" Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
                         <ItemsControl ItemsSource="{Binding EnvVars}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:EnvRow">
-                                    <Grid ColumnDefinitions="*,22,*,Auto" Margin="0,0,0,8">
-                                        <TextBox Grid.Column="0" Classes="fieldinput" Text="{Binding Key, Mode=TwoWay}" PlaceholderText="KEY"/>
-                                        <TextBlock Grid.Column="1" Text="=" Foreground="{DynamicResource TextFaint}" FontFamily="{StaticResource Mono}"
+                                    <Grid ColumnDefinitions="10,*,22,*,Auto" Margin="0,0,0,8">
+                                        <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{DynamicResource Danger}"
+                                                 VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                 IsVisible="{Binding IsRequired}" ToolTip.Tip="Required"/>
+                                        <TextBox Grid.Column="1" Classes="fieldinput" Text="{Binding Key, Mode=TwoWay}" PlaceholderText="KEY"/>
+                                        <TextBlock Grid.Column="2" Text="=" Foreground="{DynamicResource TextFaint}" FontFamily="{StaticResource Mono}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="2" Classes="fieldinput" Text="{Binding Value, Mode=TwoWay}" PlaceholderText="value"/>
-                                        <Button Grid.Column="3" Classes="del" Margin="8,0,0,0"
+                                        <TextBox Grid.Column="3" Classes="fieldinput" Text="{Binding Value, Mode=TwoWay}"
+                                                 PlaceholderText="{Binding ValuePlaceholder}"/>
+                                        <Button Grid.Column="4" Classes="del" Margin="8,0,0,0"
                                                 Command="{Binding #DialogRoot.((vm:RunContainerViewModel)DataContext).RemoveEnvCommand}"
                                                 CommandParameter="{Binding}">
                                             <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconTrash}"/>
@@ -252,6 +264,14 @@
 
                 <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                            Foreground="{DynamicResource Danger}" FontSize="12.5" Margin="24,12,24,0" TextWrapping="Wrap"/>
+
+                <StackPanel Orientation="Horizontal" Spacing="7" Margin="24,12,24,0"
+                            IsVisible="{Binding RunBlockReason, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Path Classes="icon" Width="13" Height="13" Stroke="{DynamicResource Warn}" Data="{StaticResource IconInfo}"
+                          VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding RunBlockReason}" Foreground="{DynamicResource Warn}" FontSize="12.5"
+                               VerticalAlignment="Center" TextWrapping="Wrap"/>
+                </StackPanel>
 
                 <Grid ColumnDefinitions="*,Auto" Margin="24,16">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
