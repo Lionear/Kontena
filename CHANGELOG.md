@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Nightly builds** — `develop` is published every night as a rolling `nightly` prerelease
+  (Windows .zip, Linux .AppImage, macOS .zip), so what is finished between two releases can be run
+  without building it yourself. A night in which nothing was merged publishes nothing, rather than a
+  fresh version number on an identical build. (KON-108)
 - **Pause a port forward instead of stopping it** — closing a tunnel is usually temporary: something
   else needs that local port for a minute. **Pause** closes it and genuinely hands the port back,
   but keeps the row, and **Resume** puts it straight back on the same local port — no retracing the
