@@ -236,6 +236,28 @@ internal static class Program
 
                 break;
 
+            case "cluster-portforwards":
+                // One live tunnel and one that fell over — the state the page exists for (KON-102),
+                // and one no cluster-less run could otherwise reach.
+                {
+                    vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                    SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+
+                    var fake = new Kontena.Core.Orchestration.Fakes.FakeClusterEngine();
+                    var pod = new Kontena.Core.Orchestration.Models.ResourceRef(
+                        Kontena.Core.Orchestration.Models.GroupVersionKind.Pod, "app", "api-7d9c");
+                    var service = new Kontena.Core.Orchestration.Models.ResourceRef(
+                        Kontena.Core.Orchestration.Models.GroupVersionKind.Service, "app", "api");
+
+                    vm.PortForwards.StartAsync(fake, service, "api · app", 80, 8080).GetAwaiter().GetResult();
+                    vm.PortForwards.StartAsync(fake, pod, "api-7d9c · app", 8080, 9229).GetAwaiter().GetResult();
+                    fake.LastPortForward!.Drop("The pod was replaced; the cluster refused a new connection.");
+
+                    vm.NavigateCommand.Execute("portforwards");
+                    Settle(rounds: 30);
+                }
+                break;
+
             case "cluster":
             case "cluster-nodes":
             case "cluster-namespaces":

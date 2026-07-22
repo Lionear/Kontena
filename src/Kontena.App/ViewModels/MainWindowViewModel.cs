@@ -32,6 +32,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     // registry lives here — see PortForwardRegistry.
     private readonly PortForwardRegistry _portForwards = new();
 
+    /// <summary>The live tunnels, for anything driving the shell from outside (the screenshot harness).</summary>
+    public PortForwardRegistry PortForwards => _portForwards;
+
     /// <summary>Design-time / default ctor uses a fake-only registry.</summary>
     public MainWindowViewModel()
         : this(new BackendRegistry([new FakeEngineProvider()]))
@@ -685,9 +688,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>Badge the sidebar with the number of live tunnels — the whole point of the page is that
     /// they keep running while you are somewhere else.</summary>
     private void UpdatePortForwardCount() =>
-        SetNavCount("portforwards", _portForwards.Count == 0
+        SetNavCount("portforwards", _portForwards.ActiveCount == 0
             ? string.Empty
-            : _portForwards.Count.ToString(CultureInfo.InvariantCulture));
+            : _portForwards.ActiveCount.ToString(CultureInfo.InvariantCulture));
 
     partial void OnSelectedNamespaceChanged(string? value)
     {

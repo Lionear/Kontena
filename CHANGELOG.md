@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **A port forward that falls over says so immediately** — the tunnel itself now reports when it
+  ends: the row flips to *Dropped* while you are looking at it, with the reason (the pod was
+  replaced, the cluster refused the connection) in a tooltip, instead of only correcting itself the
+  next time you open the page. A dropped forward keeps its place on the list — losing the local port
+  silently would be worse — stops counting towards the sidebar badge, and offers **Reconnect** to
+  reopen it on that same local port. The local listener is released when the tunnel dies, so nothing
+  is left accepting connections it can never serve. (KON-102)
+
 - **Kontena reopens what you were on** — engine or cluster, whichever it was. Settings › Engines
   replaces the old *default engine* dropdown with a single **On launch** choice: continue where you
   left off, always open one named backend (clusters included), or take the first engine that

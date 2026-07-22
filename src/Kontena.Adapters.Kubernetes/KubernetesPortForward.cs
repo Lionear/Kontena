@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using k8s;
 using Kontena.Core.Orchestration;
 
@@ -37,6 +38,8 @@ internal sealed class KubernetesPortForward : IPortForward
     public int LocalPort { get; }
     public int RemotePort { get; }
     public bool IsActive { get; private set; }
+
+    public event Action<string>? Closed;
 
     /// <summary>
     /// Start listening. <paramref name="localPort"/> null (or 0) lets the OS pick a free port, which
@@ -77,10 +80,10 @@ internal sealed class KubernetesPortForward : IPortForward
             {
                 connection = await _listener.AcceptTcpClientAsync(_cts.Token).ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Disposed or cancelled — the tunnel is finished.
-                IsActive = false;
+                Drop(_cts.IsCancellationRequested ? null : $"The local listener stopped: {ex.Message}");
                 return;
             }
 
@@ -92,44 +95,82 @@ internal sealed class KubernetesPortForward : IPortForward
     {
         using (connection)
         {
+            WebSocket socket;
             try
             {
-                using var socket = await _client.WebSocketNamespacedPodPortForwardAsync(
+                socket = await _client.WebSocketNamespacedPodPortForwardAsync(
                     _pod, _namespace, [RemotePort], "v4.channel.k8s.io", cancellationToken: _cts.Token)
                     .ConfigureAwait(false);
-
-                using var demuxer = new StreamDemuxer(socket, StreamType.PortForward);
-                demuxer.Start();
-
-                // Channel 0 carries data for the first (here: only) forwarded port; channel 1 is its
-                // error channel, which we leave to the demuxer.
-                //
-                // Read and write need separate half-streams. A single duplex stream — GetStream(0, 0)
-                // — serves exactly one request and then goes quiet, so an HTTP client reusing the
-                // connection hangs on its second request. Exec has the same constraint.
-                byte? dataChannel = 0;
-                await using var fromPod = demuxer.GetStream(dataChannel, null);
-                await using var toPod = demuxer.GetStream(null, dataChannel);
-                var local = connection.GetStream();
-
-                // Pump both directions until either end closes.
-                var upstream = local.CopyToAsync(toPod, _cts.Token);
-                var downstream = fromPod.CopyToAsync(local, _cts.Token);
-                await Task.WhenAny(upstream, downstream).ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // A single connection failing (pod restarted, RBAC, socket reset) closes that
-                // connection; the listener stays up so the next attempt can succeed.
+                // Failing to *open* the channel is the tunnel itself being gone — the pod was deleted
+                // or restarted, the token expired, RBAC changed. Keeping the listener up after that
+                // would leave a local port that accepts connections and can never serve them, which
+                // is the failure this reports (KON-102). A connection that breaks after it was
+                // established is handled below and only costs that one connection.
+                Drop($"The cluster refused a new connection: {ex.Message}");
+                return;
+            }
+
+            using (socket)
+            {
+                try
+                {
+                    using var demuxer = new StreamDemuxer(socket, StreamType.PortForward);
+                    demuxer.Start();
+
+                    // Channel 0 carries data for the first (here: only) forwarded port; channel 1 is its
+                    // error channel, which we leave to the demuxer.
+                    //
+                    // Read and write need separate half-streams. A single duplex stream — GetStream(0, 0)
+                    // — serves exactly one request and then goes quiet, so an HTTP client reusing the
+                    // connection hangs on its second request. Exec has the same constraint.
+                    byte? dataChannel = 0;
+                    await using var fromPod = demuxer.GetStream(dataChannel, null);
+                    await using var toPod = demuxer.GetStream(null, dataChannel);
+                    var local = connection.GetStream();
+
+                    // Pump both directions until either end closes.
+                    var upstream = local.CopyToAsync(toPod, _cts.Token);
+                    var downstream = fromPod.CopyToAsync(local, _cts.Token);
+                    await Task.WhenAny(upstream, downstream).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // A connection breaking after it was established (socket reset, pod restarted
+                    // mid-request) closes that connection; the listener stays up so the next attempt
+                    // can succeed — and if the tunnel really is gone, that attempt says so above.
+                }
             }
         }
     }
 
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// End the tunnel from the inside. <paramref name="reason"/> null means the caller disposed us,
+    /// which is a stop rather than a drop and must stay silent — see <see cref="IPortForward.Closed"/>.
+    /// </summary>
+    private void Drop(string? reason)
     {
+        if (!IsActive)
+            return;
+
         IsActive = false;
-        await _cts.CancelAsync().ConfigureAwait(false);
         _listener.Stop();
+
+        // Free the local port too: a listener that outlives its tunnel accepts connections it can
+        // never serve, and holds the port against the reconnect that would fix it.
+        if (!_cts.IsCancellationRequested)
+            _cts.Cancel();
+
+        if (reason is not null)
+            Closed?.Invoke(reason);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Drop(null);
         _cts.Dispose();
+        return ValueTask.CompletedTask;
     }
 }
