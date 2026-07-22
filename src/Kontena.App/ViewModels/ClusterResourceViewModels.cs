@@ -158,7 +158,9 @@ public sealed class NodeCardRow
         MemoryFraction = use is not null && cap.MemoryBytes > 0 ? (double)use.MemoryBytes / cap.MemoryBytes : 0;
         CpuText = use is null ? "—" : $"{use.CpuMillicores}m / {cap.CpuMillicores}m";
         MemoryText = use is null ? "—" : $"{Format.Size(use.MemoryBytes)} / {Format.Size(cap.MemoryBytes)}";
-        PodsText = use is null ? $"— / {cap.Pods}" : $"{use.Pods} / {cap.Pods}";
+        
+        // Pod counts come off the pod list, so they show even when there is no metrics source.
+        PodsText = $"{n.ScheduledPods} / {cap.Pods}";
     }
 
     public string Name { get; }

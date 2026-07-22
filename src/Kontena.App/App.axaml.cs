@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Kontena.Adapters.Docker;
+using Kontena.Adapters.Kubernetes;
 using Kontena.Adapters.Podman;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
@@ -33,6 +34,10 @@ public partial class App : Application
                 new DockerEngineProvider(),
                 new PodmanEngineProvider(),
             };
+
+            // One cluster backend per kube-context. Yields nothing when there is no kubeconfig, so a
+            // machine that only runs containers simply shows no Clusters group in the switcher.
+            providers.AddRange(KubernetesClusterProvider.DiscoverAll());
 
             // The in-memory demo backends are a dev/testing aid — never shipped to users.
             // Available in Debug builds, or opt-in from a release build for demos/screenshots.

@@ -647,7 +647,8 @@ public sealed class FakeClusterEngine : IClusterEngine
         InternalIp = "10.128.0." + (name.GetHashCode() & 0x3f),
         Unschedulable = unschedulable,
         Capacity = new NodeCapacity { CpuMillicores = 4000, MemoryBytes = 16L * 1024 * 1024 * 1024, Pods = 110 },
-        Usage = new NodeUsage { CpuMillicores = 1200, MemoryBytes = 6L * 1024 * 1024 * 1024, Pods = 24 },
+        Usage = new NodeUsage { CpuMillicores = 1200, MemoryBytes = 6L * 1024 * 1024 * 1024 },
+        ScheduledPods = 24,
         Age = TimeSpan.FromDays(9),
     };
 

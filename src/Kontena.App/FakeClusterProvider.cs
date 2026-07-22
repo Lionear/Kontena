@@ -13,7 +13,14 @@ namespace Kontena.App;
 /// </summary>
 public sealed class FakeClusterProvider(string context, string chip) : IBackendProvider
 {
-    public string Backend => $"kubernetes:{context}";
+    /// <summary>
+    /// Its own id namespace, deliberately not "kubernetes": the real adapter registers one backend
+    /// per kube-context under that prefix, and a user whose kubeconfig happens to hold a context
+    /// named like a seeded one would otherwise collide with a demo backend.
+    /// </summary>
+    public const string FakeBackendPrefix = "fakecluster";
+
+    public string Backend => $"{FakeBackendPrefix}:{context}";
     public string DisplayName => context;
     public string Chip => chip;
     public BackendKind Kind => BackendKind.Cluster;
