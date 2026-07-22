@@ -1,0 +1,24 @@
+# The prod overlay — point Kontena's Kustomize source at *this* directory, not at the root.
+#
+#   Apply manifest → Kustomize → Browse… → samples/kustomize/overlays/prod → Build → Dry-run
+#
+# The build renames everything with the prefix, scales the deployment, and pins a newer image.
+# The dry-run then holds that against the cluster, so an overlay mistake and a cluster
+# complaint both show up in the same plan.
+# It renders into the current namespace on purpose, so the sample works against any cluster
+# without creating anything first.
+resources:
+  - ../../base
+
+namePrefix: prod-
+
+commonAnnotations:
+  kontena.dev/sample: kustomize-overlay
+
+replicas:
+  - name: guestbook
+    count: 3
+
+images:
+  - name: nginx
+    newTag: 1.27.3-alpine

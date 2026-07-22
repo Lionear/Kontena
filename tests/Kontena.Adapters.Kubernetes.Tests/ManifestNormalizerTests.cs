@@ -143,6 +143,45 @@ public class ManifestNormalizerTests
         Assert.Empty(ManifestNormalizer.ToComparableYaml(null));
         Assert.Empty(ManifestNormalizer.ToComparableYaml("just a string"));
     }
+
+    [Fact]
+    public void A_secrets_values_never_reach_the_diff()
+    {
+        var yaml = ManifestNormalizer.ToComparableYaml(Doc(
+            ("apiVersion", "v1"),
+            ("kind", "Secret"),
+            ("data", Doc(("password", "aHVudGVyMg=="))),
+            ("stringData", Doc(("token", "s3cr3t")))));
+
+        Assert.DoesNotContain("aHVudGVyMg==", yaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("s3cr3t", yaml, StringComparison.Ordinal);
+        Assert.Contains("hidden (sha256:", yaml, StringComparison.Ordinal);
+
+        // The keys stay: which secrets a bundle sets is not itself a secret.
+        Assert.Contains("password:", yaml, StringComparison.Ordinal);
+        Assert.Contains("token:", yaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_changed_secret_still_reads_as_changed()
+    {
+        var before = ManifestNormalizer.ToComparableYaml(Doc(
+            ("kind", "Secret"), ("data", Doc(("password", "old")))));
+        var after = ManifestNormalizer.ToComparableYaml(Doc(
+            ("kind", "Secret"), ("data", Doc(("password", "new")))));
+
+        // A digest, not a constant placeholder — otherwise a rotated secret would look unchanged.
+        Assert.NotEqual(before, after);
+    }
+
+    [Fact]
+    public void Only_secrets_are_masked()
+    {
+        var yaml = ManifestNormalizer.ToComparableYaml(Doc(
+            ("kind", "ConfigMap"), ("data", Doc(("greeting", "hello")))));
+
+        Assert.Contains("hello", yaml, StringComparison.Ordinal);
+    }
 }
 
 public class ManifestDocumentsTests

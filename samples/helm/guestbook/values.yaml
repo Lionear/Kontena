@@ -1,0 +1,23 @@
+# Defaults. Override with a values file (values-prod.yaml next to this one) or with
+# key=value lines in the Set box.
+replicaCount: 1
+
+image:
+  repository: nginx
+  tag: 1.27-alpine
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
+
+# Set this to render an extra ConfigMap — a quick way to watch the plan grow by one resource.
+message: ""

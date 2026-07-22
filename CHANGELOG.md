@@ -46,6 +46,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   lists everything running, badged with a count, with the local address to copy, an Open button for
   web workloads, and Stop (or Stop all). Forwards are torn down when you switch backend or quit.
   (KON-97)
+- **Kustomize and Helm as manifest sources** — the Apply page now takes more than typed YAML.
+  Pick **Kustomize** and point at an overlay directory to build it (via `kustomize`, or `kubectl
+  kustomize` when that is all you have); pick **Helm** and render a chart with values files, `--set`
+  overrides and a release name. Either way the result lands in the editor as ordinary manifests and
+  takes the same route as anything else: dry-run, plan, diff, apply. Build and lint findings — a
+  missing base, a values key a template needs, a resource declared twice — are reported before the
+  cluster is asked anything, and the exact command that ran is shown so it can be repeated in a
+  terminal. Charts can be picked from Helm's own repositories, which can be searched, refreshed and
+  added from the page. Plugins stay off for kustomize builds: a preview must not be able to execute
+  arbitrary code. (KON-88, KON-89)
+- **The apply plan is filterable, and leads with what changes** — a chart can render dozens of
+  resources of which a handful actually differ, so the rollup beside the plan became the filter:
+  each outcome is a chip that switches its rows on and off, and on a long plan the no-ops start
+  hidden (with a count, so a filtered plan never reads as the whole plan). Rows are ordered by what
+  needs attention — failed, then configure, then create, then unchanged — rather than by the order
+  the documents happened to be rendered in.
+- **Secrets are masked in diffs** — a Secret's values are replaced by a digest of themselves, so a
+  rotated secret still reads as changed while the credential stays out of the diff.
 - **Declarative apply, with a dry-run first** — a new *Apply manifest* page: paste or edit a
   manifest bundle, run a server-side dry-run to see a per-resource plan (create / configure /
   no change) with a unified diff, then apply. Editing the manifest invalidates the plan, so what you

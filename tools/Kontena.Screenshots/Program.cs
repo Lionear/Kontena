@@ -28,7 +28,11 @@ namespace Kontena.Screenshots;
 //   dotnet run --project tools/Kontena.Screenshots -- --scene containers --theme dark --out shots/containers.png [--size 1180x760]
 //
 // Scenes: containers (list, hero), detail (container logs), inspect (container inspect tab),
-//         images, volumes, networks, projects, run (Run-container modal), settings.
+//         images, volumes, networks, projects, run (Run-container modal), settings,
+//         apply / apply-plan / apply-done (the declarative flow),
+//         apply-kustomize / apply-helm (the render sources — these run the real
+//         kustomize/helm CLIs over the repository's own samples, and skip nothing:
+//         without the tool installed the capture shows the render's error state).
 internal static class Program
 {
     [STAThread]
@@ -269,6 +273,7 @@ internal static class Program
                 break;
 
             case "real-apply":
+            case "real-helm":
             case "real-shell":
             case "real-cluster":
                 // The live Kubernetes adapter (KON-68) against whatever the kubeconfig points at.
@@ -317,6 +322,28 @@ internal static class Program
                             SettleUntil(() => liveApply.HasPlan, maxRounds: 200);
                         }
                     }
+                    else if (scene == "real-helm")
+                    {
+                        // A chart rendered locally, then held against the live cluster. Defaults to
+                        // the repository's own sample; KONTENA_SHOT_CHART points it at a real chart
+                        // (e.g. "cilium/cilium"), which is how the plan's filter gets exercised —
+                        // a big chart is mostly resources that are not changing.
+                        vm.NavigateCommand.Execute("apply");
+                        Settle(rounds: 40);
+                        if (vm.CurrentPage is Kontena.App.ViewModels.ApplyManifestViewModel liveHelm)
+                        {
+                            var chart = Environment.GetEnvironmentVariable("KONTENA_SHOT_CHART");
+                            liveHelm.SelectSourceCommand.Execute("Helm");
+                            liveHelm.Chart = string.IsNullOrWhiteSpace(chart) ? RepoPath("samples/helm/guestbook") : chart;
+                            liveHelm.ReleaseName = Environment.GetEnvironmentVariable("KONTENA_SHOT_RELEASE") ?? "demo";
+
+                            liveHelm.RenderCommand.Execute(null);
+                            SettleUntil(() => !liveHelm.IsRendering && liveHelm.HasDiagnostics, maxRounds: 400);
+
+                            liveHelm.DryRunCommand.Execute(null);
+                            SettleUntil(() => liveHelm.HasPlan, maxRounds: 400);
+                        }
+                    }
                     else
                     {
                         vm.NavigateCommand.Execute("nodes");
@@ -329,10 +356,45 @@ internal static class Program
             case "apply":
             case "apply-plan":
             case "apply-done":
+            case "apply-kustomize":
+            case "apply-helm":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("apply");
                 Settle(rounds: 30);
+
+                // The render sources (KON-88, KON-89) build the repo's own samples, so the capture
+                // shows a real kustomize/helm run rather than a mocked-up form.
+                if (scene is "apply-kustomize" or "apply-helm"
+                    && vm.CurrentPage is Kontena.App.ViewModels.ApplyManifestViewModel render)
+                {
+                    if (scene == "apply-kustomize")
+                    {
+                        render.SelectSourceCommand.Execute("Kustomize");
+                        render.KustomizePath = RepoPath("samples/kustomize/overlays/prod");
+                    }
+                    else
+                    {
+                        render.SelectSourceCommand.Execute("Helm");
+                        render.Chart = RepoPath("samples/helm/guestbook");
+                        render.ReleaseName = "shop";
+                        render.AddValuesFile(RepoPath("samples/helm/guestbook/values-prod.yaml"));
+                        render.SetValues = "replicaCount=4";
+
+                        // Shows the repository panel on a machine that has repos configured; on one
+                        // that has none it stays hidden, which is also what the user would see.
+                        render.LoadReposCommand.Execute(null);
+                        SettleUntil(() => render.Repos.Count > 0, maxRounds: 40);
+                    }
+
+                    render.RenderCommand.Execute(null);
+                    SettleUntil(() => !render.IsRendering && render.HasDiagnostics, maxRounds: 120);
+
+                    render.DryRunCommand.Execute(null);
+                    SettleUntil(() => render.HasPlan, maxRounds: 60);
+                    break;
+                }
+
                 if (scene != "apply" && vm.CurrentPage is Kontena.App.ViewModels.ApplyManifestViewModel apply)
                 {
                     // A bundle that exercises every plan outcome: one change, one create, one no-op.
@@ -416,6 +478,19 @@ internal static class Program
 
         if (vm.CurrentPage is ContainerDetailViewModel detail)
             detail.SelectTabCommand.Execute(tab);
+    }
+
+    /// <summary>
+    /// An absolute path to something in the repository. The capture runs from an output directory
+    /// several levels down, so walk up until the repository root is recognisable.
+    /// </summary>
+    private static string RepoPath(string relative)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "samples")))
+            dir = dir.Parent;
+
+        return dir is null ? relative : Path.Combine(dir.FullName, relative);
     }
 
     // Headless has no render loop, so pump the dispatcher in rounds — draining posted continuations

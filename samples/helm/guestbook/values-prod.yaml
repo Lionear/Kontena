@@ -1,0 +1,8 @@
+# An environment values file, to show precedence: add this in the Values row and the chart's
+# own defaults lose to it. A key=value in the Set box then beats this in turn.
+replicaCount: 3
+
+image:
+  tag: 1.27.3-alpine
+
+message: "rendered by Kontena"
