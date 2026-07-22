@@ -41,6 +41,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   **restart a rollout** behind a confirmation, and **port-forward** from the Services grid or the
   pod header, showing the live tunnel with a Stop. Actions are offered only where the workload kind
   and the cluster's capabilities support them. (KON-71)
+- **Kustomize and Helm as manifest sources** — the Apply page now takes more than typed YAML.
+  Pick **Kustomize** and point at an overlay directory to build it (via `kustomize`, or `kubectl
+  kustomize` when that is all you have); pick **Helm** and render a chart with values files, `--set`
+  overrides and a release name. Either way the result lands in the editor as ordinary manifests and
+  takes the same route as anything else: dry-run, plan, diff, apply. Build and lint findings — a
+  missing base, a values key a template needs, a resource declared twice — are reported before the
+  cluster is asked anything, and the exact command that ran is shown so it can be repeated in a
+  terminal. Charts can be picked from Helm's own repositories, which can be searched, refreshed and
+  added from the page. Plugins stay off for kustomize builds: a preview must not be able to execute
+  arbitrary code. (KON-88, KON-89)
+- **Secrets are masked in diffs** — a Secret's values are replaced by a digest of themselves, so a
+  rotated secret still reads as changed while the credential stays out of the diff.
 - **Declarative apply, with a dry-run first** — a new *Apply manifest* page: paste or edit a
   manifest bundle, run a server-side dry-run to see a per-resource plan (create / configure /
   no change) with a unified diff, then apply. Editing the manifest invalidates the plan, so what you

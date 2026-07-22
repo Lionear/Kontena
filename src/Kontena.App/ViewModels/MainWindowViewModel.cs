@@ -443,7 +443,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 // An apply can create or remove anything — refresh the counts, not the open page.
                 _ = UpdateClusterNavCountsAsync();
                 return Task.CompletedTask;
-            }),
+            }, ActiveNamespace),
             _ => new ClusterOverviewViewModel(_cluster),
         };
         SearchText = string.Empty;

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:rendering="using:Kontena.Core.Orchestration.Rendering"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="720"
@@ -35,6 +36,69 @@
             <Setter Property="TextWrapping" Value="NoWrap"/>
             <Setter Property="Foreground" Value="{DynamicResource Text}"/>
         </Style>
+        <!-- The source switcher: three flat tabs, the active one carried by the accent -->
+        <Style Selector="Button.source">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <Style Selector="Button.source:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Button.source.active">
+            <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.source.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+
+        <!-- The render forms sit between the switcher and the editor -->
+        <Style Selector="Border.sourceform">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="13,11"/>
+        </Style>
+        <Style Selector="Border.sourceform TextBox.field">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Padding" Value="9,5"/>
+        </Style>
+        <Style Selector="Border.sourceform TextBlock.label">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <Style Selector="Button.chipclose">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="2,0"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <!-- A chart in the browser is a row-sized button: the whole row picks it -->
+        <Style Selector="Button.chartrow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Button.chartrow:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+
         <!-- Plan rows follow the design tokens, not the platform's selection blue -->
         <Style Selector="ListBoxItem">
             <Setter Property="CornerRadius" Value="8"/>
@@ -70,16 +134,198 @@
         <!-- Editor | plan -->
         <Grid Grid.Row="1" ColumnDefinitions="*,16,*">
             <Border Grid.Column="0" Classes="panel">
-                <Grid RowDefinitions="Auto,*">
+                <Grid RowDefinitions="Auto,Auto,Auto,*">
+                    <!-- Where the manifest comes from: typed here, or rendered from a source -->
                     <Border Grid.Row="0" Classes="panelhead">
                         <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Grid.Column="0" Text="{Binding Source}" FontFamily="{StaticResource Mono}"
-                                       FontSize="12" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                                <Button Classes="source" Classes.active="{Binding IsPasteSource}"
+                                        Command="{Binding SelectSourceCommand}" CommandParameter="Paste">Manifest</Button>
+                                <Button Classes="source" Classes.active="{Binding IsKustomizeSource}"
+                                        Command="{Binding SelectSourceCommand}" CommandParameter="Kustomize">Kustomize</Button>
+                                <Button Classes="source" Classes.active="{Binding IsHelmSource}"
+                                        Command="{Binding SelectSourceCommand}" CommandParameter="Helm">Helm</Button>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding Source}" Margin="12,0" FontFamily="{StaticResource Mono}"
+                                       FontSize="11.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"/>
                             <Button Grid.Column="2" Classes="pill" Padding="9,4" FontSize="11.5"
                                     Command="{Binding ResetCommand}" ToolTip.Tip="Restore the example manifest">Reset</Button>
                         </Grid>
                     </Border>
-                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
+
+                    <!-- Kustomize (KON-88) -->
+                    <Border Grid.Row="1" Classes="sourceform" IsVisible="{Binding IsKustomizeSource}">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBox Grid.Column="0" Classes="field" Text="{Binding KustomizePath}"
+                                         PlaceholderText="Overlay directory, e.g. deploy/overlays/prod"/>
+                                <Button Grid.Column="1" Classes="pill" Margin="8,0,0,0" Name="BrowseKustomize"
+                                        Click="OnBrowseKustomizeClick">Browse…</Button>
+                                <Button Grid.Column="2" Classes="primary" Margin="8,0,0,0"
+                                        Command="{Binding RenderCommand}" IsEnabled="{Binding !IsRendering}">Build</Button>
+                            </Grid>
+                            <TextBlock Classes="hint" IsVisible="{Binding !IsKustomizeInstalled}"
+                                       Text="Neither kustomize nor kubectl is on PATH — install either one to build kustomizations."/>
+                            <TextBlock Classes="hint" IsVisible="{Binding IsKustomizeInstalled}"
+                                       Text="Bases, patches and generators are resolved locally; the result is reviewed against the cluster below."/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Helm (KON-89) -->
+                    <Border Grid.Row="1" Classes="sourceform" IsVisible="{Binding IsHelmSource}">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <TextBlock Grid.Column="0" Classes="label" Text="Chart"/>
+                                <TextBox Grid.Column="1" Classes="field" Text="{Binding Chart}"
+                                         PlaceholderText="A chart directory, or repo/name"/>
+                                <Button Grid.Column="2" Classes="pill" Margin="8,0,0,0"
+                                        Click="OnBrowseChartClick">Browse…</Button>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="Auto,*,Auto,110,Auto,*">
+                                <TextBlock Grid.Column="0" Classes="label" Text="Release"/>
+                                <TextBox Grid.Column="1" Classes="field" Text="{Binding ReleaseName}" PlaceholderText="Release name"/>
+                                <TextBlock Grid.Column="2" Classes="label" Margin="12,0,8,0" Text="Version"/>
+                                <TextBox Grid.Column="3" Classes="field" Text="{Binding ChartVersion}" PlaceholderText="latest"/>
+                                <TextBlock Grid.Column="4" Classes="label" Margin="12,0,8,0" Text="Namespace"/>
+                                <TextBox Grid.Column="5" Classes="field" Text="{Binding RenderNamespace}" PlaceholderText="default"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <TextBlock Grid.Column="0" Classes="label" Text="Values"/>
+                                <ItemsControl Grid.Column="1" ItemsSource="{Binding ValuesFiles}" IsVisible="{Binding HasValuesFiles}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="9,3" Margin="0,0,6,4">
+                                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                                    <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11"
+                                                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"
+                                                               MaxWidth="260" TextTrimming="CharacterEllipsis"/>
+                                                    <Button Classes="chipclose" Content="✕"
+                                                            Command="{Binding $parent[ItemsControl].((vm:ApplyManifestViewModel)DataContext).RemoveValuesFileCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Grid.Column="1" Classes="hint" VerticalAlignment="Center"
+                                           IsVisible="{Binding !HasValuesFiles}"
+                                           Text="The chart's own values.yaml, unless you add files here."/>
+                                <Button Grid.Column="2" Classes="pill" Margin="8,0,0,0" Click="OnAddValuesClick">Add values…</Button>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="Auto,*">
+                                <TextBlock Grid.Column="0" Classes="label" Text="Set" VerticalAlignment="Top" Margin="0,7,8,0"/>
+                                <TextBox Grid.Column="1" Classes="field" Text="{Binding SetValues}" AcceptsReturn="True"
+                                         MinHeight="52" MaxHeight="90" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                         PlaceholderText="One key=value per line — applied after the values files"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IncludeCrds}" FontSize="12"
+                                          ToolTip.Tip="Include the chart's CRDs, as an install would">CRDs</CheckBox>
+                                <CheckBox Grid.Column="1" Margin="12,0,0,0" IsChecked="{Binding RunLint}" FontSize="12"
+                                          ToolTip.Tip="Also run helm lint on a chart directory">Lint</CheckBox>
+                                <Button Grid.Column="3" Classes="pill" Margin="0,0,8,0"
+                                        Command="{Binding LoadReposCommand}" IsVisible="{Binding !HasRepos}"
+                                        IsEnabled="{Binding IsHelmInstalled}">Browse charts…</Button>
+                                <Button Grid.Column="4" Classes="primary"
+                                        Command="{Binding RenderCommand}" IsEnabled="{Binding !IsRendering}">Render</Button>
+                            </Grid>
+
+                            <TextBlock Classes="hint" IsVisible="{Binding !IsHelmInstalled}"
+                                       Text="helm is not on PATH — install Helm to render charts."/>
+
+                            <!-- Chart repositories: helm's own, so the chart field can be picked, not typed -->
+                            <Expander IsVisible="{Binding HasRepos}" FontSize="12.5">
+                                <Expander.Header>
+                                    <TextBlock Text="Chart repositories" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="8" Margin="0,6,0,0">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
+                                        <TextBox Grid.Column="0" Classes="field" Text="{Binding ChartSearch}"
+                                                 PlaceholderText="Search the configured repositories"/>
+                                        <Button Grid.Column="1" Classes="pill" Margin="8,0,0,0"
+                                                Command="{Binding SearchChartsCommand}">Search</Button>
+                                        <Button Grid.Column="2" Classes="pill" Margin="8,0,0,0"
+                                                Command="{Binding UpdateReposCommand}"
+                                                ToolTip.Tip="helm repo update">Update</Button>
+                                    </Grid>
+
+                                    <Border Background="{DynamicResource Surface2}" CornerRadius="8" MaxHeight="180">
+                                        <ScrollViewer>
+                                            <ItemsControl ItemsSource="{Binding Charts}" Margin="4">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="rendering:HelmChart">
+                                                        <Button Classes="chartrow"
+                                                                Command="{Binding $parent[ItemsControl].((vm:ApplyManifestViewModel)DataContext).UseChartCommand}"
+                                                                CommandParameter="{Binding}">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <StackPanel Grid.Column="0">
+                                                                    <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}"
+                                                                               FontSize="12" Foreground="{DynamicResource Text}"/>
+                                                                    <TextBlock Text="{Binding Description}" FontSize="11"
+                                                                               Foreground="{DynamicResource TextFaint}"
+                                                                               TextTrimming="CharacterEllipsis"/>
+                                                                </StackPanel>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Version}" FontSize="11"
+                                                                           FontFamily="{StaticResource Mono}" VerticalAlignment="Center"
+                                                                           Foreground="{DynamicResource TextDim}"/>
+                                                            </Grid>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Border>
+
+                                    <Grid ColumnDefinitions="140,*,Auto">
+                                        <TextBox Grid.Column="0" Classes="field" Text="{Binding NewRepoName}" PlaceholderText="repo name"/>
+                                        <TextBox Grid.Column="1" Classes="field" Margin="8,0,0,0" Text="{Binding NewRepoUrl}"
+                                                 PlaceholderText="https://charts.example.com"/>
+                                        <Button Grid.Column="2" Classes="pill" Margin="8,0,0,0"
+                                                Command="{Binding AddRepoCommand}">Add repo</Button>
+                                    </Grid>
+
+                                    <TextBlock Classes="hint" Text="{Binding RepoStatus}"
+                                               IsVisible="{Binding RepoStatus, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                    <TextBlock Classes="hint"
+                                               Text="Repositories that need credentials are not supported yet — helm's own auth applies."/>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- What the render found, before the cluster is asked anything -->
+                    <Border Grid.Row="2" Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="0,1,0,1" Padding="13,8" IsVisible="{Binding HasDiagnostics}">
+                        <StackPanel Spacing="5">
+                            <ItemsControl ItemsSource="{Binding Diagnostics}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DiagnosticRow">
+                                        <Grid ColumnDefinitions="14,*" Margin="0,1">
+                                            <TextBlock Grid.Column="0" Text="{Binding Glyph}" Foreground="{Binding Accent}"
+                                                       FontFamily="{StaticResource Mono}" FontSize="11.5" FontWeight="Bold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="11.5"
+                                                       Foreground="{DynamicResource TextDim}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding LastCommand}" FontFamily="{StaticResource Mono}" FontSize="10.5"
+                                       Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
+                                       IsVisible="{Binding LastCommand, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Auto">
                         <TextBox Classes="editor" Text="{Binding YamlText}"/>
                     </ScrollViewer>
                 </Grid>
@@ -156,6 +402,9 @@
                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}">
                         <Run Text="Applying to "/><Run Text="{Binding ContextName}" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                    </TextBlock>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextFaint}">
+                        <Run Text="Documents without a namespace go to "/><Run Text="{Binding NamespaceLabel}"/>
                     </TextBlock>
                     <TextBlock Text="{Binding Error}" FontSize="12" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"
                                IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>

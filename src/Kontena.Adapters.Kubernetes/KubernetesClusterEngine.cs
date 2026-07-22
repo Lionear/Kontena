@@ -479,6 +479,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     {
         var documents = ManifestDocuments.Split(bundle.Yaml).ToList();
         var pendingNamespaces = ManifestDocuments.NamespacesCreatedBy(documents);
+        var fallback = bundle.Namespace is { Length: > 0 } chosen ? chosen : DefaultNamespace;
 
         foreach (var document in documents)
         {
@@ -496,14 +497,19 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
             }
 
             yield return await _apply
-                .ApplyOneAsync(document.Content!, bundle.DryRun, DefaultNamespace, pendingNamespaces, ct)
+                .ApplyOneAsync(document.Content!, bundle.DryRun, fallback, pendingNamespaces, ct)
                 .ConfigureAwait(false);
         }
     }
 
-    /// <summary>The context's namespace, used for documents that name none.</summary>
-    private string? DefaultNamespace =>
-        _contexts.FirstOrDefault(c => c.Name == _context)?.Namespace;
+    /// <summary>
+    /// The context's namespace, for documents that name none. A kubeconfig context often sets
+    /// none at all, and then the rule is kubectl's: "default" — not a refusal to apply.
+    /// </summary>
+    private string DefaultNamespace =>
+        _contexts.FirstOrDefault(c => c.Name == _context)?.Namespace is { Length: > 0 } ns
+            ? ns
+            : "default";
 
     public async ValueTask DeleteAsync(ResourceRef resource, bool force = false, CancellationToken ct = default) =>
         await _apply.DeleteAsync(resource, force, ct).ConfigureAwait(false);

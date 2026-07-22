@@ -13,6 +13,14 @@ public sealed record ManifestBundle
     public string Source { get; init; } = string.Empty;
 
     /// <summary>
+    /// Where documents that declare no namespace of their own should go. Rendered bundles usually
+    /// have none — <c>helm template --namespace</c> tells templates the namespace without writing
+    /// it into the output — so the caller says once, rather than every document repeating it.
+    /// Empty falls back to the context's namespace, as <c>kubectl apply</c> does.
+    /// </summary>
+    public string Namespace { get; init; } = string.Empty;
+
+    /// <summary>
     /// When true, run server-side dry-run only (validate + diff, persist nothing) — the
     /// preview step before a real apply.
     /// </summary>

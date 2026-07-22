@@ -24,12 +24,15 @@ public partial class ApplyManifestViewModel : ViewModelBase
 
     /// <param name="onApplied">Invoked after a real apply so the shell can refresh the grids and
     /// nav counts. Passed by constructor, not init-property, so it is set before any command runs.</param>
-    public ApplyManifestViewModel(IClusterEngine cluster, string? context, Func<Task>? onApplied = null)
+    /// <param name="ns">The namespace picker's selection, used as the default for a Helm render.</param>
+    public ApplyManifestViewModel(
+        IClusterEngine cluster, string? context, Func<Task>? onApplied = null, string? ns = null)
     {
         _cluster = cluster;
         _onApplied = onApplied;
         ContextName = context ?? cluster.Contexts.FirstOrDefault(c => c.IsCurrent)?.Name ?? "cluster";
         _yamlText = SampleManifest;
+        _renderNamespace = ns ?? string.Empty;
     }
 
     /// <summary>A worked example, so the page is useful the moment it opens.</summary>
@@ -135,6 +138,9 @@ public partial class ApplyManifestViewModel : ViewModelBase
         YamlText = SampleManifest;
         Source = "pasted";
         Error = null;
+        LastCommand = string.Empty;
+        Diagnostics.Clear();
+        OnPropertyChanged(nameof(HasDiagnostics));
     }
 
     private async Task RunAsync(bool dryRun)
@@ -146,7 +152,15 @@ public partial class ApplyManifestViewModel : ViewModelBase
 
         try
         {
-            var bundle = new ManifestBundle { Yaml = YamlText, Source = Source, DryRun = dryRun };
+            var bundle = new ManifestBundle
+            {
+                Yaml = YamlText,
+                Source = Source,
+                DryRun = dryRun,
+
+                // Rendered bundles rarely name a namespace per document; the page says it once.
+                Namespace = RenderNamespace.Trim(),
+            };
             await foreach (var progress in _cluster.ApplyAsync(bundle))
                 Plan.Add(new ApplyPlanRow(progress));
 

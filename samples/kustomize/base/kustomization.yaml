@@ -1,0 +1,12 @@
+# The base: one deployment and one service, with no environment in them.
+# Everything environment-specific lives in an overlay.
+resources:
+  - deployment.yaml
+  - service.yaml
+
+# `labels` without includeSelectors: labelling is metadata, and a selector is not something
+# an overlay should quietly change underneath a running deployment.
+labels:
+  - pairs:
+      app.kubernetes.io/name: guestbook
+      app.kubernetes.io/managed-by: kustomize

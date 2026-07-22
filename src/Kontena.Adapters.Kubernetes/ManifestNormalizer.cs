@@ -44,8 +44,39 @@ internal static class ManifestNormalizer
             return string.Empty;
 
         var builder = new StringBuilder();
-        Write(builder, Sort(Clean(map)), indent: 0);
+        Write(builder, Sort(Mask(Clean(map))), indent: 0);
         return builder.ToString().TrimEnd('\n');
+    }
+
+    /// <summary>
+    /// Replace a Secret's values with a digest of themselves. A diff is something people paste into
+    /// tickets and screen-share; the credential does not need to be in it. The digest keeps the diff
+    /// honest — a changed secret still reads as changed — without carrying the secret itself.
+    /// </summary>
+    private static Dictionary<string, object?> Mask(Dictionary<string, object?> map)
+    {
+        if (map.GetValueOrDefault("kind") as string != "Secret")
+            return map;
+
+        foreach (var field in new[] { "data", "stringData" })
+        {
+            if (map.GetValueOrDefault(field) is not IDictionary<string, object?> values)
+                continue;
+
+            foreach (var key in values.Keys.ToList())
+                values[key] = Digest(values[key]);
+        }
+
+        return map;
+    }
+
+    /// <summary>"hidden (sha256:1a2b3c4d)" — enough to compare, not enough to use.</summary>
+    private static string Digest(object? value)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes(Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty));
+
+        return $"hidden (sha256:{Convert.ToHexString(bytes.AsSpan(0, 4)).ToLowerInvariant()})";
     }
 
     /// <summary>
