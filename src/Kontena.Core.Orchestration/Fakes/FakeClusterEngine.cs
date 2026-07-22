@@ -361,9 +361,16 @@ public sealed class FakeClusterEngine : IClusterEngine
         ResourceRef pod, string container, ExecRequest request, CancellationToken ct = default) =>
         ValueTask.FromResult<IExecSession>(new FakeExecSession(pod.Name, container));
 
+    /// <summary>The handle handed out by the last <see cref="PortForwardAsync"/> — so a caller can
+    /// make it drop, which no cluster-less test could otherwise do.</summary>
+    public FakePortForward? LastPortForward { get; private set; }
+
     public ValueTask<IPortForward> PortForwardAsync(
-        ResourceRef target, int remotePort, int? localPort = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IPortForward>(new FakePortForward(localPort ?? remotePort, remotePort));
+        ResourceRef target, int remotePort, int? localPort = null, CancellationToken ct = default)
+    {
+        LastPortForward = new FakePortForward(localPort ?? remotePort, remotePort);
+        return ValueTask.FromResult<IPortForward>(LastPortForward);
+    }
 
     public async IAsyncEnumerable<LogEntry> StreamLogsAsync(
         ResourceRef pod, string container, bool follow = true, [EnumeratorCancellation] CancellationToken ct = default)
@@ -685,14 +692,30 @@ public sealed class FakeClusterEngine : IClusterEngine
 }
 
 /// <summary>A no-op <see cref="IPortForward"/> handle for the fake cluster.</summary>
-internal sealed class FakePortForward(int localPort, int remotePort) : IPortForward
+public sealed class FakePortForward(int localPort, int remotePort) : IPortForward
 {
     public int LocalPort { get; } = localPort;
     public int RemotePort { get; } = remotePort;
     public bool IsActive { get; private set; } = true;
 
+    public event Action<string>? Closed;
+
+    /// <summary>
+    /// Make the tunnel fall over the way a real one does — the only way to reach that state without a
+    /// cluster, and the fake is what the Port forwards page is built against.
+    /// </summary>
+    public void Drop(string reason = "The pod is gone.")
+    {
+        if (!IsActive)
+            return;
+
+        IsActive = false;
+        Closed?.Invoke(reason);
+    }
+
     public ValueTask DisposeAsync()
     {
+        // Disposal is a stop, not a drop: no Closed, per the contract.
         IsActive = false;
         return ValueTask.CompletedTask;
     }

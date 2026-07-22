@@ -32,16 +32,30 @@ public class KontenaSettingsTests
             LaunchAtLogin = true,
             TerminalLigatures = true,
             RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
+            PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
+            {
+                ["kubernetes:kind-kind"] =
+                [
+                    new RememberedPortForward("", "v1", "Service", "app", "api", "api · app", 80, 8080),
+                    new RememberedPortForward("", "v1", "Pod", "app", "web-0", "web-0 · app", 8080, 9229),
+                ],
+            },
         };
 
         var json = JsonSerializer.Serialize(original, Options);
         var restored = JsonSerializer.Deserialize<KontenaSettings>(json, Options);
 
         Assert.NotNull(restored);
-        // The list is a reference-typed member (record equality won't compare its contents),
-        // so verify it by sequence, then compare the scalar members with the lists aligned.
+        // The list and the dictionary are reference-typed members (record equality won't compare
+        // their contents), so verify them by sequence, then compare the scalar members with both
+        // aligned.
         Assert.Equal(original.RecentBuildContexts, restored!.RecentBuildContexts);
-        Assert.Equal(original with { RecentBuildContexts = restored.RecentBuildContexts }, restored);
+        Assert.Equal(
+            original.PortForwards["kubernetes:kind-kind"],
+            restored.PortForwards["kubernetes:kind-kind"]);
+        Assert.Equal(
+            original with { RecentBuildContexts = restored.RecentBuildContexts, PortForwards = restored.PortForwards },
+            restored);
     }
 
     [Fact]
