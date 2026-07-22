@@ -110,6 +110,14 @@ public sealed record KontenaSettings
     /// <summary>Recently used build-context folders, most-recent first (for the Build modal).</summary>
     public IReadOnlyList<string> RecentBuildContexts { get; init; } = [];
 
+    /// <summary>
+    /// Port forwards worth offering again on the next visit, keyed by the full backend id they were
+    /// opened against (<c>kubernetes:kind-kind</c>) — a tunnel means nothing on another cluster.
+    /// The tunnels themselves cannot be persisted; this is the intent behind them (KON-105).
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<RememberedPortForward>> PortForwards { get; init; } =
+        new Dictionary<string, IReadOnlyList<RememberedPortForward>>();
+
     // ── Window placement (restored on launch) ─────────────────────────────────
 
     public double? WindowWidth { get; init; }
@@ -121,3 +129,21 @@ public sealed record KontenaSettings
 
 /// <summary>Terminal font settings resolved for a session (family carries a mono fallback).</summary>
 public sealed record TerminalFont(string Family, double Size, bool Ligatures);
+
+/// <summary>
+/// One port forward as it is remembered between launches: what it pointed at and which ports it
+/// used, which is everything needed to open it again. The resource coordinate is carried as plain
+/// strings so this stays in Core, next to the rest of the settings, without Core learning what a
+/// Kubernetes kind is.
+/// </summary>
+/// <param name="Group">API group of the target; empty for the core group (Pod, Service).</param>
+/// <param name="Version">API version of the target.</param>
+/// <param name="Kind">Resource kind of the target.</param>
+/// <param name="Namespace">Namespace, or null for a cluster-scoped target.</param>
+/// <param name="Name">Resource name.</param>
+/// <param name="Label">How the target was labelled in the UI ("name · namespace").</param>
+/// <param name="RemotePort">The port on the pod/service.</param>
+/// <param name="LocalPort">The local port it listened on — the address you handed to other things.</param>
+public sealed record RememberedPortForward(
+    string Group, string Version, string Kind, string? Namespace, string Name,
+    string Label, int RemotePort, int LocalPort);

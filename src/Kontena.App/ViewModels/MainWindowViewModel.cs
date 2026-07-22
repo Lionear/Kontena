@@ -32,6 +32,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     // registry lives here — see PortForwardRegistry.
     private readonly PortForwardRegistry _portForwards = new();
 
+    /// <summary>The live tunnels, for anything driving the shell from outside (the screenshot harness).</summary>
+    public PortForwardRegistry PortForwards => _portForwards;
+
+    /// <summary>Set while a connection is being torn down — see <see cref="RememberPortForwards"/>.</summary>
+    private bool _suspendPortForwardMemory;
+
     /// <summary>Design-time / default ctor uses a fake-only registry.</summary>
     public MainWindowViewModel()
         : this(new BackendRegistry([new FakeEngineProvider()]))
@@ -51,7 +57,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         NavItems = [];
         SetEngineNav();
-        _portForwards.Changed += UpdatePortForwardCount;
+        _portForwards.Changed += OnPortForwardsChanged;
 
         SyncThemeToggleIcon();
         _ = InitAsync();
@@ -357,7 +363,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         Containers?.StopWatching();
         _activityLog.Detach();
-        await _portForwards.StopAllAsync();
+        await StopPortForwardsAsync();
         (_engine as IDisposable)?.Dispose();
         (_cluster as IDisposable)?.Dispose();
         _engine = null;
@@ -486,6 +492,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Namespaces.Add(AllNamespaces);
         foreach (var ns in await cluster.ListNamespacesAsync())
             Namespaces.Add(ns.Name);
+
+        // Only now that the cluster answered: offering to reopen tunnels on a cluster we cannot reach
+        // would be an empty promise (KON-105).
+        RestorePortForwards(cluster, _activeBackend);
 
         SearchText = string.Empty;
         CurrentPage = new ClusterOverviewViewModel(cluster);
@@ -685,9 +695,61 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>Badge the sidebar with the number of live tunnels — the whole point of the page is that
     /// they keep running while you are somewhere else.</summary>
     private void UpdatePortForwardCount() =>
-        SetNavCount("portforwards", _portForwards.Count == 0
+        SetNavCount("portforwards", _portForwards.ActiveCount == 0
             ? string.Empty
-            : _portForwards.Count.ToString(CultureInfo.InvariantCulture));
+            : _portForwards.ActiveCount.ToString(CultureInfo.InvariantCulture));
+
+    private void OnPortForwardsChanged()
+    {
+        UpdatePortForwardCount();
+        RememberPortForwards();
+    }
+
+    /// <summary>
+    /// Keep the current list for the backend it belongs to, so the next visit can offer it back
+    /// (KON-105). Suspended while tearing a connection down: that clears the registry, and writing
+    /// then would erase exactly the list we mean to keep.
+    /// </summary>
+    private void RememberPortForwards()
+    {
+        if (_suspendPortForwardMemory || string.IsNullOrEmpty(_activeBackend))
+            return;
+
+        var remembered = _portForwards.Snapshot();
+        var all = new Dictionary<string, IReadOnlyList<RememberedPortForward>>(_settings.PortForwards);
+        if (remembered.Count == 0)
+            all.Remove(_activeBackend);
+        else
+            all[_activeBackend] = remembered;
+
+        _settings = _settings with { PortForwards = all };
+        _store.Save(_settings);
+    }
+
+    /// <summary>
+    /// Tear the tunnels down without forgetting them: the list is written first, then cleared with
+    /// persistence suspended, so leaving a cluster keeps what you had open on it.
+    /// </summary>
+    private async Task StopPortForwardsAsync()
+    {
+        RememberPortForwards();
+        _suspendPortForwardMemory = true;
+        try
+        {
+            await _portForwards.StopAllAsync();
+        }
+        finally
+        {
+            _suspendPortForwardMemory = false;
+        }
+    }
+
+    /// <summary>Put back what this cluster had open last time, closed and waiting for a click.</summary>
+    private void RestorePortForwards(IClusterEngine cluster, string backend)
+    {
+        if (_settings.PortForwards.TryGetValue(backend, out var remembered) && remembered.Count > 0)
+            _portForwards.Restore(cluster, remembered);
+    }
 
     partial void OnSelectedNamespaceChanged(string? value)
     {
@@ -970,7 +1032,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         DisposeDetail();
         CloseDialog();
-        _portForwards.StopAllAsync().GetAwaiter().GetResult();
+        StopPortForwardsAsync().GetAwaiter().GetResult();
         Containers?.Dispose();
         _activityLog.Dispose();
         (_engine as IDisposable)?.Dispose();

@@ -11,6 +11,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Pause a port forward instead of stopping it** — closing a tunnel is usually temporary: something
+  else needs that local port for a minute. **Pause** closes it and genuinely hands the port back,
+  but keeps the row, and **Resume** puts it straight back on the same local port — no retracing the
+  service and ports to get the address you already handed to other things. It reads as your decision,
+  not a failure: a paused forward is worded and coloured differently from one that dropped. Stop
+  still means done with it. (KON-106)
+- **Port forwards are offered back on your next visit** — the tunnels themselves cannot survive the
+  app closing (a forward *is* a local listener in this process), but the intent behind them now does.
+  What was on the Port forwards list when you left a cluster comes back when you return to it, as
+  rows that are *not open*, with **Reopen** per row and **Reopen all** in the header. Nothing opens
+  by itself: a tunnel that reconnects to production because the app started is a surprise, and the
+  local port may since have been taken. Remembered per backend — a forward means nothing on another
+  cluster — and a forward you **Stop** is gone for good, which is how you say you are done with it.
+  (KON-105)
+- **A port forward that falls over says so immediately** — the tunnel itself now reports when it
+  ends: the row flips to *Dropped* while you are looking at it, with the reason (the pod was
+  replaced, the cluster refused the connection) in a tooltip, instead of only correcting itself the
+  next time you open the page. A dropped forward keeps its place on the list — losing the local port
+  silently would be worse — stops counting towards the sidebar badge, and offers **Reconnect** to
+  reopen it on that same local port. The local listener is released when the tunnel dies, so nothing
+  is left accepting connections it can never serve. (KON-102)
+
 - **Kontena reopens what you were on** — engine or cluster, whichever it was. Settings › Engines
   replaces the old *default engine* dropdown with a single **On launch** choice: continue where you
   left off, always open one named backend (clusters included), or take the first engine that

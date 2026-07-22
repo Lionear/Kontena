@@ -236,6 +236,45 @@ internal static class Program
 
                 break;
 
+            case "cluster-portforwards":
+                // All three states on one page, and every one of them reached the way the app does it:
+                // two forwards are opened, the backend is switched away and back (which persists them
+                // and restores them closed, KON-105), one is reopened, and a third is dropped (KON-102).
+                {
+                    var fake = new Kontena.Core.Orchestration.Fakes.FakeClusterEngine();
+                    var pod = new Kontena.Core.Orchestration.Models.ResourceRef(
+                        Kontena.Core.Orchestration.Models.GroupVersionKind.Pod, "app", "api-7d9c");
+                    var service = new Kontena.Core.Orchestration.Models.ResourceRef(
+                        Kontena.Core.Orchestration.Models.GroupVersionKind.Service, "app", "api");
+                    var postgres = new Kontena.Core.Orchestration.Models.ResourceRef(
+                        Kontena.Core.Orchestration.Models.GroupVersionKind.Service, "app", "postgres");
+
+                    vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                    SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                    vm.PortForwards.StartAsync(fake, service, "api · app", 80, 8080).GetAwaiter().GetResult();
+                    vm.PortForwards.StartAsync(fake, pod, "api-7d9c · app", 8080, 9229).GetAwaiter().GetResult();
+
+                    // Away and back: the real save-and-restore path, not a hand-built list.
+                    vm.SwitchEngineCommand.Execute("docker");
+                    SettleUntil(() => !vm.IsClusterMode && vm.IsReady, maxRounds: 120);
+                    vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                    SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+
+                    vm.PortForwards.ReconnectAsync(vm.PortForwards.Forwards[0]).GetAwaiter().GetResult();
+
+                    vm.PortForwards.StartAsync(fake, postgres, "postgres · app", 5432, 5432).GetAwaiter().GetResult();
+                    fake.LastPortForward!.Drop("The pod was replaced; the cluster refused a new connection.");
+
+                    // And one paused by hand, so all four states are on the page at once.
+                    var paused = vm.PortForwards
+                        .StartAsync(fake, service, "api · app", 8080, 3000).GetAwaiter().GetResult();
+                    vm.PortForwards.PauseAsync(paused).GetAwaiter().GetResult();
+
+                    vm.NavigateCommand.Execute("portforwards");
+                    Settle(rounds: 30);
+                }
+                break;
+
             case "cluster":
             case "cluster-nodes":
             case "cluster-namespaces":
