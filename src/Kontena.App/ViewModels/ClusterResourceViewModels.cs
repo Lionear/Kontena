@@ -181,6 +181,12 @@ public sealed class NodeCardRow
         CpuText = use is null ? "—" : $"{use.CpuMillicores}m / {cap.CpuMillicores}m";
         MemoryText = use is null ? "—" : $"{Format.Size(use.MemoryBytes)} / {Format.Size(cap.MemoryBytes)}";
 
+        // Disk only appears when the active source reports it — a metrics-server never does, so an
+        // always-visible gauge would sit empty on half the clusters out there.
+        HasDisk = use?.DiskUsedBytes is not null && cap.DiskBytes > 0;
+        DiskFraction = HasDisk ? (double)use!.DiskUsedBytes!.Value / cap.DiskBytes : 0;
+        DiskText = HasDisk ? $"{Format.Size(use!.DiskUsedBytes!.Value)} / {Format.Size(cap.DiskBytes)}" : "—";
+
         // Pod counts come off the pod list, so they show even when there is no metrics source.
         PodsText = $"{n.ScheduledPods} / {cap.Pods}";
 
@@ -199,6 +205,12 @@ public sealed class NodeCardRow
     public string CpuText { get; }
     public string MemoryText { get; }
     public string PodsText { get; }
+
+    /// <summary>Whether the active metrics source reported disk for this node.</summary>
+    public bool HasDisk { get; }
+
+    public double DiskFraction { get; }
+    public string DiskText { get; }
 
     /// <summary>Conditions currently signalling trouble; empty on a healthy node.</summary>
     public IReadOnlyList<NodeProblemChip> Problems { get; }

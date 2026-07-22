@@ -29,7 +29,7 @@ namespace Kontena.Adapters.Kubernetes;
 public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDisposable
 {
     private readonly k8s.Kubernetes _client;
-    private readonly MetricsServerSource _metrics;
+    private readonly ClusterMetrics _metrics;
     private readonly List<KubeContext> _contexts;
 
     private string _context;
@@ -41,7 +41,9 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         _context = context;
         _contexts = [.. Kubeconfig.LoadContexts()];
         _client = new k8s.Kubernetes(Kubeconfig.ConfigFor(context));
-        _metrics = new MetricsServerSource(_client);
+        _metrics = new ClusterMetrics(
+            new MetricsServerSource(_client),
+            new KubeletSummarySource(_client, NodeNamesAsync));
 
         // Metrics start off; PingAsync probes for a source and turns the gauges on if one answers.
         _capabilities = BaseCapabilities with { Metrics = false };
@@ -129,6 +131,13 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         _capabilities = BaseCapabilities with { Metrics = hasMetrics };
     }
 
+    /// <summary>Node names for the kubelet source's per-node fan-out.</summary>
+    private async Task<IReadOnlyList<string>> NodeNamesAsync(CancellationToken ct)
+    {
+        var nodes = await _client.CoreV1.ListNodeAsync(cancellationToken: ct).ConfigureAwait(false);
+        return [.. (nodes.Items ?? []).Select(n => n.Metadata?.Name ?? string.Empty).Where(n => n.Length > 0)];
+    }
+
     public ValueTask UseContextAsync(string name, CancellationToken ct = default)
     {
         // Switching context means a different apiserver and credentials, so the app creates a fresh
@@ -155,6 +164,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     {
         var list = await _client.CoreV1.ListNodeAsync(cancellationToken: ct).ConfigureAwait(false);
         var usage = await _metrics.GetNodeUsageAsync(ct).ConfigureAwait(false);
+        var diskCapacity = await _metrics.GetNodeDiskCapacityAsync(ct).ConfigureAwait(false);
 
         // Pod counts come from the pod list, not the metrics source — they are always available.
         var pods = await _client.CoreV1.ListPodForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
@@ -169,7 +179,8 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
             {
                 var name = n.Metadata?.Name ?? string.Empty;
                 var nodeUsage = usage.GetValueOrDefault(name);
-                return K8sMap.ToNode(n, nodeUsage, perNode.GetValueOrDefault(name));
+                return K8sMap.ToNode(
+                    n, nodeUsage, perNode.GetValueOrDefault(name), diskCapacity.GetValueOrDefault(name));
             }),
         ];
     }

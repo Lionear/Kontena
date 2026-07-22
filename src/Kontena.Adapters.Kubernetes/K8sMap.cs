@@ -12,7 +12,7 @@ internal static class K8sMap
 {
     // ── Nodes ────────────────────────────────────────────────────────────────
 
-    public static Node ToNode(V1Node n, NodeUsage? usage, int scheduledPods = 0)
+    public static Node ToNode(V1Node n, NodeUsage? usage, int scheduledPods = 0, long diskCapacityBytes = 0)
     {
         var conditions = n.Status?.Conditions ?? [];
         var ready = conditions.FirstOrDefault(c => c.Type == "Ready");
@@ -32,7 +32,7 @@ internal static class K8sMap
             InternalIp = n.Status?.Addresses?.FirstOrDefault(a => a.Type == "InternalIP")?.Address ?? string.Empty,
             Unschedulable = n.Spec?.Unschedulable ?? false,
             Conditions = [.. conditions.Select(ToCondition)],
-            Capacity = ToCapacity(n.Status?.Allocatable),
+            Capacity = ToCapacity(n.Status?.Allocatable) with { DiskBytes = diskCapacityBytes },
             Usage = usage,
             ScheduledPods = scheduledPods,
             Age = AgeOf(n.Metadata),

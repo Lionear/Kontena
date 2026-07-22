@@ -90,6 +90,15 @@
                                         <ProgressBar Minimum="0" Maximum="1" Value="{Binding MemoryFraction}" Height="5"
                                                      Foreground="{DynamicResource Accent}" Background="{DynamicResource Surface2}"/>
                                     </StackPanel>
+                                    <!-- Disk: only the kubelet source reports it (KON-94) -->
+                                    <StackPanel Spacing="4" IsVisible="{Binding HasDisk}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="Disk" FontSize="11" Foreground="{DynamicResource TextDim}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding DiskText}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
+                                        </Grid>
+                                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding DiskFraction}" Height="5"
+                                                     Foreground="{DynamicResource Info}" Background="{DynamicResource Surface2}"/>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <Grid ColumnDefinitions="*,*">

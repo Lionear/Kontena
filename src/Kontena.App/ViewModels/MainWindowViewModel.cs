@@ -360,6 +360,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         IsClusterMode = true;
         SetClusterNav();
 
+        // The registry probes a throwaway instance, so this one has never been contacted. Ping it:
+        // adapters settle capabilities that are only knowable once connected (which metrics source
+        // answered, say), and the pages below read those.
+        try
+        {
+            await cluster.PingAsync();
+        }
+        catch (Exception)
+        {
+            // Unreachable is handled by the listers below reporting nothing; capabilities stay off.
+        }
+
         // The engine-only pages don't apply in cluster mode.
         Containers = null;
         Images = null;
