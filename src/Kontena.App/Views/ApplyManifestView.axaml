@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:rendering="using:Kontena.Core.Orchestration.Rendering"
+             xmlns:conv="using:Kontena.App.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="720"
@@ -352,7 +353,7 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Column="2" Classes="panel">
+            <Border Grid.Column="2" Classes="panel" Name="PlanPanel">
                 <Grid RowDefinitions="Auto,Auto,*">
                     <Border Grid.Row="0" Classes="panelhead">
                         <Grid ColumnDefinitions="Auto,Auto,*,Auto">
@@ -394,9 +395,16 @@
                                IsVisible="{Binding !HasPlan}"
                                Text="Run a dry-run to see what this manifest would create or change. Nothing reaches the cluster until you apply."/>
 
+                    <!--
+                        The plan takes at most a quarter of the panel and scrolls inside it; the diff
+                        gets the rest. A long plan used to push the diff off the page entirely, which
+                        turned the interesting half of the page into something you had to trust.
+                    -->
                     <ListBox Grid.Row="1" ItemsSource="{Binding VisiblePlan}" SelectedItem="{Binding SelectedRow}"
                              Background="Transparent" BorderThickness="0" Padding="6,6,6,2"
-                             IsVisible="{Binding HasPlan}">
+                             IsVisible="{Binding HasPlan}"
+                             MaxHeight="{Binding #PlanPanel.Bounds.Height,
+                                         Converter={x:Static conv:FractionConverter.Instance}, ConverterParameter=0.25}">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:ApplyPlanRow">
                                 <Grid ColumnDefinitions="26,*,Auto" Margin="0,3">
