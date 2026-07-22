@@ -101,6 +101,24 @@ public class FakeClusterEngineTests
         await Assert.ThrowsAsync<ArgumentException>(() => NewCluster().UseContextAsync("nope").AsTask());
     }
 
+    [Fact]
+    public async Task Nodes_report_conditions_and_one_is_seeded_under_pressure()
+    {
+        var nodes = await NewCluster().ListNodesAsync();
+
+        // Conditions come off the node status, so every node has them with or without metrics.
+        Assert.All(nodes, n =>
+        {
+            Assert.Contains(n.Conditions, c => c.Type == "Ready");
+            Assert.Contains(n.Conditions, c => c.Type == "DiskPressure");
+        });
+
+        // One node is deliberately unhealthy so the Nodes view's indicators have something to show.
+        var pressured = Assert.Single(nodes, n => n.Problems.Count > 0);
+        Assert.Equal("DiskPressure", Assert.Single(pressured.Problems).Type);
+        Assert.Equal("Ready", pressured.Status);
+    }
+
     // ── Declarative core (KON-69) ────────────────────────────────────────────
 
     /// <summary>The seeded "api" Deployment, scaled from 3 to 5 and moved to a newer image.</summary>

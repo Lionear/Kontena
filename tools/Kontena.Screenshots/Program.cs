@@ -7,6 +7,8 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using System.Collections.Generic;
+using Kontena.Adapters.Kubernetes;
 using Kontena.App;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
@@ -66,13 +68,20 @@ internal static class Program
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
-            var registry = new BackendRegistry(
-            [
+            var providers = new List<IBackendProvider>
+            {
                 new FakeEngineProvider("docker", "Docker", "D"),
                 new FakeClusterProvider("prod-eu-west", "GKE"),
                 new FakeClusterProvider("staging", "EKS"),
                 new FakeClusterProvider("minikube", "MK"),
-            ]);
+            };
+
+            // Every other scene stays on the seeded fakes so shots are reproducible; only the
+            // real-cluster scene reaches for the machine's actual kubeconfig (KON-68).
+            if (opts.Scene == "real-cluster")
+                providers.AddRange(KubernetesClusterProvider.DiscoverAll());
+
+            var registry = new BackendRegistry(providers);
             var viewModel = new MainWindowViewModel(registry, new SettingsStore(), settings);
 
             var window = new MainWindow
@@ -180,7 +189,7 @@ internal static class Program
             case "cluster-pods":
             case "cluster-services":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
-                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 if (scene.StartsWith("cluster-", StringComparison.Ordinal))
                 {
@@ -192,7 +201,7 @@ internal static class Program
             case "pod":
             case "pod-logs":
             case "pod-yaml":
-                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("pods");
                 Settle(rounds: 30);
@@ -219,10 +228,31 @@ internal static class Program
                 }
                 break;
 
+            case "real-cluster":
+                // The live Kubernetes adapter (KON-68) against whatever the kubeconfig points at.
+                {
+                    var live = vm.Clusters.FirstOrDefault(c => c.Backend.StartsWith("kubernetes:", StringComparison.Ordinal));
+                    if (live is null)
+                    {
+                        Console.Error.WriteLine("No Kubernetes context found — rendering the fake cluster instead.");
+                        vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                    }
+                    else
+                    {
+                        vm.SwitchEngineCommand.Execute(live.Backend);
+                    }
+
+                    SettleUntil(() => vm.IsClusterMode, maxRounds: 200);
+                    vm.NavigateCommand.Execute("nodes");
+                    Settle(rounds: 60);
+                }
+
+                break;
+
             case "apply":
             case "apply-plan":
             case "apply-done":
-                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("apply");
                 Settle(rounds: 30);
@@ -242,7 +272,7 @@ internal static class Program
                 break;
 
             case "scale":
-                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("workloads");
                 Settle(rounds: 30);
@@ -254,7 +284,7 @@ internal static class Program
                 break;
 
             case "restart":
-                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("workloads");
                 Settle(rounds: 30);
@@ -267,7 +297,7 @@ internal static class Program
 
             case "portforward":
             case "portforward-active":
-                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("services");
                 Settle(rounds: 30);

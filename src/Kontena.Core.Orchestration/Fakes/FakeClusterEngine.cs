@@ -44,7 +44,9 @@ public sealed class FakeClusterEngine : IClusterEngine
         [
             Node1("gke-prod-cp-1", ["control-plane"], unschedulable: true),
             Node1("gke-prod-worker-1", ["worker"]),
-            Node1("gke-prod-worker-2", ["worker"]),
+            // Seeded under disk pressure so the Nodes view's condition indicators have something
+            // real to show — a healthy-only seed hides that whole state.
+            Node1("gke-prod-worker-2", ["worker"], diskPressure: true),
         ];
 
         _namespaces =
@@ -637,7 +639,8 @@ public sealed class FakeClusterEngine : IClusterEngine
     private static KubeNamespace Ns(string name) =>
         new() { Name = name, Phase = "Active", Age = TimeSpan.FromDays(9) };
 
-    private static Node Node1(string name, IReadOnlyList<string> roles, bool unschedulable = false) => new()
+    private static Node Node1(
+        string name, IReadOnlyList<string> roles, bool unschedulable = false, bool diskPressure = false) => new()
     {
         Name = name,
         Status = "Ready",
@@ -646,8 +649,18 @@ public sealed class FakeClusterEngine : IClusterEngine
         OsImage = "Container-Optimized OS",
         InternalIp = "10.128.0." + (name.GetHashCode() & 0x3f),
         Unschedulable = unschedulable,
+        Conditions =
+        [
+            new NodeCondition("Ready", true, "KubeletReady", "kubelet is posting ready status"),
+            new NodeCondition("MemoryPressure", false, "KubeletHasSufficientMemory", string.Empty),
+            new NodeCondition("DiskPressure", diskPressure, diskPressure ? "KubeletHasDiskPressure" : "KubeletHasNoDiskPressure",
+                diskPressure ? "kubelet has disk pressure" : string.Empty),
+            new NodeCondition("PIDPressure", false, "KubeletHasSufficientPID", string.Empty),
+            new NodeCondition("NetworkUnavailable", false, "RouteCreated", string.Empty),
+        ],
         Capacity = new NodeCapacity { CpuMillicores = 4000, MemoryBytes = 16L * 1024 * 1024 * 1024, Pods = 110 },
-        Usage = new NodeUsage { CpuMillicores = 1200, MemoryBytes = 6L * 1024 * 1024 * 1024, Pods = 24 },
+        Usage = new NodeUsage { CpuMillicores = 1200, MemoryBytes = 6L * 1024 * 1024 * 1024 },
+        ScheduledPods = 24,
         Age = TimeSpan.FromDays(9),
     };
 

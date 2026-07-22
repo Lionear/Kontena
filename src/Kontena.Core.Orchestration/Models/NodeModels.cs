@@ -1,5 +1,24 @@
 namespace Kontena.Core.Orchestration.Models;
 
+/// <summary>
+/// One reported node condition — <c>Ready</c>, <c>DiskPressure</c>, <c>MemoryPressure</c>,
+/// <c>PIDPressure</c>, <c>NetworkUnavailable</c>. Conditions come straight off the node status, so
+/// unlike the usage gauges they need no metrics source at all: a cluster without a metrics-server
+/// still reports node health.
+/// </summary>
+/// <param name="Type">Condition name, e.g. "Ready" or "DiskPressure".</param>
+/// <param name="IsActive">Whether the condition is currently true.</param>
+/// <param name="Reason">Short machine reason, e.g. "KubeletReady"; empty when not reported.</param>
+/// <param name="Message">Human-readable detail; empty when not reported.</param>
+public readonly record struct NodeCondition(string Type, bool IsActive, string Reason, string Message)
+{
+    /// <summary>
+    /// Whether this condition indicates a problem. <c>Ready</c> is healthy when true; every
+    /// pressure/unavailable condition is the other way round.
+    /// </summary>
+    public bool IsProblem => Type == "Ready" ? !IsActive : IsActive;
+}
+
 /// <summary>A cluster node with its capacity and (when metrics are available) live usage.</summary>
 public sealed record Node
 {
@@ -23,11 +42,26 @@ public sealed record Node
     /// <summary>Whether the node is cordoned (scheduling disabled).</summary>
     public bool Unschedulable { get; init; }
 
+    /// <summary>
+    /// Reported conditions. Available from any cluster, with or without a metrics source — these
+    /// drive the Nodes view's status indicators.
+    /// </summary>
+    public IReadOnlyList<NodeCondition> Conditions { get; init; } = [];
+
+    /// <summary>Conditions currently signalling trouble (a failing Ready, or any pressure).</summary>
+    public IReadOnlyList<NodeCondition> Problems => [.. Conditions.Where(c => c.IsProblem)];
+
     /// <summary>Allocatable capacity.</summary>
     public NodeCapacity Capacity { get; init; } = new();
 
-    /// <summary>Live usage from the metrics-server; null when metrics are unavailable.</summary>
+    /// <summary>Live usage from the metrics source; null when no source is available.</summary>
     public NodeUsage? Usage { get; init; }
+
+    /// <summary>
+    /// Pods currently scheduled on this node. Counted from the pod list, not from a metrics source,
+    /// so it stays available on a cluster that has no metrics-server.
+    /// </summary>
+    public int ScheduledPods { get; init; }
 
     public TimeSpan Age { get; init; }
 }
@@ -45,7 +79,10 @@ public sealed record NodeCapacity
     public int Pods { get; init; }
 }
 
-/// <summary>A node's live resource usage, sampled from the metrics-server.</summary>
+/// <summary>
+/// A node's live resource usage, sampled from the active metrics source. Pod counts deliberately
+/// live on <see cref="Node.ScheduledPods"/> instead — they need no metrics source.
+/// </summary>
 public sealed record NodeUsage
 {
     /// <summary>Used CPU in milli-cores.</summary>
@@ -53,7 +90,4 @@ public sealed record NodeUsage
 
     /// <summary>Used memory in bytes.</summary>
     public long MemoryBytes { get; init; }
-
-    /// <summary>Currently scheduled pods.</summary>
-    public int Pods { get; init; }
 }

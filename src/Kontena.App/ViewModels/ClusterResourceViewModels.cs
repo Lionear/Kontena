@@ -19,10 +19,32 @@ public partial class ClusterNodesViewModel : ViewModelBase
     public ClusterNodesViewModel(IClusterEngine cluster)
     {
         _cluster = cluster;
+
+        // Plenty of clusters (kind, plain kubeadm) ship without a usage backend. Rather than
+        // leaving four dashes unexplained, say so once and say what would fix it.
+        ShowMetricsNotice = !cluster.Capabilities.Metrics;
+        MetricsNoticeDetail = cluster is IMetricsAware { Metrics.Name: var source } && source != "none"
+            ? $"Kontena looked for {source} and it did not answer."
+            : "This cluster has no usage backend configured.";
+
         _ = LoadAsync();
     }
 
     public ObservableCollection<NodeCardRow> Nodes { get; } = [];
+
+    /// <summary>Whether to explain the missing CPU/memory gauges.</summary>
+    public bool ShowMetricsNotice { get; }
+
+    /// <summary>Which source was tried, when the backend can tell us.</summary>
+    public string MetricsNoticeDetail { get; }
+
+    /// <summary>
+    /// What the user can do about it. Installing a metrics-server from Kontena is its own ticket
+    /// (KON-93); for now this is guidance, not an action.
+    /// </summary>
+    public string MetricsNoticeAction { get; } =
+        "Install metrics-server in the cluster to enable them. Node status, conditions and pod counts" +
+        " do not need a metrics source and are unaffected.";
 
     private async Task LoadAsync()
     {
@@ -158,7 +180,13 @@ public sealed class NodeCardRow
         MemoryFraction = use is not null && cap.MemoryBytes > 0 ? (double)use.MemoryBytes / cap.MemoryBytes : 0;
         CpuText = use is null ? "—" : $"{use.CpuMillicores}m / {cap.CpuMillicores}m";
         MemoryText = use is null ? "—" : $"{Format.Size(use.MemoryBytes)} / {Format.Size(cap.MemoryBytes)}";
-        PodsText = use is null ? $"— / {cap.Pods}" : $"{use.Pods} / {cap.Pods}";
+
+        // Pod counts come off the pod list, so they show even when there is no metrics source.
+        PodsText = $"{n.ScheduledPods} / {cap.Pods}";
+
+        // Conditions need no metrics source either. Only the failing ones are worth surfacing —
+        // a healthy node's five green conditions are noise, and the Ready dot already says it.
+        Problems = [.. n.Problems.Select(c => new NodeProblemChip(c))];
     }
 
     public string Name { get; }
@@ -172,7 +200,34 @@ public sealed class NodeCardRow
     public string MemoryText { get; }
     public string PodsText { get; }
 
+    /// <summary>Conditions currently signalling trouble; empty on a healthy node.</summary>
+    public IReadOnlyList<NodeProblemChip> Problems { get; }
+
+    public bool HasProblems => Problems.Count > 0;
+
     public IBrush StatusBrush => new SolidColorBrush(Color.Parse(Status == "Ready" ? "#34D399" : "#F87171"));
+}
+
+/// <summary>
+/// A failing node condition, as a chip on the node card. Pressure conditions are a warning — the
+/// node still runs, but the kubelet may start evicting — while a failing Ready is a hard problem.
+/// </summary>
+public sealed class NodeProblemChip
+{
+    public NodeProblemChip(NodeCondition condition)
+    {
+        Label = condition.Type;
+        Detail = string.IsNullOrEmpty(condition.Message) ? condition.Reason : condition.Message;
+
+        var colour = condition.Type == "Ready" ? "#F87171" : "#F5B14C";
+        Brush = new SolidColorBrush(Color.Parse(colour));
+        Background = new SolidColorBrush(Color.Parse(colour), 0.13);
+    }
+
+    public string Label { get; }
+    public string Detail { get; }
+    public IBrush Brush { get; }
+    public IBrush Background { get; }
 }
 
 public sealed record NamespaceRow(string Name, string Status, string Age);

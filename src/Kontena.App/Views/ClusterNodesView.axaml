@@ -9,6 +9,27 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="Nodes" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+
+            <!-- No usage backend: explain the empty gauges instead of leaving dashes unexplained -->
+            <Border IsVisible="{Binding ShowMetricsNotice}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="16,13">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="8" VerticalAlignment="Top"
+                            Background="{DynamicResource Surface2}">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Info}"
+                              Data="{StaticResource IconGauge}" HorizontalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="13,0,0,0" Spacing="3">
+                        <TextBlock Text="CPU and memory usage unavailable" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}"/>
+                        <TextBlock Text="{Binding MetricsNoticeDetail}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding MetricsNoticeAction}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <ItemsControl ItemsSource="{Binding Nodes}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -30,6 +51,27 @@
                                         <TextBlock Text="{Binding Status}" FontSize="11.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Grid>
+
+                                <!-- Failing conditions (DiskPressure, MemoryPressure, …); absent when healthy -->
+                                <ItemsControl ItemsSource="{Binding Problems}" IsVisible="{Binding HasProblems}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:NodeProblemChip">
+                                            <Border Background="{Binding Background}" CornerRadius="20" Padding="9,3"
+                                                    Margin="0,0,6,0" ToolTip.Tip="{Binding Detail}">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <Ellipse Width="6" Height="6" Fill="{Binding Brush}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{Binding Brush}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
                                 <StackPanel Spacing="9">
                                     <StackPanel Spacing="4">
