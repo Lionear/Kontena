@@ -45,6 +45,32 @@
                 </Grid>
             </Button>
         </DataTemplate>
+
+        <!-- The same row in the down state, where there is no flyout to close on click. -->
+        <DataTemplate x:Key="BackendChoice" x:DataType="vm:EngineOption">
+            <Button Classes="engineitem" IsEnabled="{Binding IsConnected}" Margin="0,0,0,2"
+                    Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
+                            Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold"
+                                   FontSize="13" Foreground="{DynamicResource Info}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                            <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding IsConnected}">
+                                <TextBlock Text="Reachable" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                                   Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Grid>
+            </Button>
+        </DataTemplate>
     </Window.Resources>
 
     <Window.Styles>
@@ -133,7 +159,11 @@
                         <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center" Spacing="1">
                             <TextBlock Text="{Binding EngineName}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                <Ellipse Width="6" Height="6" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
+                                <!-- The health dot has to be able to say "not healthy", or it says nothing. -->
+                                <Ellipse Width="6" Height="6" VerticalAlignment="Center"
+                                         Fill="{DynamicResource Success}" IsVisible="{Binding !IsBackendDown}"/>
+                                <Ellipse Width="6" Height="6" VerticalAlignment="Center"
+                                         Fill="{DynamicResource Danger}" IsVisible="{Binding IsBackendDown}"/>
                                 <TextBlock Text="{Binding EngineDetail}" FontSize="10.5" FontFamily="{StaticResource Mono}"
                                            Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
@@ -196,7 +226,9 @@
                     </Button>
                 </StackPanel>
 
-                <ItemsControl ItemsSource="{Binding NavItems}" DockPanel.Dock="Top">
+                <!-- Nothing to navigate to while no backend is open; a dead nav is worse than none. -->
+                <ItemsControl ItemsSource="{Binding NavItems}" DockPanel.Dock="Top"
+                              IsVisible="{Binding !IsBackendDown}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:NavItem">
                             <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
@@ -270,15 +302,15 @@
                 </StackPanel>
 
                 <!-- Engine-down -->
-                <ScrollViewer IsVisible="{Binding IsEngineDown}" VerticalAlignment="Center">
+                <ScrollViewer IsVisible="{Binding IsBackendDown}" VerticalAlignment="Center">
                     <Border Classes="card" MaxWidth="520" Padding="34,30" Margin="24" HorizontalAlignment="Center">
                         <StackPanel Spacing="16" HorizontalAlignment="Center">
                             <Border Width="60" Height="60" CornerRadius="15" Background="#F8717118" HorizontalAlignment="Center">
                                 <Path Classes="icon" Width="28" Height="28" Stroke="{DynamicResource Danger}" Data="{StaticResource IconPlug}"/>
                             </Border>
-                            <TextBlock Text="Can't reach a container engine" FontSize="18" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding BackendDownTitle}" FontSize="18" FontWeight="SemiBold"
                                        Foreground="{DynamicResource Text}" HorizontalAlignment="Center" TextAlignment="Center"/>
-                            <TextBlock Text="{Binding EngineDownDetail}" FontSize="13" Foreground="{DynamicResource TextDim}"
+                            <TextBlock Text="{Binding BackendDownDetail}" FontSize="13" Foreground="{DynamicResource TextDim}"
                                        HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="420"/>
 
                             <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding ReconnectCommand}">
@@ -288,35 +320,20 @@
                                 </StackPanel>
                             </Button>
 
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="AVAILABLE ENGINES" FontSize="10.5" FontWeight="SemiBold"
+                            <!--
+                                Both axes are offered here, not just engines: the thing that failed
+                                may well have been a cluster, and then "available engines" is not an
+                                answer to anything.
+                            -->
+                            <StackPanel Spacing="8" IsVisible="{Binding HasAlternatives}">
+                                <TextBlock Text="CONTAINER ENGINES" FontSize="10.5" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                                <ItemsControl ItemsSource="{Binding Engines}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:EngineOption">
-                                            <Button Classes="engineitem" IsEnabled="{Binding IsConnected}"
-                                                    Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}" Margin="0,0,0,2">
-                                                <Grid ColumnDefinitions="Auto,*,Auto">
-                                                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
-                                                            Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold"
-                                                                   FontSize="13" Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    </Border>
-                                                    <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
-                                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                                            <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
-                                                                <TextBlock Text="Running" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
-                                                            </Border>
-                                                        </StackPanel>
-                                                        <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
-                                                                   Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <ItemsControl ItemsSource="{Binding Engines}" ItemTemplate="{StaticResource BackendChoice}"/>
+
+                                <TextBlock Text="CLUSTERS" FontSize="10.5" FontWeight="SemiBold" IsVisible="{Binding HasClusters}"
+                                           Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                                <ItemsControl ItemsSource="{Binding Clusters}" ItemTemplate="{StaticResource BackendChoice}"
+                                              IsVisible="{Binding HasClusters}"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>

@@ -18,14 +18,20 @@ public sealed record EngineListItem(
 public partial class SettingsViewModel : ViewModelBase
 {
     private readonly SettingsStore _store;
+    private readonly IReadOnlyList<EngineListItem> _backends;
     private KontenaSettings _settings;
 
+    /// <param name="engines">Container engines, for the detected-engines list.</param>
+    /// <param name="backends">Everything that can be pinned — engines and clusters both. Defaults
+    /// to <paramref name="engines"/> so design-time and tests need not supply it.</param>
     /// <param name="onDemoBackendsChanged">Invoked when the demo toggle flips so the shell can
     /// rebuild the backend set. Null in design-time and test contexts.</param>
     public SettingsViewModel(
         SettingsStore store, KontenaSettings settings, IReadOnlyList<EngineListItem> engines,
+        IReadOnlyList<EngineListItem>? backends = null,
         Func<bool, Task>? onDemoBackendsChanged = null)
     {
+        _backends = backends ?? engines;
         _store = store;
         _settings = settings;
         Engines = engines;
@@ -40,15 +46,25 @@ public partial class SettingsViewModel : ViewModelBase
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
 
-        DefaultEngineOptions = [FirstConnectedOption, .. engines.Select(e => e.Name)];
-        _selectedDefaultEngine =
-            engines.FirstOrDefault(e => e.Backend == settings.DefaultEngine)?.Name ?? FirstConnectedOption;
+        // One control, not two: "which backend" and "how is it chosen" were separate settings that
+        // could contradict each other. The list is the answer to a single question.
+        StartupOptions = [LastUsedOption, FirstConnectedOption, .. _backends.Select(e => e.Name)];
+        _selectedStartup = settings.ResolvedStartup switch
+        {
+            StartupBackend.Pinned =>
+                _backends.FirstOrDefault(e => e.Backend == settings.ResolvedPinnedBackend)?.Name ?? LastUsedOption,
+            StartupBackend.FirstConnected => FirstConnectedOption,
+            _ => LastUsedOption,
+        };
     }
 
-    private const string FirstConnectedOption = "First connected";
+    private const string LastUsedOption = "Continue where I left off";
+    private const string FirstConnectedOption = "First connected engine";
 
     public IReadOnlyList<EngineListItem> Engines { get; }
-    public string[] DefaultEngineOptions { get; }
+
+    /// <summary>What Kontena opens on launch: last used, first connected, or one named backend.</summary>
+    public string[] StartupOptions { get; }
 
     public string Version { get; } =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
@@ -109,8 +125,16 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _autoDetect;
     partial void OnAutoDetectChanged(bool value) => Save();
 
-    [ObservableProperty] private string _selectedDefaultEngine;
-    partial void OnSelectedDefaultEngineChanged(string value) => Save();
+    [ObservableProperty] private string _selectedStartup;
+    partial void OnSelectedStartupChanged(string value) => Save();
+
+    /// <summary>What the current choice means, spelled out under the picker.</summary>
+    public string StartupHint => SelectedStartup switch
+    {
+        LastUsedOption => "Kontena reopens the engine or cluster you were on when you last quit.",
+        FirstConnectedOption => "Kontena opens the first container engine that answers, and never a cluster.",
+        _ => $"Kontena always opens {SelectedStartup}, whatever you were on last.",
+    };
 
     // ── Demo backends (development only) ────────────────────────────────────
 
@@ -156,14 +180,31 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void Save()
     {
-        var backend = Engines.FirstOrDefault(e => e.Name == SelectedDefaultEngine)?.Backend;
+        var pinned = _backends.FirstOrDefault(e => e.Name == SelectedStartup)?.Backend;
+        var startup = SelectedStartup switch
+        {
+            FirstConnectedOption => StartupBackend.FirstConnected,
+            LastUsedOption => StartupBackend.LastUsed,
+            _ when pinned is not null => StartupBackend.Pinned,
+
+            // A pinned backend that is no longer in the list (kube-context removed while Settings
+            // was open) must not silently become a pin on nothing.
+            _ => StartupBackend.LastUsed,
+        };
+
+        OnPropertyChanged(nameof(StartupHint));
 
         _settings = _settings with
         {
             Theme = Theme,
             CompactDensity = CompactDensity,
             AutoDetectEngines = AutoDetect,
-            DefaultEngine = backend,
+            Startup = startup,
+            PinnedBackend = startup == StartupBackend.Pinned ? pinned : null,
+
+            // The legacy field is cleared once a choice is made here, so the migration in
+            // ResolvedStartup cannot come back and override what the user just picked.
+            DefaultEngine = null,
             ShowDemoBackends = ShowDemoBackends,
             LaunchAtLogin = LaunchAtLogin,
             TerminalFontFamily = TerminalFontFamily,

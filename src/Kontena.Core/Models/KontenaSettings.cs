@@ -9,6 +9,19 @@ public enum ThemePreference
     Dark,
 }
 
+/// <summary>What Kontena connects to when it starts.</summary>
+public enum StartupBackend
+{
+    /// <summary>Whatever was open last — the default, and what most people mean.</summary>
+    LastUsed = 0,
+
+    /// <summary>One named backend, every time, whatever was open last.</summary>
+    Pinned,
+
+    /// <summary>The first container engine that answers.</summary>
+    FirstConnected,
+}
+
 /// <summary>
 /// User-facing application settings, persisted between launches. Kept engine- and
 /// UI-framework-neutral so it can live in Core and be round-tripped in tests.
@@ -24,8 +37,50 @@ public sealed record KontenaSettings
     /// <summary>Continuously watch for engines starting/stopping.</summary>
     public bool AutoDetectEngines { get; init; } = true;
 
-    /// <summary>Backend id to activate on launch (e.g. "docker"); null = first connected.</summary>
+    /// <summary>
+    /// Legacy: the engine to activate on launch, from before clusters existed and before "last
+    /// used" was an option. Superseded by <see cref="Startup"/> and <see cref="PinnedBackend"/>,
+    /// and only read now to carry an existing choice forward — see <see cref="ResolvedStartup"/>.
+    /// </summary>
     public string? DefaultEngine { get; init; }
+
+    /// <summary>
+    /// How the launch backend is chosen. Nullable on purpose: null means the file predates this
+    /// setting, and <see cref="ResolvedStartup"/> reads the old <see cref="DefaultEngine"/> instead
+    /// — a stored preference should survive an upgrade, not be silently replaced by a default.
+    /// </summary>
+    public StartupBackend? Startup { get; init; }
+
+    /// <summary>The backend <see cref="StartupBackend.Pinned"/> refers to; a full backend id.</summary>
+    public string? PinnedBackend { get; init; }
+
+    /// <summary>
+    /// The last backend that connected — a full id, so <c>kubernetes:kind-kind</c> as readily as
+    /// <c>docker</c>. Written on every successful activation; it records behaviour, where
+    /// <see cref="PinnedBackend"/> records a choice.
+    /// </summary>
+    public string? LastBackend { get; init; }
+
+    /// <summary>The effective startup mode, honouring a pre-upgrade <see cref="DefaultEngine"/>.</summary>
+    public StartupBackend ResolvedStartup => Startup
+        ?? (string.IsNullOrEmpty(DefaultEngine) ? StartupBackend.LastUsed : StartupBackend.Pinned);
+
+    /// <summary>The effective pinned backend, honouring a pre-upgrade <see cref="DefaultEngine"/>.</summary>
+    public string? ResolvedPinnedBackend =>
+        string.IsNullOrEmpty(PinnedBackend) ? DefaultEngine : PinnedBackend;
+
+    /// <summary>
+    /// The backend to try first on launch, or null when nothing is remembered or pinned and the
+    /// first engine that answers should win.
+    /// </summary>
+    public string? StartupTarget => ResolvedStartup switch
+    {
+        StartupBackend.Pinned => NullIfEmpty(ResolvedPinnedBackend),
+        StartupBackend.LastUsed => NullIfEmpty(LastBackend),
+        _ => null,
+    };
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     /// <summary>
     /// Whether the in-memory demo backends (fake engine and fake clusters) appear in the switcher.

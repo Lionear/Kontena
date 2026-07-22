@@ -32,7 +32,9 @@ namespace Kontena.Screenshots;
 //         apply / apply-plan / apply-done (the declarative flow),
 //         apply-kustomize / apply-helm (the render sources — these run the real
 //         kustomize/helm CLIs over the repository's own samples, and skip nothing:
-//         without the tool installed the capture shows the render's error state).
+//         without the tool installed the capture shows the render's error state),
+//         backend-down (the state when the remembered backend is gone — the one scene
+//         that deliberately does not take the demo-engine shortcut).
 internal static class Program
 {
     [STAThread]
@@ -48,8 +50,10 @@ internal static class Program
         Directory.CreateDirectory(sandbox);
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", sandbox);
         Environment.SetEnvironmentVariable("APPDATA", sandbox);
-        // The app's ConnectPreferred honours this to boot straight into the demo engine.
-        Environment.SetEnvironmentVariable("KONTENA_SCREENSHOT", "1");
+        // The app's ConnectPreferred honours this to boot straight into the demo engine — except
+        // for the one scene whose whole subject is what happens when that does not work out.
+        if (opts.Scene != "backend-down")
+            Environment.SetEnvironmentVariable("KONTENA_SCREENSHOT", "1");
 
         try
         {
@@ -67,7 +71,13 @@ internal static class Program
             {
                 Theme = theme,
                 Onboarded = true,
-                DefaultEngine = "docker",
+
+                // Pinned, not "last used": a capture must not depend on what a previous capture
+                // happened to leave behind. The backend-down scene is the exception — it asks to
+                // return to a backend that is deliberately not in the list.
+                Startup = opts.Scene == "backend-down" ? StartupBackend.LastUsed : StartupBackend.Pinned,
+                PinnedBackend = "docker",
+                LastBackend = "kubernetes:corp-cluster",
                 AutoDetectEngines = true,
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
@@ -98,7 +108,7 @@ internal static class Program
 
             // Let the fire-and-forget InitAsync → ConnectPreferred → ActivateAsync settle so the
             // container list (and its live log/stat streams) is populated before we drive the scene.
-            SettleUntil(() => viewModel.IsReady, maxRounds: 120);
+            SettleUntil(() => viewModel.IsReady || viewModel.IsBackendDown, maxRounds: 120);
 
             ApplyScene(opts.Scene, viewModel);
             Settle(rounds: 40);
@@ -459,6 +469,11 @@ internal static class Program
             case "detail":
             case "inspect":
                 OpenDetail(vm, tab: scene == "inspect" ? "inspect" : "logs");
+                break;
+
+            case "backend-down":
+                // Nothing to drive: startup already landed in the down state, because the settings
+                // this scene boots with ask to return to a backend that is not there (KON-98).
                 break;
 
             default:

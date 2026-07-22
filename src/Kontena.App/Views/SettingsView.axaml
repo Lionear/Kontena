@@ -201,13 +201,14 @@
                             </Grid>
                             <Border Height="1" Background="{DynamicResource Border}"/>
                             <Grid Margin="18,15" ColumnDefinitions="*,Auto">
-                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
-                                    <TextBlock Text="Default engine on launch" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                    <TextBlock Text="Which backend Kontena selects when it opens." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="On launch" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="{Binding StartupHint}" FontSize="12" Foreground="{DynamicResource TextDim}"
+                                               TextWrapping="Wrap"/>
                                 </StackPanel>
-                                <ComboBox Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
-                                          ItemsSource="{Binding DefaultEngineOptions}"
-                                          SelectedItem="{Binding SelectedDefaultEngine, Mode=TwoWay}"/>
+                                <ComboBox Grid.Column="1" MinWidth="210" VerticalAlignment="Center"
+                                          ItemsSource="{Binding StartupOptions}"
+                                          SelectedItem="{Binding SelectedStartup, Mode=TwoWay}"/>
                             </Grid>
                             <!-- Development only: hidden entirely in an ordinary release build -->
                             <Border Height="1" Background="{DynamicResource Border}" IsVisible="{Binding CanToggleDemoBackends}"/>
