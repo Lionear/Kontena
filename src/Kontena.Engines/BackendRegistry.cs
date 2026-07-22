@@ -20,6 +20,17 @@ public sealed class BackendRegistry
     /// <summary>Add a provider (e.g. contributed by a plugin at runtime).</summary>
     public void Register(IBackendProvider provider) => _providers.Add(provider);
 
+    /// <summary>
+    /// Swap the whole provider set — used when the set itself changes at runtime, e.g. switching the
+    /// demo backends off. Callers re-probe afterwards, since the previous probes describe providers
+    /// that may no longer be here.
+    /// </summary>
+    public void Replace(IEnumerable<IBackendProvider> providers)
+    {
+        _providers.Clear();
+        _providers.AddRange(providers);
+    }
+
     /// <summary>Probe every provider concurrently.</summary>
     public async Task<IReadOnlyList<BackendProbe>> ProbeAllAsync(CancellationToken ct = default)
         => await Task.WhenAll(_providers.Select(p => ProbeAsync(p, ct))).ConfigureAwait(false);

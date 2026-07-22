@@ -179,7 +179,14 @@ internal static class Program
                 break;
 
             case "settings":
+            case "settings-engines":
                 vm.ShowSettingsCommand.Execute(null);
+                if (scene == "settings-engines" && vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
+                {
+                    s.SelectCategoryCommand.Execute("engines");
+                    Settle(rounds: 20);
+                }
+
                 break;
 
             case "cluster":
