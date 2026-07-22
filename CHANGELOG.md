@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Nodes left behind by an upgrade say so** — every node's kubelet is now compared against the
+  apiserver it is registered with, following the published Kubernetes version skew policy. A kubelet
+  further behind than the control plane allows (three minor versions, or two below apiserver 1.28)
+  gets a warning on its node card, and a kubelet *newer* than the apiserver — never supported in any
+  configuration — is flagged as an error. The Nodes cards carry the chip; the cluster overview marks
+  the version column. It is a comparison of two numbers Kontena already reads, so it needs no network
+  and cannot go stale. Whether the release itself is still supported upstream is a separate question
+  and is deliberately not answered here. (KON-95)
 - **Kontena reopens what you were on** — engine or cluster, whichever it was. Settings › Engines
   replaces the old *default engine* dropdown with a single **On launch** choice: continue where you
   left off, always open one named backend (clusters included), or take the first engine that

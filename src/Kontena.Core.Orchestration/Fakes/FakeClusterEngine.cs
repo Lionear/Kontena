@@ -43,7 +43,9 @@ public sealed class FakeClusterEngine : IClusterEngine
         _nodes =
         [
             Node1("gke-prod-cp-1", ["control-plane"], unschedulable: true),
-            Node1("gke-prod-worker-1", ["worker"]),
+            // Left behind by a half-finished upgrade: five minors under the apiserver's v1.29, so the
+            // version-skew warning (KON-95) has something real to show.
+            Node1("gke-prod-worker-1", ["worker"], kubeletVersion: "v1.24.9"),
             // Seeded under disk pressure so the Nodes view's condition indicators have something
             // real to show — a healthy-only seed hides that whole state.
             Node1("gke-prod-worker-2", ["worker"], diskPressure: true),
@@ -640,12 +642,13 @@ public sealed class FakeClusterEngine : IClusterEngine
         new() { Name = name, Phase = "Active", Age = TimeSpan.FromDays(9) };
 
     private static Node Node1(
-        string name, IReadOnlyList<string> roles, bool unschedulable = false, bool diskPressure = false) => new()
+        string name, IReadOnlyList<string> roles, bool unschedulable = false, bool diskPressure = false,
+        string kubeletVersion = "v1.29.4") => new()
     {
         Name = name,
         Status = "Ready",
         Roles = roles,
-        KubeletVersion = "v1.29.4",
+        KubeletVersion = kubeletVersion,
         OsImage = "Container-Optimized OS",
         InternalIp = "10.128.0." + (name.GetHashCode() & 0x3f),
         Unschedulable = unschedulable,
