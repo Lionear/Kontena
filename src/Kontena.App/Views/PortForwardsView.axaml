@@ -25,9 +25,9 @@
                 <Border Width="72" Height="72" CornerRadius="18" Background="{DynamicResource Surface2}" HorizontalAlignment="Center">
                     <Path Classes="icon" Width="34" Height="34" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconPlug}"/>
                 </Border>
-                <TextBlock Text="No port forwards running" FontSize="19" FontWeight="SemiBold"
+                <TextBlock Text="No port forwards yet" FontSize="19" FontWeight="SemiBold"
                            Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
-                <TextBlock Text="Forward a port from a service or a pod and it keeps running here until you stop it — closing the dialog no longer tears it down."
+                <TextBlock Text="Forward a port from a service or a pod and it keeps running here — closing the dialog no longer tears it down. Pause one to hand its local port back for a while, and what is on this list is offered again the next time you open this cluster."
                            FontSize="13" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"
                            TextAlignment="Center" TextWrapping="Wrap" MaxWidth="440"/>
             </StackPanel>
