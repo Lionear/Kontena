@@ -11,6 +11,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Kontena reopens what you were on** — engine or cluster, whichever it was. Settings › Engines
+  replaces the old *default engine* dropdown with a single **On launch** choice: continue where you
+  left off, always open one named backend (clusters included), or take the first engine that
+  answers. An existing default carries over as a pinned choice rather than being reinterpreted.
+  (KON-98)
+- **A backend that isn't there says so** — the engine-down screen became a backend-down screen. It
+  names what it could not open and why, in terms that fit what it is: an apiserver that did not
+  answer reads differently from an expired token, a rejected certificate or a socket that is simply
+  stopped. A remembered backend that no longer exists — a kube-context removed, an engine
+  uninstalled — is reported as gone and forgotten, instead of offering a reconnect that can never
+  succeed. Both container engines and clusters are offered as somewhere to go from there. (KON-98)
 - **BuildKit build output** — the Build flow now drives the engine's `build` CLI with BuildKit
   (parallel stages, per-step cache hits, fine-grained progress) instead of the classic builder.
   The build context is read directly from disk, so `.dockerignore` is honoured natively and large

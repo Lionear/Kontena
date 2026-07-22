@@ -66,6 +66,107 @@ public class KontenaSettingsTests
         Assert.Equal(preference, restored!.ShowDemoBackends);
     }
 
+    // ── Startup backend (KON-98) ─────────────────────────────────────────────
+
+    [Fact]
+    public void A_fresh_install_continues_where_you_left_off()
+    {
+        var settings = new KontenaSettings();
+
+        Assert.Equal(StartupBackend.LastUsed, settings.ResolvedStartup);
+
+        // Nothing has been used yet, so there is nothing to return to — first connected wins.
+        Assert.Null(settings.StartupTarget);
+    }
+
+    [Fact]
+    public void The_last_backend_is_what_launch_reopens()
+    {
+        var settings = new KontenaSettings { LastBackend = "kubernetes:kind-kind" };
+
+        Assert.Equal("kubernetes:kind-kind", settings.StartupTarget);
+    }
+
+    [Fact]
+    public void A_pinned_backend_beats_whatever_was_open_last()
+    {
+        var settings = new KontenaSettings
+        {
+            Startup = StartupBackend.Pinned,
+            PinnedBackend = "docker",
+            LastBackend = "kubernetes:kind-kind",
+        };
+
+        Assert.Equal("docker", settings.StartupTarget);
+    }
+
+    [Fact]
+    public void First_connected_ignores_both()
+    {
+        var settings = new KontenaSettings
+        {
+            Startup = StartupBackend.FirstConnected,
+            PinnedBackend = "docker",
+            LastBackend = "kubernetes:kind-kind",
+        };
+
+        Assert.Null(settings.StartupTarget);
+    }
+
+    [Fact]
+    public void A_settings_file_from_before_this_setting_keeps_its_chosen_engine()
+    {
+        // DefaultEngine was an explicit choice; an upgrade must not quietly turn it into
+        // "last used" and start following the user around instead.
+        var legacy = new KontenaSettings { DefaultEngine = "podman" };
+
+        Assert.Equal(StartupBackend.Pinned, legacy.ResolvedStartup);
+        Assert.Equal("podman", legacy.StartupTarget);
+    }
+
+    [Fact]
+    public void A_legacy_file_that_never_chose_an_engine_gets_the_new_default()
+    {
+        var legacy = new KontenaSettings { DefaultEngine = null, LastBackend = "docker" };
+
+        Assert.Equal(StartupBackend.LastUsed, legacy.ResolvedStartup);
+        Assert.Equal("docker", legacy.StartupTarget);
+    }
+
+    [Fact]
+    public void An_explicit_choice_wins_over_the_legacy_field()
+    {
+        var settings = new KontenaSettings
+        {
+            Startup = StartupBackend.LastUsed,
+            DefaultEngine = "podman",
+            LastBackend = "docker",
+        };
+
+        Assert.Equal("docker", settings.StartupTarget);
+    }
+
+    [Fact]
+    public void Startup_preference_round_trips_including_unset()
+    {
+        var original = new KontenaSettings
+        {
+            Startup = StartupBackend.Pinned,
+            PinnedBackend = "kubernetes:prod",
+            LastBackend = "docker",
+        };
+
+        var restored = JsonSerializer.Deserialize<KontenaSettings>(JsonSerializer.Serialize(original, Options), Options);
+
+        Assert.NotNull(restored);
+        Assert.Equal(StartupBackend.Pinned, restored!.Startup);
+        Assert.Equal("kubernetes:prod", restored.PinnedBackend);
+        Assert.Equal("docker", restored.LastBackend);
+
+        // Absent in the file means "never chosen", which is what the migration keys off.
+        Assert.Null(JsonSerializer.Deserialize<KontenaSettings>("{}", Options)!.Startup);
+    }
+
     [Fact]
     public void Theme_serializes_as_a_name_not_a_number()
     {

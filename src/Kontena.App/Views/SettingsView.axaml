@@ -91,7 +91,7 @@
                 <!-- General -->
                 <StackPanel IsVisible="{Binding IsGeneral}" Spacing="0">
                     <TextBlock Text="General" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                    <TextBlock Text="Appearance and startup behavior." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+                    <TextBlock Text="Appearance and terminal." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
 
                     <TextBlock Classes="gh" Text="APPEARANCE"/>
                     <Border Classes="card" Padding="0" Margin="0,0,0,30">
@@ -136,13 +136,14 @@
                       </StackPanel>
                     </Border>
 
-                    <TextBlock Classes="gh" Text="STARTUP"/>
-                    <Border Classes="card" Padding="0">
+                    <!-- Hidden until it does something — see CanLaunchAtLogin (KON-103). -->
+                    <TextBlock Classes="gh" Text="STARTUP" IsVisible="{Binding CanLaunchAtLogin}"/>
+                    <Border Classes="card" Padding="0" IsVisible="{Binding CanLaunchAtLogin}">
                         <StackPanel>
                             <Grid Margin="18,15" ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
                                     <TextBlock Text="Launch Kontena at login" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                    <TextBlock Text="Start with your session (stored preference)." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                    <TextBlock Text="Start Kontena when you sign in." FontSize="12" Foreground="{DynamicResource TextDim}"/>
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" VerticalAlignment="Center"/>
                             </Grid>
@@ -201,13 +202,14 @@
                             </Grid>
                             <Border Height="1" Background="{DynamicResource Border}"/>
                             <Grid Margin="18,15" ColumnDefinitions="*,Auto">
-                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
-                                    <TextBlock Text="Default engine on launch" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                    <TextBlock Text="Which backend Kontena selects when it opens." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="On launch" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="{Binding StartupHint}" FontSize="12" Foreground="{DynamicResource TextDim}"
+                                               TextWrapping="Wrap"/>
                                 </StackPanel>
-                                <ComboBox Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
-                                          ItemsSource="{Binding DefaultEngineOptions}"
-                                          SelectedItem="{Binding SelectedDefaultEngine, Mode=TwoWay}"/>
+                                <ComboBox Grid.Column="1" MinWidth="210" VerticalAlignment="Center"
+                                          ItemsSource="{Binding StartupOptions}"
+                                          SelectedItem="{Binding SelectedStartup, Mode=TwoWay}"/>
                             </Grid>
                             <!-- Development only: hidden entirely in an ordinary release build -->
                             <Border Height="1" Background="{DynamicResource Border}" IsVisible="{Binding CanToggleDemoBackends}"/>

@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
 using Kontena.Core;
+using Kontena.Core.Errors;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 using Kontena.Core.Orchestration.Models;
@@ -118,10 +119,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>False until the first page is on screen (drives the connecting state).</summary>
     [ObservableProperty] private bool _isReady;
 
-    /// <summary>True when no container engine could be reached — shows the engine-down state.</summary>
-    [ObservableProperty] private bool _isEngineDown;
+    /// <summary>True when the backend Kontena tried to open is not usable — shows the down state.</summary>
+    [ObservableProperty] private bool _isBackendDown;
 
-    [ObservableProperty] private string _engineDownDetail = string.Empty;
+    /// <summary>Headline of the down state; names what could not be opened.</summary>
+    [ObservableProperty] private string _backendDownTitle = "Can't reach a container engine";
+
+    [ObservableProperty] private string _backendDownDetail = string.Empty;
+
+    /// <summary>Whether there is anything else to switch to from the down state.</summary>
+    public bool HasAlternatives => Engines.Count > 0 || Clusters.Count > 0;
 
     /// <summary>True on first run — shows the full-window onboarding (engine connect) wizard.</summary>
     [ObservableProperty] private bool _isOnboarding;
@@ -129,11 +136,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>The first-run wizard view model, or null when not onboarding.</summary>
     [ObservableProperty] private OnboardingViewModel? _onboarding;
 
-    /// <summary>The connecting state shows only while neither ready, engine-down, nor onboarding.</summary>
-    public bool IsConnecting => !IsReady && !IsEngineDown && !IsOnboarding;
+    /// <summary>The connecting state shows only while neither ready, down, nor onboarding.</summary>
+    public bool IsConnecting => !IsReady && !IsBackendDown && !IsOnboarding;
 
     partial void OnIsReadyChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
-    partial void OnIsEngineDownChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
+    partial void OnIsBackendDownChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
     partial void OnIsOnboardingChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
 
     private const string FakeBackend = "fake";
@@ -197,11 +204,20 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            EnterEngineDown(ex.Message);
+            EnterBackendDown("Can't reach a container engine", ex.Message);
         }
     }
 
-    /// <summary>Activate the saved default engine, else the first connected real one, else engine-down.</summary>
+    /// <summary>
+    /// Open what the user was last on, or pinned, or — failing both — the first engine that answers
+    /// (KON-98).
+    /// <para>
+    /// Auto-connect used to be engine-only, because entering a cluster swaps the whole UI mode and
+    /// that should be a choice. It still is a choice: the app only returns to a cluster because the
+    /// user picked it last time. What it must not do is pick one on its own, so a *fallback* is
+    /// still an engine.
+    /// </para>
+    /// </summary>
     private async Task ConnectPreferredAsync()
     {
         // The screenshot renderer boots straight into its (single) demo provider, whatever
@@ -212,28 +228,67 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (demo is not null) { await ActivateAsync(demo.Provider); return; }
         }
 
-        // Auto-connect only ever picks a container engine; clusters are entered explicitly via
-        // the switcher (they change the whole UI mode). Cluster onboarding is KON-72.
+        if (_settings.StartupTarget is { Length: > 0 } target)
+        {
+            var wanted = _probes.FirstOrDefault(p => p.Provider.Backend == target);
+
+            if (wanted is null)
+            {
+                // Kube-context removed, engine uninstalled, demo backends switched off. Forget it
+                // rather than offering a reconnect that can never succeed, and say so — silently
+                // landing somewhere else is how you end up acting on the wrong cluster.
+                _settings = _settings with { LastBackend = null, PinnedBackend = null, Startup = StartupBackend.LastUsed };
+                _store.Save(_settings);
+                BuildSettingsPage();
+
+                EnterBackendDown(
+                    $"{Pretty(target)} is gone",
+                    $"Kontena last opened {Pretty(target)}, and it is no longer available — a kube-context may have been removed, or an engine uninstalled. Pick one below to carry on.");
+                return;
+            }
+
+            if (wanted.Connected)
+            {
+                await ActivateAsync(wanted.Provider);
+                return;
+            }
+
+            EnterBackendDown(
+                $"Can't reach {wanted.Provider.DisplayName}",
+                Unreachable(wanted));
+            return;
+        }
+
         var real = _probes.FirstOrDefault(p =>
-                       p.Connected && p.Provider.Kind == BackendKind.Engine
-                       && p.Provider.Backend != FakeBackend
-                       && p.Provider.Backend == _settings.DefaultEngine)
-                   ?? _probes.FirstOrDefault(p =>
-                       p.Connected && p.Provider.Kind == BackendKind.Engine && p.Provider.Backend != FakeBackend);
+            p.Connected && p.Provider.Kind == BackendKind.Engine && p.Provider.Backend != FakeBackend);
 
         if (real is null)
         {
-            EnterEngineDown("No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.");
+            EnterBackendDown(
+                "Can't reach a container engine",
+                "No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.");
             return;
         }
 
         await ActivateAsync(real.Provider);
     }
 
+    /// <summary>Why a known backend did not answer, in terms that fit what it is.</summary>
+    private static string Unreachable(BackendProbe probe) => probe.Provider.Kind == BackendKind.Cluster
+        ? $"The apiserver for {probe.Provider.DisplayName} did not answer. The cluster may be stopped, unreachable from this network, or your credentials may have expired."
+        : $"The {probe.Provider.DisplayName} socket did not answer. It may be stopped, still starting, or you may not have permission to access it.";
+
+    /// <summary>
+    /// A backend id read back as something a person recognises. Ids are namespaced
+    /// (<c>kubernetes:kind-kind</c>) and the context half is the part the user named.
+    /// </summary>
+    private static string Pretty(string backend) =>
+        backend.Split(':') is [_, var context] && context.Length > 0 ? context : backend;
+
     private void EnterOnboarding()
     {
         IsReady = false;
-        IsEngineDown = false;
+        IsBackendDown = false;
         CurrentPage = null;
         Onboarding = new OnboardingViewModel(
             _probes.Where(p => p.Provider.Kind == BackendKind.Engine).ToList(),
@@ -248,10 +303,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private async Task CompleteOnboardingAsync(string? backend)
     {
         var autoDetect = Onboarding?.AutoDetect ?? _settings.AutoDetectEngines;
+
+        // Onboarding no longer pins: picking an engine here says "start me here", not "and never
+        // follow me anywhere else". Activating it records it as last used, which is enough.
         _settings = _settings with
         {
             Onboarded = true,
-            DefaultEngine = backend ?? _settings.DefaultEngine,
             AutoDetectEngines = autoDetect,
         };
         _store.Save(_settings);
@@ -273,24 +330,26 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         await ConnectPreferredAsync();
     }
 
-    private void EnterEngineDown(string detail)
+    private void EnterBackendDown(string title, string detail)
     {
         IsReady = false;
-        IsEngineDown = true;
-        EngineDownDetail = detail;
+        IsBackendDown = true;
+        BackendDownTitle = title;
+        BackendDownDetail = detail;
         IsClusterMode = false;
-        EngineName = "No engine";
+        EngineName = "Not connected";
         EngineChip = "!";
         EngineDetail = "not connected";
         EngineEndpoint = string.Empty;
         CurrentPage = null;
+        OnPropertyChanged(nameof(HasAlternatives));
     }
 
     [RelayCommand]
     private async Task ReconnectAsync()
     {
-        IsEngineDown = false;
-        EngineDownDetail = string.Empty;
+        IsBackendDown = false;
+        BackendDownDetail = string.Empty;
         await InitAsync();
     }
 
@@ -305,7 +364,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _cluster = null;
 
         IsReady = false;
-        IsEngineDown = false;
+        IsBackendDown = false;
 
         var backend = provider.CreateBackend();
         _activeBackend = provider.Backend;
@@ -317,9 +376,38 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         CloseDialog();
 
         if (backend is IClusterEngine cluster)
-            await EnterClusterModeAsync(cluster);
+        {
+            if (!await EnterClusterModeAsync(cluster))
+                return;
+        }
         else if (backend is IContainerEngine engine)
+        {
             await EnterEngineModeAsync(engine);
+        }
+        else
+        {
+            // A provider that is neither axis has nothing to show. Say so rather than leaving a
+            // blank shell behind — and above all, do not remember it as somewhere worth returning to.
+            EnterBackendDown(
+                $"Can't open {provider.DisplayName}",
+                "This backend is neither a container engine nor a cluster, so Kontena has nothing to show for it.");
+            return;
+        }
+
+        Remember(provider.Backend);
+    }
+
+    /// <summary>
+    /// Record what is open so the next launch can return to it (KON-98). Written only after the
+    /// backend actually came up — remembering something that failed would reopen the failure.
+    /// </summary>
+    private void Remember(string backend)
+    {
+        if (_settings.LastBackend == backend)
+            return;
+
+        _settings = _settings with { LastBackend = backend };
+        _store.Save(_settings);
     }
 
     private async Task EnterEngineModeAsync(IContainerEngine engine)
@@ -360,7 +448,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         await UpdateNavCountsAsync();
     }
 
-    private async Task EnterClusterModeAsync(IClusterEngine cluster)
+    /// <summary>Returns false when the cluster could not be opened and the down state took over.</summary>
+    private async Task<bool> EnterClusterModeAsync(IClusterEngine cluster)
     {
         _cluster = cluster;
         IsClusterMode = true;
@@ -373,9 +462,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             await cluster.PingAsync();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Unreachable is handled by the listers below reporting nothing; capabilities stay off.
+            // This used to be swallowed, on the theory that the listers would simply report nothing.
+            // They do — and the result was a fully-drawn cluster UI with every grid empty and no hint
+            // that the reason was an expired token. A cluster that cannot be reached is a state, not
+            // an absence of data.
+            _cluster = null;
+            (cluster as IDisposable)?.Dispose();
+            EnterBackendDown($"Can't reach {EngineName}", Explain(ex));
+            return false;
         }
 
         // The engine-only pages don't apply in cluster mode.
@@ -396,7 +492,19 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
         await UpdateClusterNavCountsAsync();
         IsReady = true;
+        return true;
     }
+
+    /// <summary>
+    /// The adapter's own words where it has them. Adapters map their failures onto Kontena's
+    /// exception types, so "expired token" and "cluster is off" arrive here already distinguished.
+    /// </summary>
+    private static string Explain(Exception ex) => ex switch
+    {
+        EngineUnreachableException or EnginePermissionException => ex.Message,
+        EngineException => ex.Message,
+        _ => $"{ex.Message} Try again, or pick another backend below.",
+    };
 
     /// <summary>The engine (CEAL) sidebar nav — Containers/Images/Volumes/Networks/Projects.</summary>
     private void SetEngineNav()
@@ -651,14 +759,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void BuildSettingsPage()
     {
-        var engines = _probes
-            .Where(p => p.Provider.Kind == BackendKind.Engine)
-            .Select(p => new EngineListItem(
-                p.Provider.Backend, p.Provider.DisplayName, p.Provider.Chip,
-                p.Detail ?? string.Empty, p.Connected,
-                p.Provider.Backend == _settings.DefaultEngine)).ToList();
+        var all = _probes.Select(p => new EngineListItem(
+            p.Provider.Backend, p.Provider.DisplayName, p.Provider.Chip,
+            p.Detail ?? string.Empty, p.Connected,
+            p.Provider.Backend == _settings.ResolvedPinnedBackend)).ToList();
 
-        SettingsPage = new SettingsViewModel(_store, _settings, engines, ReloadBackendsAsync);
+        // The detected-engines list stays engine-only; what you can pin does not — a cluster is a
+        // perfectly reasonable thing to always start on.
+        var engines = all
+            .Where(e => _probes.First(p => p.Provider.Backend == e.Backend).Provider.Kind == BackendKind.Engine)
+            .ToList();
+
+        SettingsPage = new SettingsViewModel(_store, _settings, engines, all, ReloadBackendsAsync);
     }
 
     /// <summary>
@@ -683,7 +795,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (replacement is not null)
             await ActivateAsync(replacement.Provider);
         else
-            EnterEngineDown("No backend is reachable.");
+            EnterBackendDown("No backend is reachable", "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.");
     }
 
     [RelayCommand]

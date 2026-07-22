@@ -125,8 +125,17 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
 
     public async ValueTask PingAsync(CancellationToken ct = default)
     {
-        // The apiserver's /version is the cheapest proof of a working connection and credentials.
-        await _client.Version.GetCodeAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // The apiserver's /version is the cheapest proof of a working connection and credentials.
+            await _client.Version.GetCodeAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Ping is what the shell uses to decide whether a cluster is usable, so it is the one
+            // place the reason has to survive in a form the app can act on.
+            throw K8sErrors.Map(ex, _context);
+        }
 
         // Piggyback the metrics probe: one round-trip decides whether the UI shows usage gauges.
         var hasMetrics = await _metrics.ProbeAsync(ct).ConfigureAwait(false);
