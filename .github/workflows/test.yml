@@ -46,9 +46,17 @@ jobs:
       - name: Test (Engines)
         run: dotnet test tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj -c Release
 
+      - name: Test (Core.Orchestration)
+        run: dotnet test tests/Kontena.Core.Orchestration.Tests/Kontena.Core.Orchestration.Tests.csproj -c Release
+
       # Integration tests against a real Docker engine; each test skips cleanly when Docker is absent.
       - name: Test (Adapters.Docker)
         run: dotnet test tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj -c Release
+
+      # Same shape for Kubernetes: the mapper and metrics units always run, and the tests that need a
+      # real cluster skip cleanly when the runner has no kubeconfig.
+      - name: Test (Adapters.Kubernetes)
+        run: dotnet test tests/Kontena.Adapters.Kubernetes.Tests/Kontena.Adapters.Kubernetes.Tests.csproj -c Release
 
       # Keep THIRD-PARTY-NOTICES.md in sync with the dependency closure.
       - name: Check third-party notices
