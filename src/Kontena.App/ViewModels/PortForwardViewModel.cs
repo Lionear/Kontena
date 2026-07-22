@@ -8,23 +8,35 @@ using Kontena.Core.Orchestration.Models;
 namespace Kontena.App.ViewModels;
 
 /// <summary>
-/// The "Port forward" modal: opens a local→remote tunnel to a service or pod via the OAL and shows
-/// the live tunnel until it is stopped. Services offer their published ports as presets; pods take a
-/// manual remote port.
+/// The "Port forward" modal: opens a local→remote tunnel to a service or pod via the OAL. Services offer
+/// their published ports as presets; pods take a manual remote port.
+///
+/// <para>The modal no longer <i>owns</i> the tunnel — <see cref="PortForwardRegistry"/> does, so closing
+/// this window leaves the forward running and you manage it from the Port forwards page. That is the whole
+/// point of a forward: you start one to keep using it while you work elsewhere.</para>
 /// </summary>
-public partial class PortForwardViewModel : ViewModelBase, IDisposable
+public partial class PortForwardViewModel : ViewModelBase
 {
+    private readonly PortForwardRegistry _registry;
     private readonly IClusterEngine _cluster;
     private readonly ResourceRef _target;
     private readonly Action _onClose;
-    private IPortForward? _forward;
+    private readonly Action? _onStarted;
 
     public PortForwardViewModel(
-        IClusterEngine cluster, ResourceRef target, string targetLabel, IReadOnlyList<int> ports, Action onClose)
+        PortForwardRegistry registry,
+        IClusterEngine cluster,
+        ResourceRef target,
+        string targetLabel,
+        IReadOnlyList<int> ports,
+        Action onClose,
+        Action? onStarted = null)
     {
+        _registry = registry;
         _cluster = cluster;
         _target = target;
         _onClose = onClose;
+        _onStarted = onStarted;
         TargetLabel = targetLabel;
         Ports = new ObservableCollection<int>(ports);
 
@@ -45,10 +57,19 @@ public partial class PortForwardViewModel : ViewModelBase, IDisposable
 
     public bool CanStart => !IsActive && !IsBusy && RemotePort > 0 && LocalPort > 0;
 
+    /// <summary>Once started, the footer's only action is Done — stopping happens on the Port forwards page,
+    /// which is also where the forward will still be after this window closes.</summary>
+    public string CloseLabel => IsActive ? "Done" : "Cancel";
+
     partial void OnRemotePortChanged(int value) => OnPropertyChanged(nameof(CanStart));
     partial void OnLocalPortChanged(int value) => OnPropertyChanged(nameof(CanStart));
-    partial void OnIsActiveChanged(bool value) => OnPropertyChanged(nameof(CanStart));
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanStart));
+
+    partial void OnIsActiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CloseLabel));
+    }
 
     [RelayCommand]
     private async Task StartAsync()
@@ -60,9 +81,18 @@ public partial class PortForwardViewModel : ViewModelBase, IDisposable
         Error = null;
         try
         {
-            _forward = await _cluster.PortForwardAsync(_target, RemotePort, LocalPort);
-            IsActive = _forward.IsActive;
-            ForwardText = $"localhost:{_forward.LocalPort}  →  {_forward.RemotePort}";
+            // A local port this app is already forwarding fails deep inside the listener with a bare
+            // "address in use"; say which forward has it instead.
+            if (_registry.OnLocalPort(LocalPort) is { } clash)
+            {
+                Error = $"Local port {LocalPort} is already forwarding to {clash.TargetLabel}.";
+                return;
+            }
+
+            var entry = await _registry.StartAsync(_cluster, _target, TargetLabel, RemotePort, LocalPort);
+            IsActive = true;
+            ForwardText = entry.Route;
+            _onStarted?.Invoke();
         }
         catch (Exception ex)
         {
@@ -75,31 +105,5 @@ public partial class PortForwardViewModel : ViewModelBase, IDisposable
     }
 
     [RelayCommand]
-    private async Task StopAsync()
-    {
-        if (_forward is not null)
-        {
-            await _forward.DisposeAsync();
-            _forward = null;
-        }
-        IsActive = false;
-        ForwardText = string.Empty;
-    }
-
-    [RelayCommand]
-    private void Close()
-    {
-        _ = StopAsync();
-        _onClose();
-    }
-
-    public void Dispose()
-    {
-        if (_forward is not null)
-        {
-            _ = _forward.DisposeAsync().AsTask();
-            _forward = null;
-        }
-        GC.SuppressFinalize(this);
-    }
+    private void Close() => _onClose();
 }
