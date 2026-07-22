@@ -77,6 +77,12 @@ public sealed record NodeCapacity
 
     /// <summary>Maximum schedulable pods.</summary>
     public int Pods { get; init; }
+
+    /// <summary>
+    /// Node filesystem capacity in bytes. Only a source that reports disk fills this in — a
+    /// metrics-server does not report disk at all — so zero means "unknown", not "no disk".
+    /// </summary>
+    public long DiskBytes { get; init; }
 }
 
 /// <summary>
@@ -90,4 +96,10 @@ public sealed record NodeUsage
 
     /// <summary>Used memory in bytes.</summary>
     public long MemoryBytes { get; init; }
+
+    /// <summary>
+    /// Used bytes on the node filesystem, or null when the active source does not report disk.
+    /// Distinct from the <c>DiskPressure</c> condition, which is a threshold flag with no number.
+    /// </summary>
+    public long? DiskUsedBytes { get; init; }
 }
