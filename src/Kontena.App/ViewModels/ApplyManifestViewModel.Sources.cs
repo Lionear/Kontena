@@ -111,6 +111,9 @@ public partial class ApplyManifestViewModel
     [ObservableProperty] private bool _isBrowsingCharts;
     [ObservableProperty] private string? _repoStatus;
 
+    /// <summary>Whether the repository panel is open — asking to browse charts opens it.</summary>
+    [ObservableProperty] private bool _isReposOpen;
+
     public bool HasRepos => Repos.Count > 0;
 
     /// <summary>Switch source. Takes the name rather than the value so the view stays declarative.</summary>
@@ -140,6 +143,7 @@ public partial class ApplyManifestViewModel
             Repos.Add(repo);
 
         OnPropertyChanged(nameof(HasRepos));
+        IsReposOpen = HasRepos;
 
         // An empty search lists everything the repositories offer — a browsable starting point.
         await SearchChartsAsync();

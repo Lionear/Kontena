@@ -51,6 +51,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   terminal. Charts can be picked from Helm's own repositories, which can be searched, refreshed and
   added from the page. Plugins stay off for kustomize builds: a preview must not be able to execute
   arbitrary code. (KON-88, KON-89)
+- **The apply plan is filterable, and leads with what changes** — a chart can render dozens of
+  resources of which a handful actually differ, so the rollup beside the plan became the filter:
+  each outcome is a chip that switches its rows on and off, and on a long plan the no-ops start
+  hidden (with a count, so a filtered plan never reads as the whole plan). Rows are ordered by what
+  needs attention — failed, then configure, then create, then unchanged — rather than by the order
+  the documents happened to be rendered in.
 - **Secrets are masked in diffs** — a Secret's values are replaced by a digest of themselves, so a
   rotated secret still reads as changed while the credential stays out of the diff.
 - **Declarative apply, with a dry-run first** — a new *Apply manifest* page: paste or edit a

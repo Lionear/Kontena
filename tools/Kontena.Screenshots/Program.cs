@@ -273,6 +273,7 @@ internal static class Program
                 break;
 
             case "real-apply":
+            case "real-helm":
             case "real-cluster":
                 // The live Kubernetes adapter (KON-68) against whatever the kubeconfig points at.
                 {
@@ -300,6 +301,28 @@ internal static class Program
                             liveApply.YamlText = LiveApplySample;
                             liveApply.DryRunCommand.Execute(null);
                             SettleUntil(() => liveApply.HasPlan, maxRounds: 200);
+                        }
+                    }
+                    else if (scene == "real-helm")
+                    {
+                        // A chart rendered locally, then held against the live cluster. Defaults to
+                        // the repository's own sample; KONTENA_SHOT_CHART points it at a real chart
+                        // (e.g. "cilium/cilium"), which is how the plan's filter gets exercised —
+                        // a big chart is mostly resources that are not changing.
+                        vm.NavigateCommand.Execute("apply");
+                        Settle(rounds: 40);
+                        if (vm.CurrentPage is Kontena.App.ViewModels.ApplyManifestViewModel liveHelm)
+                        {
+                            var chart = Environment.GetEnvironmentVariable("KONTENA_SHOT_CHART");
+                            liveHelm.SelectSourceCommand.Execute("Helm");
+                            liveHelm.Chart = string.IsNullOrWhiteSpace(chart) ? RepoPath("samples/helm/guestbook") : chart;
+                            liveHelm.ReleaseName = Environment.GetEnvironmentVariable("KONTENA_SHOT_RELEASE") ?? "demo";
+
+                            liveHelm.RenderCommand.Execute(null);
+                            SettleUntil(() => !liveHelm.IsRendering && liveHelm.HasDiagnostics, maxRounds: 400);
+
+                            liveHelm.DryRunCommand.Execute(null);
+                            SettleUntil(() => liveHelm.HasPlan, maxRounds: 400);
                         }
                     }
                     else
@@ -338,6 +361,11 @@ internal static class Program
                         render.ReleaseName = "shop";
                         render.AddValuesFile(RepoPath("samples/helm/guestbook/values-prod.yaml"));
                         render.SetValues = "replicaCount=4";
+
+                        // Shows the repository panel on a machine that has repos configured; on one
+                        // that has none it stays hidden, which is also what the user would see.
+                        render.LoadReposCommand.Execute(null);
+                        SettleUntil(() => render.Repos.Count > 0, maxRounds: 40);
                     }
 
                     render.RenderCommand.Execute(null);

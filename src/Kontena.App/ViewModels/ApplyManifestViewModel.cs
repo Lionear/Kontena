@@ -66,11 +66,93 @@ public partial class ApplyManifestViewModel : ViewModelBase
     /// <summary>True while the plan is a preview; false once it reflects a real apply.</summary>
     [ObservableProperty] private bool _isPreview = true;
 
-    /// <summary>"1 change · 1 create" — the rollup beside the plan header.</summary>
-    [ObservableProperty] private string _summary = string.Empty;
-
     /// <summary>The plan, one row per document in the bundle.</summary>
     public ObservableCollection<ApplyPlanRow> Plan { get; } = [];
+
+    /// <summary>The rows currently shown — <see cref="Plan"/> minus the buckets switched off.</summary>
+    public ObservableCollection<ApplyPlanRow> VisiblePlan { get; } = [];
+
+    /// <summary>
+    /// The rollup, and the filter: one chip per outcome, each switching its rows on and off. A
+    /// chart renders dozens of resources of which a handful actually change, and an undifferentiated
+    /// list of them is not a plan anyone can act on.
+    /// </summary>
+    public ObservableCollection<PlanBucket> Buckets { get; } = [];
+
+    public bool HasBuckets => Buckets.Count > 0;
+
+    /// <summary>Above this, a plan stops being readable at a glance and the no-ops start hidden.</summary>
+    private const int BigPlan = 10;
+
+    /// <summary>"5 unchanged hidden" — so a filtered plan never looks like the whole plan.</summary>
+    public string HiddenNote
+    {
+        get
+        {
+            var hidden = Plan.Count - VisiblePlan.Count;
+            return hidden > 0
+                ? $"{hidden.ToString(CultureInfo.InvariantCulture)} hidden"
+                : string.Empty;
+        }
+    }
+
+    public bool HasHidden => Plan.Count > VisiblePlan.Count;
+
+    [RelayCommand]
+    private void ToggleBucket(PlanBucket? bucket)
+    {
+        if (bucket is null)
+            return;
+
+        bucket.IsOn = !bucket.IsOn;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var on = Buckets.Where(b => b.IsOn).Select(b => b.Kind).ToHashSet();
+
+        VisiblePlan.Clear();
+
+        // What needs attention first. A chart renders dozens of resources in template order, which
+        // buries the four that actually change; the plan is a verdict, not the document.
+        foreach (var row in Plan.Where(r => on.Contains(r.Outcome)).OrderBy(r => Rank(r.Outcome)))
+            VisiblePlan.Add(row);
+
+        OnPropertyChanged(nameof(HiddenNote));
+        OnPropertyChanged(nameof(HasHidden));
+
+        // Keep a selection that is still on screen, so the diff pane never shows a hidden row.
+        if (SelectedRow is null || !VisiblePlan.Contains(SelectedRow))
+            SelectedRow = VisiblePlan.FirstOrDefault(r => r.HasDiff) ?? VisiblePlan.FirstOrDefault();
+    }
+
+    /// <summary>Ordering within the plan; OrderBy is stable, so document order survives inside a bucket.</summary>
+    private static int Rank(PlanOutcome outcome) => outcome switch
+    {
+        PlanOutcome.Failed => 0,
+        PlanOutcome.Configure => 1,
+        PlanOutcome.Create => 2,
+        _ => 3,
+    };
+
+    /// <summary>Rebuild the chips from a fresh plan, hiding the no-ops when the plan is long.</summary>
+    private void BuildBuckets()
+    {
+        Buckets.Clear();
+
+        foreach (var kind in new[] { PlanOutcome.Create, PlanOutcome.Configure, PlanOutcome.Failed, PlanOutcome.Unchanged })
+        {
+            var count = Plan.Count(r => r.Outcome == kind);
+            if (count == 0)
+                continue;
+
+            Buckets.Add(new PlanBucket(kind, count, on: kind != PlanOutcome.Unchanged || Plan.Count <= BigPlan));
+        }
+
+        OnPropertyChanged(nameof(HasBuckets));
+        ApplyFilter();
+    }
 
     /// <summary>The selected row's unified diff, split for colouring.</summary>
     public ObservableCollection<DiffLineRow> DiffLines { get; } = [];
@@ -106,8 +188,10 @@ public partial class ApplyManifestViewModel : ViewModelBase
 
         HasPlan = false;
         Plan.Clear();
+        VisiblePlan.Clear();
+        Buckets.Clear();
+        OnPropertyChanged(nameof(HasBuckets));
         ShowDiff(null);
-        Summary = string.Empty;
     }
 
     partial void OnSelectedRowChanged(ApplyPlanRow? value)
@@ -148,6 +232,8 @@ public partial class ApplyManifestViewModel : ViewModelBase
         IsBusy = true;
         Error = null;
         Plan.Clear();
+        VisiblePlan.Clear();
+        Buckets.Clear();
         ShowDiff(null);
 
         try
@@ -166,8 +252,7 @@ public partial class ApplyManifestViewModel : ViewModelBase
 
             IsPreview = dryRun;
             HasPlan = true;
-            Summary = Describe(Plan);
-            SelectedRow = Plan.FirstOrDefault(r => r.HasDiff) ?? Plan.FirstOrDefault();
+            BuildBuckets();
         }
         catch (Exception ex)
         {
@@ -192,25 +277,42 @@ public partial class ApplyManifestViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasDiff));
     }
 
-    /// <summary>"2 create · 1 change · 1 unchanged" — only the non-zero buckets.</summary>
-    private static string Describe(ObservableCollection<ApplyPlanRow> plan)
+}
+
+/// <summary>What an apply would do to a resource, as the plan groups it.</summary>
+public enum PlanOutcome
+{
+    Create,
+    Configure,
+    Unchanged,
+    Failed,
+}
+
+/// <summary>One outcome in the plan: how many, and whether its rows are on screen.</summary>
+public sealed partial class PlanBucket : ObservableObject
+{
+    public PlanBucket(PlanOutcome kind, int count, bool on)
     {
-        if (plan.Count == 0)
-            return "nothing to apply";
+        Kind = kind;
+        _isOn = on;
 
-        var parts = new List<string>();
-        Add(parts, plan.Count(r => r.IsCreate), "create");
-        Add(parts, plan.Count(r => r.IsConfigure), "change");
-        Add(parts, plan.Count(r => r.IsUnchanged), "unchanged");
-        Add(parts, plan.Count(r => r.IsFailed), "failed");
-        return string.Join(" · ", parts);
-
-        static void Add(List<string> parts, int count, string label)
+        var (label, colour) = kind switch
         {
-            if (count > 0)
-                parts.Add($"{count.ToString(CultureInfo.InvariantCulture)} {label}");
-        }
+            PlanOutcome.Create => ("create", "#34D399"),
+            PlanOutcome.Configure => ("change", "#F5B14C"),
+            PlanOutcome.Failed => ("failed", "#F87171"),
+            _ => ("unchanged", "#8A94A2"),
+        };
+
+        Text = $"{count.ToString(CultureInfo.InvariantCulture)} {label}";
+        Accent = new SolidColorBrush(Color.Parse(colour));
     }
+
+    public PlanOutcome Kind { get; }
+    public string Text { get; }
+    public IBrush Accent { get; }
+
+    [ObservableProperty] private bool _isOn;
 }
 
 /// <summary>One resource in an apply plan: what it is, what will happen (or happened), and why.</summary>
@@ -221,10 +323,13 @@ public sealed partial class ApplyPlanRow : ObservableObject
         var action = progress.Action;
         Title = $"{progress.Resource.Kind.Kind}/{progress.Resource.Name}";
 
-        IsCreate = action is ApplyAction.Created or ApplyAction.WouldCreate;
-        IsConfigure = action is ApplyAction.Configured or ApplyAction.WouldChange;
-        IsUnchanged = action is ApplyAction.Unchanged;
-        IsFailed = action is ApplyAction.Failed;
+        Outcome = action switch
+        {
+            ApplyAction.Created or ApplyAction.WouldCreate => PlanOutcome.Create,
+            ApplyAction.Configured or ApplyAction.WouldChange => PlanOutcome.Configure,
+            ApplyAction.Failed => PlanOutcome.Failed,
+            _ => PlanOutcome.Unchanged,
+        };
 
         (Glyph, Tag, var colour) = action switch
         {
@@ -265,13 +370,12 @@ public sealed partial class ApplyPlanRow : ObservableObject
     public string Tag { get; }
     public IBrush Accent { get; }
 
-    public bool IsCreate { get; }
-    public bool IsConfigure { get; }
-    public bool IsUnchanged { get; }
-    public bool IsFailed { get; }
+    public PlanOutcome Outcome { get; }
+
+    public bool IsFailed => Outcome == PlanOutcome.Failed;
 
     /// <summary>Whether this row is something an apply would act on.</summary>
-    public bool IsChange => IsCreate || IsConfigure;
+    public bool IsChange => Outcome is PlanOutcome.Create or PlanOutcome.Configure;
 
     public IReadOnlyList<DiffLineRow> DiffLines { get; }
     public bool HasDiff => DiffLines.Count > 0;

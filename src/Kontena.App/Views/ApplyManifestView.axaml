@@ -79,6 +79,25 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
         </Style>
+        <!-- Rollup chips double as the plan's filter: dimmed means its rows are hidden -->
+        <Style Selector="Button.bucket">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style Selector="Button.bucket.off">
+            <Setter Property="Opacity" Value="0.4"/>
+        </Style>
+        <Style Selector="Button.bucket.off /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <!-- The repository panel spans the form; its header is a full-width row, not a chip -->
+        <Style Selector="Expander /template/ ToggleButton">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
         <Style Selector="Button.chipclose">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -244,7 +263,9 @@
                                        Text="helm is not on PATH — install Helm to render charts."/>
 
                             <!-- Chart repositories: helm's own, so the chart field can be picked, not typed -->
-                            <Expander IsVisible="{Binding HasRepos}" FontSize="12.5">
+                            <Expander IsVisible="{Binding HasRepos}" FontSize="12.5"
+                                      IsExpanded="{Binding IsReposOpen, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                 <Expander.Header>
                                     <TextBlock Text="Chart repositories" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                                 </Expander.Header>
@@ -343,8 +364,27 @@
                                        Foreground="{DynamicResource TextDim}">
                                 <Run Text="against "/><Run Text="{Binding ContextName}" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
                             </TextBlock>
-                            <TextBlock Grid.Column="3" Text="{Binding Summary}" FontSize="11.5" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="2" Text="{Binding HiddenNote}" Margin="10,0" FontSize="11"
+                                       VerticalAlignment="Center" HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource TextFaint}" IsVisible="{Binding HasHidden}"/>
+                            <!-- The rollup is the filter: a chip per outcome, click to show or hide -->
+                            <ItemsControl Grid.Column="3" ItemsSource="{Binding Buckets}" IsVisible="{Binding HasBuckets}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="5"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PlanBucket">
+                                        <Button Classes="bucket" Classes.off="{Binding !IsOn}"
+                                                Command="{Binding $parent[ItemsControl].((vm:ApplyManifestViewModel)DataContext).ToggleBucketCommand}"
+                                                CommandParameter="{Binding}">
+                                            <TextBlock Text="{Binding Text}" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{Binding Accent}"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </Grid>
                     </Border>
 
@@ -354,7 +394,7 @@
                                IsVisible="{Binding !HasPlan}"
                                Text="Run a dry-run to see what this manifest would create or change. Nothing reaches the cluster until you apply."/>
 
-                    <ListBox Grid.Row="1" ItemsSource="{Binding Plan}" SelectedItem="{Binding SelectedRow}"
+                    <ListBox Grid.Row="1" ItemsSource="{Binding VisiblePlan}" SelectedItem="{Binding SelectedRow}"
                              Background="Transparent" BorderThickness="0" Padding="6,6,6,2"
                              IsVisible="{Binding HasPlan}">
                         <ListBox.ItemTemplate>
