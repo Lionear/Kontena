@@ -1,4 +1,6 @@
+using System.Globalization;
 using Kontena.Adapters.Kubernetes;
+using Kontena.Core.Models;
 using Kontena.Core;
 using Kontena.Core.Orchestration;
 using Kontena.Core.Orchestration.Models;
@@ -106,9 +108,9 @@ public class KubernetesClusterEngineTests
         using var engine = await RequireClusterAsync();
 
         Assert.True(engine.Capabilities.Watch);
+        Assert.True(engine.Capabilities.Apply);
 
-        // The mutating half is a later ticket; the UI must be told so it hides those actions.
-        Assert.False(engine.Capabilities.Apply);
+        // Exec and port-forward are still their own ticket; the UI must be told so it hides them.
         Assert.False(engine.Capabilities.Exec);
         Assert.False(engine.Capabilities.PortForward);
     }
@@ -208,13 +210,140 @@ public class KubernetesClusterEngineTests
     }
 
     [SkippableFact]
-    public async Task The_mutating_half_fails_loudly_rather_than_silently()
+    public async Task What_is_still_unimplemented_fails_loudly_rather_than_silently()
     {
         using var engine = await RequireClusterAsync();
-        var reference = new ResourceRef(GroupVersionKind.Deployment, "default", "nope");
+        var pod = new ResourceRef(GroupVersionKind.Pod, "default", "nope");
 
-        await Assert.ThrowsAsync<NotSupportedException>(() => engine.ScaleAsync(reference, 2).AsTask());
-        await Assert.ThrowsAsync<NotSupportedException>(() => engine.DeleteAsync(reference).AsTask());
-        Assert.Throws<NotSupportedException>(() => engine.ApplyAsync(new ManifestBundle { Yaml = "" }));
+        Assert.Throws<NotSupportedException>(() =>
+            engine.StartExecSessionAsync(pod, "c", new ExecRequest { Command = ["sh"] }));
+        Assert.Throws<NotSupportedException>(() => engine.PortForwardAsync(pod, 80));
+    }
+
+    // ── Apply / dry-run (KON-86) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// A namespace per test, so a failed run cannot disturb anything real and — just as important —
+    /// so one test's cleanup cannot make the next one skip: namespace deletion is asynchronous, and
+    /// a shared name would still be Terminating when the next test looks.
+    /// </summary>
+    private const string NamespacePrefix = "kontena-apply-test";
+
+    private static string Bundle(string ns, int replicas = 1, string image = "nginx:1.27-alpine") =>
+        "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: " + ns + "\n" +
+        "---\n" +
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: probe\n  namespace: " + ns + "\n" +
+        "spec:\n  replicas: " + replicas.ToString(CultureInfo.InvariantCulture) + "\n" +
+        "  selector:\n    matchLabels:\n      app: probe\n" +
+        "  template:\n    metadata:\n      labels:\n        app: probe\n" +
+        "    spec:\n      containers:\n        - name: probe\n          image: " + image + "\n";
+
+    private static async Task<List<ApplyProgress>> ApplyAsync(
+        KubernetesClusterEngine engine, string yaml, bool dryRun)
+    {
+        var results = new List<ApplyProgress>();
+        await foreach (var p in engine.ApplyAsync(new ManifestBundle { Yaml = yaml, DryRun = dryRun }))
+            results.Add(p);
+
+        return results;
+    }
+
+    /// <summary>Claim a namespace name for one test, refusing if something already owns it.</summary>
+    private static async Task<string> ClaimNamespaceAsync(KubernetesClusterEngine engine, string suffix)
+    {
+        var ns = $"{NamespacePrefix}-{suffix}";
+        var existing = (await engine.ListNamespacesAsync()).Any(n => n.Name == ns);
+        Skip.If(existing, $"Namespace {ns} already exists; refusing to touch it.");
+        return ns;
+    }
+
+    [SkippableFact]
+    public async Task Dry_run_reports_a_create_without_persisting_anything()
+    {
+        using var engine = await RequireClusterAsync();
+        var ns = await ClaimNamespaceAsync(engine, "dryrun");
+
+        var results = await ApplyAsync(engine, Bundle(ns), dryRun: true);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(ApplyAction.WouldCreate, results[0].Action);
+
+        // A server-side dry-run persists nothing, so the namespace document 1 would create does not
+        // exist when document 2 is validated — kubectl behaves the same way. The adapter explains
+        // that rather than passing on a bare "not found".
+        Assert.Equal(ApplyAction.Failed, results[1].Action);
+        Assert.Contains("this bundle creates it", results[1].Error, StringComparison.Ordinal);
+
+        // The whole point of a dry-run: the cluster is untouched.
+        Assert.DoesNotContain(await engine.ListNamespacesAsync(), n => n.Name == ns);
+    }
+
+    [SkippableFact]
+    public async Task Apply_creates_then_reports_unchanged_then_diffs_a_real_change()
+    {
+        using var engine = await RequireClusterAsync();
+        var ns = await ClaimNamespaceAsync(engine, "apply");
+
+        try
+        {
+            var created = await ApplyAsync(engine, Bundle(ns), dryRun: false);
+            Assert.All(created, r => Assert.Equal(ApplyAction.Created, r.Action));
+
+            // Re-applying the same bundle must be a no-op, not a perpetual "configured".
+            var again = await ApplyAsync(engine, Bundle(ns), dryRun: true);
+            Assert.All(again, r => Assert.Equal(ApplyAction.Unchanged, r.Action));
+
+            var changed = await ApplyAsync(engine, Bundle(ns, replicas: 3, image: "nginx:1.29-alpine"), dryRun: true);
+            var deployment = Assert.Single(changed, r => r.Resource.Kind.Kind == "Deployment");
+            Assert.Equal(ApplyAction.WouldChange, deployment.Action);
+            Assert.Contains("-  replicas: 1", deployment.Diff, StringComparison.Ordinal);
+            Assert.Contains("+  replicas: 3", deployment.Diff, StringComparison.Ordinal);
+            Assert.Contains("nginx:1.29-alpine", deployment.Diff, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await engine.DeleteAsync(new ResourceRef(GroupVersionKind.Namespace, null, ns));
+        }
+    }
+
+    [SkippableFact]
+    public async Task A_manifest_the_api_server_rejects_surfaces_its_reason()
+    {
+        using var engine = await RequireClusterAsync();
+
+        // Server-side dry-run runs real validation, so the message comes from the cluster itself.
+        var result = Assert.Single(await ApplyAsync(engine,
+            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: bad\n  namespace: default\nspec:\n  replicas: -3\n",
+            dryRun: true));
+
+        Assert.Equal(ApplyAction.Failed, result.Action);
+        Assert.Contains("replicas", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [SkippableFact]
+    public async Task An_unserved_kind_is_reported_per_resource_not_thrown()
+    {
+        using var engine = await RequireClusterAsync();
+
+        var result = Assert.Single(await ApplyAsync(engine,
+            "apiVersion: nope.example.com/v1\nkind: Nonesuch\nmetadata:\n  name: x\n  namespace: default\n",
+            dryRun: true));
+
+        Assert.Equal(ApplyAction.Failed, result.Action);
+        Assert.Contains("does not serve", result.Error, StringComparison.Ordinal);
+    }
+
+    [SkippableFact]
+    public async Task A_document_without_a_kind_fails_that_document_only()
+    {
+        using var engine = await RequireClusterAsync();
+
+        var results = await ApplyAsync(engine,
+            "metadata:\n  name: x\n---\napiVersion: v1\nkind: Namespace\nmetadata:\n  name: default\n",
+            dryRun: true);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(ApplyAction.Failed, results[0].Action);
+        Assert.Equal(ApplyAction.Unchanged, results[1].Action);
     }
 }
