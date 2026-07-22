@@ -11,6 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Pause a port forward instead of stopping it** — closing a tunnel is usually temporary: something
+  else needs that local port for a minute. **Pause** closes it and genuinely hands the port back,
+  but keeps the row, and **Resume** puts it straight back on the same local port — no retracing the
+  service and ports to get the address you already handed to other things. It reads as your decision,
+  not a failure: a paused forward is worded and coloured differently from one that dropped. Stop
+  still means done with it. (KON-106)
 - **Port forwards are offered back on your next visit** — the tunnels themselves cannot survive the
   app closing (a forward *is* a local listener in this process), but the intent behind them now does.
   What was on the Port forwards list when you left a cluster comes back when you return to it, as

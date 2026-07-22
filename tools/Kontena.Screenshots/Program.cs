@@ -265,6 +265,11 @@ internal static class Program
                     vm.PortForwards.StartAsync(fake, postgres, "postgres · app", 5432, 5432).GetAwaiter().GetResult();
                     fake.LastPortForward!.Drop("The pod was replaced; the cluster refused a new connection.");
 
+                    // And one paused by hand, so all four states are on the page at once.
+                    var paused = vm.PortForwards
+                        .StartAsync(fake, service, "api · app", 8080, 3000).GetAwaiter().GetResult();
+                    vm.PortForwards.PauseAsync(paused).GetAwaiter().GetResult();
+
                     vm.NavigateCommand.Execute("portforwards");
                     Settle(rounds: 30);
                 }

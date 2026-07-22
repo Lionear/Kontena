@@ -43,7 +43,7 @@
                     BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="1.8*,0.7*,1.5*,0.9*,235">
+                        <Grid ColumnDefinitions="1.7*,0.7*,1.4*,0.9*,300">
                             <TextBlock Grid.Column="0" Text="TARGET" Classes="colhead"/>
                             <TextBlock Grid.Column="1" Text="KIND" Classes="colhead"/>
                             <TextBlock Grid.Column="2" Text="ADDRESS" Classes="colhead"/>
@@ -55,7 +55,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="oal:ActivePortForward">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="1.8*,0.7*,1.5*,0.9*,235">
+                                    <Grid ColumnDefinitions="1.7*,0.7*,1.4*,0.9*,300">
                                         <TextBlock Grid.Column="0" Text="{Binding TargetLabel}" FontWeight="Medium"
                                                    Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="1" Text="{Binding TargetKind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
@@ -70,6 +70,8 @@
                                                      Fill="{DynamicResource Warn}" IsVisible="{Binding IsDropped}"/>
                                             <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                                                      Fill="{DynamicResource TextFaint}" IsVisible="{Binding IsRemembered}"/>
+                                            <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource TextFaint}" IsVisible="{Binding IsPaused}"/>
                                             <TextBlock Text="{Binding StateText}" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource TextDim}" IsVisible="{Binding !IsDropped}"/>
                                             <TextBlock Text="{Binding StateText}" VerticalAlignment="Center" FontWeight="Medium"
@@ -80,6 +82,10 @@
                                             <Button Classes="pill" IsVisible="{Binding IsActive}"
                                                     Command="{Binding $parent[ItemsControl].((vm:PortForwardsViewModel)DataContext).OpenCommand}"
                                                     CommandParameter="{Binding}">Open</Button>
+                                            <!-- Hand the port back without losing the row; Resume puts it straight back -->
+                                            <Button Classes="pill" IsVisible="{Binding IsActive}"
+                                                    Command="{Binding $parent[ItemsControl].((vm:PortForwardsViewModel)DataContext).PauseCommand}"
+                                                    CommandParameter="{Binding}">Pause</Button>
                                             <!-- You wanted that tunnel; offer it back on the same local port -->
                                             <Button Classes="pill" IsVisible="{Binding !IsActive}"
                                                     Content="{Binding ReopenLabel}"

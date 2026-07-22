@@ -67,7 +67,15 @@ public sealed partial class PortForwardsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>Open everything that isn't running: the remembered ones, and anything that dropped.</summary>
+    /// <summary>Hand the local port back without losing the row — Resume puts it straight back.</summary>
+    [RelayCommand]
+    private async Task PauseAsync(ActivePortForward? entry)
+    {
+        if (entry is not null)
+            await _registry.PauseAsync(entry);
+    }
+
+    /// <summary>Open everything that isn't running: paused, remembered, and anything that dropped.</summary>
     [RelayCommand]
     private async Task ReopenAllAsync()
     {

@@ -102,6 +102,19 @@ public sealed class PortForwardRegistry
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Close the tunnel but keep the row, so it can be resumed on the same local port. Use this when
+    /// something else needs that port; <see cref="StopAsync"/> is for when you are done with it.
+    /// </summary>
+    public async Task PauseAsync(ActivePortForward entry)
+    {
+        if (!_forwards.Contains(entry) || !entry.IsActive)
+            return;
+
+        await entry.PauseAsync();
+        Changed?.Invoke();
+    }
+
     /// <summary>Tear one tunnel down and drop it from the list. Safe to call twice.</summary>
     public async Task StopAsync(ActivePortForward entry)
     {
@@ -164,6 +177,9 @@ public enum PortForwardState
 
     /// <summary>Carried over from a previous session and not opened yet.</summary>
     Remembered,
+
+    /// <summary>Closed on purpose, and kept so it can be resumed on the same local port.</summary>
+    Paused,
 }
 
 /// <summary>
@@ -248,11 +264,15 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
     /// <summary>Was open and ended on its own.</summary>
     public bool IsDropped => State == PortForwardState.Dropped;
 
+    /// <summary>Closed on purpose and waiting to be resumed.</summary>
+    public bool IsPaused => State == PortForwardState.Paused;
+
     /// <summary>The state as the page words it.</summary>
     public string StateText => State switch
     {
         PortForwardState.Active => "Active",
         PortForwardState.Dropped => "Dropped",
+        PortForwardState.Paused => "Paused",
         _ => "Not open",
     };
 
@@ -261,6 +281,8 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
     {
         PortForwardState.Active => "The tunnel is carrying traffic.",
         PortForwardState.Dropped => _dropReason ?? "The tunnel ended.",
+        PortForwardState.Paused =>
+            $"Paused. Nothing is listening on {Address} until you resume it, and the port is free for something else.",
         _ => "Carried over from your last session on this cluster. Nothing is listening until you open it.",
     };
 
@@ -268,7 +290,12 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
     /// Reopening a tunnel that dropped is a different thing from opening one carried over from last
     /// session — and neither is the row's "Open", which opens a browser.
     /// </summary>
-    public string ReopenLabel => State == PortForwardState.Dropped ? "Reconnect" : "Reopen";
+    public string ReopenLabel => State switch
+    {
+        PortForwardState.Dropped => "Reconnect",
+        PortForwardState.Paused => "Resume",
+        _ => "Reopen",
+    };
 
     /// <summary>Raised when the tunnel drops or is opened, so the registry can pass it on.</summary>
     public event Action? StateChanged;
@@ -279,8 +306,30 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
         Target.Namespace, Target.Name, TargetLabel, RemotePort, LocalPort);
 
     /// <summary>
-    /// Open the tunnel on the same local port — reopening a dropped one, or opening a remembered one
-    /// for the first time this session. Any old handle is disposed first so the port is certainly free.
+    /// Close the tunnel but keep the entry, so it can be resumed on the same local port. The gap
+    /// between Stop and leaving it running: the port is handed back — which is the usual reason to
+    /// want this, something else needs it — without losing what the forward pointed at.
+    /// </summary>
+    public async Task PauseAsync()
+    {
+        if (_forward is not { } forward)
+            return;
+
+        // Unsubscribed first: tearing it down ourselves is not the tunnel dying, and must not read
+        // as one.
+        forward.Closed -= OnClosed;
+        _forward = null;
+        await forward.DisposeAsync();
+
+        _dropReason = null;
+        State = PortForwardState.Paused;
+        Notify();
+    }
+
+    /// <summary>
+    /// Open the tunnel on the same local port — reopening a dropped one, resuming a paused one, or
+    /// opening a remembered one for the first time this session. Any old handle is disposed first so
+    /// the port is certainly free.
     /// </summary>
     public async Task ReconnectAsync()
     {
@@ -323,6 +372,7 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(State));
         OnPropertyChanged(nameof(IsRemembered));
         OnPropertyChanged(nameof(IsDropped));
+        OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(StateText));
         OnPropertyChanged(nameof(StateDetail));
         OnPropertyChanged(nameof(ReopenLabel));

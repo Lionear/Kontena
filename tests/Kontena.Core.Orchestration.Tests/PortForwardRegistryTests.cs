@@ -193,6 +193,75 @@ public class PortForwardRegistryTests
         Assert.True(entry.IsActive);
     }
 
+    // ── Pausing: hand the port back, keep the row ───────────────────────────
+
+    [Fact]
+    public async Task Pausing_closes_the_tunnel_but_keeps_the_row()
+    {
+        var (registry, cluster) = New();
+        var entry = await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+
+        await registry.PauseAsync(entry);
+
+        Assert.Same(entry, Assert.Single(registry.Forwards));
+        Assert.Equal(PortForwardState.Paused, entry.State);
+        Assert.False(entry.IsActive);
+        Assert.Equal(0, registry.ActiveCount);
+        Assert.False(cluster.LastPortForward!.IsActive);
+    }
+
+    [Fact]
+    public async Task Pausing_is_not_reported_as_a_drop()
+    {
+        // Tearing it down ourselves is not the tunnel dying, and must not read as one.
+        var (registry, cluster) = New();
+        var entry = await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+
+        await registry.PauseAsync(entry);
+
+        Assert.Null(entry.DropReason);
+        Assert.Equal("Resume", entry.ReopenLabel);
+    }
+
+    [Fact]
+    public async Task A_paused_forward_resumes_on_the_same_local_port()
+    {
+        var (registry, cluster) = New();
+        var entry = await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+        await registry.PauseAsync(entry);
+
+        await registry.ReconnectAsync(entry);
+
+        Assert.True(entry.IsActive);
+        Assert.Equal(PortForwardState.Active, entry.State);
+        Assert.Equal(8080, entry.LocalPort);
+    }
+
+    [Fact]
+    public async Task A_paused_forward_is_remembered_like_any_other()
+    {
+        var (registry, cluster) = New();
+        var entry = await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+        await registry.PauseAsync(entry);
+
+        Assert.Single(registry.Snapshot());
+        Assert.True(registry.HasReopenable);
+    }
+
+    [Fact]
+    public async Task Pausing_a_forward_that_is_not_running_does_nothing()
+    {
+        var (registry, cluster) = New();
+        var entry = await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+        cluster.LastPortForward!.Drop("Gone.");
+
+        await registry.PauseAsync(entry);
+
+        // A dropped tunnel stays dropped, with its reason — pausing it would hide why it ended.
+        Assert.Equal(PortForwardState.Dropped, entry.State);
+        Assert.Equal("Gone.", entry.DropReason);
+    }
+
     // ── Remembered between sessions (KON-105) ───────────────────────────────
 
     [Fact]
