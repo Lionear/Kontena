@@ -39,8 +39,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   logs and shell. The interactive shell is the same terminal used for containers. (KON-70)
 - **Workload actions** — **Scale** a Deployment/StatefulSet/ReplicaSet from a stepper dialog,
   **restart a rollout** behind a confirmation, and **port-forward** from the Services grid or the
-  pod header, showing the live tunnel with a Stop. Actions are offered only where the workload kind
-  and the cluster's capabilities support them. (KON-71)
+  pod header. Actions are offered only where the workload kind and the cluster's capabilities
+  support them. (KON-71)
+- **Port forwards keep running** — a forward no longer belongs to the dialog that started it, so
+  closing that window leaves the tunnel up. A new **Port forwards** entry in the cluster sidebar
+  lists everything running, badged with a count, with the local address to copy, an Open button for
+  web workloads, and Stop (or Stop all). Forwards are torn down when you switch backend or quit.
+  (KON-97)
 - **Kustomize and Helm as manifest sources** — the Apply page now takes more than typed YAML.
   Pick **Kustomize** and point at an overlay directory to build it (via `kustomize`, or `kubectl
   kustomize` when that is all you have); pick **Helm** and render a chart with values files, `--set`

@@ -274,6 +274,7 @@ internal static class Program
 
             case "real-apply":
             case "real-helm":
+            case "real-shell":
             case "real-cluster":
                 // The live Kubernetes adapter (KON-68) against whatever the kubeconfig points at.
                 {
@@ -290,7 +291,25 @@ internal static class Program
 
                     SettleUntil(() => vm.IsClusterMode, maxRounds: 200);
 
-                    if (scene == "real-apply")
+                    if (scene == "real-shell")
+                    {
+                        // Pod detail against the live cluster, on the Shell tab — the terminal only
+                        // appears when Capabilities.Exec is true (KON-97).
+                        vm.NavigateCommand.Execute("pods");
+                        Settle(rounds: 60);
+                        if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodsViewModel livePods)
+                        {
+                            livePods.Pods.FirstOrDefault()?.OpenCommand.Execute(null);
+                            Settle(rounds: 60);
+                        }
+
+                        if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel liveDetail)
+                        {
+                            liveDetail.SelectTabCommand.Execute("shell");
+                            Settle(rounds: 80);
+                        }
+                    }
+                    else if (scene == "real-apply")
                     {
                         // Dry-run a bundle against the live cluster: the plan comes from the API
                         // server's admission chain, not from a local guess.

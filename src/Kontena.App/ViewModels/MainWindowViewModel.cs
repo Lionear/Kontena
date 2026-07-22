@@ -27,6 +27,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private ClusterPodDetailViewModel? _podDetail;
     private readonly ActivityLog _activityLog = new();
 
+    // Port forwards outlive the modal that starts them and belong to the cluster connection, so the
+    // registry lives here — see PortForwardRegistry.
+    private readonly PortForwardRegistry _portForwards = new();
+
     /// <summary>Design-time / default ctor uses a fake-only registry.</summary>
     public MainWindowViewModel()
         : this(new BackendRegistry([new FakeEngineProvider()]))
@@ -46,6 +50,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         NavItems = [];
         SetEngineNav();
+        _portForwards.Changed += UpdatePortForwardCount;
 
         SyncThemeToggleIcon();
         _ = InitAsync();
@@ -293,6 +298,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         Containers?.StopWatching();
         _activityLog.Detach();
+        await _portForwards.StopAllAsync();
         (_engine as IDisposable)?.Dispose();
         (_cluster as IDisposable)?.Dispose();
         _engine = null;
@@ -415,6 +421,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         NavItems.Add(new NavItem("workloads", "Workloads", "IconLayers"));
         NavItems.Add(new NavItem("pods", "Pods", "IconContainer"));
         NavItems.Add(new NavItem("services", "Services", "IconNetwork"));
+        NavItems.Add(new NavItem("portforwards", "Port forwards", "IconPlug"));
         NavItems.Add(new NavItem("apply", "Apply manifest", "IconPlay"));
         foreach (var item in NavItems)
             item.Command = NavigateCommand;
@@ -426,6 +433,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
 
         DisposeDetail();
+        (CurrentPage as PortForwardsViewModel)?.Dispose();
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
 
@@ -438,6 +446,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload),
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward),
+            "portforwards" => new PortForwardsViewModel(_portForwards),
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
             {
                 // An apply can create or remove anything — refresh the counts, not the open page.
@@ -526,7 +535,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         var reference = new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name);
         var ports = service.Ports.Select(p => p.Port).ToList();
-        Dialog = new PortForwardViewModel(_cluster, reference, $"{service.Name} · {service.Namespace}", ports, CloseDialog);
+        Dialog = new PortForwardViewModel(
+            _portForwards, _cluster, reference, $"{service.Name} · {service.Namespace}", ports, CloseDialog,
+            UpdatePortForwardCount);
     }
 
     private void ShowPodPortForward(Pod pod)
@@ -535,7 +546,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
 
         var reference = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
-        Dialog = new PortForwardViewModel(_cluster, reference, $"{pod.Name} · {pod.Namespace}", [], CloseDialog);
+        Dialog = new PortForwardViewModel(
+            _portForwards, _cluster, reference, $"{pod.Name} · {pod.Namespace}", [], CloseDialog,
+            UpdatePortForwardCount);
     }
 
     private async Task UpdateClusterNavCountsAsync()
@@ -545,12 +558,28 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         var ci = CultureInfo.InvariantCulture;
         var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
-        NavItems[1].Count = (await _cluster.ListNodesAsync()).Count.ToString(ci);
-        NavItems[2].Count = (await _cluster.ListNamespacesAsync()).Count.ToString(ci);
-        NavItems[3].Count = (await _cluster.ListWorkloadsAsync(null, ns)).Count.ToString(ci);
-        NavItems[4].Count = (await _cluster.ListPodsAsync(ns)).Count.ToString(ci);
-        NavItems[5].Count = (await _cluster.ListServicesAsync(ns)).Count.ToString(ci);
+        SetNavCount("nodes", (await _cluster.ListNodesAsync()).Count.ToString(ci));
+        SetNavCount("namespaces", (await _cluster.ListNamespacesAsync()).Count.ToString(ci));
+        SetNavCount("workloads", (await _cluster.ListWorkloadsAsync(null, ns)).Count.ToString(ci));
+        SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
+        SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
+        UpdatePortForwardCount();
     }
+
+    // Keyed rather than indexed: the nav gained an entry in the middle once already, and an index-based
+    // assignment puts the pod count on Services the day it gains another.
+    private void SetNavCount(string key, string count)
+    {
+        if (NavItems.FirstOrDefault(i => i.Key == key) is { } item)
+            item.Count = count;
+    }
+
+    /// <summary>Badge the sidebar with the number of live tunnels — the whole point of the page is that
+    /// they keep running while you are somewhere else.</summary>
+    private void UpdatePortForwardCount() =>
+        SetNavCount("portforwards", _portForwards.Count == 0
+            ? string.Empty
+            : _portForwards.Count.ToString(CultureInfo.InvariantCulture));
 
     partial void OnSelectedNamespaceChanged(string? value)
     {
@@ -829,6 +858,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         DisposeDetail();
         CloseDialog();
+        _portForwards.StopAllAsync().GetAwaiter().GetResult();
         Containers?.Dispose();
         _activityLog.Dispose();
         (_engine as IDisposable)?.Dispose();

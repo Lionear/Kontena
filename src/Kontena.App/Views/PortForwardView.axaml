@@ -28,14 +28,19 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Active tunnel -->
-                <Border IsVisible="{Binding IsActive}" Background="{DynamicResource PrimarySoft}" CornerRadius="10" Padding="14,12">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Ellipse Width="8" Height="8" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding ForwardText}" FontFamily="{StaticResource Mono}" FontSize="13.5" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
+                <!-- Active tunnel. It belongs to the app now, not to this window: closing here leaves it
+                     running, and the Port forwards page is where it is listed and stopped. -->
+                <StackPanel IsVisible="{Binding IsActive}" Spacing="8">
+                    <Border Background="{DynamicResource PrimarySoft}" CornerRadius="10" Padding="14,12">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding ForwardText}" FontFamily="{StaticResource Mono}" FontSize="13.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Text="Stays open after you close this window — find it under Port forwards."
+                               FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                </StackPanel>
 
                 <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                            Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
@@ -43,9 +48,10 @@
 
             <Border Height="1" Background="{DynamicResource Border}"/>
             <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
-                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CloseCommand}">Close</Button>
+                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CloseCommand}"
+                        Content="{Binding CloseLabel}" IsVisible="{Binding !IsActive}"/>
                 <Button Grid.Column="2" Classes="primary" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" IsVisible="{Binding !IsActive}">Start</Button>
-                <Button Grid.Column="2" Classes="ghost" Command="{Binding StopCommand}" IsVisible="{Binding IsActive}">Stop</Button>
+                <Button Grid.Column="2" Classes="primary" Command="{Binding CloseCommand}" IsVisible="{Binding IsActive}">Done</Button>
             </Grid>
         </StackPanel>
     </Border>
