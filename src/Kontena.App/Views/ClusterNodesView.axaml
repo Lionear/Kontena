@@ -9,6 +9,27 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="Nodes" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+
+            <!-- No usage backend: explain the empty gauges instead of leaving dashes unexplained -->
+            <Border IsVisible="{Binding ShowMetricsNotice}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="16,13">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="8" VerticalAlignment="Top"
+                            Background="{DynamicResource Surface2}">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Info}"
+                              Data="{StaticResource IconGauge}" HorizontalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="13,0,0,0" Spacing="3">
+                        <TextBlock Text="CPU and memory usage unavailable" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}"/>
+                        <TextBlock Text="{Binding MetricsNoticeDetail}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding MetricsNoticeAction}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <ItemsControl ItemsSource="{Binding Nodes}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>

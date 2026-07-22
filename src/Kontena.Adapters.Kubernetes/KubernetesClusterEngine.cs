@@ -26,7 +26,7 @@ namespace Kontena.Adapters.Kubernetes;
 /// designed around.
 /// </para>
 /// </summary>
-public sealed class KubernetesClusterEngine : IClusterEngine, IDisposable
+public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDisposable
 {
     private readonly k8s.Kubernetes _client;
     private readonly MetricsServerSource _metrics;

@@ -42,6 +42,19 @@ public interface IMetricsSource
 }
 
 /// <summary>
+/// Implemented by cluster backends that resolve usage through a pluggable
+/// <see cref="IMetricsSource"/>. Optional on purpose: <see cref="ClusterCapabilities.Metrics"/>
+/// already tells the UI whether to draw gauges, and this only adds the detail needed to explain
+/// <i>why</i> they are missing and what the user could do about it.
+/// </summary>
+public interface IMetricsAware
+{
+    /// <summary>The source usage is read from; never null — an absent source is
+    /// <see cref="NoMetricsSource"/>.</summary>
+    IMetricsSource Metrics { get; }
+}
+
+/// <summary>
 /// The null source: a cluster with no usage backend. Conditions and every other read still work;
 /// only the gauges go away.
 /// </summary>

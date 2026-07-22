@@ -19,10 +19,32 @@ public partial class ClusterNodesViewModel : ViewModelBase
     public ClusterNodesViewModel(IClusterEngine cluster)
     {
         _cluster = cluster;
+
+        // Plenty of clusters (kind, plain kubeadm) ship without a usage backend. Rather than
+        // leaving four dashes unexplained, say so once and say what would fix it.
+        ShowMetricsNotice = !cluster.Capabilities.Metrics;
+        MetricsNoticeDetail = cluster is IMetricsAware { Metrics.Name: var source } && source != "none"
+            ? $"Kontena looked for {source} and it did not answer."
+            : "This cluster has no usage backend configured.";
+
         _ = LoadAsync();
     }
 
     public ObservableCollection<NodeCardRow> Nodes { get; } = [];
+
+    /// <summary>Whether to explain the missing CPU/memory gauges.</summary>
+    public bool ShowMetricsNotice { get; }
+
+    /// <summary>Which source was tried, when the backend can tell us.</summary>
+    public string MetricsNoticeDetail { get; }
+
+    /// <summary>
+    /// What the user can do about it. Installing a metrics-server from Kontena is its own ticket
+    /// (KON-93); for now this is guidance, not an action.
+    /// </summary>
+    public string MetricsNoticeAction { get; } =
+        "Install metrics-server in the cluster to enable them. Node status, conditions and pod counts" +
+        " do not need a metrics source and are unaffected.";
 
     private async Task LoadAsync()
     {
@@ -158,7 +180,7 @@ public sealed class NodeCardRow
         MemoryFraction = use is not null && cap.MemoryBytes > 0 ? (double)use.MemoryBytes / cap.MemoryBytes : 0;
         CpuText = use is null ? "—" : $"{use.CpuMillicores}m / {cap.CpuMillicores}m";
         MemoryText = use is null ? "—" : $"{Format.Size(use.MemoryBytes)} / {Format.Size(cap.MemoryBytes)}";
-        
+
         // Pod counts come off the pod list, so they show even when there is no metrics source.
         PodsText = $"{n.ScheduledPods} / {cap.Pods}";
     }
