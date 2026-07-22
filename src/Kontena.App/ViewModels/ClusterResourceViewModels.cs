@@ -183,6 +183,10 @@ public sealed class NodeCardRow
 
         // Pod counts come off the pod list, so they show even when there is no metrics source.
         PodsText = $"{n.ScheduledPods} / {cap.Pods}";
+
+        // Conditions need no metrics source either. Only the failing ones are worth surfacing —
+        // a healthy node's five green conditions are noise, and the Ready dot already says it.
+        Problems = [.. n.Problems.Select(c => new NodeProblemChip(c))];
     }
 
     public string Name { get; }
@@ -196,7 +200,34 @@ public sealed class NodeCardRow
     public string MemoryText { get; }
     public string PodsText { get; }
 
+    /// <summary>Conditions currently signalling trouble; empty on a healthy node.</summary>
+    public IReadOnlyList<NodeProblemChip> Problems { get; }
+
+    public bool HasProblems => Problems.Count > 0;
+
     public IBrush StatusBrush => new SolidColorBrush(Color.Parse(Status == "Ready" ? "#34D399" : "#F87171"));
+}
+
+/// <summary>
+/// A failing node condition, as a chip on the node card. Pressure conditions are a warning — the
+/// node still runs, but the kubelet may start evicting — while a failing Ready is a hard problem.
+/// </summary>
+public sealed class NodeProblemChip
+{
+    public NodeProblemChip(NodeCondition condition)
+    {
+        Label = condition.Type;
+        Detail = string.IsNullOrEmpty(condition.Message) ? condition.Reason : condition.Message;
+
+        var colour = condition.Type == "Ready" ? "#F87171" : "#F5B14C";
+        Brush = new SolidColorBrush(Color.Parse(colour));
+        Background = new SolidColorBrush(Color.Parse(colour), 0.13);
+    }
+
+    public string Label { get; }
+    public string Detail { get; }
+    public IBrush Brush { get; }
+    public IBrush Background { get; }
 }
 
 public sealed record NamespaceRow(string Name, string Status, string Age);

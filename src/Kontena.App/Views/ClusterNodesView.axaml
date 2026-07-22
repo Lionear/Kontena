@@ -52,6 +52,27 @@
                                     </StackPanel>
                                 </Grid>
 
+                                <!-- Failing conditions (DiskPressure, MemoryPressure, …); absent when healthy -->
+                                <ItemsControl ItemsSource="{Binding Problems}" IsVisible="{Binding HasProblems}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:NodeProblemChip">
+                                            <Border Background="{Binding Background}" CornerRadius="20" Padding="9,3"
+                                                    Margin="0,0,6,0" ToolTip.Tip="{Binding Detail}">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <Ellipse Width="6" Height="6" Fill="{Binding Brush}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{Binding Brush}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
                                 <StackPanel Spacing="9">
                                     <StackPanel Spacing="4">
                                         <Grid ColumnDefinitions="*,Auto">
