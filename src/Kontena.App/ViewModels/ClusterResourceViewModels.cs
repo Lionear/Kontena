@@ -49,8 +49,12 @@ public partial class ClusterNodesViewModel : ViewModelBase
     private async Task LoadAsync()
     {
         Nodes.Clear();
+
+        // The apiserver version is what a kubelet version means anything against (KON-95): a node is
+        // only "behind" relative to its own control plane.
+        var apiServerVersion = (await _cluster.GetInfoAsync()).Version;
         foreach (var n in await _cluster.ListNodesAsync())
-            Nodes.Add(new NodeCardRow(n));
+            Nodes.Add(new NodeCardRow(n, apiServerVersion));
     }
 }
 
@@ -166,7 +170,7 @@ public partial class ClusterServicesViewModel : ViewModelBase
 
 public sealed class NodeCardRow
 {
-    public NodeCardRow(Node n)
+    public NodeCardRow(Node n, string? apiServerVersion = null)
     {
         Name = n.Name;
         Roles = n.Roles.Count > 0 ? string.Join(", ", n.Roles) : "—";
@@ -193,6 +197,10 @@ public sealed class NodeCardRow
         // Conditions need no metrics source either. Only the failing ones are worth surfacing —
         // a healthy node's five green conditions are noise, and the Ready dot already says it.
         Problems = [.. n.Problems.Select(c => new NodeProblemChip(c))];
+
+        // Version skew is the same kind of signal: no metrics source, no network, just the two
+        // numbers we already hold (KON-95). Shown only when it is outside the supported window.
+        Skew = VersionSkewPolicy.Evaluate(apiServerVersion, n.KubeletVersion);
     }
 
     public string Name { get; }
@@ -216,6 +224,22 @@ public sealed class NodeCardRow
     public IReadOnlyList<NodeProblemChip> Problems { get; }
 
     public bool HasProblems => Problems.Count > 0;
+
+    /// <summary>How this node's kubelet sits against the apiserver.</summary>
+    public NodeVersionSkew Skew { get; }
+
+    /// <summary>Only an unsupported skew is worth a chip — a matching kubelet says nothing new.</summary>
+    public bool HasVersionWarning => Skew.IsProblem;
+
+    public string VersionWarning => Skew.Summary;
+    public string VersionWarningDetail => Skew.Detail;
+
+    /// <summary>A kubelet ahead of the control plane is an error; trailing too far is a warning.</summary>
+    public IBrush VersionWarningBrush =>
+        new SolidColorBrush(Color.Parse(Skew.State == VersionSkewState.Ahead ? "#F87171" : "#F5B14C"));
+
+    public IBrush VersionWarningBackground =>
+        new SolidColorBrush(Color.Parse(Skew.State == VersionSkewState.Ahead ? "#F87171" : "#F5B14C"), 0.13);
 
     public IBrush StatusBrush => new SolidColorBrush(Color.Parse(Status == "Ready" ? "#34D399" : "#F87171"));
 }

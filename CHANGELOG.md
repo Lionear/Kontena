@@ -15,6 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   (Windows .zip, Linux .AppImage, macOS .zip), so what is finished between two releases can be run
   without building it yourself. A night in which nothing was merged publishes nothing, rather than a
   fresh version number on an identical build. (KON-108)
+- **Nodes left behind by an upgrade say so** — every node's kubelet is now compared against the
+  apiserver it is registered with, following the published Kubernetes version skew policy. A kubelet
+  further behind than the control plane allows (three minor versions, or two below apiserver 1.28)
+  gets a warning on its node card, and a kubelet *newer* than the apiserver — never supported in any
+  configuration — is flagged as an error. The Nodes cards carry the chip; the cluster overview marks
+  the version column. It is a comparison of two numbers Kontena already reads, so it needs no network
+  and cannot go stale. Whether the release itself is still supported upstream is a separate question
+  and is deliberately not answered here. (KON-95)
 - **Pause a port forward instead of stopping it** — closing a tunnel is usually temporary: something
   else needs that local port for a minute. **Pause** closes it and genuinely hands the port back,
   but keeps the row, and **Resume** puts it straight back on the same local port — no retracing the
@@ -36,7 +44,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   silently would be worse — stops counting towards the sidebar badge, and offers **Reconnect** to
   reopen it on that same local port. The local listener is released when the tunnel dies, so nothing
   is left accepting connections it can never serve. (KON-102)
-
 - **Kontena reopens what you were on** — engine or cluster, whichever it was. Settings › Engines
   replaces the old *default engine* dropdown with a single **On launch** choice: continue where you
   left off, always open one named backend (clusters included), or take the first engine that

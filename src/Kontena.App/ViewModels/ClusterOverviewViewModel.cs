@@ -53,9 +53,16 @@ public partial class ClusterOverviewViewModel : ViewModelBase
                 n.Roles.Count > 0 ? string.Join(", ", n.Roles) : "—",
                 n.Status,
                 n.KubeletVersion,
-                n.Usage is null ? "—" : $"{n.Usage.CpuMillicores}m / {n.Capacity.CpuMillicores}m"));
+                n.Usage is null ? "—" : $"{n.Usage.CpuMillicores}m / {n.Capacity.CpuMillicores}m",
+                VersionSkewPolicy.Evaluate(info.Version, n.KubeletVersion)));
     }
 }
 
 /// <summary>A row in the overview's node table.</summary>
-public sealed record NodeRow(string Name, string Roles, string Status, string Version, string Cpu);
+public sealed record NodeRow(string Name, string Roles, string Status, string Version, string Cpu, NodeVersionSkew? Skew = null)
+{
+    /// <summary>A kubelet outside the supported skew window (KON-95) — the version alone doesn't show it.</summary>
+    public bool HasVersionWarning => Skew?.IsProblem == true;
+
+    public string VersionWarningDetail => Skew?.Detail ?? string.Empty;
+}
