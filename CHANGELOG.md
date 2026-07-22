@@ -26,6 +26,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   colour-per-service stream). (KON-59)
 - **Clickable ports in Inspect** — the container Inspect tab now lists published port mappings, and
   published TCP ports open in the browser with one click. (KON-63)
+- **Kubernetes clusters, alongside container engines** — Kontena now speaks to clusters as well as
+  engines. The backend switcher groups what it finds into *Container engines* and
+  *Clusters · Orchestrators*; picking a cluster swaps the whole UI into cluster mode, with a
+  Kubernetes resource tree in the sidebar and a namespace picker in the command bar. Clusters are
+  always an explicit choice — auto-connect and first-run onboarding stay engine-only. (KON-66, KON-67)
+- **Cluster resource browsers** — Overview (health rollup and a nodes table), Nodes (cards with
+  CPU/memory gauges), Namespaces, Workloads, Pods and Services, all filtered by the namespace
+  picker. (KON-73)
+- **Pod detail** — open a pod for tabbed **Overview / Logs / Shell / Events / YAML**, a live
+  CPU/memory strip where a metrics-server is available, and a container picker that retargets the
+  logs and shell. The interactive shell is the same terminal used for containers. (KON-70)
+- **Workload actions** — **Scale** a Deployment/StatefulSet/ReplicaSet from a stepper dialog,
+  **restart a rollout** behind a confirmation, and **port-forward** from the Services grid or the
+  pod header, showing the live tunnel with a Stop. Actions are offered only where the workload kind
+  and the cluster's capabilities support them. (KON-71)
+- **Declarative apply, with a dry-run first** — a new *Apply manifest* page: paste or edit a
+  manifest bundle, run a server-side dry-run to see a per-resource plan (create / configure /
+  no change) with a unified diff, then apply. Editing the manifest invalidates the plan, so what you
+  apply is always what you reviewed. The pod YAML tab became a live editor with Revert/Apply, and
+  pods can be deleted from the grid behind a confirmation. (KON-69)
 
 ## [0.1.0] - 2026-07-20
 
