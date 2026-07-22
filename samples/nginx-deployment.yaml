@@ -1,0 +1,37 @@
+# A small, self-contained manifest for exercising the Apply-manifest flow (KON-69/86).
+#
+# Try it against a real cluster:
+#   1. Dry-run  — the plan comes from the API server's admission chain, nothing is persisted.
+#   2. Apply    — creates the Deployment.
+#   3. Dry-run again — every resource reports "no change".
+#   4. Edit `replicas` or the image tag and dry-run once more to see a field-level diff.
+#
+# Resource requests are deliberately tiny so this fits on a laptop cluster (kind, k3s, minikube).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: default
+  labels:
+    app: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
