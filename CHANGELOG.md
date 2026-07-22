@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Nightly builds** — `develop` is published every night as a rolling `nightly` prerelease
+  (Windows .zip, Linux .AppImage, macOS .zip), so what is finished between two releases can be run
+  without building it yourself. A night in which nothing was merged publishes nothing, rather than a
+  fresh version number on an identical build. (KON-108)
 - **Nodes left behind by an upgrade say so** — every node's kubelet is now compared against the
   apiserver it is registered with, following the published Kubernetes version skew policy. A kubelet
   further behind than the control plane allows (three minor versions, or two below apiserver 1.28)

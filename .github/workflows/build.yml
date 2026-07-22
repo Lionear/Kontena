@@ -1,12 +1,24 @@
 name: Build
 
-# Cross-platform release builds. Kontena is a single-branch project, so:
-#   push main       -> refreshes the rolling `preview` prerelease (what has been merged)
+# Cross-platform release builds:
+#   push main        -> refreshes the rolling `preview` prerelease (what has been merged)
 #   push tag v*      -> cuts a real, latest `stable` release and rolls the changelog
-#   workflow_dispatch -> manual build of main, optionally refreshing the preview release
+#   schedule         -> refreshes the rolling `nightly` prerelease from develop (KON-108)
+#   workflow_dispatch -> manual build of main, optionally refreshing the preview release;
+#                        tick `nightly` to exercise the scheduled path instead
+#
+# develop is the integration branch and main only moves at a release, so without the nightly there
+# is no built artifact of what is finished between two releases — which is exactly what a pipeline
+# is for on the platforms you cannot build locally.
+#
+# NOTE: scheduled workflows only ever run from the default branch, so the cron here is dormant until
+# this file reaches main.
 #
 # Builds are unsigned / not notarized for now (see the release notes footer).
 on:
+  schedule:
+    # 03:00 UTC — after a European working day, before the next one.
+    - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
       version:
@@ -15,6 +27,11 @@ on:
         default: ""
       publish_release:
         description: "Also refresh the preview release"
+        type: boolean
+        required: false
+        default: false
+      nightly:
+        description: "Build develop as the nightly prerelease instead of main"
         type: boolean
         required: false
         default: false
@@ -45,8 +62,14 @@ jobs:
       channel: ${{ steps.target.outputs.channel }}
       release_tag: ${{ steps.target.outputs.release_tag }}
       version: ${{ steps.target.outputs.version }}
+      ref: ${{ steps.target.outputs.ref }}
+      should_build: ${{ steps.target.outputs.should_build }}
     steps:
+      # A nightly builds develop, not the branch the schedule fires from (which is always the
+      # default branch).
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ (github.event_name == 'schedule' || inputs.nightly) && 'refs/heads/develop' || github.ref }}
 
       - name: Resolve channel and version
         id: target
@@ -54,15 +77,48 @@ jobs:
         # textually before the shell parses the line, so an input could close the quote and append
         # commands. Env values are data to bash, whatever they contain.
         env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ inputs.version }}
+          IS_NIGHTLY: ${{ github.event_name == 'schedule' || inputs.nightly }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
 
+          SHOULD_BUILD=true
+          # Written as an if, not `[ ... ] && REF=...`: under `set -e` a failing test as the whole
+          # statement ends the step, which would kill every non-tag build.
           if [ "$REF_TYPE" = tag ]; then
+            REF="refs/tags/$REF_NAME"
+          else
+            REF="refs/heads/$REF_NAME"
+          fi
+
+          if [ "$IS_NIGHTLY" = true ]; then
+            CHANNEL=nightly
+            RELEASE_TAG=nightly
+            BASE=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' Directory.Build.props)
+            [ -n "$BASE" ] || { echo "No <Version> in Directory.Build.props" >&2; exit 1; }
+            VERSION="$BASE-nightly.$(date -u +%Y%m%d).$RUN_NUMBER"
+
+            # Republishing an identical build every night makes "there is a new nightly" meaningless.
+            # The previous nightly already carries the commit it was cut from, so this is a
+            # comparison rather than state we have to keep somewhere.
+            HEAD_SHA=$(git rev-parse HEAD)
+            PREV_SHA=$(gh release view nightly --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+            if [ "$HEAD_SHA" = "$PREV_SHA" ]; then
+              echo "develop has not moved since the last nightly ($HEAD_SHA) — skipping."
+              SHOULD_BUILD=false
+            fi
+
+            # Everything downstream uses this exact commit rather than "whatever develop is now", so a
+            # merge landing mid-build cannot make the assets, the release target and the next run's
+            # comparison disagree.
+            REF="$HEAD_SHA"
+          elif [ "$REF_TYPE" = tag ]; then
             # A tag build must be a v<semver> tag (it becomes a checkout ref = code execution).
             if ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?$'; then
               echo "Refusing tag ref: $REF_NAME" >&2; exit 1
@@ -92,12 +148,15 @@ jobs:
             echo "channel=$CHANNEL"
             echo "release_tag=$RELEASE_TAG"
             echo "version=$VERSION"
+            echo "ref=$REF"
+            echo "should_build=$SHOULD_BUILD"
           } >> "$GITHUB_OUTPUT"
-          echo "Building channel '$CHANNEL' (assets on '$RELEASE_TAG'), version $VERSION"
+          echo "Building channel '$CHANNEL' from '$REF' (assets on '$RELEASE_TAG'), version $VERSION"
 
   build:
     name: ${{ matrix.name }}
     needs: setup
+    if: ${{ needs.setup.outputs.should_build == 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -121,6 +180,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -227,13 +288,14 @@ jobs:
   release:
     name: Publish ${{ needs.setup.outputs.channel }} release
     needs: [setup, build]
-    if: ${{ (github.event_name == 'push') || inputs.publish_release }}
+    if: ${{ needs.setup.outputs.should_build == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish_release) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.setup.outputs.ref }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -290,6 +352,12 @@ jobs:
             else
               echo "::warning::changelog roll skipped (nothing to roll or checkout failed); verify CHANGELOG.md"
             fi
+          elif [ "$CHANNEL" = nightly ]; then
+            # The commit setup pinned, which is what was built and what the next run compares against.
+            TARGET=$(git rev-parse HEAD)
+            gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+            gh release create "$RELEASE_TAG" assets/* \
+              --title "Nightly build (develop)" --notes "$BODY" --prerelease --target "$TARGET"
           else
             gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
             gh release create "$RELEASE_TAG" assets/* \
