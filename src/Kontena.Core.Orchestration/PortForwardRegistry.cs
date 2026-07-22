@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Kontena.Core.Models;
 using Kontena.Core.Orchestration.Models;
 
 namespace Kontena.Core.Orchestration;
@@ -14,7 +15,8 @@ namespace Kontena.Core.Orchestration;
 /// page lists what is running and is the place to stop it.</para>
 ///
 /// <para>A forward is tied to the cluster it was opened against, so switching backends stops them all —
-/// see <c>MainWindowViewModel.ActivateAsync</c>.</para>
+/// see <c>MainWindowViewModel.ActivateAsync</c>. What survives is the <i>intent</i>: the list is restored
+/// on the next visit as entries that are remembered but not open, waiting for a click (KON-105).</para>
 /// </summary>
 public sealed class PortForwardRegistry
 {
@@ -30,7 +32,7 @@ public sealed class PortForwardRegistry
     /// </summary>
     public event Action? Changed;
 
-    /// <summary>How many forwards are held, dropped ones included — a dead forward is kept on the list.</summary>
+    /// <summary>How many forwards are held, dropped and remembered ones included.</summary>
     public int Count => _forwards.Count;
 
     /// <summary>
@@ -38,6 +40,9 @@ public sealed class PortForwardRegistry
     /// counting dead tunnels says the wrong thing precisely when it matters.
     /// </summary>
     public int ActiveCount => _forwards.Count(f => f.IsActive);
+
+    /// <summary>Whether anything is waiting to be opened — a dropped tunnel or a remembered one.</summary>
+    public bool HasReopenable => _forwards.Any(f => !f.IsActive);
 
     /// <summary>
     /// Open a tunnel and keep it. <paramref name="localPort"/> 0 (or null) lets the OS pick a free port.
@@ -48,15 +53,45 @@ public sealed class PortForwardRegistry
     {
         var forward = await cluster.PortForwardAsync(target, remotePort, localPort);
         var entry = new ActivePortForward(forward, cluster, target, targetLabel);
-        entry.StateChanged += OnEntryStateChanged;
-        _forwards.Add(entry);
-        Changed?.Invoke();
+        Add(entry);
         return entry;
     }
 
     /// <summary>
-    /// Open the tunnel again, on the same local port — you wanted that address, and things pointed at it.
-    /// Throws if the port has since been taken; the entry stays dropped in that case.
+    /// Put back what was remembered from a previous session, as entries that are <i>not</i> open. A
+    /// tunnel that reopens itself on launch is a surprise — into production it is a bad one — and the
+    /// local port may since have been taken by something else. Anything already on the list wins, so
+    /// restoring twice cannot duplicate a live tunnel.
+    /// </summary>
+    public void Restore(IClusterEngine cluster, IEnumerable<RememberedPortForward> remembered)
+    {
+        var added = false;
+        foreach (var item in remembered)
+        {
+            if (_forwards.Any(f => f.LocalPort == item.LocalPort))
+                continue;
+
+            var target = new ResourceRef(
+                new GroupVersionKind(item.Group, item.Version, item.Kind), item.Namespace, item.Name);
+            var entry = new ActivePortForward(cluster, target, item.Label, item.RemotePort, item.LocalPort);
+            entry.StateChanged += OnEntryStateChanged;
+            _forwards.Add(entry);
+            added = true;
+        }
+
+        if (added)
+            Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// What to remember for the next session: everything still on the list, open or not. A forward you
+    /// explicitly stopped is off the list by then, which is how you say you are done with it.
+    /// </summary>
+    public IReadOnlyList<RememberedPortForward> Snapshot() => [.. _forwards.Select(f => f.Remember())];
+
+    /// <summary>
+    /// Open the tunnel, on the same local port — you wanted that address, and things point at it.
+    /// Throws if the port has since been taken; the entry stays closed in that case.
     /// </summary>
     public async Task ReconnectAsync(ActivePortForward entry)
     {
@@ -100,12 +135,41 @@ public sealed class PortForwardRegistry
     public ActivePortForward? OnLocalPort(int localPort) =>
         _forwards.FirstOrDefault(f => f.LocalPort == localPort);
 
+    private void Add(ActivePortForward entry)
+    {
+        // Starting a forward the list already remembers replaces that entry rather than sitting beside
+        // it as a second row for the same local port.
+        if (_forwards.FirstOrDefault(f => f.LocalPort == entry.LocalPort && !f.IsActive) is { } stale)
+        {
+            stale.StateChanged -= OnEntryStateChanged;
+            _forwards.Remove(stale);
+        }
+
+        entry.StateChanged += OnEntryStateChanged;
+        _forwards.Add(entry);
+        Changed?.Invoke();
+    }
+
     private void OnEntryStateChanged() => Changed?.Invoke();
 }
 
+/// <summary>Where one entry on the Port forwards page stands.</summary>
+public enum PortForwardState
+{
+    /// <summary>Carrying traffic.</summary>
+    Active,
+
+    /// <summary>Was open and ended on its own — the pod went away, the cluster refused a connection.</summary>
+    Dropped,
+
+    /// <summary>Carried over from a previous session and not opened yet.</summary>
+    Remembered,
+}
+
 /// <summary>
-/// One running tunnel, as the Port forwards page shows it. Implements <see cref="INotifyPropertyChanged"/>
-/// by hand rather than pulling an MVVM package into the orchestration layer.
+/// One tunnel, as the Port forwards page shows it — open, dropped, or merely remembered. Implements
+/// <see cref="INotifyPropertyChanged"/> by hand rather than pulling an MVVM package into the
+/// orchestration layer.
 ///
 /// <para>A tunnel can end without anyone asking — the pod went away, the apiserver refused the next
 /// connection — and the adapter is the only thing that knows when. It says so through
@@ -117,18 +181,33 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly IClusterEngine _cluster;
     private readonly SynchronizationContext? _sync;
-    private IPortForward _forward;
+
+    // Null while nothing is open: a remembered entry has no tunnel yet, and a stopped one has none
+    // any more. The ports live here rather than on the handle so they survive both.
+    private IPortForward? _forward;
+    private int _localPort;
     private string? _dropReason;
 
     public ActivePortForward(IPortForward forward, IClusterEngine cluster, ResourceRef target, string targetLabel)
+        : this(cluster, target, targetLabel, forward.RemotePort, forward.LocalPort)
     {
         _forward = forward;
+        _forward.Closed += OnClosed;
+        State = PortForwardState.Active;
+    }
+
+    /// <summary>An entry restored from a previous session: known, but not open (KON-105).</summary>
+    public ActivePortForward(
+        IClusterEngine cluster, ResourceRef target, string targetLabel, int remotePort, int localPort)
+    {
         _cluster = cluster;
         _sync = SynchronizationContext.Current;
+        _localPort = localPort;
         Target = target;
         TargetLabel = targetLabel;
+        RemotePort = remotePort;
         StartedAt = DateTimeOffset.Now;
-        _forward.Closed += OnClosed;
+        State = PortForwardState.Remembered;
     }
 
     public ResourceRef Target { get; }
@@ -141,41 +220,88 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
 
     public DateTimeOffset StartedAt { get; }
 
-    public int LocalPort => _forward.LocalPort;
-    public int RemotePort => _forward.RemotePort;
+    /// <summary>
+    /// The local port. Fixed once known — including a port the OS picked — because it is the address
+    /// people copied and pointed things at, and reopening on a different one would silently break them.
+    /// </summary>
+    public int LocalPort => _localPort;
+
+    public int RemotePort { get; }
 
     /// <summary>What to type in a browser or client.</summary>
     public string Address => $"localhost:{LocalPort}";
 
     public string Route => $"localhost:{LocalPort}  →  {RemotePort}";
 
-    /// <summary>False once the tunnel has dropped (the pod went away, the listener closed).</summary>
-    public bool IsActive => _forward.IsActive;
+    /// <summary>Open, dropped, or waiting to be opened.</summary>
+    public PortForwardState State { get; private set; }
 
-    /// <summary>Why it dropped, in the adapter's words; null while it is up.</summary>
+    /// <summary>False once the tunnel has dropped, and before a remembered one is opened.</summary>
+    public bool IsActive => _forward?.IsActive == true;
+
+    /// <summary>Why it dropped, in the adapter's words; null while it is up or merely remembered.</summary>
     public string? DropReason => _dropReason;
 
-    /// <summary>Raised when the tunnel drops or is reconnected, so the registry can pass it on.</summary>
-    public event Action? StateChanged;
+    /// <summary>Waiting to be opened for the first time this session.</summary>
+    public bool IsRemembered => State == PortForwardState.Remembered;
+
+    /// <summary>Was open and ended on its own.</summary>
+    public bool IsDropped => State == PortForwardState.Dropped;
+
+    /// <summary>The state as the page words it.</summary>
+    public string StateText => State switch
+    {
+        PortForwardState.Active => "Active",
+        PortForwardState.Dropped => "Dropped",
+        _ => "Not open",
+    };
+
+    /// <summary>The sentence behind the state, for the tooltip.</summary>
+    public string StateDetail => State switch
+    {
+        PortForwardState.Active => "The tunnel is carrying traffic.",
+        PortForwardState.Dropped => _dropReason ?? "The tunnel ended.",
+        _ => "Carried over from your last session on this cluster. Nothing is listening until you open it.",
+    };
 
     /// <summary>
-    /// Open the same tunnel again on the same local port. Only meaningful once it has dropped; the
-    /// old handle is disposed first so the port is certainly free.
+    /// Reopening a tunnel that dropped is a different thing from opening one carried over from last
+    /// session — and neither is the row's "Open", which opens a browser.
+    /// </summary>
+    public string ReopenLabel => State == PortForwardState.Dropped ? "Reconnect" : "Reopen";
+
+    /// <summary>Raised when the tunnel drops or is opened, so the registry can pass it on.</summary>
+    public event Action? StateChanged;
+
+    /// <summary>What survives to the next session.</summary>
+    public RememberedPortForward Remember() => new(
+        Target.Kind.Group, Target.Kind.Version, Target.Kind.Kind,
+        Target.Namespace, Target.Name, TargetLabel, RemotePort, LocalPort);
+
+    /// <summary>
+    /// Open the tunnel on the same local port — reopening a dropped one, or opening a remembered one
+    /// for the first time this session. Any old handle is disposed first so the port is certainly free.
     /// </summary>
     public async Task ReconnectAsync()
     {
         if (IsActive)
             return;
 
-        _forward.Closed -= OnClosed;
-        await _forward.DisposeAsync();
+        if (_forward is { } previous)
+        {
+            previous.Closed -= OnClosed;
+            await previous.DisposeAsync();
+            _forward = null;
+        }
 
-        var replacement = await _cluster.PortForwardAsync(Target, RemotePort, LocalPort);
+        var replacement = await _cluster.PortForwardAsync(Target, RemotePort, _localPort);
         _forward = replacement;
         _forward.Closed += OnClosed;
+        _localPort = replacement.LocalPort;
         _dropReason = null;
+        State = PortForwardState.Active;
 
-        // Already on the caller's thread — the command that reconnects runs on it.
+        // Already on the caller's thread — the command that reopens runs on it.
         Notify();
     }
 
@@ -184,6 +310,7 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
     private void OnClosed(string reason)
     {
         _dropReason = reason;
+        State = PortForwardState.Dropped;
         if (_sync is null || _sync == SynchronizationContext.Current)
             Notify();
         else
@@ -193,7 +320,16 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
     private void Notify()
     {
         OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(State));
+        OnPropertyChanged(nameof(IsRemembered));
+        OnPropertyChanged(nameof(IsDropped));
+        OnPropertyChanged(nameof(StateText));
+        OnPropertyChanged(nameof(StateDetail));
+        OnPropertyChanged(nameof(ReopenLabel));
         OnPropertyChanged(nameof(DropReason));
+        OnPropertyChanged(nameof(LocalPort));
+        OnPropertyChanged(nameof(Address));
+        OnPropertyChanged(nameof(Route));
         StateChanged?.Invoke();
     }
 
@@ -202,7 +338,11 @@ public sealed class ActivePortForward : INotifyPropertyChanged, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        _forward.Closed -= OnClosed;
-        return _forward.DisposeAsync();
+        if (_forward is not { } forward)
+            return ValueTask.CompletedTask;
+
+        forward.Closed -= OnClosed;
+        _forward = null;
+        return forward.DisposeAsync();
     }
 }

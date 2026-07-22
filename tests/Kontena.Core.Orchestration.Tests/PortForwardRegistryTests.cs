@@ -1,3 +1,4 @@
+using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 using Kontena.Core.Orchestration.Fakes;
 using Kontena.Core.Orchestration.Models;
@@ -190,6 +191,120 @@ public class PortForwardRegistryTests
 
         Assert.Same(first, cluster.LastPortForward);
         Assert.True(entry.IsActive);
+    }
+
+    // ── Remembered between sessions (KON-105) ───────────────────────────────
+
+    [Fact]
+    public async Task What_is_on_the_list_is_what_gets_remembered()
+    {
+        var (registry, cluster) = New();
+        await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+        var stopped = await registry.StartAsync(cluster, Web, "web-0 · app", 8080, 8081);
+        await registry.StopAsync(stopped);
+
+        var snapshot = registry.Snapshot();
+
+        // Stopping one is how you say you are done with it; it must not come back next session.
+        var only = Assert.Single(snapshot);
+        Assert.Equal("api", only.Name);
+        Assert.Equal("Service", only.Kind);
+        Assert.Equal("app", only.Namespace);
+        Assert.Equal(80, only.RemotePort);
+        Assert.Equal(8080, only.LocalPort);
+    }
+
+    [Fact]
+    public async Task A_dropped_forward_is_still_remembered()
+    {
+        var (registry, cluster) = New();
+        await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+
+        cluster.LastPortForward!.Drop();
+
+        Assert.Single(registry.Snapshot());
+    }
+
+    [Fact]
+    public void A_restored_forward_is_not_opened_by_itself()
+    {
+        // Opening a tunnel into production because the app started is a surprise nobody asked for.
+        var (registry, cluster) = New();
+
+        registry.Restore(cluster, [new RememberedPortForward("", "v1", "Service", "app", "api", "api · app", 80, 8080)]);
+
+        var entry = Assert.Single(registry.Forwards);
+        Assert.Equal(PortForwardState.Remembered, entry.State);
+        Assert.False(entry.IsActive);
+        Assert.Equal(0, registry.ActiveCount);
+        Assert.Null(cluster.LastPortForward);
+        Assert.Equal(8080, entry.LocalPort);
+        Assert.Equal("api · app", entry.TargetLabel);
+    }
+
+    [Fact]
+    public async Task A_restored_forward_opens_on_the_port_it_had()
+    {
+        var (registry, cluster) = New();
+        registry.Restore(cluster, [new RememberedPortForward("", "v1", "Service", "app", "api", "api · app", 80, 8080)]);
+        var entry = registry.Forwards[0];
+
+        await registry.ReconnectAsync(entry);
+
+        Assert.True(entry.IsActive);
+        Assert.Equal(PortForwardState.Active, entry.State);
+        Assert.Equal(8080, entry.LocalPort);
+        Assert.Equal(1, registry.ActiveCount);
+    }
+
+    [Fact]
+    public async Task A_restored_forward_that_is_opened_can_drop_like_any_other()
+    {
+        var (registry, cluster) = New();
+        registry.Restore(cluster, [new RememberedPortForward("", "v1", "Service", "app", "api", "api · app", 80, 8080)]);
+        await registry.ReconnectAsync(registry.Forwards[0]);
+
+        cluster.LastPortForward!.Drop("Gone.");
+
+        Assert.Equal(PortForwardState.Dropped, registry.Forwards[0].State);
+        Assert.Equal("Gone.", registry.Forwards[0].DropReason);
+    }
+
+    [Fact]
+    public async Task Restoring_does_not_duplicate_a_forward_that_is_already_open()
+    {
+        // Restore runs on every activation of the cluster; a second pass must not add a second row
+        // for a port that is already served.
+        var (registry, cluster) = New();
+        await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+
+        registry.Restore(cluster, [new RememberedPortForward("", "v1", "Service", "app", "api", "api · app", 80, 8080)]);
+
+        Assert.Single(registry.Forwards);
+        Assert.True(registry.Forwards[0].IsActive);
+    }
+
+    [Fact]
+    public async Task Starting_a_forward_replaces_the_remembered_row_for_that_port()
+    {
+        var (registry, cluster) = New();
+        registry.Restore(cluster, [new RememberedPortForward("", "v1", "Service", "app", "api", "api · app", 80, 8080)]);
+
+        await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+
+        var entry = Assert.Single(registry.Forwards);
+        Assert.True(entry.IsActive);
+    }
+
+    [Fact]
+    public void Anything_not_running_can_be_reopened()
+    {
+        var (registry, cluster) = New();
+        Assert.False(registry.HasReopenable);
+
+        registry.Restore(cluster, [new RememberedPortForward("", "v1", "Pod", "app", "web-0", "web-0 · app", 8080, 9229)]);
+
+        Assert.True(registry.HasReopenable);
     }
 
     [Fact]

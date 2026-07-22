@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Port forwards are offered back on your next visit** — the tunnels themselves cannot survive the
+  app closing (a forward *is* a local listener in this process), but the intent behind them now does.
+  What was on the Port forwards list when you left a cluster comes back when you return to it, as
+  rows that are *not open*, with **Reopen** per row and **Reopen all** in the header. Nothing opens
+  by itself: a tunnel that reconnects to production because the app started is a surprise, and the
+  local port may since have been taken. Remembered per backend — a forward means nothing on another
+  cluster — and a forward you **Stop** is gone for good, which is how you say you are done with it.
+  (KON-105)
 - **A port forward that falls over says so immediately** — the tunnel itself now reports when it
   ends: the row flips to *Dropped* while you are looking at it, with the reason (the pod was
   replaced, the cluster refused the connection) in a tooltip, instead of only correcting itself the

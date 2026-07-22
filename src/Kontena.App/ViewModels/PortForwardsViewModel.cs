@@ -24,6 +24,7 @@ public sealed partial class PortForwardsViewModel : ViewModelBase, IDisposable
         _registry = registry;
         Forwards = registry.Forwards;
         ((INotifyCollectionChanged)Forwards).CollectionChanged += OnForwardsChanged;
+        registry.Changed += OnRegistryChanged;
     }
 
     public ReadOnlyObservableCollection<ActivePortForward> Forwards { get; }
@@ -31,6 +32,9 @@ public sealed partial class PortForwardsViewModel : ViewModelBase, IDisposable
     public bool IsEmpty => Forwards.Count == 0;
 
     public bool HasAny => Forwards.Count > 0;
+
+    /// <summary>Whether anything can be opened — a dropped tunnel, or one carried over from last time.</summary>
+    public bool HasReopenable => _registry.HasReopenable;
 
     /// <summary>Why a reconnect failed — nearly always the local port taken in the meantime.</summary>
     [ObservableProperty] private string? _error;
@@ -63,6 +67,31 @@ public sealed partial class PortForwardsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>Open everything that isn't running: the remembered ones, and anything that dropped.</summary>
+    [RelayCommand]
+    private async Task ReopenAllAsync()
+    {
+        Error = null;
+        var failures = new List<string>();
+
+        // A copy: opening a tunnel raises Changed, and the collection is the registry's own.
+        foreach (var entry in Forwards.Where(f => !f.IsActive).ToList())
+        {
+            try
+            {
+                await _registry.ReconnectAsync(entry);
+            }
+            catch (Exception ex)
+            {
+                // One port being taken must not stop the rest — report them together at the end.
+                failures.Add($"{entry.Address}: {ex.Message}");
+            }
+        }
+
+        if (failures.Count > 0)
+            Error = "Could not open " + string.Join("; ", failures);
+    }
+
     /// <summary>Open the forwarded port in a browser — the common reason for forwarding a web workload.</summary>
     [RelayCommand]
     private static void Open(ActivePortForward? entry)
@@ -77,9 +106,13 @@ public sealed partial class PortForwardsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasAny));
     }
 
+    /// <summary>A row changing state does not change the collection, so the header follows this instead.</summary>
+    private void OnRegistryChanged() => OnPropertyChanged(nameof(HasReopenable));
+
     public void Dispose()
     {
         ((INotifyCollectionChanged)Forwards).CollectionChanged -= OnForwardsChanged;
+        _registry.Changed -= OnRegistryChanged;
         GC.SuppressFinalize(this);
     }
 }

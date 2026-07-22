@@ -12,8 +12,12 @@
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="Port forwards" FontSize="22" FontWeight="SemiBold"
                            Foreground="{DynamicResource Text}"/>
-                <Button Grid.Column="1" Classes="ghost" Command="{Binding StopAllCommand}"
-                        IsVisible="{Binding HasAny}">Stop all</Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="ghost" Command="{Binding ReopenAllCommand}"
+                            IsVisible="{Binding HasReopenable}">Reopen all</Button>
+                    <Button Classes="ghost" Command="{Binding StopAllCommand}"
+                            IsVisible="{Binding HasAny}">Stop all</Button>
+                </StackPanel>
             </Grid>
 
             <!-- Empty state -->
@@ -57,16 +61,19 @@
                                         <TextBlock Grid.Column="1" Text="{Binding TargetKind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="2" Text="{Binding Route}" FontFamily="{StaticResource Mono}" FontSize="12.5"
                                                    Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                        <!-- Active · Dropped (it died) · Not open (remembered from last session) -->
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
+                                                    ToolTip.Tip="{Binding StateDetail}">
                                             <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                                                      Fill="{DynamicResource Success}" IsVisible="{Binding IsActive}"/>
                                             <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                                     Fill="{DynamicResource Warn}" IsVisible="{Binding !IsActive}"/>
-                                            <TextBlock Text="Active" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" IsVisible="{Binding IsActive}"/>
-                                            <!-- Why it dropped is the adapter's sentence, kept on the row it belongs to -->
-                                            <TextBlock Text="Dropped" Foreground="{DynamicResource Warn}" FontWeight="Medium"
-                                                       VerticalAlignment="Center" IsVisible="{Binding !IsActive}"
-                                                       ToolTip.Tip="{Binding DropReason}"/>
+                                                     Fill="{DynamicResource Warn}" IsVisible="{Binding IsDropped}"/>
+                                            <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource TextFaint}" IsVisible="{Binding IsRemembered}"/>
+                                            <TextBlock Text="{Binding StateText}" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextDim}" IsVisible="{Binding !IsDropped}"/>
+                                            <TextBlock Text="{Binding StateText}" VerticalAlignment="Center" FontWeight="Medium"
+                                                       Foreground="{DynamicResource Warn}" IsVisible="{Binding IsDropped}"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                                             <Button Classes="pill" Click="OnCopyClick" Tag="{Binding Address}">Copy</Button>
@@ -75,8 +82,9 @@
                                                     CommandParameter="{Binding}">Open</Button>
                                             <!-- You wanted that tunnel; offer it back on the same local port -->
                                             <Button Classes="pill" IsVisible="{Binding !IsActive}"
+                                                    Content="{Binding ReopenLabel}"
                                                     Command="{Binding $parent[ItemsControl].((vm:PortForwardsViewModel)DataContext).ReconnectCommand}"
-                                                    CommandParameter="{Binding}">Reconnect</Button>
+                                                    CommandParameter="{Binding}"/>
                                             <Button Classes="pill"
                                                     Command="{Binding $parent[ItemsControl].((vm:PortForwardsViewModel)DataContext).StopCommand}"
                                                     CommandParameter="{Binding}">Stop</Button>
