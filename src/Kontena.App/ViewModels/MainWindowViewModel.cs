@@ -403,6 +403,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         NavItems.Add(new NavItem("workloads", "Workloads", "IconLayers"));
         NavItems.Add(new NavItem("pods", "Pods", "IconContainer"));
         NavItems.Add(new NavItem("services", "Services", "IconNetwork"));
+        NavItems.Add(new NavItem("apply", "Apply manifest", "IconPlay"));
         foreach (var item in NavItems)
             item.Command = NavigateCommand;
     }
@@ -416,16 +417,21 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
 
-        // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker. The apply flow
-        // is its own ticket (KON-69).
+        // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker.
         CurrentPage = key switch
         {
             "overview" => new ClusterOverviewViewModel(_cluster),
             "nodes" => new ClusterNodesViewModel(_cluster),
             "namespaces" => new ClusterNamespacesViewModel(_cluster),
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload),
-            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail),
+            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward),
+            "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
+            {
+                // An apply can create or remove anything — refresh the counts, not the open page.
+                _ = UpdateClusterNavCountsAsync();
+                return Task.CompletedTask;
+            }),
             _ => new ClusterOverviewViewModel(_cluster),
         };
         SearchText = string.Empty;
@@ -478,6 +484,27 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 ReloadCurrentClusterPage();
             },
             onClose: CloseDialog);
+    }
+
+    /// <summary>Delete a pod (KON-69) — destructive, so it always goes through a confirm.</summary>
+    private void ConfirmDeletePod(Pod pod)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new ConfirmViewModel(
+            "Delete pod",
+            $"Delete pod \"{pod.Name}\" in {pod.Namespace}? If a controller owns it, a replacement is" +
+            " scheduled straight away; if not, it is gone for good.",
+            "Delete",
+            onConfirm: async () =>
+            {
+                await _cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name));
+                CloseDialog();
+                ReloadCurrentClusterPage();
+            },
+            onClose: CloseDialog,
+            destructive: true);
     }
 
     private void ShowServicePortForward(Service service)

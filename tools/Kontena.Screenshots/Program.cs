@@ -108,6 +108,53 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// A bundle picked to exercise every plan outcome against the seeded fake cluster: the "api"
+    /// Deployment is scaled and re-imaged (configure), the autoscaler is new (create), and the
+    /// "api" Service is written exactly as it already exists (no change).
+    /// </summary>
+    private const string PlanSampleManifest = """
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: api
+          namespace: app
+        spec:
+          replicas: 5
+          selector:
+            matchLabels: {app: api}
+          template:
+            spec:
+              containers:
+                - name: api
+                  image: ghcr.io/lionear/api:2.0
+        ---
+        apiVersion: autoscaling/v2
+        kind: HorizontalPodAutoscaler
+        metadata:
+          name: api
+          namespace: app
+        spec:
+          minReplicas: 3
+          maxReplicas: 10
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: api
+          namespace: app
+        spec:
+          type: ClusterIP
+          clusterIP: 10.0.12.4
+          selector:
+            app: api
+          ports:
+            - name: http
+              port: 80
+              targetPort: 8080
+              protocol: TCP
+        """;
+
     private static void ApplyScene(string scene, MainWindowViewModel vm)
     {
         switch (scene)
@@ -144,6 +191,7 @@ internal static class Program
 
             case "pod":
             case "pod-logs":
+            case "pod-yaml":
                 vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("pods");
@@ -153,10 +201,43 @@ internal static class Program
                     pods.Pods.FirstOrDefault()?.OpenCommand.Execute(null);
                     Settle(rounds: 30);
                 }
-                if (scene == "pod-logs" && vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
                 {
-                    detailVm.SelectTabCommand.Execute("logs");
-                    Settle(rounds: 30);
+                    if (scene == "pod-logs")
+                    {
+                        detailVm.SelectTabCommand.Execute("logs");
+                        Settle(rounds: 30);
+                    }
+                    else if (scene == "pod-yaml")
+                    {
+                        detailVm.SelectTabCommand.Execute("yaml");
+                        SettleUntil(() => detailVm.YamlText.Length > 0, maxRounds: 60);
+                        // Show the editor mid-edit, so Revert/Apply are live.
+                        detailVm.YamlText = detailVm.YamlText.Replace("qosClass: Burstable", "qosClass: Guaranteed", StringComparison.Ordinal);
+                        Settle(rounds: 20);
+                    }
+                }
+                break;
+
+            case "apply":
+            case "apply-plan":
+            case "apply-done":
+                vm.SwitchEngineCommand.Execute("kubernetes:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("apply");
+                Settle(rounds: 30);
+                if (scene != "apply" && vm.CurrentPage is Kontena.App.ViewModels.ApplyManifestViewModel apply)
+                {
+                    // A bundle that exercises every plan outcome: one change, one create, one no-op.
+                    apply.YamlText = PlanSampleManifest;
+                    apply.DryRunCommand.Execute(null);
+                    SettleUntil(() => apply.HasPlan, maxRounds: 60);
+
+                    if (scene == "apply-done")
+                    {
+                        apply.ApplyCommand.Execute(null);
+                        SettleUntil(() => !apply.IsPreview, maxRounds: 60);
+                    }
                 }
                 break;
 

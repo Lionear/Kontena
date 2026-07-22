@@ -230,12 +230,25 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- YAML -->
-            <Border IsVisible="{Binding IsYamlSelected}" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
-                <ScrollViewer Padding="16,12">
-                    <SelectableTextBlock Text="{Binding YamlText}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="20" Foreground="{DynamicResource TextDim}"/>
-                </ScrollViewer>
-            </Border>
+            <!-- YAML — a live editor: patch the resource straight from here (KON-69) -->
+            <Grid IsVisible="{Binding IsYamlSelected}" RowDefinitions="*,Auto">
+                <Border Grid.Row="0" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                        <TextBox Text="{Binding YamlText}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                                 Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="16,12"
+                                 FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </ScrollViewer>
+                </Border>
+                <Grid Grid.Row="1" Margin="0,12,0,0" ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding YamlStatus}" VerticalAlignment="Center" FontSize="12.5" TextWrapping="Wrap"
+                               IsVisible="{Binding YamlStatus, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Foreground="{Binding YamlStatusBrush}"/>
+                    <Button Grid.Column="1" Classes="pill" Margin="0,0,8,0" Command="{Binding RevertYamlCommand}"
+                            IsEnabled="{Binding YamlIsDirty}">Revert</Button>
+                    <Button Grid.Column="2" Classes="primary" Padding="13,7" FontSize="12.5"
+                            Command="{Binding ApplyYamlCommand}" IsEnabled="{Binding CanApplyYaml}">Apply</Button>
+                </Grid>
+            </Grid>
         </Panel>
     </Grid>
 </UserControl>

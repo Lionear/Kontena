@@ -1,0 +1,169 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="720"
+             x:Class="Kontena.App.Views.ApplyManifestView"
+             x:DataType="vm:ApplyManifestViewModel">
+
+    <UserControl.Styles>
+        <!-- Panel headers shared by the editor and the plan -->
+        <Style Selector="Border.panel">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="ClipToBounds" Value="True"/>
+        </Style>
+        <Style Selector="Border.panelhead">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaised}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="13,9"/>
+        </Style>
+        <!-- The manifest editor: a plain mono text area, no chrome of its own -->
+        <Style Selector="TextBox.editor">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="AcceptsTab" Value="True"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+        <!-- Plan rows follow the design tokens, not the platform's selection blue -->
+        <Style Selector="ListBoxItem">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="9,5"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected:focus /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="28,24">
+        <!-- Page header -->
+        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
+            <TextBlock FontFamily="{StaticResource Mono}" FontSize="11.5" Foreground="{DynamicResource TextFaint}">
+                <Run Text="actions"/><Run Text="  /  "/><Run Text="Apply manifest" Foreground="{DynamicResource TextDim}"/>
+            </TextBlock>
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Text="Apply manifest" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock Grid.Column="1" Text="Declarative apply · server-side dry-run" Margin="14,0,0,0"
+                           FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Bottom"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- Editor | plan -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,16,*">
+            <Border Grid.Column="0" Classes="panel">
+                <Grid RowDefinitions="Auto,*">
+                    <Border Grid.Row="0" Classes="panelhead">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding Source}" FontFamily="{StaticResource Mono}"
+                                       FontSize="12" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="pill" Padding="9,4" FontSize="11.5"
+                                    Command="{Binding ResetCommand}" ToolTip.Tip="Restore the example manifest">Reset</Button>
+                        </Grid>
+                    </Border>
+                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
+                        <TextBox Classes="editor" Text="{Binding YamlText}"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Classes="panel">
+                <Grid RowDefinitions="Auto,Auto,*">
+                    <Border Grid.Row="0" Classes="panelhead">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                            <Border Grid.Column="0" Background="{DynamicResource PrimarySoft}" CornerRadius="20" Padding="8,2"
+                                    IsVisible="{Binding ShowDryRunBadge}">
+                                <TextBlock Text="DRY-RUN" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource Primary}"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Margin="9,0,0,0" FontSize="12.5" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextDim}">
+                                <Run Text="against "/><Run Text="{Binding ContextName}" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                            </TextBlock>
+                            <TextBlock Grid.Column="3" Text="{Binding Summary}" FontSize="11.5" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFaint}"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Empty state: no plan yet -->
+                    <TextBlock Grid.Row="1" Margin="16,20" TextWrapping="Wrap" FontSize="12.5"
+                               Foreground="{DynamicResource TextFaint}"
+                               IsVisible="{Binding !HasPlan}"
+                               Text="Run a dry-run to see what this manifest would create or change. Nothing reaches the cluster until you apply."/>
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Plan}" SelectedItem="{Binding SelectedRow}"
+                             Background="Transparent" BorderThickness="0" Padding="6,6,6,2"
+                             IsVisible="{Binding HasPlan}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ApplyPlanRow">
+                                <Grid ColumnDefinitions="26,*,Auto" Margin="0,3">
+                                    <Border Grid.Column="0" Width="26" Height="26" CornerRadius="7"
+                                            Background="{DynamicResource Surface2}">
+                                        <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource Mono}" FontSize="13"
+                                                   FontWeight="Bold" Foreground="{Binding Accent}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="11,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="Medium"
+                                                   Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Subtitle}" FontFamily="{StaticResource Mono}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding Tag}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{Binding Accent}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Border Grid.Row="2" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="0,1,0,0" IsVisible="{Binding HasDiff}">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding DiffLines}" Margin="14,10">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DiffLineRow">
+                                        <TextBlock Text="{Binding Text}" Foreground="{Binding Brush}"
+                                                   FontFamily="{StaticResource Mono}" FontSize="11.5" LineHeight="19"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Action bar -->
+        <Border Grid.Row="2" Classes="panel" Margin="0,16,0,0" Padding="16,12">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}">
+                        <Run Text="Applying to "/><Run Text="{Binding ContextName}" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                    </TextBlock>
+                    <TextBlock Text="{Binding Error}" FontSize="12" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"
+                               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                </StackPanel>
+                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding DryRunCommand}"
+                        IsEnabled="{Binding !IsBusy}">Dry-run</Button>
+                <Button Grid.Column="2" Classes="primary" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanApply}">Apply</Button>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

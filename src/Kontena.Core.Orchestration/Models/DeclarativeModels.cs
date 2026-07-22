@@ -31,7 +31,10 @@ public enum ApplyAction
     /// <summary>The resource existed and matched — no change.</summary>
     Unchanged,
 
-    /// <summary>Dry-run: the resource would change (create/update) but nothing was persisted.</summary>
+    /// <summary>Dry-run: the resource does not exist yet and would be created.</summary>
+    WouldCreate,
+
+    /// <summary>Dry-run: the resource exists and would be updated; nothing was persisted.</summary>
     WouldChange,
 
     /// <summary>The resource failed to apply.</summary>

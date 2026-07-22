@@ -12,7 +12,7 @@
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="2*,1.2*,0.7*,1.1*,0.8*,1.6*,0.7*">
+                        <Grid ColumnDefinitions="2*,1.2*,0.7*,1.1*,0.8*,1.6*,0.7*,84">
                             <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
                             <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
                             <TextBlock Grid.Column="2" Text="READY" Classes="colhead"/>
@@ -20,13 +20,14 @@
                             <TextBlock Grid.Column="4" Text="RESTARTS" Classes="colhead"/>
                             <TextBlock Grid.Column="5" Text="NODE" Classes="colhead"/>
                             <TextBlock Grid.Column="6" Text="AGE" Classes="colhead"/>
+                            <TextBlock Grid.Column="7" Text="" Classes="colhead"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Pods}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PodRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="2*,1.2*,0.7*,1.1*,0.8*,1.6*,0.7*">
+                                    <Grid ColumnDefinitions="2*,1.2*,0.7*,1.1*,0.8*,1.6*,0.7*,84">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
                                         </Button>
@@ -39,6 +40,8 @@
                                         <TextBlock Grid.Column="4" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="5" Text="{Binding Node}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="6" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="7" Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center">Delete</Button>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
