@@ -27,6 +27,16 @@ public sealed record KontenaSettings
     /// <summary>Backend id to activate on launch (e.g. "docker"); null = first connected.</summary>
     public string? DefaultEngine { get; init; }
 
+    /// <summary>
+    /// Whether the in-memory demo backends (fake engine and fake clusters) appear in the switcher.
+    /// <para>
+    /// Nullable on purpose: null means "use the build default" — on for a debug build, off for a
+    /// release build. A settings file written during development therefore never switches demo
+    /// backends on in a release build, which an ordinary bool default could not express.
+    /// </para>
+    /// </summary>
+    public bool? ShowDemoBackends { get; init; }
+
     /// <summary>Whether the first-run onboarding (engine connect) has been completed.</summary>
     public bool Onboarded { get; init; }
 

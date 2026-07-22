@@ -45,6 +45,28 @@ public class KontenaSettingsTests
     }
 
     [Fact]
+    public void Demo_backends_default_to_unset_so_the_build_decides()
+    {
+        // Null is not the same as false here: it means "not chosen", which lets a debug build show
+        // demo backends while a release build reading the same file does not.
+        Assert.Null(new KontenaSettings().ShowDemoBackends);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Demo_backends_preference_round_trips_including_unset(bool? preference)
+    {
+        var original = new KontenaSettings { ShowDemoBackends = preference };
+
+        var restored = JsonSerializer.Deserialize<KontenaSettings>(JsonSerializer.Serialize(original, Options), Options);
+
+        Assert.NotNull(restored);
+        Assert.Equal(preference, restored!.ShowDemoBackends);
+    }
+
+    [Fact]
     public void Theme_serializes_as_a_name_not_a_number()
     {
         var json = JsonSerializer.Serialize(new KontenaSettings { Theme = ThemePreference.Light }, Options);

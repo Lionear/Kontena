@@ -629,7 +629,32 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 p.Detail ?? string.Empty, p.Connected,
                 p.Provider.Backend == _settings.DefaultEngine)).ToList();
 
-        SettingsPage = new SettingsViewModel(_store, _settings, engines);
+        SettingsPage = new SettingsViewModel(_store, _settings, engines, ReloadBackendsAsync);
+    }
+
+    /// <summary>
+    /// Rebuild the backend set after the demo toggle changed (KON-96), re-probe, and refresh the
+    /// switcher. If the active backend was one of the ones that just went away, fall back to a
+    /// connected real one rather than leaving a dead session on screen.
+    /// </summary>
+    private async Task ReloadBackendsAsync(bool includeDemo)
+    {
+        _settings = _settings with { ShowDemoBackends = includeDemo };
+        _registry.Replace(BackendCatalog.Build(BackendCatalog.ShouldIncludeDemo(includeDemo)));
+        _probes = await _registry.ProbeAllAsync();
+
+        RebuildEngineList();
+        BuildSettingsPage();
+
+        if (_registry.Providers.Any(p => p.Backend == _activeBackend))
+            return;
+
+        var replacement = _probes.FirstOrDefault(p => p.Connected && p.Provider.Kind == BackendKind.Engine)
+                          ?? _probes.FirstOrDefault(p => p.Connected);
+        if (replacement is not null)
+            await ActivateAsync(replacement.Provider);
+        else
+            EnterEngineDown("No backend is reachable.");
     }
 
     [RelayCommand]

@@ -28,37 +28,10 @@ public partial class App : Application
             ThemeApplier.Apply(settings.Theme);
             DensityApplier.Apply(settings.CompactDensity);
 
-            // Provider-based: the registry discovers backends (and, later, plugins).
-            var providers = new List<IBackendProvider>
-            {
-                new DockerEngineProvider(),
-                new PodmanEngineProvider(),
-            };
-
-            // One cluster backend per kube-context. Yields nothing when there is no kubeconfig, so a
-            // machine that only runs containers simply shows no Clusters group in the switcher.
-            providers.AddRange(KubernetesClusterProvider.DiscoverAll());
-
-            // The in-memory demo backends are a dev/testing aid — never shipped to users.
-            // Available in Debug builds, or opt-in from a release build for demos/screenshots.
-            // The fake clusters populate the switcher's "Clusters" group so the OAL UI can be
-            // built before a real Kubernetes adapter exists (KON-67/68).
-            void AddDemoBackends()
-            {
-                providers.Add(new FakeEngineProvider());
-                providers.Add(new FakeClusterProvider("prod-eu-west", "GKE"));
-                providers.Add(new FakeClusterProvider("staging", "EKS"));
-                providers.Add(new FakeClusterProvider("minikube", "MK"));
-            }
-
-#if DEBUG
-            AddDemoBackends();
-#else
-            if (Environment.GetEnvironmentVariable("KONTENA_FAKE_ENGINE") == "1")
-                AddDemoBackends();
-#endif
-
-            var registry = new BackendRegistry(providers);
+            // Provider-based: the registry discovers backends (and, later, plugins). BackendCatalog
+            // owns the composition so the runtime demo toggle (KON-96) builds the same list.
+            var registry = new BackendRegistry(
+                BackendCatalog.Build(BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends)));
 
             desktop.MainWindow = new MainWindow
             {

@@ -20,11 +20,17 @@ public partial class SettingsViewModel : ViewModelBase
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
 
-    public SettingsViewModel(SettingsStore store, KontenaSettings settings, IReadOnlyList<EngineListItem> engines)
+    /// <param name="onDemoBackendsChanged">Invoked when the demo toggle flips so the shell can
+    /// rebuild the backend set. Null in design-time and test contexts.</param>
+    public SettingsViewModel(
+        SettingsStore store, KontenaSettings settings, IReadOnlyList<EngineListItem> engines,
+        Func<bool, Task>? onDemoBackendsChanged = null)
     {
         _store = store;
         _settings = settings;
         Engines = engines;
+        _onDemoBackendsChanged = onDemoBackendsChanged;
+        _showDemoBackends = BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends);
 
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
@@ -106,6 +112,27 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private string _selectedDefaultEngine;
     partial void OnSelectedDefaultEngineChanged(string value) => Save();
 
+    // ── Demo backends (development only) ────────────────────────────────────
+
+    private readonly Func<bool, Task>? _onDemoBackendsChanged;
+
+    /// <summary>
+    /// Whether the row is offered at all. Demo backends are a development aid, so in an ordinary
+    /// release build the toggle would be meaningless and is hidden entirely.
+    /// </summary>
+    public bool CanToggleDemoBackends { get; } = BackendCatalog.DemoAllowed;
+
+    [ObservableProperty] private bool _showDemoBackends;
+
+    partial void OnShowDemoBackendsChanged(bool value)
+    {
+        Save();
+
+        // Rebuilding the backend set is the shell's job; this only records the choice.
+        if (_onDemoBackendsChanged is not null)
+            _ = _onDemoBackendsChanged(value);
+    }
+
     // ── Startup ─────────────────────────────────────────────────────────────
 
     [ObservableProperty] private bool _launchAtLogin;
@@ -137,6 +164,7 @@ public partial class SettingsViewModel : ViewModelBase
             CompactDensity = CompactDensity,
             AutoDetectEngines = AutoDetect,
             DefaultEngine = backend,
+            ShowDemoBackends = ShowDemoBackends,
             LaunchAtLogin = LaunchAtLogin,
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,
