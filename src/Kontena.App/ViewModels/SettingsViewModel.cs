@@ -159,6 +159,15 @@ public partial class SettingsViewModel : ViewModelBase
 
     // ── Startup ─────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Whether the launch-at-login row is offered at all. False everywhere today: nothing writes an
+    /// autostart entry — no <c>~/.config/autostart</c> file, no Run key, no LaunchAgent — so the
+    /// switch only ever recorded its own position. A control that promises something it does not do
+    /// is worse than one that is absent, so it stays hidden until KON-103 makes it true.
+    /// </summary>
+    /// <remarks>Never assigned, so false — the point is that there is nothing to assign it from yet.</remarks>
+    public bool CanLaunchAtLogin { get; }
+
     [ObservableProperty] private bool _launchAtLogin;
     partial void OnLaunchAtLoginChanged(bool value) => Save();
 
