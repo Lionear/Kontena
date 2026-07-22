@@ -33,6 +33,10 @@ namespace Kontena.Screenshots;
 //         apply-kustomize / apply-helm (the render sources — these run the real
 //         kustomize/helm CLIs over the repository's own samples, and skip nothing:
 //         without the tool installed the capture shows the render's error state),
+//         cluster / cluster-{nodes,namespaces,workloads,pods,services} (the cluster browsers),
+//         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
+//         reached by really switching backend and back, so it exercises the save/restore path),
+//         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut).
 internal static class Program
