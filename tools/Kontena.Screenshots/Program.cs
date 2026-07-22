@@ -77,8 +77,8 @@ internal static class Program
             };
 
             // Every other scene stays on the seeded fakes so shots are reproducible; only the
-            // real-cluster scene reaches for the machine's actual kubeconfig (KON-68).
-            if (opts.Scene == "real-cluster")
+            // real-* scenes reach for the machine's actual kubeconfig (KON-68/86).
+            if (opts.Scene.StartsWith("real-", StringComparison.Ordinal))
                 providers.AddRange(KubernetesClusterProvider.DiscoverAll());
 
             var registry = new BackendRegistry(providers);
@@ -164,6 +164,39 @@ internal static class Program
               protocol: TCP
         """;
 
+    /// <summary>
+    /// Dry-run sample for the live cluster: one resource that exists (kube-root-ca.crt is in every
+    /// namespace) so the plan shows an unchanged row, and one that does not, so it shows a create.
+    /// </summary>
+    private const string LiveApplySample = """
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: kontena-demo-config
+          namespace: default
+        data:
+          greeting: hello
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: kontena-demo-web
+          namespace: default
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: kontena-demo-web
+          template:
+            metadata:
+              labels:
+                app: kontena-demo-web
+            spec:
+              containers:
+                - name: web
+                  image: nginx:1.27-alpine
+        """;
+
     private static void ApplyScene(string scene, MainWindowViewModel vm)
     {
         switch (scene)
@@ -235,6 +268,7 @@ internal static class Program
                 }
                 break;
 
+            case "real-apply":
             case "real-cluster":
                 // The live Kubernetes adapter (KON-68) against whatever the kubeconfig points at.
                 {
@@ -250,8 +284,25 @@ internal static class Program
                     }
 
                     SettleUntil(() => vm.IsClusterMode, maxRounds: 200);
-                    vm.NavigateCommand.Execute("nodes");
-                    Settle(rounds: 60);
+
+                    if (scene == "real-apply")
+                    {
+                        // Dry-run a bundle against the live cluster: the plan comes from the API
+                        // server's admission chain, not from a local guess.
+                        vm.NavigateCommand.Execute("apply");
+                        Settle(rounds: 40);
+                        if (vm.CurrentPage is Kontena.App.ViewModels.ApplyManifestViewModel liveApply)
+                        {
+                            liveApply.YamlText = LiveApplySample;
+                            liveApply.DryRunCommand.Execute(null);
+                            SettleUntil(() => liveApply.HasPlan, maxRounds: 200);
+                        }
+                    }
+                    else
+                    {
+                        vm.NavigateCommand.Execute("nodes");
+                        Settle(rounds: 60);
+                    }
                 }
 
                 break;

@@ -30,6 +30,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
 {
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
+    private readonly KubernetesApply _apply;
     private readonly List<KubeContext> _contexts;
 
     private string _context;
@@ -44,6 +45,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         _metrics = new ClusterMetrics(
             new MetricsServerSource(_client),
             new KubeletSummarySource(_client, NodeNamesAsync));
+        _apply = new KubernetesApply(_client, new ApiResourceResolver(_client));
 
         // Metrics start off; PingAsync probes for a source and turns the gauges on if one answers.
         _capabilities = BaseCapabilities with { Metrics = false };
@@ -57,10 +59,10 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     {
         Watch = true,
         Crds = true,
+        Apply = true,
         Metrics = false,
         Exec = false,
         PortForward = false,
-        Apply = false,
         Helm = false,
     };
 
@@ -464,23 +466,59 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         }
     }
 
+    // ── Mutations (KON-86) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Apply a bundle through server-side apply, one result per document. With
+    /// <see cref="ManifestBundle.DryRun"/> the API server runs the full admission chain and returns
+    /// what the object would become, without persisting — so the plan comes from the cluster rather
+    /// than from a local guess.
+    /// </summary>
+    public async IAsyncEnumerable<ApplyProgress> ApplyAsync(
+        ManifestBundle bundle, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var documents = ManifestDocuments.Split(bundle.Yaml).ToList();
+        var pendingNamespaces = ManifestDocuments.NamespacesCreatedBy(documents);
+
+        foreach (var document in documents)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (document.Error is { } error)
+            {
+                yield return new ApplyProgress
+                {
+                    Resource = new ResourceRef(GroupVersionKind.Pod, null, "?"),
+                    Action = ApplyAction.Failed,
+                    Error = error,
+                };
+                continue;
+            }
+
+            yield return await _apply
+                .ApplyOneAsync(document.Content!, bundle.DryRun, DefaultNamespace, pendingNamespaces, ct)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>The context's namespace, used for documents that name none.</summary>
+    private string? DefaultNamespace =>
+        _contexts.FirstOrDefault(c => c.Name == _context)?.Namespace;
+
+    public async ValueTask DeleteAsync(ResourceRef resource, bool force = false, CancellationToken ct = default) =>
+        await _apply.DeleteAsync(resource, force, ct).ConfigureAwait(false);
+
+    public async ValueTask ScaleAsync(ResourceRef workload, int replicas, CancellationToken ct = default) =>
+        await _apply.ScaleAsync(workload, replicas, ct).ConfigureAwait(false);
+
+    public async ValueTask RolloutRestartAsync(ResourceRef workload, CancellationToken ct = default) =>
+        await _apply.RolloutRestartAsync(workload, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
+
     // ── Not in this cut ──────────────────────────────────────────────────────
 
     private static NotSupportedException NotYet(string feature, string ticket) =>
         new($"{feature} is not implemented by the Kubernetes adapter yet ({ticket}). " +
             "Capabilities reports it as unavailable, so the UI should not offer it.");
-
-    public IAsyncEnumerable<ApplyProgress> ApplyAsync(ManifestBundle bundle, CancellationToken ct = default) =>
-        throw NotYet("Apply / dry-run", "KON-86");
-
-    public ValueTask DeleteAsync(ResourceRef resource, bool force = false, CancellationToken ct = default) =>
-        throw NotYet("Delete", "KON-86");
-
-    public ValueTask ScaleAsync(ResourceRef workload, int replicas, CancellationToken ct = default) =>
-        throw NotYet("Scale", "KON-86");
-
-    public ValueTask RolloutRestartAsync(ResourceRef workload, CancellationToken ct = default) =>
-        throw NotYet("Rollout restart", "KON-86");
 
     public ValueTask<IExecSession> StartExecSessionAsync(
         ResourceRef pod, string container, ExecRequest request, CancellationToken ct = default) =>
