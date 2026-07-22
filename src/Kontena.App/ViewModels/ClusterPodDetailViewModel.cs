@@ -233,12 +233,41 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     [ObservableProperty] private bool _yamlLoading;
     private bool _yamlLoaded;
 
+    /// <summary>The manifest as fetched, so edits can be reverted and dirt detected.</summary>
+    private string _yamlOriginal = string.Empty;
+
+    /// <summary>Result of the last apply from this tab; cleared as soon as the text changes again.</summary>
+    [ObservableProperty] private string? _yamlStatus;
+    [ObservableProperty] private bool _yamlStatusIsError;
+    [ObservableProperty] private bool _yamlApplying;
+
+    /// <summary>Red for a rejected apply, muted for a successful one.</summary>
+    public IBrush YamlStatusBrush =>
+        new SolidColorBrush(Color.Parse(YamlStatusIsError ? "#F87171" : "#9AA4B2"));
+
+    partial void OnYamlStatusIsErrorChanged(bool value) => OnPropertyChanged(nameof(YamlStatusBrush));
+
+    /// <summary>Whether the editor differs from the live manifest.</summary>
+    public bool YamlIsDirty => _yamlLoaded && !string.Equals(YamlText, _yamlOriginal, StringComparison.Ordinal);
+
+    public bool CanApplyYaml => YamlIsDirty && !YamlApplying;
+
+    partial void OnYamlTextChanged(string value)
+    {
+        YamlStatus = null;
+        OnPropertyChanged(nameof(YamlIsDirty));
+        OnPropertyChanged(nameof(CanApplyYaml));
+    }
+
+    partial void OnYamlApplyingChanged(bool value) => OnPropertyChanged(nameof(CanApplyYaml));
+
     private async Task LoadYamlAsync()
     {
         YamlLoading = true;
         try
         {
-            YamlText = await _cluster.GetManifestAsync(_ref);
+            _yamlOriginal = await _cluster.GetManifestAsync(_ref);
+            YamlText = _yamlOriginal;
             _yamlLoaded = true;
         }
         catch
@@ -248,6 +277,56 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         finally
         {
             YamlLoading = false;
+            OnPropertyChanged(nameof(YamlIsDirty));
+            OnPropertyChanged(nameof(CanApplyYaml));
+        }
+    }
+
+    /// <summary>Discard local edits and go back to the live manifest.</summary>
+    [RelayCommand]
+    private void RevertYaml()
+    {
+        YamlText = _yamlOriginal;
+        YamlStatus = null;
+    }
+
+    /// <summary>
+    /// Patch the live resource with the edited manifest (KON-69). Reports the per-resource result
+    /// inline and reloads, so the editor always ends up showing what the cluster actually holds.
+    /// </summary>
+    [RelayCommand]
+    private async Task ApplyYamlAsync()
+    {
+        if (!CanApplyYaml)
+            return;
+
+        YamlApplying = true;
+        YamlStatus = null;
+        try
+        {
+            var results = new List<ApplyProgress>();
+            await foreach (var progress in _cluster.ApplyAsync(new ManifestBundle { Yaml = YamlText, Source = "editor" }))
+                results.Add(progress);
+
+            var failed = results.Find(r => r.Action == ApplyAction.Failed);
+            YamlStatusIsError = failed is not null;
+            YamlStatus = failed is not null
+                ? failed.Error ?? "Apply failed."
+                : results.TrueForAll(r => r.Action == ApplyAction.Unchanged)
+                    ? "No changes — the manifest already matches."
+                    : $"Applied · {string.Join(", ", results.Select(r => $"{r.Resource.Kind.Kind}/{r.Resource.Name} {r.Action.ToString().ToLowerInvariant()}"))}";
+
+            if (failed is null)
+                await LoadYamlAsync();
+        }
+        catch (Exception ex)
+        {
+            YamlStatusIsError = true;
+            YamlStatus = ex.Message;
+        }
+        finally
+        {
+            YamlApplying = false;
         }
     }
 

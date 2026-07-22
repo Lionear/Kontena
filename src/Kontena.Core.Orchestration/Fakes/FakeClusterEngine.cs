@@ -22,6 +22,9 @@ public sealed class FakeClusterEngine : IClusterEngine
     private readonly List<PersistentVolumeClaim> _pvcs;
     private readonly List<ClusterEvent> _events;
 
+    /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
+    private readonly Dictionary<ResourceRef, ManifestDoc> _extras = [];
+
     private string _activeContext;
 
     /// <param name="context">Which seeded context to start on; defaults to the first.</param>
@@ -131,31 +134,160 @@ public sealed class FakeClusterEngine : IClusterEngine
     public async IAsyncEnumerable<ApplyProgress> ApplyAsync(
         ManifestBundle bundle, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var docs = bundle.Yaml.Split("\n---", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var i = 0;
-        foreach (var _ in docs)
+        foreach (var desired in ManifestParser.ParseBundle(bundle.Yaml))
         {
             ct.ThrowIfCancellationRequested();
             await Task.Yield();
-            var reference = new ResourceRef(GroupVersionKind.Deployment, "app", $"applied-{i++}");
-            yield return new ApplyProgress
-            {
-                Resource = reference,
-                Action = bundle.DryRun ? ApplyAction.WouldChange : ApplyAction.Configured,
-                Diff = bundle.DryRun ? "  spec:\n-   replicas: 2\n+   replicas: 3" : string.Empty,
-            };
+            yield return ApplyOne(desired, bundle.DryRun);
         }
     }
 
-    public ValueTask<string> GetManifestAsync(ResourceRef resource, CancellationToken ct = default) =>
-        ValueTask.FromResult(
-            $"apiVersion: {(resource.Kind.IsCoreGroup ? resource.Kind.Version : $"{resource.Kind.Group}/{resource.Kind.Version}")}\n" +
-            $"kind: {resource.Kind.Kind}\n" +
-            $"metadata:\n  name: {resource.Name}\n" +
-            (resource.Namespace is null ? string.Empty : $"  namespace: {resource.Namespace}\n"));
+    public ValueTask<string> GetManifestAsync(ResourceRef resource, CancellationToken ct = default)
+    {
+        var live = Project(resource);
+        return ValueTask.FromResult(live is null
+            ? $"# {resource} was not found in this cluster."
+            : live.ToYaml(includeStatus: true));
+    }
 
-    public ValueTask DeleteAsync(ResourceRef resource, bool force = false, CancellationToken ct = default) =>
-        ValueTask.CompletedTask;
+    public ValueTask DeleteAsync(ResourceRef resource, bool force = false, CancellationToken ct = default)
+    {
+        var ns = resource.Namespace;
+        var name = resource.Name;
+        switch (resource.Kind.Kind)
+        {
+            case "Pod":
+                _pods.RemoveAll(p => p.Name == name && p.Namespace == ns);
+                break;
+            case "Service":
+                _services.RemoveAll(s => s.Name == name && s.Namespace == ns);
+                break;
+            case "Ingress":
+                _ingresses.RemoveAll(i => i.Name == name && i.Namespace == ns);
+                break;
+            case "PersistentVolumeClaim":
+                _pvcs.RemoveAll(p => p.Name == name && p.Namespace == ns);
+                break;
+            case "Namespace":
+                _namespaces.RemoveAll(n => n.Name == name);
+                break;
+            default:
+                if (ParseWorkloadKind(resource.Kind.Kind) is { } kind)
+                {
+                    // Deleting a controller takes its pods with it, as the garbage collector would.
+                    _workloads.RemoveAll(w => w.Name == name && w.Namespace == ns && w.Kind == kind);
+                    _pods.RemoveAll(p => p.Namespace == ns && p.ControlledBy == $"{kind}/{name}");
+                }
+                else
+                {
+                    _extras.Remove(resource);
+                }
+
+                break;
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    // ── Declarative core (KON-69) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Reconcile one parsed document against the seeded world: report what a real apply would do,
+    /// with the unified diff a server-side dry-run returns, and persist it unless this is a dry-run.
+    /// </summary>
+    private ApplyProgress ApplyOne(ManifestDoc desired, bool dryRun)
+    {
+        if (desired.Error is { } error)
+        {
+            return new ApplyProgress
+            {
+                Resource = desired.ToRef(),
+                Action = ApplyAction.Failed,
+                Error = $"Invalid manifest: {error}.",
+            };
+        }
+
+        var reference = desired.ToRef();
+        var live = Project(reference);
+
+        if (live is null)
+        {
+            if (!dryRun)
+                Store(desired);
+
+            return new ApplyProgress
+            {
+                Resource = reference,
+                Action = dryRun ? ApplyAction.WouldCreate : ApplyAction.Created,
+                Diff = ManifestDiff.Compute(string.Empty, desired.ToYaml()),
+            };
+        }
+
+        // Apply is a merge, not a replace: fields the document leaves out keep their live value,
+        // so the diff shows only what the user actually changed.
+        var merged = Merge(live, desired);
+        var diff = ManifestDiff.Compute(live.ToYaml(), merged.ToYaml());
+        if (diff.Length == 0)
+            return new ApplyProgress { Resource = reference, Action = ApplyAction.Unchanged };
+
+        if (!dryRun)
+            Store(merged);
+
+        return new ApplyProgress
+        {
+            Resource = reference,
+            Action = dryRun ? ApplyAction.WouldChange : ApplyAction.Configured,
+            Diff = diff,
+        };
+    }
+
+    private static ManifestDoc Merge(ManifestDoc live, ManifestDoc desired) => live with
+    {
+        Replicas = desired.Replicas ?? live.Replicas,
+        Schedule = desired.Schedule ?? live.Schedule,
+        ServiceType = desired.ServiceType ?? live.ServiceType,
+        ClusterIp = desired.ClusterIp ?? live.ClusterIp,
+        NodeName = desired.NodeName ?? live.NodeName,
+        Labels = MergeMap(live.Labels, desired.Labels),
+        Selector = MergeMap(live.Selector, desired.Selector),
+        Containers = MergeByName(live.Containers, desired.Containers, c => c.Name),
+        Ports = MergeByName(live.Ports, desired.Ports, p => p.Name),
+        Raw = desired.Raw ?? live.Raw,
+    };
+
+    private static IReadOnlyDictionary<string, string> MergeMap(
+        IReadOnlyDictionary<string, string> live, IReadOnlyDictionary<string, string> desired)
+    {
+        if (desired.Count == 0)
+            return live;
+
+        var merged = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (k, v) in live)
+            merged[k] = v;
+        foreach (var (k, v) in desired)
+            merged[k] = v;
+        return merged;
+    }
+
+    /// <summary>Strategic-merge semantics for keyed lists: match on name, override, append the rest.</summary>
+    private static IReadOnlyList<T> MergeByName<T>(
+        IReadOnlyList<T> live, IReadOnlyList<T> desired, Func<T, string> key)
+    {
+        if (desired.Count == 0)
+            return live;
+
+        var merged = new List<T>(live);
+        foreach (var item in desired)
+        {
+            var i = merged.FindIndex(existing => key(existing) == key(item));
+            if (i >= 0)
+                merged[i] = item;
+            else
+                merged.Add(item);
+        }
+
+        return merged;
+    }
 
     public async IAsyncEnumerable<ResourceEvent> WatchAsync(
         GroupVersionKind kind, string? ns = null, [EnumeratorCancellation] CancellationToken ct = default)
@@ -277,6 +409,227 @@ public sealed class FakeClusterEngine : IClusterEngine
             yield return new ResourceEvent { Type = WatchEventType.Modified, Resource = e.InvolvedObject };
         }
     }
+
+    // ── Projection: seeded world ⇄ manifests ─────────────────────────────────
+
+    /// <summary>
+    /// Read a live resource as a manifest, or null when it does not exist. Kinds the fake models
+    /// come from the seeded lists; anything else (an HPA, a ConfigMap) is served from
+    /// <see cref="_extras"/>, which holds whatever was applied to it verbatim.
+    /// </summary>
+    private ManifestDoc? Project(ResourceRef resource)
+    {
+        var ns = resource.Namespace;
+        var name = resource.Name;
+
+        switch (resource.Kind.Kind)
+        {
+            case "Pod":
+                return _pods.Find(p => p.Name == name && p.Namespace == ns) is { } pod ? ToDoc(pod) : null;
+
+            case "Service":
+                return _services.Find(s => s.Name == name && s.Namespace == ns) is { } svc ? ToDoc(svc) : null;
+
+            case "Namespace":
+                return _namespaces.Find(n => n.Name == name) is { } kubeNs ? ToDoc(kubeNs) : null;
+
+            case "Node":
+                return _nodes.Find(n => n.Name == name) is { } node ? ToDoc(node) : null;
+
+            case "Ingress":
+                return _ingresses.Find(i => i.Name == name && i.Namespace == ns) is { } ing ? ToDoc(ing) : null;
+
+            case "PersistentVolumeClaim":
+                return _pvcs.Find(p => p.Name == name && p.Namespace == ns) is { } pvc ? ToDoc(pvc) : null;
+
+            default:
+                if (ParseWorkloadKind(resource.Kind.Kind) is { } kind)
+                {
+                    return _workloads.Find(w => w.Name == name && w.Namespace == ns && w.Kind == kind) is { } workload
+                        ? ToDoc(workload)
+                        : null;
+                }
+
+                return _extras.GetValueOrDefault(resource);
+        }
+    }
+
+    /// <summary>Write an applied manifest back into the seeded world.</summary>
+    private void Store(ManifestDoc doc)
+    {
+        var reference = doc.ToRef();
+        var ns = doc.Namespace;
+
+        switch (doc.Kind)
+        {
+            case "Pod":
+            {
+                var i = _pods.FindIndex(p => p.Name == doc.Name && p.Namespace == ns);
+                var containers = doc.Containers
+                    .Select(c => new ContainerStatus { Name = c.Name, Image = c.Image, Ready = true, State = "Running" })
+                    .ToList();
+                var pod = i >= 0
+                    ? _pods[i] with { Node = doc.NodeName ?? _pods[i].Node, Containers = containers.Count > 0 ? containers : _pods[i].Containers }
+                    : new Pod { Name = doc.Name, Namespace = ns ?? "default", Phase = PodPhase.Pending, Node = doc.NodeName ?? string.Empty, ControlledBy = string.Empty, Containers = containers, Age = TimeSpan.Zero };
+
+                if (i >= 0)
+                    _pods[i] = pod;
+                else
+                    _pods.Add(pod);
+                break;
+            }
+
+            case "Service":
+            {
+                var i = _services.FindIndex(s => s.Name == doc.Name && s.Namespace == ns);
+                var ports = doc.Ports.Select(p => new ServicePort(p.Name, p.Port, p.TargetPort, null, p.Protocol)).ToList();
+                var service = i >= 0
+                    ? _services[i] with { Type = ParseServiceType(doc.ServiceType) ?? _services[i].Type, Selector = doc.Selector, Ports = ports.Count > 0 ? ports : _services[i].Ports }
+                    : new Service { Name = doc.Name, Namespace = ns ?? "default", Type = ParseServiceType(doc.ServiceType) ?? ServiceType.ClusterIp, ClusterIp = doc.ClusterIp ?? "10.0.0.1", Selector = doc.Selector, Ports = ports, Age = TimeSpan.Zero };
+
+                if (i >= 0)
+                    _services[i] = service;
+                else
+                    _services.Add(service);
+                break;
+            }
+
+            case "Namespace":
+            {
+                if (!_namespaces.Exists(n => n.Name == doc.Name))
+                    _namespaces.Add(new KubeNamespace { Name = doc.Name, Phase = "Active", Labels = doc.Labels, Age = TimeSpan.Zero });
+                break;
+            }
+
+            default:
+            {
+                if (ParseWorkloadKind(doc.Kind) is not { } kind)
+                {
+                    // Not a kind the fake models — keep the document so a repeat apply is a no-op.
+                    _extras[reference] = doc;
+                    break;
+                }
+
+                var i = _workloads.FindIndex(w => w.Name == doc.Name && w.Namespace == ns && w.Kind == kind);
+                var images = doc.Containers.Select(c => c.Image).ToList();
+                if (i >= 0)
+                {
+                    var live = _workloads[i];
+                    var desired = doc.Replicas ?? live.Desired;
+                    _workloads[i] = live with
+                    {
+                        Desired = desired,
+                        Ready = Math.Min(live.Ready, desired),
+                        UpToDate = 0,
+                        Images = images.Count > 0 ? images : live.Images,
+                        Schedule = doc.Schedule ?? live.Schedule,
+                        RolloutStatus = RolloutStatus.Progressing,
+                    };
+                }
+                else
+                {
+                    _workloads.Add(new Workload
+                    {
+                        Name = doc.Name,
+                        Namespace = ns ?? "default",
+                        Kind = kind,
+                        Desired = doc.Replicas ?? 1,
+                        Ready = 0,
+                        UpToDate = 0,
+                        Available = 0,
+                        Images = images,
+                        Schedule = doc.Schedule ?? string.Empty,
+                        RolloutStatus = RolloutStatus.Progressing,
+                        Age = TimeSpan.Zero,
+                    });
+                }
+
+                break;
+            }
+        }
+    }
+
+    private static ManifestDoc ToDoc(Workload w) => new()
+    {
+        ApiVersion = w.Kind is WorkloadKind.CronJob or WorkloadKind.Job ? "batch/v1" : "apps/v1",
+        Kind = w.Kind.ToString(),
+        Name = w.Name,
+        Namespace = w.Namespace,
+        Replicas = w.IsScalable ? w.Desired : null,
+        Schedule = string.IsNullOrEmpty(w.Schedule) ? null : w.Schedule,
+        Selector = new Dictionary<string, string>(StringComparer.Ordinal) { ["app"] = w.Name },
+        Containers = w.Images.Select((image, i) => new ManifestContainer(i == 0 ? w.Name : $"{w.Name}-{i}", image)).ToList(),
+        Status = [$"readyReplicas: {w.Ready}", $"updatedReplicas: {w.UpToDate}", $"availableReplicas: {w.Available}"],
+    };
+
+    private static ManifestDoc ToDoc(Pod p) => new()
+    {
+        Kind = "Pod",
+        Name = p.Name,
+        Namespace = p.Namespace,
+        NodeName = string.IsNullOrEmpty(p.Node) ? null : p.Node,
+        Containers = p.Containers.Select(c => new ManifestContainer(c.Name, c.Image)).ToList(),
+        Status = [$"phase: {p.Phase}", $"podIP: {p.Ip}", $"qosClass: {p.Qos}"],
+    };
+
+    private static ManifestDoc ToDoc(Service s) => new()
+    {
+        Kind = "Service",
+        Name = s.Name,
+        Namespace = s.Namespace,
+        ServiceType = ServiceTypeName(s.Type),
+        ClusterIp = string.IsNullOrEmpty(s.ClusterIp) ? null : s.ClusterIp,
+        Selector = s.Selector,
+        Ports = s.Ports.Select(p => new ManifestPort(p.Name, p.Port, p.TargetPort, p.Protocol)).ToList(),
+        Status = string.IsNullOrEmpty(s.ExternalIp) ? [] : [$"loadBalancer: {s.ExternalIp}"],
+    };
+
+    private static ManifestDoc ToDoc(KubeNamespace n) => new()
+    {
+        Kind = "Namespace", Name = n.Name, Labels = n.Labels, Status = [$"phase: {n.Phase}"],
+    };
+
+    private static ManifestDoc ToDoc(Node n) => new()
+    {
+        Kind = "Node", Name = n.Name, Status = [$"nodeInfo: {n.KubeletVersion}", $"status: {n.Status}"],
+    };
+
+    private static ManifestDoc ToDoc(Ingress i) => new()
+    {
+        ApiVersion = "networking.k8s.io/v1",
+        Kind = "Ingress",
+        Name = i.Name,
+        Namespace = i.Namespace,
+        Status = i.Addresses.Count == 0 ? [] : [$"loadBalancer: {i.Addresses[0]}"],
+    };
+
+    private static ManifestDoc ToDoc(PersistentVolumeClaim p) => new()
+    {
+        Kind = "PersistentVolumeClaim",
+        Name = p.Name,
+        Namespace = p.Namespace,
+        Status = [$"phase: {p.Phase}", $"volumeName: {p.Volume}"],
+    };
+
+    private static WorkloadKind? ParseWorkloadKind(string kind) =>
+        Enum.TryParse<WorkloadKind>(kind, out var parsed) ? parsed : null;
+
+    private static ServiceType? ParseServiceType(string? type) => type switch
+    {
+        "ClusterIP" => ServiceType.ClusterIp,
+        "NodePort" => ServiceType.NodePort,
+        "LoadBalancer" => ServiceType.LoadBalancer,
+        "ExternalName" => ServiceType.ExternalName,
+        _ => null,
+    };
+
+    private static string ServiceTypeName(ServiceType type) => type switch
+    {
+        ServiceType.NodePort => "NodePort",
+        ServiceType.LoadBalancer => "LoadBalancer",
+        ServiceType.ExternalName => "ExternalName",
+        _ => "ClusterIP",
+    };
 
     private static bool Match(string? filter, string? value) =>
         filter is null || string.Equals(filter, value, StringComparison.Ordinal);
