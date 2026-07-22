@@ -1,7 +1,8 @@
 using System.Globalization;
+using System.Text;
 using Kontena.Adapters.Kubernetes;
-using Kontena.Core.Models;
 using Kontena.Core;
+using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 using Kontena.Core.Orchestration.Models;
 
@@ -109,10 +110,11 @@ public class KubernetesClusterEngineTests
 
         Assert.True(engine.Capabilities.Watch);
         Assert.True(engine.Capabilities.Apply);
+        Assert.True(engine.Capabilities.Exec);
+        Assert.True(engine.Capabilities.PortForward);
 
-        // Exec and port-forward are still their own ticket; the UI must be told so it hides them.
-        Assert.False(engine.Capabilities.Exec);
-        Assert.False(engine.Capabilities.PortForward);
+        // Helm is the one thing left; the UI must be told so it hides that affordance.
+        Assert.False(engine.Capabilities.Helm);
     }
 
     [SkippableFact]
@@ -209,15 +211,100 @@ public class KubernetesClusterEngineTests
         });
     }
 
+    // ── Exec and port-forward (KON-97) ───────────────────────────────────────
+
+    /// <summary>
+    /// A running pod with a shell to exec into. kube-system always has one, so these tests need no
+    /// fixture of their own — and read-only commands cannot disturb it.
+    /// </summary>
+    private static async Task<(ResourceRef Pod, string Container)> AnyRunningPodAsync(KubernetesClusterEngine engine)
+    {
+        var pod = (await engine.ListPodsAsync("kube-system"))
+            .FirstOrDefault(p => p.Phase == PodPhase.Running && p.Containers.Count > 0 && p.ReadyContainers > 0);
+
+        Skip.If(pod is null, "No running pod in kube-system to exec into.");
+        return (new ResourceRef(GroupVersionKind.Pod, pod!.Namespace, pod.Name), pod.Containers[0].Name);
+    }
+
     [SkippableFact]
-    public async Task What_is_still_unimplemented_fails_loudly_rather_than_silently()
+    public async Task Exec_runs_a_command_and_streams_its_output()
     {
         using var engine = await RequireClusterAsync();
-        var pod = new ResourceRef(GroupVersionKind.Pod, "default", "nope");
+        var (pod, container) = await AnyRunningPodAsync(engine);
 
-        Assert.Throws<NotSupportedException>(() =>
-            engine.StartExecSessionAsync(pod, "c", new ExecRequest { Command = ["sh"] }));
-        Assert.Throws<NotSupportedException>(() => engine.PortForwardAsync(pod, 80));
+        await using var session = await engine.StartExecSessionAsync(
+            pod, container, new ExecRequest { Command = ["/bin/sh"], Tty = true });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var output = new StringBuilder();
+        var reader = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+                    {
+                        output.Append(Encoding.UTF8.GetString(chunk.Span));
+                        if (output.ToString().Contains("KONTENA-EXEC-OK", StringComparison.Ordinal))
+                            return;
+                    }
+                }
+                catch (OperationCanceledException) { /* window closed; assert on what arrived */ }
+            },
+            cts.Token);
+
+        await Task.Delay(500, cts.Token);
+        await session.ResizeAsync(100, 30, cts.Token);
+        await session.WriteAsync(Encoding.UTF8.GetBytes("echo KONTENA-EXEC-OK\n"), cts.Token);
+        await Task.WhenAny(reader, Task.Delay(TimeSpan.FromSeconds(15), CancellationToken.None));
+
+        Assert.Contains("KONTENA-EXEC-OK", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [SkippableFact]
+    public async Task Port_forward_binds_a_local_port_and_frees_it_again()
+    {
+        using var engine = await RequireClusterAsync();
+        var (pod, _) = await AnyRunningPodAsync(engine);
+
+        int bound;
+        await using (var tunnel = await engine.PortForwardAsync(pod, 80))
+        {
+            Assert.True(tunnel.IsActive);
+            Assert.Equal(80, tunnel.RemotePort);
+            Assert.True(tunnel.LocalPort > 0);
+            bound = tunnel.LocalPort;
+        }
+
+        // Disposal must actually release the listener, or ports leak for the rest of the session.
+        await using var reused = await engine.PortForwardAsync(pod, 80, bound);
+        Assert.Equal(bound, reused.LocalPort);
+    }
+
+    [SkippableFact]
+    public async Task A_local_port_already_in_use_is_reported_not_swallowed()
+    {
+        using var engine = await RequireClusterAsync();
+        var (pod, _) = await AnyRunningPodAsync(engine);
+
+        await using var held = await engine.PortForwardAsync(pod, 80, 18096);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => engine.PortForwardAsync(pod, 80, 18096).AsTask());
+        Assert.Contains("18096", error.Message, StringComparison.Ordinal);
+    }
+
+    [SkippableFact]
+    public async Task Forwarding_a_service_with_no_ready_pod_says_so()
+    {
+        using var engine = await RequireClusterAsync();
+
+        // "kubernetes" in default is a service with no selector — it cannot resolve to a pod.
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => engine.PortForwardAsync(
+                new ResourceRef(GroupVersionKind.Service, "default", "kubernetes"), 443).AsTask());
+
+        Assert.Contains("kubernetes", error.Message, StringComparison.Ordinal);
     }
 
     // ── Apply / dry-run (KON-86) ─────────────────────────────────────────────

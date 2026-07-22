@@ -60,9 +60,9 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         Watch = true,
         Crds = true,
         Apply = true,
+        Exec = true,
+        PortForward = true,
         Metrics = false,
-        Exec = false,
-        PortForward = false,
         Helm = false,
     };
 
@@ -514,19 +514,65 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     public async ValueTask RolloutRestartAsync(ResourceRef workload, CancellationToken ct = default) =>
         await _apply.RolloutRestartAsync(workload, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
 
-    // ── Not in this cut ──────────────────────────────────────────────────────
+    // ── Interactive channels (KON-97) ────────────────────────────────────────
 
-    private static NotSupportedException NotYet(string feature, string ticket) =>
-        new($"{feature} is not implemented by the Kubernetes adapter yet ({ticket}). " +
-            "Capabilities reports it as unavailable, so the UI should not offer it.");
-
-    public ValueTask<IExecSession> StartExecSessionAsync(
+    public async ValueTask<IExecSession> StartExecSessionAsync(
         ResourceRef pod, string container, ExecRequest request, CancellationToken ct = default) =>
-        throw NotYet("Exec", "KON-68 follow-up");
+        await KubernetesExecSession
+            .OpenAsync(_client, pod.Name, pod.Namespace, container, request, ct)
+            .ConfigureAwait(false);
 
-    public ValueTask<IPortForward> PortForwardAsync(
-        ResourceRef target, int remotePort, int? localPort = null, CancellationToken ct = default) =>
-        throw NotYet("Port-forward", "KON-68 follow-up");
+    /// <summary>
+    /// Forward a local port. A Service reference is resolved to one of its backing pods first: the
+    /// API has no service-level forward, so <c>kubectl port-forward svc/...</c> picks a pod too.
+    /// </summary>
+    public async ValueTask<IPortForward> PortForwardAsync(
+        ResourceRef target, int remotePort, int? localPort = null, CancellationToken ct = default)
+    {
+        var (pod, port) = target.Kind.Kind == "Service"
+            ? await ResolveServiceTargetAsync(target, remotePort, ct).ConfigureAwait(false)
+            : (target.Name, remotePort);
+
+        return await KubernetesPortForward
+            .StartAsync(_client, pod, target.Namespace, port, localPort, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Pick a running pod behind a service, and translate the service port to the container's
+    /// target port — forwarding to the service port number would hit the wrong port on the pod.
+    /// </summary>
+    private async Task<(string Pod, int Port)> ResolveServiceTargetAsync(
+        ResourceRef service, int servicePort, CancellationToken ct)
+    {
+        var live = await _client.CoreV1
+            .ReadNamespacedServiceAsync(service.Name, service.Namespace, cancellationToken: ct)
+            .ConfigureAwait(false);
+
+        var selector = live.Spec?.Selector;
+        if (selector is null || selector.Count == 0)
+            throw new InvalidOperationException($"Service {service.Name} selects no pods, so it cannot be forwarded.");
+
+        var label = string.Join(',', selector.Select(s => $"{s.Key}={s.Value}"));
+        var pods = await _client.CoreV1
+            .ListNamespacedPodAsync(service.Namespace, labelSelector: label, cancellationToken: ct)
+            .ConfigureAwait(false);
+
+        var ready = (pods.Items ?? []).FirstOrDefault(p =>
+            p.Status?.Phase == "Running" &&
+            (p.Status.ContainerStatuses ?? []).All(c => c.Ready));
+
+        if (ready?.Metadata?.Name is not { } name)
+            throw new InvalidOperationException($"Service {service.Name} has no ready pod to forward to.");
+
+        // targetPort may be a name rather than a number; fall back to the service port when it is.
+        var mapped = live.Spec?.Ports?.FirstOrDefault(p => p.Port == servicePort);
+        var target = mapped?.TargetPort?.Value is { } text && int.TryParse(text, out var number)
+            ? number
+            : servicePort;
+
+        return (name, target);
+    }
 
     public void Dispose() => _client.Dispose();
 }

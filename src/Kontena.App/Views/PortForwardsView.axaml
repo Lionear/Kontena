@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:oal="using:Kontena.Core.Orchestration"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.PortForwardsView"
+             x:DataType="vm:PortForwardsViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Port forwards" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}"/>
+                <Button Grid.Column="1" Classes="ghost" Command="{Binding StopAllCommand}"
+                        IsVisible="{Binding HasAny}">Stop all</Button>
+            </Grid>
+
+            <!-- Empty state -->
+            <StackPanel IsVisible="{Binding IsEmpty}" Margin="0,54,0,0" Spacing="16" HorizontalAlignment="Center" MaxWidth="520">
+                <Border Width="72" Height="72" CornerRadius="18" Background="{DynamicResource Surface2}" HorizontalAlignment="Center">
+                    <Path Classes="icon" Width="34" Height="34" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconPlug}"/>
+                </Border>
+                <TextBlock Text="No port forwards running" FontSize="19" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="Forward a port from a service or a pod and it keeps running here until you stop it — closing the dialog no longer tears it down."
+                           FontSize="13" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="440"/>
+            </StackPanel>
+
+            <Border IsVisible="{Binding HasAny}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="1.8*,0.7*,1.5*,0.8*,190">
+                            <TextBlock Grid.Column="0" Text="TARGET" Classes="colhead"/>
+                            <TextBlock Grid.Column="1" Text="KIND" Classes="colhead"/>
+                            <TextBlock Grid.Column="2" Text="ADDRESS" Classes="colhead"/>
+                            <TextBlock Grid.Column="3" Text="STATE" Classes="colhead"/>
+                            <TextBlock Grid.Column="4" Text="" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Forwards}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="oal:ActivePortForward">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                    <Grid ColumnDefinitions="1.8*,0.7*,1.5*,0.8*,190">
+                                        <TextBlock Grid.Column="0" Text="{Binding TargetLabel}" FontWeight="Medium"
+                                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding TargetKind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Route}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                            <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource Success}" IsVisible="{Binding IsActive}"/>
+                                            <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource TextFaint}" IsVisible="{Binding !IsActive}"/>
+                                            <TextBlock Text="Active" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" IsVisible="{Binding IsActive}"/>
+                                            <TextBlock Text="Dropped" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" IsVisible="{Binding !IsActive}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                            <Button Classes="pill" Click="OnCopyClick" Tag="{Binding Address}">Copy</Button>
+                                            <Button Classes="pill"
+                                                    Command="{Binding $parent[ItemsControl].((vm:PortForwardsViewModel)DataContext).OpenCommand}"
+                                                    CommandParameter="{Binding}">Open</Button>
+                                            <Button Classes="pill"
+                                                    Command="{Binding $parent[ItemsControl].((vm:PortForwardsViewModel)DataContext).StopCommand}"
+                                                    CommandParameter="{Binding}">Stop</Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
