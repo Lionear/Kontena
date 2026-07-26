@@ -248,12 +248,19 @@
                         <DataTemplate x:DataType="vm:NavItem">
                             <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
                                     Command="{Binding Command}" CommandParameter="{Binding Key}">
-                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                     <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                           Stroke="{Binding $parent[Button].Foreground}"
                                           Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
                                     <TextBlock Grid.Column="1" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
-                                    <Border Grid.Column="2" Background="{DynamicResource Surface2}" CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
+
+                                    <!-- Something on this page fell over; separate from the count, which
+                                         says how many are working (KON-107). -->
+                                    <Ellipse Grid.Column="2" Width="7" Height="7" Margin="0,0,7,0"
+                                             VerticalAlignment="Center" Fill="{DynamicResource Warn}"
+                                             IsVisible="{Binding NeedsAttention}"
+                                             ToolTip.Tip="{Binding AttentionTip}"/>
+                                    <Border Grid.Column="3" Background="{DynamicResource Surface2}" CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>
                                 </Grid>

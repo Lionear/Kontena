@@ -45,6 +45,13 @@ public sealed class PortForwardRegistry
     public bool HasReopenable => _forwards.Any(f => !f.IsActive);
 
     /// <summary>
+    /// How many tunnels fell over on their own. Kept apart from the rest of the not-running rows on
+    /// purpose: paused and remembered are states the user put them in, while dropped is something that
+    /// happened *to* them — only the last one is worth drawing attention to (KON-107).
+    /// </summary>
+    public int DroppedCount => _forwards.Count(f => f.State == PortForwardState.Dropped);
+
+    /// <summary>
     /// Open a tunnel and keep it. <paramref name="localPort"/> 0 (or null) lets the OS pick a free port.
     /// Throws whatever the engine throws — the caller shows it; nothing is registered on failure.
     /// </summary>
