@@ -98,11 +98,12 @@ See [`changelog.d/README.md`](changelog.d/README.md) for the details.
   `python3 tools/changelog-render.py --dry-run`. CI validates the filenames on every PR.
 - A fragment can only *add*. To correct an unreleased entry that a later change made wrong, edit that
   entry where it lives — in `CHANGELOG.md` if it was already folded in, or in its own fragment.
-- **Releasing is a tag.** The maintainer bumps `<Version>` in `Directory.Build.props`, then pushes a
-  `v<semver>` tag (`git tag v0.1.0 && git push origin v0.1.0`). The Build workflow folds the pending
-  fragments into `[Unreleased]`, rolls that into a dated `## [0.1.0]` section, removes the fragments,
-  and uses the same text as the GitHub release notes.
-  The tag is the version — the About screen and the changelog both read it.
+- **Releasing is a tag.** `<Version>` in `Directory.Build.props` is already the version being
+  prepared, so the maintainer pushes a `v<semver>` tag (`git tag v0.1.0 && git push origin v0.1.0`).
+  The Build workflow folds the pending fragments into `[Unreleased]`, rolls that into a dated
+  `## [0.1.0]` section, removes the fragments, and uses the same text as the GitHub release notes.
+  The tag is the version — the About screen and the changelog both read it. Full sequence under
+  *Cutting a release* below.
 
 ## Builds & releases
 
@@ -111,6 +112,22 @@ and PR; `changelog.yml` validates the changelog fragments; `build.yml` publishes
 builds. Pushing to `main` refreshes the rolling **preview** release; a nightly schedule refreshes
 the rolling **nightly** prerelease from `develop`; pushing a `v<semver>` tag cuts a real **stable**
 release. The builds are unsigned / not notarized for now.
+
+### Cutting a release
+
+1. **Promote.** `develop` becomes `main` — a fast-forward, since `main` only moves at a release.
+2. **Tag.** Push `v<major>.<minor>.<patch>`. Anything with a prerelease part is refused: a tag build
+   publishes to stable, becomes the latest release and rolls the changelog, and a release candidate
+   should do none of those.
+3. **Merge the sync PR.** The Build workflow rolls the changelog on `main` and opens a
+   `chore(release): sync … changelog roll to develop` PR. Merging it is what keeps `[Unreleased]`
+   honest; leaving it open is how `main` and `develop` start disagreeing about a file whose conflicts
+   resolve to "keep both" every time.
+4. **Open the next version.** Set `<Version>` in `Directory.Build.props` to what comes next and merge
+   that to `develop`. This step is deliberately not automated — whether the next one is a minor or a
+   patch is a judgement call, not something a workflow should guess — but it is not optional either:
+   leaving it on the released version makes every nightly build `X.Y.Z-nightly.*`, which sorts *below*
+   the stable release that is already out, so the nightly channel gets offered a downgrade.
 
 Packaging is [Velopack](https://velopack.io) (`vpk`), so the same step produces the download and the
 update feed the installed app reads — an installer built apart from its feed is one the updater
