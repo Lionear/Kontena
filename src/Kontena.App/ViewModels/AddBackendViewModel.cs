@@ -112,6 +112,21 @@ public partial class KubeContextChoice : ViewModelBase
 }
 
 /// <summary>
+/// A cluster that answered, with the name it will appear under (KON-119). Offered at the moment of
+/// adding because that is when the user knows which cluster this is; Settings › Engines can change it
+/// later, and is the only route for the clusters that never went through this wizard.
+/// </summary>
+public partial class NamedCluster : ViewModelBase
+{
+    public NamedCluster(string context) => Context = context;
+
+    /// <summary>The kube-context, which is also the name when the user gives none.</summary>
+    public string Context { get; }
+
+    [ObservableProperty] private string _name = string.Empty;
+}
+
+/// <summary>
 /// Adding an engine or a cluster, in three steps (KON-118).
 /// <para>
 /// The wizard exists because the old path let you store a connection and only find out afterwards
@@ -548,6 +563,14 @@ public partial class AddBackendViewModel : ViewModelBase
     /// <summary>What the engine or cluster said about itself once it answered.</summary>
     public ObservableCollection<string> Facts { get; } = [];
 
+    /// <summary>The clusters just reached, each with a name field. Empty for a remote engine.</summary>
+    public ObservableCollection<NamedCluster> ClusterNames { get; } = [];
+
+    /// <summary>An engine gets one name field; clusters get one each, because several can arrive at once.</summary>
+    public bool IsNamingClusters => ClusterNames.Count > 0;
+
+    public bool IsNamingEngine => ClusterNames.Count == 0;
+
     [ObservableProperty] private string _successHeadline = string.Empty;
     [ObservableProperty] private string _failureHeadline = string.Empty;
     [ObservableProperty] private string _failureExplanation = string.Empty;
@@ -629,6 +652,9 @@ public partial class AddBackendViewModel : ViewModelBase
                 SuccessHeadline = $"Connected to {remote.Host}";
                 _verified = remote;
                 _verifiedContexts = [];
+                ClusterNames.Clear();
+                OnPropertyChanged(nameof(IsNamingClusters));
+                OnPropertyChanged(nameof(IsNamingEngine));
                 if (string.IsNullOrWhiteSpace(Name))
                     Name = remote.Host;
 
@@ -731,7 +757,13 @@ public partial class AddBackendViewModel : ViewModelBase
 
         _verified = null;
         _verifiedContexts = reached;
-        Name = path;
+
+        ClusterNames.Clear();
+        foreach (var context in reached)
+            ClusterNames.Add(new NamedCluster(context));
+
+        OnPropertyChanged(nameof(IsNamingClusters));
+        OnPropertyChanged(nameof(IsNamingEngine));
         Step = AddBackendStep.Connected;
     }
 
@@ -840,6 +872,13 @@ public partial class AddBackendViewModel : ViewModelBase
                 _store.Update(s => s.KubeconfigPaths.Contains(path, StringComparer.Ordinal)
                     ? s
                     : s with { KubeconfigPaths = [.. s.KubeconfigPaths, path] });
+            }
+
+            // The name the user typed, against the id it will be looked up by.
+            foreach (var chosen in ClusterNames)
+            {
+                var id = new KubernetesClusterProvider(chosen.Context, isDefault ? null : path).Backend;
+                _store.Update(s => s.WithBackendName(id, chosen.Name, chosen.Context));
             }
 
             switchTo = new KubernetesClusterProvider(_verifiedContexts[0], isDefault ? null : path).Backend;

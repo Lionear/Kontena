@@ -259,6 +259,7 @@ internal static class Program
             case "settings-registries":
             case "settings-engines":
             case "settings-engines-tcp":
+            case "settings-engines-named":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
                 {
@@ -273,6 +274,16 @@ internal static class Program
                     // The TCP form is where the security decision lives, so it gets its own shot.
                     if (scene == "settings-engines-tcp")
                         s.SetRemoteTransportCommand.Execute("tcp");
+
+                    // Renaming (KON-119) is typed into the row, not poked into settings — the claim worth
+                    // checking is that the switcher pill and the list follow, and only the real path does
+                    // that. The shot is taken with the sidebar in frame for exactly that reason.
+                    if (scene == "settings-engines-named" && s.BackendNames.Count > 0)
+                    {
+                        s.BackendNames[0].Name = "Work laptop";
+                        if (s.BackendNames.Count > 1)
+                            s.BackendNames[1].Name = "Production EU";
+                    }
 
                     Settle(rounds: 20);
                 }

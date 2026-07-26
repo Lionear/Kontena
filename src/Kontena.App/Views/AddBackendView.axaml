@@ -356,9 +356,23 @@
                             </StackPanel>
                         </Border>
 
-                        <StackPanel Spacing="7">
+                        <StackPanel Spacing="7" IsVisible="{Binding IsNamingEngine}">
                             <TextBlock Classes="label" Text="NAME IN THE SWITCHER"/>
                             <TextBox Text="{Binding Name, Mode=TwoWay}"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="9" IsVisible="{Binding IsNamingClusters}">
+                            <TextBlock Classes="label" Text="NAMES IN THE SWITCHER"/>
+                            <ItemsControl ItemsSource="{Binding ClusterNames}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:NamedCluster">
+                                        <TextBox Margin="0,0,0,8" Text="{Binding Name, Mode=TwoWay}"
+                                                 PlaceholderText="{Binding Context}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="hint"
+                                       Text="Leave a field empty to keep the context's own name. You can change these later in Settings › Engines."/>
                         </StackPanel>
 
                         <Border Background="{DynamicResource InfoSoft}" CornerRadius="10" Padding="12,11">

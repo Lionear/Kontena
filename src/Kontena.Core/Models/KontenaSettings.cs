@@ -155,6 +155,18 @@ public sealed record KontenaSettings
     /// </summary>
     public IReadOnlyList<string> KubeconfigPaths { get; init; } = [];
 
+    /// <summary>
+    /// Names the user gave a backend, keyed by backend id (KON-119). Empty means "use what the source
+    /// calls itself".
+    /// <para>
+    /// A source's own name is not always meant to be read in a list — a kube-context is routinely
+    /// <c>gke_myproject-prod_europe-west4_cluster-1</c>, and that name comes from the cluster's owner
+    /// rather than from the person looking at the switcher.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string> BackendNames { get; init; } =
+        new Dictionary<string, string>();
+
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";
 

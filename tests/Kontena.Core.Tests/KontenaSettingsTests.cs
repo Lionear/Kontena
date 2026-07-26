@@ -68,6 +68,11 @@ public class KontenaSettingsTests
                     CertificateDirectory: "/srv/docker/certs/lab"),
             ],
             KubeconfigPaths = ["/srv/kubeconfigs/acme.yaml", "~/Downloads/kubeconfig"],
+            BackendNames = new Dictionary<string, string>
+            {
+                ["kubernetes:gke_myproject-prod_europe-west4_cluster-1"] = "Production EU",
+                ["docker-remote:r1"] = "Build server",
+            },
             TerminalLigatures = true,
             RecentBuildContexts = ["/srv/build/app", "/srv/build/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
@@ -97,6 +102,7 @@ public class KontenaSettingsTests
 
         // Paths only — a kubeconfig is read where it lies and never copied into settings.
         Assert.Equal(original.KubeconfigPaths, restored.KubeconfigPaths);
+        Assert.Equal(original.BackendNames, restored.BackendNames);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -108,6 +114,7 @@ public class KontenaSettingsTests
                 Registries = restored.Registries,
                 RemoteEngines = restored.RemoteEngines,
                 KubeconfigPaths = restored.KubeconfigPaths,
+                BackendNames = restored.BackendNames,
             },
             restored);
     }

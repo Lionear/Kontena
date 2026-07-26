@@ -44,14 +44,21 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     private readonly Action _onSkip;
     private readonly Action _onInstallPodman;
 
+    /// <param name="nameOf">
+    /// What to call a backend (KON-119). Defaults to the source's own name; a settings file carried over
+    /// from another machine can already hold names, and reading two of them for the same engine at first
+    /// run is exactly the confusion the single resolver exists to prevent.
+    /// </param>
     public OnboardingViewModel(
         IReadOnlyList<BackendProbe> probes,
         string fakeBackend,
         bool autoDetect,
         Action<string?> onContinue,
         Action onSkip,
-        Action onInstallPodman)
+        Action onInstallPodman,
+        Func<IBackendProvider, string>? nameOf = null)
     {
+        nameOf ??= p => p.DisplayName;
         _autoDetect = autoDetect;
         _onContinue = onContinue;
         _onSkip = onSkip;
@@ -66,7 +73,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
             items.Add(new OnboardingEngine
             {
                 Backend = p.Provider.Backend,
-                Name = p.Provider.DisplayName,
+                Name = nameOf(p.Provider),
                 Chip = p.Provider.Chip,
                 Detail = p.Detail ?? string.Empty,
                 IsConnected = p.Connected,

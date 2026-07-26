@@ -293,7 +293,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             EnterBackendDown(
-                $"Can't reach {wanted.Provider.DisplayName}",
+                $"Can't reach {NameOf(wanted.Provider)}",
                 Unreachable(wanted));
             return;
         }
@@ -313,9 +313,27 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>Why a known backend did not answer, in terms that fit what it is.</summary>
-    private static string Unreachable(BackendProbe probe) => probe.Provider.Kind == BackendKind.Cluster
-        ? $"The apiserver for {probe.Provider.DisplayName} did not answer. The cluster may be stopped, unreachable from this network, or your credentials may have expired."
-        : $"The {probe.Provider.DisplayName} socket did not answer. It may be stopped, still starting, or you may not have permission to access it.";
+    private string Unreachable(BackendProbe probe) => probe.Provider.Kind == BackendKind.Cluster
+        ? $"The apiserver for {NameOf(probe.Provider)} did not answer. The cluster may be stopped, unreachable from this network, or your credentials may have expired."
+        : $"The {NameOf(probe.Provider)} socket did not answer. It may be stopped, still starting, or you may not have permission to access it.";
+
+    /// <summary>What this backend is called here — the user's name for it, or the source's own (KON-119).</summary>
+    private string NameOf(IBackendProvider provider) =>
+        _settings.NameFor(provider.Backend, provider.DisplayName);
+
+    /// <summary>
+    /// Picks up a rename without reconnecting anything. Also drops names for backends that are gone, so
+    /// the settings file does not accumulate an entry for every cluster the user ever saw.
+    /// </summary>
+    private void RefreshBackendNames()
+    {
+        _settings = _store.Update(s => s.PruneBackendNames(_registry.Providers.Select(p => p.Backend)));
+
+        RebuildEngineList();
+
+        if (_probes.FirstOrDefault(p => p.Provider.Backend == _activeBackend)?.Provider is { } active)
+            EngineName = NameOf(active);
+    }
 
     /// <summary>
     /// A backend id read back as something a person recognises. Ids are namespaced
@@ -335,7 +353,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             _settings.AutoDetectEngines,
             onContinue: backend => _ = CompleteOnboardingAsync(backend),
             onSkip: () => _ = CompleteOnboardingAsync(null),
-            onInstallPodman: () => Browser.OpenUrl("https://podman.io/docs/installation"));
+            onInstallPodman: () => Browser.OpenUrl("https://podman.io/docs/installation"),
+            nameOf: NameOf);
         IsOnboarding = true;
     }
 
@@ -406,7 +425,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         var backend = provider.CreateBackend();
         _activeBackend = provider.Backend;
-        EngineName = provider.DisplayName;
+        EngineName = NameOf(provider);
         EngineChip = provider.Chip;
 
         RebuildEngineList();
@@ -427,7 +446,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             // A provider that is neither axis has nothing to show. Say so rather than leaving a
             // blank shell behind — and above all, do not remember it as somewhere worth returning to.
             EnterBackendDown(
-                $"Can't open {provider.DisplayName}",
+                $"Can't open {NameOf(provider)}",
                 "This backend is neither a container engine nor a cluster, so Kontena has nothing to show for it.");
             return;
         }
@@ -885,9 +904,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void BuildSettingsPage()
     {
         var all = _probes.Select(p => new EngineListItem(
-            p.Provider.Backend, p.Provider.DisplayName, p.Provider.Chip,
+            p.Provider.Backend, NameOf(p.Provider), p.Provider.Chip,
             p.Detail ?? string.Empty, p.Connected,
-            p.Provider.Backend == _settings.ResolvedPinnedBackend)).ToList();
+            p.Provider.Backend == _settings.ResolvedPinnedBackend,
+            p.Provider.DisplayName)).ToList();
 
         // The detected-engines list stays engine-only; what you can pin does not — a cluster is a
         // perfectly reasonable thing to always start on.
@@ -900,7 +920,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             secrets: _secrets, registries: _registryCredentials, engine: () => _engine,
             // Adding or removing a remote changes the provider list, which is what the switcher is built
             // from — so the same rebuild the demo toggle uses (KON-46).
-            onRemotesChanged: () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)));
+            onRemotesChanged: () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+            // A rename changes no connection, so it must not cost a re-probe: re-read the names and
+            // redraw. Probing on every keystroke would make typing a name feel like a reconnect.
+            onNamesChanged: RefreshBackendNames);
     }
 
     /// <summary>
@@ -1221,7 +1244,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             var option = new EngineOption
             {
                 Backend = probe.Provider.Backend,
-                Name = probe.Provider.DisplayName,
+                Name = NameOf(probe.Provider),
                 Chip = probe.Provider.Chip,
                 Detail = probe.Detail ?? string.Empty,
                 IsActive = isActive,
