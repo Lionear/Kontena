@@ -328,13 +328,13 @@ internal static class Program
                             // .invalid never resolves, by RFC. The wizard runs its real test and lands on
                             // its real failure page.
                             wizard.Host = "build-01.invalid";
-                            wizard.User = "rick";
+                            wizard.User = "deploy";
                             wizard.PrimaryCommand.Execute(null);
                             Settle(rounds: 120);
                         }
                         else
                         {
-                            wizard.User = "rick";
+                            wizard.User = "deploy";
                         }
                     }
 

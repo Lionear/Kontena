@@ -34,7 +34,7 @@ public class RemoteEngineDraftTests
         {
             Host = "build-01",
             IsSsh = false,
-            User = "rick",
+            User = "deploy",
             SocketPath = "/var/run/docker.sock",
             CertificateDirectory = "~/.docker/certs",
         }.Build("r1");
