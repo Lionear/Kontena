@@ -52,9 +52,9 @@ it keeps a one-person project alive.
 5. **Mind the credential trust boundary.** Engine credentials and secrets are stored in the OS
    keychain and never written to disk in plaintext, logged, or transmitted anywhere other than the
    engine being connected to. Anything that would change that needs an issue first.
-6. **Record it in the changelog.** When the work is finished, add a bullet under `## [Unreleased]`
-   in [`CHANGELOG.md`](CHANGELOG.md) — see *Changelog* below. A finished item that leaves no trace
-   there is not finished.
+6. **Record it in the changelog.** When the work is finished, add a fragment in
+   [`changelog.d/`](changelog.d/README.md) — not an edit to [`CHANGELOG.md`](CHANGELOG.md); see
+   *Changelog* below. A finished item that leaves no trace there is not finished.
 
 ## Commit style
 
@@ -72,20 +72,36 @@ short, imperative, lowercase, no trailing period.
 
 ## Changelog
 
-Every finished work item lands in [`CHANGELOG.md`](CHANGELOG.md) under `## [Unreleased]`, so that
+Every finished work item ends up in [`CHANGELOG.md`](CHANGELOG.md) under `## [Unreleased]`, so that
 from one release to the next it is clear what actually changed — without reading the git log. The
 file follows [Keep a Changelog](https://keepachangelog.com/).
 
-- Group each bullet under the right section: **Added** for new features, **Changed** for changes in
-  existing behaviour, **Fixed** for bug fixes, **Removed** for removed features. The commit types map
-  straight onto these: `feat:` → **Added**, `fix:` → **Fixed**, `changed`/`refactor:`/`perf:` →
-  **Changed**, `removed` → **Removed**.
+**Do not edit `CHANGELOG.md` in a feature branch.** Add a fragment instead — one file per change,
+named after your ticket:
+
+```
+changelog.d/KON-107.fixed.md
+```
+
+Every branch used to append to the same `### Added` block, so two branches in the air at once
+conflicted on that one line — and on a file whose conflicts carry no information, since both sides
+are additions and the resolution is always "keep both". Two fragments never touch the same path.
+See [`changelog.d/README.md`](changelog.d/README.md) for the details.
+
+- The category is in the filename: `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`.
+  The commit types map straight onto these: `feat:` → `added`, `fix:` → `fixed`,
+  `changed`/`refactor:`/`perf:` → `changed`, `removed` → `removed`.
 - Keep it user-facing: describe what changed for the person *using* Kontena, not the class that
   changed.
-- Add to `[Unreleased]` — never write a version heading yourself.
+- Never write a version heading yourself.
+- Preview what the next release's notes will read like with
+  `python3 tools/changelog-render.py --dry-run`. CI validates the filenames on every PR.
+- A fragment can only *add*. To correct an unreleased entry that a later change made wrong, edit that
+  entry where it lives — in `CHANGELOG.md` if it was already folded in, or in its own fragment.
 - **Releasing is a tag.** The maintainer bumps `<Version>` in `Directory.Build.props`, then pushes a
-  `v<semver>` tag (`git tag v0.1.0 && git push origin v0.1.0`). The Build workflow rolls
-  `[Unreleased]` into a dated `## [0.1.0]` section and uses the same text as the GitHub release notes.
+  `v<semver>` tag (`git tag v0.1.0 && git push origin v0.1.0`). The Build workflow folds the pending
+  fragments into `[Unreleased]`, rolls that into a dated `## [0.1.0]` section, removes the fragments,
+  and uses the same text as the GitHub release notes.
   The tag is the version — the About screen and the changelog both read it.
 
 ## Builds & releases
