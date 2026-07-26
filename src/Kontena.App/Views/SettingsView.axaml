@@ -277,6 +277,32 @@
                         </ItemsControl>
                     </Border>
 
+                    <TextBlock Classes="gh" Text="NAMES IN THE SWITCHER" Margin="0,30,0,12"/>
+                    <Border Classes="card" Margin="0,0,0,14" IsVisible="{Binding HasBackendNames}">
+                        <StackPanel Spacing="14">
+                            <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" MaxWidth="620"
+                                       HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"
+                                       Text="A backend is listed under the name its source gives it, which for a kube-context is often something like gke_myproject-prod_europe-west4_cluster-1. Give it a name of your own here. Leave a field empty to go back to the original."/>
+                            <ItemsControl ItemsSource="{Binding BackendNames}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BackendNameRow">
+                                        <Grid Margin="0,0,0,9" ColumnDefinitions="Auto,*">
+                                            <Border Grid.Column="0" Width="32" Height="32" CornerRadius="8"
+                                                    Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}"
+                                                           FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Info}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <TextBox Grid.Column="1" Margin="12,0,0,0"
+                                                     Text="{Binding Name, Mode=TwoWay}"
+                                                     PlaceholderText="{Binding SourceName}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
                     <TextBlock Classes="gh" Text="REMOTE ENGINES" Margin="0,30,0,12"/>
                     <Border Classes="card" Margin="0,0,0,14">
                         <StackPanel Spacing="14">

@@ -40,8 +40,54 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
 }
 
 /// <summary>One engine as shown in the Settings › Engines list.</summary>
+/// <param name="SourceName">
+/// What the backend calls itself, before any name the user gave it (KON-119). Kept alongside
+/// <paramref name="Name"/> so the rename field can show the original as its placeholder.
+/// </param>
 public sealed record EngineListItem(
-    string Backend, string Name, string Chip, string Detail, bool Connected, bool IsDefault);
+    string Backend, string Name, string Chip, string Detail, bool Connected, bool IsDefault,
+    string SourceName = "");
+
+/// <summary>
+/// One row of Settings › Engines › Names — a backend and what to call it (KON-119).
+/// <para>
+/// Persists as it is typed rather than behind a Save button: this is one field with an obvious meaning,
+/// and a rename that only takes effect after pressing something else is a rename people lose.
+/// </para>
+/// </summary>
+public partial class BackendNameRow : ViewModelBase
+{
+    private readonly Action<string, string?> _rename;
+    private bool _loading;
+
+    public BackendNameRow(string backend, string sourceName, string chip, string? chosen,
+        Action<string, string?> rename)
+    {
+        Backend = backend;
+        SourceName = sourceName;
+        Chip = chip;
+        _rename = rename;
+
+        _loading = true;
+        _name = chosen ?? string.Empty;
+        _loading = false;
+    }
+
+    public string Backend { get; }
+
+    /// <summary>What the source calls itself — the placeholder, and what an empty field falls back to.</summary>
+    public string SourceName { get; }
+
+    public string Chip { get; }
+
+    [ObservableProperty] private string _name = string.Empty;
+
+    partial void OnNameChanged(string value)
+    {
+        if (!_loading)
+            _rename(Backend, value);
+    }
+}
 
 /// <summary>
 /// The Settings page: General (appearance + startup), Engines (auto-detect,
@@ -51,7 +97,7 @@ public sealed record EngineListItem(
 public partial class SettingsViewModel : ViewModelBase
 {
     private readonly SettingsStore _store;
-    private readonly IReadOnlyList<EngineListItem> _backends;
+    private readonly List<EngineListItem> _backends;
     private KontenaSettings _settings;
 
     /// <param name="engines">Container engines, for the detected-engines list.</param>
@@ -70,17 +116,19 @@ public partial class SettingsViewModel : ViewModelBase
         ISecretStore? secrets = null,
         RegistryCredentials? registries = null,
         Func<IContainerEngine?>? engine = null,
-        Func<Task>? onRemotesChanged = null)
+        Func<Task>? onRemotesChanged = null,
+        Action? onNamesChanged = null)
     {
         _registries = registries;
         _engineForVerify = engine;
         _autostart = autostart ?? Autostart.Create();
         _secrets = secrets ?? SecretStore.Create();
         _onRemotesChanged = onRemotesChanged;
-        _backends = backends ?? engines;
+        _onNamesChanged = onNamesChanged;
+        _backends = [.. backends ?? engines];
         _store = store;
         _settings = settings;
-        Engines = engines;
+        Engines = [.. engines];
         _onDemoBackendsChanged = onDemoBackendsChanged;
         Update = update;
         _updateChannel = settings.UpdateChannel;
@@ -96,6 +144,7 @@ public partial class SettingsViewModel : ViewModelBase
         // would be claiming an arrangement that no longer exists.
         _launchAtLogin = _autostart.IsSupported ? _autostart.IsEnabled() : settings.LaunchAtLogin;
         RefreshRemotes();
+        RefreshBackendNames();
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
@@ -110,15 +159,21 @@ public partial class SettingsViewModel : ViewModelBase
             StartupBackend.FirstConnected => FirstConnectedOption,
             _ => LastUsedOption,
         };
+
+        // What the pin points at, kept by id. The dropdown lists names, and a name can change under it.
+        _pinnedBackend = settings.ResolvedStartup == StartupBackend.Pinned
+            ? settings.ResolvedPinnedBackend
+            : null;
     }
 
     private const string LastUsedOption = "Continue where I left off";
     private const string FirstConnectedOption = "First connected engine";
 
-    public IReadOnlyList<EngineListItem> Engines { get; }
+    /// <summary>The detected-engines list. Mutable because a rename has to reach it (KON-119).</summary>
+    public ObservableCollection<EngineListItem> Engines { get; }
 
     /// <summary>What Kontena opens on launch: last used, first connected, or one named backend.</summary>
-    public string[] StartupOptions { get; }
+    public ObservableCollection<string> StartupOptions { get; }
 
     public string Version { get; } =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
@@ -189,7 +244,21 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnAutoDetectChanged(bool value) => Save();
 
     [ObservableProperty] private string _selectedStartup;
-    partial void OnSelectedStartupChanged(string value) => Save();
+
+    /// <summary>The pinned backend by id, so a rename cannot move the pin.</summary>
+    private string? _pinnedBackend;
+
+    /// <summary>Set while the dropdown is being rebuilt, so relabelling an option is not read as a choice.</summary>
+    private bool _relabelling;
+
+    partial void OnSelectedStartupChanged(string value)
+    {
+        if (_relabelling)
+            return;
+
+        _pinnedBackend = _backends.FirstOrDefault(e => e.Name == value)?.Backend;
+        Save();
+    }
 
     /// <summary>What the current choice means, spelled out under the picker.</summary>
     public string StartupHint => SelectedStartup switch
@@ -467,6 +536,87 @@ public partial class SettingsViewModel : ViewModelBase
         RefreshRegistries();
     }
 
+    // ── Names in the switcher (KON-119) ─────────────────────────────────────
+
+    private readonly Action? _onNamesChanged;
+
+    /// <summary>Every backend, with the name the user chose for it.</summary>
+    public ObservableCollection<BackendNameRow> BackendNames { get; } = [];
+
+    public bool HasBackendNames => BackendNames.Count > 0;
+
+    private void RefreshBackendNames()
+    {
+        BackendNames.Clear();
+        foreach (var backend in _backends)
+        {
+            var source = backend.SourceName is { Length: > 0 } s ? s : backend.Name;
+            _settings.BackendNames.TryGetValue(backend.Backend, out var chosen);
+            BackendNames.Add(new BackendNameRow(backend.Backend, source, backend.Chip, chosen, Rename));
+        }
+
+        OnPropertyChanged(nameof(HasBackendNames));
+    }
+
+    /// <summary>
+    /// Stores the name, or clears it when the field is emptied. Written straight through the store so a
+    /// rename cannot be lost to another part of the app saving its own copy.
+    /// </summary>
+    private void Rename(string backend, string? name)
+    {
+        var source = BackendNames.FirstOrDefault(r => r.Backend == backend)?.SourceName ?? string.Empty;
+        _settings = _store.Update(s => s.WithBackendName(backend, name, source));
+
+        Relabel(backend, _settings.NameFor(backend, source));
+        _onNamesChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Carries a new name into the lists this page is already showing — the detected engines and the
+    /// launch dropdown. Rebuilding the whole page instead would throw away the field being typed in.
+    /// </summary>
+    private void Relabel(string backend, string name)
+    {
+        for (var i = 0; i < _backends.Count; i++)
+        {
+            if (_backends[i].Backend == backend)
+                _backends[i] = _backends[i] with { Name = name };
+        }
+
+        for (var i = 0; i < Engines.Count; i++)
+        {
+            if (Engines[i].Backend == backend)
+                Engines[i] = Engines[i] with { Name = name };
+        }
+
+        _relabelling = true;
+        try
+        {
+            var wasPinned = _pinnedBackend == backend;
+
+            StartupOptions.Clear();
+            StartupOptions.Add(LastUsedOption);
+            StartupOptions.Add(FirstConnectedOption);
+            foreach (var item in _backends)
+                StartupOptions.Add(item.Name);
+
+            // Clearing the list drops the selection, so put it back — by id, not by the old name.
+            SelectedStartup = wasPinned
+                ? name
+                : _pinnedBackend is { Length: > 0 } id
+                    ? _backends.FirstOrDefault(e => e.Backend == id)?.Name ?? SelectedStartup
+                    : SelectedStartup;
+        }
+        finally
+        {
+            _relabelling = false;
+        }
+
+        // The hint repeats the chosen name in a sentence, and Save — which normally refreshes it — is
+        // deliberately not called here: a rename is not a change of what Kontena opens on launch.
+        OnPropertyChanged(nameof(StartupHint));
+    }
+
     // ── Remote engines (KON-46) ─────────────────────────────────────────────
 
     private readonly Func<Task>? _onRemotesChanged;
@@ -664,7 +814,11 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void Save()
     {
-        var pinned = _backends.FirstOrDefault(e => e.Name == SelectedStartup)?.Backend;
+        // By id: the dropdown shows names, and a name the user changed must not move the pin.
+        var pinned = _pinnedBackend is { Length: > 0 } id && _backends.Any(e => e.Backend == id)
+            ? id
+            : _backends.FirstOrDefault(e => e.Name == SelectedStartup)?.Backend;
+
         var startup = SelectedStartup switch
         {
             FirstConnectedOption => StartupBackend.FirstConnected,
