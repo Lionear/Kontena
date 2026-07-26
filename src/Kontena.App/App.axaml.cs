@@ -32,7 +32,8 @@ public partial class App : Application
             // owns the composition so the runtime demo toggle (KON-96) builds the same list.
             var registry = new BackendRegistry(
                 BackendCatalog.Build(
-                    BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends), settings.RemoteEngines));
+                    BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends),
+                    settings.RemoteEngines, settings.KubeconfigPaths));
 
             desktop.MainWindow = new MainWindow
             {

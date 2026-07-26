@@ -197,7 +197,7 @@
 
                                     <Border Height="1" Background="{DynamicResource Border}" Margin="4,6"/>
                                     <Button Classes="engineitem" Click="OnSwitcherItemClick"
-                                            Command="{Binding ShowAddEngineCommand}">
+                                            Command="{Binding ShowAddBackendCommand}">
                                         <StackPanel Orientation="Horizontal" Spacing="11">
                                             <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
                                                   Data="{StaticResource IconPlus}" VerticalAlignment="Center"/>

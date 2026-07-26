@@ -280,12 +280,56 @@ internal static class Program
 
                 break;
 
-            // The switcher's "Add engine or cluster…" row, driven through its own command rather than by
-            // opening Settings directly — the row spent a release doing nothing, and only running what the
+            // The add wizard (KON-118), driven through the switcher's own command rather than by
+            // constructing the dialog — the row spent a release doing nothing, and only running what the
             // button actually runs would have shown that.
+            //
+            // The Testing and Connected states are deliberately absent: both need a remote host that
+            // answers, and a scene that posed them would render perfectly while the wizard was broken.
+            // Refused is here because it can be produced honestly — a host that does not resolve.
             case "add-engine":
-                vm.ShowAddEngineCommand.Execute(null);
+            case "add-engine-remote":
+            case "add-engine-tcp":
+            case "add-engine-kube":
+            case "add-engine-refused":
+                vm.ShowAddBackendCommand.Execute(null);
                 Settle(rounds: 20);
+
+                if (vm.Dialog is Kontena.App.ViewModels.AddBackendViewModel wizard)
+                {
+                    if (scene == "add-engine-kube")
+                    {
+                        wizard.ChooseKubernetesCommand.Execute(null);
+                    }
+                    else if (scene != "add-engine")
+                    {
+                        wizard.ChooseRemoteEngineCommand.Execute(null);
+                        wizard.Host = "build-01.example.com";
+                        wizard.Name = "Build server";
+
+                        if (scene == "add-engine-tcp")
+                        {
+                            wizard.SetTransportCommand.Execute("tcp");
+                            wizard.CertificateDirectory = "~/.docker/certs/build-01";
+                        }
+                        else if (scene == "add-engine-refused")
+                        {
+                            // .invalid never resolves, by RFC. The wizard runs its real test and lands on
+                            // its real failure page.
+                            wizard.Host = "build-01.invalid";
+                            wizard.User = "deploy";
+                            wizard.PrimaryCommand.Execute(null);
+                            Settle(rounds: 120);
+                        }
+                        else
+                        {
+                            wizard.User = "deploy";
+                        }
+                    }
+
+                    Settle(rounds: 20);
+                }
+
                 break;
 
             // The update card (KON-110). Every scene drives the real state machine — check, then

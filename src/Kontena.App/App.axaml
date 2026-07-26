@@ -39,8 +39,12 @@
                     <SolidColorBrush x:Key="WarnSoft" Color="#1C1810"/>
                     <SolidColorBrush x:Key="WarnSoftBorder" Color="#3A3320"/>
                     <SolidColorBrush x:Key="WarnText" Color="#E8CF9A"/>
-                    <SolidColorBrush x:Key="DangerSoft" Color="#F8717120"/>
+                    <!-- Written as #F8717120 it parsed as opaque #717120 — olive, not red. Every
+                         destructive button and warning block using it was the wrong colour. -->
+                    <SolidColorBrush x:Key="DangerSoft" Color="#F87171" Opacity="0.13"/>
                     <SolidColorBrush x:Key="DangerSoftBorder" Color="#5A2C2C"/>
+                    <SolidColorBrush x:Key="InfoSoft" Color="#5AB8FF" Opacity="0.13"/>
+                    <SolidColorBrush x:Key="SuccessSoft" Color="#34D399" Opacity="0.13"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="Bg" Color="#F6F8FA"/>
@@ -68,6 +72,8 @@
                     <SolidColorBrush x:Key="WarnText" Color="#8A6410"/>
                     <SolidColorBrush x:Key="DangerSoft" Color="#FBE7E8"/>
                     <SolidColorBrush x:Key="DangerSoftBorder" Color="#F0C4C6"/>
+                    <SolidColorBrush x:Key="InfoSoft" Color="#E8F1FC"/>
+                    <SolidColorBrush x:Key="SuccessSoft" Color="#E4F5EE"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

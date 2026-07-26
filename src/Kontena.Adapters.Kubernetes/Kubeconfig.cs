@@ -15,11 +15,19 @@ public static class Kubeconfig
     /// Returns an empty list when there is no kubeconfig or it cannot be parsed — no kubeconfig is a
     /// normal state for a machine that only runs containers, not an error worth throwing over.
     /// </summary>
-    public static IReadOnlyList<KubeContext> LoadContexts()
+    /// <param name="path">
+    /// A specific kubeconfig file, or null for the default one. A cluster config downloaded from a
+    /// provider often lives outside <c>~/.kube</c>, and copying it in is a change to the user's setup that
+    /// Kontena has no business making (KON-118).
+    /// </param>
+    public static IReadOnlyList<KubeContext> LoadContexts(string? path = null)
     {
         try
         {
-            var config = KubernetesClientConfiguration.LoadKubeConfig();
+            var config = string.IsNullOrWhiteSpace(path)
+                ? KubernetesClientConfiguration.LoadKubeConfig()
+                : KubernetesClientConfiguration.LoadKubeConfig(Expand(path));
+
             var current = config.CurrentContext;
 
             return
@@ -40,7 +48,31 @@ public static class Kubeconfig
         }
     }
 
-    /// <summary>Build a client configuration for one context.</summary>
-    internal static KubernetesClientConfiguration ConfigFor(string context) =>
-        KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: context);
+    /// <summary>Build a client configuration for one context, from the default kubeconfig or a named one.</summary>
+    internal static KubernetesClientConfiguration ConfigFor(string context, string? path = null) =>
+        string.IsNullOrWhiteSpace(path)
+            ? KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: context)
+            : KubernetesClientConfiguration.BuildConfigFromConfigFile(
+                kubeconfigPath: Expand(path), currentContext: context);
+
+    /// <summary>
+    /// Resolves <c>~</c>, because a path the user typed is far more likely to start with it than one the
+    /// system handed us, and the Kubernetes client does not expand it.
+    /// </summary>
+    public static string Expand(string path)
+    {
+        var trimmed = path.Trim();
+        if (!trimmed.StartsWith('~'))
+            return trimmed;
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(home, trimmed.TrimStart('~').TrimStart('/', '\\'));
+    }
+
+    /// <summary>The default kubeconfig Kontena reads without being told to, for showing in the UI.</summary>
+    public static string DefaultPath =>
+        Environment.GetEnvironmentVariable("KUBECONFIG") is { Length: > 0 } fromEnv
+            ? fromEnv
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".kube", "config");
 }

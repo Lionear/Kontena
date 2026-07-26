@@ -43,8 +43,13 @@ public static class BackendCatalog
     /// Engines on other hosts, from settings (KON-46). Listed after the local ones: the switcher reads
     /// top-down and what is on this machine is what someone is usually looking for.
     /// </param>
+    /// <param name="kubeconfigPaths">
+    /// Kubeconfig files the user added beyond the default one (KON-118).
+    /// </param>
     public static List<IBackendProvider> Build(
-        bool includeDemo, IReadOnlyList<RemoteEngine>? remotes = null)
+        bool includeDemo,
+        IReadOnlyList<RemoteEngine>? remotes = null,
+        IReadOnlyList<string>? kubeconfigPaths = null)
     {
         var providers = new List<IBackendProvider>
         {
@@ -62,7 +67,7 @@ public static class BackendCatalog
 
         // One cluster backend per kube-context. Yields nothing when there is no kubeconfig, so a
         // machine that only runs containers simply shows no Clusters group.
-        providers.AddRange(KubernetesClusterProvider.DiscoverAll());
+        providers.AddRange(KubernetesClusterProvider.DiscoverAll(kubeconfigPaths));
 
         if (includeDemo && DemoAllowed)
         {

@@ -58,17 +58,18 @@ public class KontenaSettingsTests
             DismissedUpdateVersion = "0.3.0",
             Registries =
             [
-                new RegistryLogin("ghcr.io", "rick", RegistryCredentialSource.Kontena),
+                new RegistryLogin("ghcr.io", "octo", RegistryCredentialSource.Kontena),
                 new RegistryLogin("registry.local:5000", "ci", RegistryCredentialSource.Kontena),
             ],
             RemoteEngines =
             [
-                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "build-01", User: "rick"),
+                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "build-01", User: "deploy"),
                 new RemoteEngine("r2", "Lab", RemoteEngineTransport.Tcp, "lab.local", 2376,
-                    CertificateDirectory: "/home/rick/.docker/lab"),
+                    CertificateDirectory: "/srv/docker/certs/lab"),
             ],
+            KubeconfigPaths = ["/srv/kubeconfigs/acme.yaml", "~/Downloads/kubeconfig"],
             TerminalLigatures = true,
-            RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
+            RecentBuildContexts = ["/srv/build/app", "/srv/build/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
             {
                 ["kubernetes:kind-kind"] =
@@ -93,6 +94,9 @@ public class KontenaSettingsTests
         Assert.Equal(original.Registries, restored.Registries);
         // Transport, host, port and the certificate path survive; the secrets never lived here.
         Assert.Equal(original.RemoteEngines, restored.RemoteEngines);
+
+        // Paths only — a kubeconfig is read where it lies and never copied into settings.
+        Assert.Equal(original.KubeconfigPaths, restored.KubeconfigPaths);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -103,6 +107,7 @@ public class KontenaSettingsTests
                 PortForwards = restored.PortForwards,
                 Registries = restored.Registries,
                 RemoteEngines = restored.RemoteEngines,
+                KubeconfigPaths = restored.KubeconfigPaths,
             },
             restored);
     }

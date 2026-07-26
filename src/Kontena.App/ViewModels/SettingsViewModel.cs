@@ -525,25 +525,17 @@ public partial class SettingsViewModel : ViewModelBase
     /// The connection the form currently describes. Built rather than validated field by field, so the one
     /// rule that matters — TCP without certificates is refused — lives in the model and not in the view.
     /// </summary>
-    private RemoteEngine Draft(string? id = null)
+    private RemoteEngine Draft(string? id = null) => new RemoteEngineDraft
     {
-        var port = int.TryParse(RemotePort.Trim(), out var parsed) && parsed > 0 ? parsed : (int?)null;
-        var host = RemoteHost.Trim();
-        var user = RemoteUser.Trim();
-        var socket = RemoteSocketPath.Trim();
-        var certificates = RemoteCertificateDirectory.Trim();
-
-        return new RemoteEngine(
-            id ?? Guid.NewGuid().ToString("N")[..12],
-            string.IsNullOrWhiteSpace(RemoteName) ? host : RemoteName.Trim(),
-            RemoteIsSsh ? RemoteEngineTransport.Ssh : RemoteEngineTransport.Tcp,
-            host,
-            port,
-            RemoteIsSsh && user.Length > 0 ? user : null,
-            RemoteIsSsh && socket.Length > 0 ? socket : null,
-            !RemoteIsSsh && certificates.Length > 0 ? certificates : null,
-            !RemoteIsSsh && RemoteAllowInsecure);
-    }
+        Name = RemoteName,
+        Host = RemoteHost,
+        User = RemoteUser,
+        Port = RemotePort,
+        SocketPath = RemoteSocketPath,
+        CertificateDirectory = RemoteCertificateDirectory,
+        AllowInsecure = RemoteAllowInsecure,
+        IsSsh = RemoteIsSsh,
+    }.Build(id);
 
     private void RefreshRemotes()
     {
