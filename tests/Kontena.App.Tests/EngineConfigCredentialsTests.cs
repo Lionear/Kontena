@@ -14,26 +14,26 @@ public class EngineConfigCredentialsTests
     {
         // What `docker login` writes for a plain registry: base64 of "user:secret".
         const string json = """
-            {"auths":{"ghcr.io":{"auth":"cmljazpnaHBfdG9rZW4="}}}
+            {"auths":{"ghcr.io":{"auth":"b2N0bzpnaHBfdG9rZW4="}}}
             """;
 
         var config = EngineConfigCredentials.Parse(json);
 
         var entry = Assert.Single(config.Auths);
         Assert.Equal("ghcr.io", entry.Host);
-        Assert.Equal("rick", entry.Username);
+        Assert.Equal("octo", entry.Username);
         Assert.Equal("ghp_token", entry.Secret);
     }
 
     [Fact]
     public void A_password_containing_a_colon_survives()
     {
-        // "rick:pass:word" — splitting on every colon would silently hand the registry half a password.
-        var auth = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("rick:pass:word"));
+        // "octo:pass:word" — splitting on every colon would silently hand the registry half a password.
+        var auth = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("octo:pass:word"));
 
         var (username, secret) = EngineConfigCredentials.DecodeAuth(auth);
 
-        Assert.Equal("rick", username);
+        Assert.Equal("octo", username);
         Assert.Equal("pass:word", secret);
     }
 
@@ -86,7 +86,7 @@ public class EngineConfigCredentialsTests
         // config.json spells Hub as the legacy v1 URL. Listed as-is it would never match a pull of "nginx".
         var path = Path.Combine(Path.GetTempPath(), "kontena-cfg-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(path, """
-            {"auths":{"https://index.docker.io/v1/":{"auth":"cmljazpodW50ZXIy"}}}
+            {"auths":{"https://index.docker.io/v1/":{"auth":"b2N0bzpodW50ZXIy"}}}
             """);
 
         try
@@ -95,7 +95,7 @@ public class EngineConfigCredentialsTests
 
             var login = Assert.Single(logins);
             Assert.Equal("docker.io", login.Host);
-            Assert.Equal("rick", login.Username);
+            Assert.Equal("octo", login.Username);
             Assert.Equal(RegistryCredentialSource.EngineConfig, login.Source);
         }
         finally
@@ -109,7 +109,7 @@ public class EngineConfigCredentialsTests
     {
         var path = Path.Combine(Path.GetTempPath(), "kontena-cfg-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(path, """
-            {"auths":{"https://index.docker.io/v1/":{"auth":"cmljazpodW50ZXIy"}}}
+            {"auths":{"https://index.docker.io/v1/":{"auth":"b2N0bzpodW50ZXIy"}}}
             """);
 
         try

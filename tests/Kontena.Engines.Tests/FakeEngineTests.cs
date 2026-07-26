@@ -304,7 +304,7 @@ public class FakeEngineTests
         var engine = NewEngine();
         var request = new ComposeUpRequest
         {
-            ComposeFilePath = "/home/rick/dev/shop/docker-compose.yml",
+            ComposeFilePath = "/srv/compose/shop/docker-compose.yml",
             ProjectName = "shop",
         };
 
@@ -329,7 +329,7 @@ public class FakeEngineTests
         var engine = NewEngine();
         var request = new ComposeUpRequest
         {
-            ComposeFilePath = "/home/rick/dev/Ashenmoon/compose.yaml",
+            ComposeFilePath = "/srv/compose/Storefront/compose.yaml",
         };
 
         await foreach (var _ in engine.ComposeUpAsync(request)) { }
@@ -339,7 +339,7 @@ public class FakeEngineTests
             .Distinct()
             .ToList();
 
-        // Derived from the parent folder name, lower-cased ("Ashenmoon" -> "ashenmoon").
-        Assert.Contains("ashenmoon", projects);
+        // Derived from the parent folder name, lower-cased ("Storefront" -> "storefront").
+        Assert.Contains("storefront", projects);
     }
 }

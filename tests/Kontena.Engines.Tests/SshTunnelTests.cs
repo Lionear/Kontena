@@ -10,7 +10,7 @@ namespace Kontena.Engines.Tests;
 public class SshTunnelTests
 {
     private static RemoteEngine Remote(
-        string host = "build-01", string? user = "rick", int? port = null, string? socket = null) =>
+        string host = "build-01", string? user = "deploy", int? port = null, string? socket = null) =>
         new("r1", "Build server", RemoteEngineTransport.Ssh, host, port, user, socket);
 
     private static string Line(RemoteEngine remote) =>
@@ -62,7 +62,7 @@ public class SshTunnelTests
 
     [Fact]
     public void Passes_user_and_host_the_way_ssh_expects() =>
-        Assert.Equal("rick@build-01", SshTunnel.Arguments(Remote(), "/tmp/s.sock")[^1]);
+        Assert.Equal("deploy@build-01", SshTunnel.Arguments(Remote(), "/tmp/s.sock")[^1]);
 
     [Fact]
     public void Without_a_user_ssh_config_decides() =>
@@ -76,6 +76,6 @@ public class SshTunnelTests
 
         Assert.Contains("-p", arguments, StringComparer.Ordinal);
         Assert.Contains("2222", arguments, StringComparer.Ordinal);
-        Assert.Equal("rick@build-01", arguments[^1]);
+        Assert.Equal("deploy@build-01", arguments[^1]);
     }
 }

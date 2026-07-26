@@ -54,11 +54,11 @@ public sealed class XdgAutostartTests : IDisposable
     {
         // A path with spaces is ordinary — an AppImage in "~/My Apps" would otherwise become two
         // arguments and silently fail at login, which is the whole failure mode this feature has.
-        var autostart = Subject("/home/rick/My Apps/Kontena-linux-stable.AppImage");
+        var autostart = Subject("/opt/My Apps/Kontena-linux-stable.AppImage");
         autostart.Apply(true);
 
         var entry = File.ReadAllText(EntryPath);
-        Assert.Contains("Exec=\"/home/rick/My Apps/Kontena-linux-stable.AppImage\"", entry, StringComparison.Ordinal);
+        Assert.Contains("Exec=\"/opt/My Apps/Kontena-linux-stable.AppImage\"", entry, StringComparison.Ordinal);
         Assert.Contains("Type=Application", entry, StringComparison.Ordinal);
     }
 
