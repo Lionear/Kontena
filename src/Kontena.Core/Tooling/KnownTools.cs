@@ -24,6 +24,13 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://kind.sigs.k8s.io/docs/user/quick-start/#installation",
+
+        // kind's Windows asset has no .exe suffix, and its checksum files end in .sha256sum. Both
+        // differ from minikube below; guessing either produces a 404 rather than a wrong file.
+        Release = new ToolReleaseSpec("kubernetes-sigs/kind", "kind-{os}-{arch}", ".sha256sum"),
+
+        // 0.20 is where `kind create cluster --config` gained the node-image handling Kontena writes.
+        MinimumVersion = "0.20",
     };
 
     public static readonly ExternalTool Minikube = new(
@@ -38,6 +45,9 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://minikube.sigs.k8s.io/docs/start/",
+        Release = new ToolReleaseSpec(
+            "kubernetes/minikube", "minikube-{os}-{arch}", ".sha256", ExeOnWindows: true),
+        MinimumVersion = "1.30",
     };
 
     public static readonly ExternalTool Kubectl = new(

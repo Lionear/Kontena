@@ -42,6 +42,8 @@ namespace Kontena.Screenshots;
 //         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
+//         settings-clusters (KON-109 — the local-cluster tooling page; reads this machine, so the
+//         shot differs per box by design),
 //         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
 //         confirmation and the deliberately non-destructive one, both reached by running the
 //         row's own command so the shot cannot show a dialog the button does not raise).
@@ -322,6 +324,7 @@ internal static class Program
             case "settings-engines-edit":
             case "settings-engines-named":
             case "settings-engines-clusters":
+            case "settings-clusters":
             case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
@@ -331,8 +334,19 @@ internal static class Program
                         "settings-about" => "about",
                         "settings-registries" => "registries",
                         "settings" => "general",
+                        "settings-clusters" => "clusters",
                         _ => "engines",
                     });
+
+                    // Local clusters reads the machine it runs on (KON-109), so this shot shows what
+                    // is actually installed here rather than a posed list — which is the point: a
+                    // scene that faked "kind detected" would render identically whether or not the
+                    // detection works.
+                    if (scene == "settings-clusters" && s.ClusterTooling is { } tooling)
+                    {
+                        SettleUntil(() => tooling.HasLoaded, maxRounds: 200);
+                        Settle(rounds: 20);
+                    }
 
                     // The TCP form is where the security decision lives, so it gets its own shot.
                     if (scene == "settings-engines-tcp")
