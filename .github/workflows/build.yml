@@ -261,7 +261,10 @@ jobs:
                    EXTRA+=(--categories "Development;System") ;;
           esac
 
-          vpk pack "${EXTRA[@]}" \
+          # ${EXTRA[@]+…}, not "${EXTRA[@]}": macOS runners ship bash 3.2, which under `set -u`
+          # treats an empty array's expansion as an unbound variable and kills the step. The guarded
+          # form expands to nothing at all when the array is empty, and is a no-op on bash 5.
+          vpk pack ${EXTRA[@]+"${EXTRA[@]}"} \
             --packId Kontena \
             --packTitle Kontena \
             --packAuthors Lionear \
