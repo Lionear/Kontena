@@ -723,12 +723,34 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             item.Count = count;
     }
 
-    /// <summary>Badge the sidebar with the number of live tunnels — the whole point of the page is that
-    /// they keep running while you are somewhere else.</summary>
-    private void UpdatePortForwardCount() =>
+    /// <summary>
+    /// Badge the sidebar with the number of live tunnels — the whole point of the page is that they keep
+    /// running while you are somewhere else — plus a marker when one fell over (KON-107).
+    /// <para>
+    /// The count stays "how many are working", which is why the last tunnel dropping takes the badge to
+    /// nothing. That is correct and also unhelpful on its own: the page suddenly has something worth
+    /// seeing and the nav says it is empty. So a dropped tunnel gets its own marker, and only a dropped
+    /// one — paused and remembered rows are states the user chose, not events.
+    /// </para>
+    /// </summary>
+    private void UpdatePortForwardCount()
+    {
         SetNavCount("portforwards", _portForwards.ActiveCount == 0
             ? string.Empty
             : _portForwards.ActiveCount.ToString(CultureInfo.InvariantCulture));
+
+        if (NavItems.FirstOrDefault(i => i.Key == "portforwards") is not { } item)
+            return;
+
+        var dropped = _portForwards.DroppedCount;
+        item.NeedsAttention = dropped > 0;
+        item.AttentionTip = dropped switch
+        {
+            0 => string.Empty,
+            1 => "A port forward dropped",
+            _ => $"{dropped} port forwards dropped",
+        };
+    }
 
     private void OnPortForwardsChanged()
     {

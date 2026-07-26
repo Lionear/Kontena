@@ -150,6 +150,40 @@ public class PortForwardRegistryTests
     }
 
     [Fact]
+    public async Task Only_a_dropped_tunnel_counts_as_needing_attention()
+    {
+        // The distinction the sidebar marker rests on: dropped happened *to* the tunnel, while paused is
+        // the user's own decision. Counting paused rows would turn an ordinary state into an alarm
+        // (KON-107).
+        // Paused first, so the fake's most recent handle is the one to drop.
+        var (registry, cluster) = New();
+        var paused = await registry.StartAsync(cluster, Web, "web-0 · app", 8080, 8081);
+        await registry.PauseAsync(paused);
+
+        await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+        cluster.LastPortForward!.Drop();
+
+        Assert.Equal(0, registry.ActiveCount);
+        Assert.True(registry.HasReopenable);
+
+        // Two rows are not running; exactly one of them is an event.
+        Assert.Equal(1, registry.DroppedCount);
+    }
+
+    [Fact]
+    public async Task A_reconnected_tunnel_stops_needing_attention()
+    {
+        var (registry, cluster) = New();
+        var entry = await registry.StartAsync(cluster, Api, "api · app", 80, 8080);
+        cluster.LastPortForward!.Drop();
+        Assert.Equal(1, registry.DroppedCount);
+
+        await registry.ReconnectAsync(entry);
+
+        Assert.Equal(0, registry.DroppedCount);
+    }
+
+    [Fact]
     public async Task Reconnecting_reopens_the_tunnel_on_the_same_local_port()
     {
         var (registry, cluster) = New();
