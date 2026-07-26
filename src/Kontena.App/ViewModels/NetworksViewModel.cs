@@ -15,6 +15,12 @@ public sealed partial class NetworksViewModel : ViewModelBase, IListPage
 
     public ObservableCollection<NetworkRowViewModel> Items { get; } = [];
 
+    /// <summary>Raised when New network is clicked; the shell shows the modal (KON-92).</summary>
+    public Action? RequestCreateNetwork { get; set; }
+
+    [RelayCommand]
+    private void CreateNetwork() => RequestCreateNetwork?.Invoke();
+
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private string _summary = string.Empty;

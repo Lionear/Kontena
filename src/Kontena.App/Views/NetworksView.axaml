@@ -9,7 +9,16 @@
 
     <ScrollViewer>
         <StackPanel Margin="24,22" Spacing="14">
-            <TextBlock Text="Networks" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Networks" FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Classes="primary" Command="{Binding CreateNetworkCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconPlus}"/>
+                        <TextBlock Text="New network" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
             <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextDim}"/>
 
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"

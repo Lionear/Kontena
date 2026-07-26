@@ -305,6 +305,13 @@ internal static class Program
                 break;
             }
 
+            case "new-network":
+                vm.NavigateCommand.Execute("networks");
+                Settle(rounds: 20);
+                vm.Networks!.CreateNetworkCommand.Execute(null);
+                Settle(rounds: 10);
+                break;
+
             case "cluster-portforwards":
                 // All three states on one page, and every one of them reached the way the app does it:
                 // two forwards are opened, the backend is switched away and back (which persists them
