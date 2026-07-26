@@ -196,6 +196,26 @@
                                     </StackPanel>
 
                                     <Border Height="1" Background="{DynamicResource Border}" Margin="4,6"/>
+
+                                    <!-- Contexts found in a kubeconfig that have never been offered.
+                                         Mentioned, not added: a kubeconfig collects other people's
+                                         clusters, and production does not belong one click away by
+                                         accident (KON-120). -->
+                                    <Button Classes="engineitem" Click="OnSwitcherItemClick"
+                                            IsVisible="{Binding HasNewClusters}"
+                                            Command="{Binding ReviewNewClustersCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="11">
+                                            <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Info}"
+                                                  Data="{StaticResource IconInfo}" VerticalAlignment="Center"/>
+                                            <StackPanel Spacing="1">
+                                                <TextBlock Text="{Binding NewClusterNotice}" FontSize="13"
+                                                           FontWeight="SemiBold" Foreground="{DynamicResource Info}"/>
+                                                <TextBlock Text="Choose which to show" FontSize="11"
+                                                           Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Button>
+
                                     <Button Classes="engineitem" Click="OnSwitcherItemClick"
                                             Command="{Binding ShowAddBackendCommand}">
                                         <StackPanel Orientation="Horizontal" Spacing="11">

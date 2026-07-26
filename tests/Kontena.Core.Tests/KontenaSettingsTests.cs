@@ -73,6 +73,11 @@ public class KontenaSettingsTests
                 ["kubernetes:gke_myproject-prod_europe-west4_cluster-1"] = "Production EU",
                 ["docker-remote:r1"] = "Build server",
             },
+            KnownClusters = new Dictionary<string, bool>
+            {
+                ["kubernetes:gke_myproject-prod_europe-west4_cluster-1"] = true,
+                ["kubernetes:kind-kind"] = false,
+            },
             TerminalLigatures = true,
             RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
@@ -103,6 +108,9 @@ public class KontenaSettingsTests
         // Paths only — a kubeconfig is read where it lies and never copied into settings.
         Assert.Equal(original.KubeconfigPaths, restored.KubeconfigPaths);
         Assert.Equal(original.BackendNames, restored.BackendNames);
+
+        // Declined clusters survive as false, which is what stops them being offered again.
+        Assert.Equal(original.KnownClusters, restored.KnownClusters);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -115,6 +123,7 @@ public class KontenaSettingsTests
                 RemoteEngines = restored.RemoteEngines,
                 KubeconfigPaths = restored.KubeconfigPaths,
                 BackendNames = restored.BackendNames,
+                KnownClusters = restored.KnownClusters,
             },
             restored);
     }

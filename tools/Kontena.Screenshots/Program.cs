@@ -247,6 +247,11 @@ internal static class Program
             case "containers":
                 break; // default page
 
+            // No scene for the switcher's "n new clusters found" row (KON-120): it lives in a flyout,
+            // and a flyout renders into its own popup window rather than into this frame. Its count
+            // comes from ClusterVisibility, which is covered by tests; the row itself is checked by
+            // hand. Faking a shot of it would prove nothing.
+
             case "images":
             case "volumes":
             case "networks":
@@ -260,6 +265,7 @@ internal static class Program
             case "settings-engines":
             case "settings-engines-tcp":
             case "settings-engines-named":
+            case "settings-engines-clusters":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
                 {
@@ -278,6 +284,11 @@ internal static class Program
                     // Renaming (KON-119) is typed into the row, not poked into settings — the claim worth
                     // checking is that the switcher pill and the list follow, and only the real path does
                     // that. The shot is taken with the sidebar in frame for exactly that reason.
+                    // Hiding a cluster goes through the real row, so the shot shows what actually
+                    // happens to the switcher when one is unticked (KON-120).
+                    if (scene == "settings-engines-clusters" && s.Clusters.Count > 1)
+                        s.Clusters[^1].IsShown = false;
+
                     if (scene == "settings-engines-named" && s.BackendNames.Count > 0)
                     {
                         s.BackendNames[0].Name = "Work laptop";

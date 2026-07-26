@@ -160,11 +160,16 @@ public partial class AddBackendViewModel : ViewModelBase
     /// <param name="onAdded">
     /// Rebuilds the backend list, and switches to the given backend id when one is passed.
     /// </param>
+    /// <param name="start">
+    /// Where to open. The switcher's "n new clusters found" row comes straight in on the Kubernetes step
+    /// (KON-120): the user already knows what they are answering, and step 1 would be a detour.
+    /// </param>
     public AddBackendViewModel(
         SettingsStore store,
         IReadOnlyList<BackendProbe> probes,
         Action onClose,
-        Func<string?, Task> onAdded)
+        Func<string?, Task> onAdded,
+        AddBackendStep start = AddBackendStep.What)
     {
         _store = store;
         _probes = probes;
@@ -173,6 +178,9 @@ public partial class AddBackendViewModel : ViewModelBase
 
         KubeconfigPath = Kubeconfig.DefaultPath;
         LoadDetected();
+
+        if (start == AddBackendStep.Kubernetes)
+            ChooseKubernetes();
     }
 
     // ── Step ────────────────────────────────────────────────────────────────
@@ -401,6 +409,7 @@ public partial class AddBackendViewModel : ViewModelBase
         var isDefault = string.Equals(
             Kubeconfig.Expand(path), Kubeconfig.Expand(Kubeconfig.DefaultPath), StringComparison.Ordinal);
 
+        var stored = _store.Load();
         var contexts = Kubeconfig.LoadContexts(isDefault ? null : path);
         if (contexts.Count == 0)
         {
@@ -412,15 +421,20 @@ public partial class AddBackendViewModel : ViewModelBase
         foreach (var context in contexts)
         {
             var backend = new KubernetesClusterProvider(context.Name, isDefault ? null : path).Backend;
-            var known = _probes.Any(p => p.Provider.Backend == backend);
+
+            var shown = stored.ShowsCluster(backend);
+            var isNew = stored.NewClusters([backend]).Count > 0;
 
             var detail = string.IsNullOrEmpty(context.Namespace)
                 ? context.Cluster
                 : $"{context.Cluster} · namespace: {context.Namespace}";
 
-            var choice = new KubeContextChoice(context.Name, detail, selected: !known)
+            // New contexts arrive ticked — the user opened this to say yes to something. One that was
+            // seen and declined comes back unticked rather than hidden, so changing your mind is possible
+            // without being nagged.
+            var choice = new KubeContextChoice(context.Name, detail, selected: isNew)
             {
-                AlreadyAdded = known,
+                AlreadyAdded = shown,
             };
 
             choice.PropertyChanged += (_, e) =>
@@ -879,6 +893,20 @@ public partial class AddBackendViewModel : ViewModelBase
             {
                 var id = new KubernetesClusterProvider(chosen.Context, isDefault ? null : path).Backend;
                 _store.Update(s => s.WithBackendName(id, chosen.Name, chosen.Context));
+            }
+
+            // What was answered, recorded both ways (KON-120). A context left unticked is declined and
+            // will not be offered again; one that was ticked but failed its test is left unrecorded, so
+            // a cluster that happened to be down today comes back tomorrow.
+            foreach (var context in Contexts.Where(c => !c.AlreadyAdded))
+            {
+                var id = new KubernetesClusterProvider(context.Name, isDefault ? null : path).Backend;
+                var reached = _verifiedContexts.Contains(context.Name, StringComparer.Ordinal);
+
+                if (reached)
+                    _store.Update(s => s.WithCluster(id, shown: true));
+                else if (!context.IsSelected)
+                    _store.Update(s => s.WithCluster(id, shown: false));
             }
 
             switchTo = new KubernetesClusterProvider(_verifiedContexts[0], isDefault ? null : path).Backend;
