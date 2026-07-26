@@ -386,6 +386,46 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.FromResult(network);
     }
 
+    /// <summary>
+    /// Records the attachment on the network so the list reflects it, which is what the UI reads back.
+    /// Names, not ids: that is what <see cref="NetworkSummary.AttachedContainers"/> carries.
+    /// </summary>
+    public ValueTask ConnectNetworkAsync(string containerId, string networkId, CancellationToken ct = default)
+    {
+        if (!_networks.TryGetValue(networkId, out var network))
+            throw new InvalidOperationException($"No such network: {networkId}");
+
+        var name = NameOf(containerId);
+        if (!network.AttachedContainers.Contains(name, StringComparer.Ordinal))
+        {
+            _networks[networkId] = network with
+            {
+                AttachedContainers = [.. network.AttachedContainers, name],
+            };
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DisconnectNetworkAsync(
+        string containerId, string networkId, bool force = false, CancellationToken ct = default)
+    {
+        if (!_networks.TryGetValue(networkId, out var network))
+            throw new InvalidOperationException($"No such network: {networkId}");
+
+        var name = NameOf(containerId);
+        _networks[networkId] = network with
+        {
+            AttachedContainers = [.. network.AttachedContainers.Where(c => !string.Equals(c, name, StringComparison.Ordinal))],
+        };
+
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>The container's name, or the id when nothing is seeded under it.</summary>
+    private string NameOf(string containerId) =>
+        _containers.TryGetValue(containerId, out var container) ? container.Name : containerId;
+
     public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default)
     {
         var network = RequireNetwork(id);

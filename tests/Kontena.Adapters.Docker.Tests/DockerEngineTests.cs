@@ -123,6 +123,77 @@ public class DockerEngineTests
     }
 
     [SkippableFact]
+    public async Task A_container_can_be_attached_to_a_network_and_taken_off_again()
+    {
+        // The point of a user-defined network is containers reaching each other by name, and that only
+        // works once something is actually on it. Asserted against the engine's own view of the network,
+        // not against the call returning quietly.
+        using var engine = await ConnectOrSkipAsync();
+
+        var network = await engine.CreateNetworkAsync(new CreateNetworkRequest
+        {
+            Name = $"kontena-test-{Guid.NewGuid():N}"[..24],
+        });
+
+        // Running, because Docker only counts a container as attached while it is up: connecting a stopped
+        // one is allowed (see the next test) but does not show until it starts.
+        var container = await engine.CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "busybox:latest",
+            Name = $"kontena-test-{Guid.NewGuid():N}"[..24],
+            Start = false,
+        });
+
+        try
+        {
+            await engine.ConnectNetworkAsync(container, network.Id);
+            await engine.StartContainerAsync(container);
+
+            var attached = Assert.Single(await engine.ListNetworksAsync(), n => n.Id == network.Id);
+            Assert.NotEmpty(attached.AttachedContainers);
+
+            await engine.DisconnectNetworkAsync(container, network.Id, force: true);
+
+            var detached = Assert.Single(await engine.ListNetworksAsync(), n => n.Id == network.Id);
+            Assert.Empty(detached.AttachedContainers);
+        }
+        finally
+        {
+            await engine.RemoveContainerAsync(container, force: true);
+            await engine.RemoveNetworkAsync(network.Id);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Attaching_a_stopped_container_is_allowed()
+    {
+        // It takes effect when the container next starts. Treating this as an error would mean telling
+        // someone to start a container before they can wire it up, which is backwards.
+        using var engine = await ConnectOrSkipAsync();
+
+        var network = await engine.CreateNetworkAsync(new CreateNetworkRequest
+        {
+            Name = $"kontena-test-{Guid.NewGuid():N}"[..24],
+        });
+        var container = await engine.CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "busybox:latest",
+            Name = $"kontena-test-{Guid.NewGuid():N}"[..24],
+            Start = false,
+        });
+
+        try
+        {
+            await engine.ConnectNetworkAsync(container, network.Id);
+        }
+        finally
+        {
+            await engine.RemoveContainerAsync(container, force: true);
+            await engine.RemoveNetworkAsync(network.Id);
+        }
+    }
+
+    [SkippableFact]
     public async Task Browsing_a_volume_lists_what_a_container_wrote_into_it()
     {
         // The whole feature rests on a claim that cannot be unit-tested: that a volume's contents are

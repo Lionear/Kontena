@@ -466,6 +466,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Networks = new NetworksViewModel(_engine)
         {
             RequestCreateNetwork = ShowCreateNetworkDialog,
+            RequestNetworkAttachments = ShowNetworkAttachmentsDialog,
         };
         ComposeProjects = new ComposeProjectsViewModel(_engine)
         {
@@ -912,6 +913,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             await ActivateAsync(replacement.Provider);
         else
             EnterBackendDown("No backend is reachable", "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.");
+    }
+
+    private void ShowNetworkAttachmentsDialog(NetworkSummary network)
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new NetworkAttachmentsViewModel(_engine, network, CloseDialog, onChanged: async () =>
+        {
+            if (Networks is not null)
+                await Networks.LoadAsync();
+        });
     }
 
     private void ShowCreateNetworkDialog()

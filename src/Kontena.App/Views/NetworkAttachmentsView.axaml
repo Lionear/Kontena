@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="460"
+             x:Class="Kontena.App.Views.NetworkAttachmentsView"
+             x:DataType="vm:NetworkAttachmentsViewModel">
+    <Border Width="560" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+            <Grid Margin="24,20,20,16" ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="5">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
+                              Data="{StaticResource IconNetwork}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding NetworkName}" FontSize="15" FontWeight="SemiBold"
+                                   FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="Containers on this network reach each other by name."
+                               FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+                <Button Grid.Column="1" Classes="qa" Width="30" Height="30" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" ToolTip.Tip="Close">
+                    <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                          Data="{StaticResource IconClose}"/>
+                </Button>
+            </Grid>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+
+            <!-- Attach -->
+            <Grid Margin="24,16" ColumnDefinitions="*,10,Auto">
+                <ComboBox Grid.Column="0" ItemsSource="{Binding Candidates}"
+                          SelectedItem="{Binding SelectedCandidate, Mode=TwoWay}"
+                          IsEnabled="{Binding HasCandidates}" HorizontalAlignment="Stretch"
+                          PlaceholderText="Every container is already attached"/>
+                <Button Grid.Column="2" Classes="primary" Command="{Binding AttachCommand}"
+                        IsEnabled="{Binding CanAttach}" Content="Attach"/>
+            </Grid>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+
+            <Panel Height="250">
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Attached}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AttachedContainer">
+                                <Grid Margin="24,10" ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="13"
+                                               FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"
+                                               VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Classes="ghost" Content="Detach" VerticalAlignment="Center"
+                                            Command="{Binding $parent[ItemsControl].((vm:NetworkAttachmentsViewModel)DataContext).DetachCommand}"
+                                            CommandParameter="{Binding}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="7"
+                            IsVisible="{Binding IsEmpty}">
+                    <TextBlock Text="Nothing attached" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Attach a container above, or pick this network when you run one."
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Panel>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+            <Grid Margin="24,14" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap"
+                           MaxWidth="380" HorizontalAlignment="Left" VerticalAlignment="Center"
+                           IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{DynamicResource Danger}"/>
+                <Button Grid.Column="1" Classes="ghost" Command="{Binding CloseCommand}">Close</Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

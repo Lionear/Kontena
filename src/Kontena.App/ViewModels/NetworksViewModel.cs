@@ -15,6 +15,9 @@ public sealed partial class NetworksViewModel : ViewModelBase, IListPage
 
     public ObservableCollection<NetworkRowViewModel> Items { get; } = [];
 
+    /// <summary>Raised when a row's attachments are opened; the shell shows the dialog (KON-115).</summary>
+    public Action<NetworkSummary>? RequestNetworkAttachments { get; set; }
+
     /// <summary>Raised when New network is clicked; the shell shows the modal (KON-92).</summary>
     public Action? RequestCreateNetwork { get; set; }
 

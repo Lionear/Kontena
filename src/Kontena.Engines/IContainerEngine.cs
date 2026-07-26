@@ -118,6 +118,19 @@ public interface IContainerEngine : IBackend
         CreateNetworkRequest request, CancellationToken ct = default);
     ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Attaches a container to a network. Works on a stopped container too — the effect simply shows when
+    /// it next starts, which the UI must not read as a failure (KON-115).
+    /// </summary>
+    ValueTask ConnectNetworkAsync(string containerId, string networkId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Detaches a container from a network. <paramref name="force"/> asks the engine to do it even when
+    /// the container is running.
+    /// </summary>
+    ValueTask DisconnectNetworkAsync(
+        string containerId, string networkId, bool force = false, CancellationToken ct = default);
+
     // ── Compose ─────────────────────────────────────────────────────────────
 
     /// <summary>

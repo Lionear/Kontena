@@ -579,7 +579,36 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Exec(async () =>
         {
             var list = await _client.Networks.ListNetworksAsync(new NetworksListParameters(), ct).ConfigureAwait(false);
-            IReadOnlyList<NetworkSummary> result = list.Select(MapNetwork).ToList();
+
+            // The list endpoint never carries Containers — not even with verbose — so which containers are
+            // attached has to come from inspecting each network. Without this the ATTACHED column reads
+            // "none" on every network however many containers are on it, which is what it did until now.
+            // One extra call per network: there are a handful of them, and this column is the reason the
+            // page exists.
+            var inspected = await Task.WhenAll(list.Select(async network =>
+            {
+                try
+                {
+                    var detail = await _client.Networks.InspectNetworkAsync(network.ID, ct).ConfigureAwait(false);
+                    return MapNetwork(network) with
+                    {
+                        AttachedContainers =
+                        [
+                            .. (detail.Containers ?? new Dictionary<string, EndpointResource>())
+                                .Select(c => string.IsNullOrEmpty(c.Value?.Name) ? c.Key : c.Value.Name)
+                                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase),
+                        ],
+                    };
+                }
+                catch (Exception)
+                {
+                    // A network removed between the list and the inspect, or one this user cannot inspect:
+                    // report it without its attachments rather than failing the whole page.
+                    return MapNetwork(network);
+                }
+            })).ConfigureAwait(false);
+
+            IReadOnlyList<NetworkSummary> result = inspected;
             return result;
         });
 
@@ -620,6 +649,16 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
 
     public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>
         Exec(() => _client.Networks.DeleteNetworkAsync(id, ct));
+
+    public ValueTask ConnectNetworkAsync(
+        string containerId, string networkId, CancellationToken ct = default) =>
+        Exec(() => _client.Networks.ConnectNetworkAsync(
+            networkId, new NetworkConnectParameters { Container = containerId }, ct));
+
+    public ValueTask DisconnectNetworkAsync(
+        string containerId, string networkId, bool force = false, CancellationToken ct = default) =>
+        Exec(() => _client.Networks.DisconnectNetworkAsync(
+            networkId, new NetworkDisconnectParameters { Container = containerId, Force = force }, ct));
 
     // ── Streams ─────────────────────────────────────────────────────────────
 
