@@ -46,10 +46,17 @@ public static class BackendCatalog
     /// <param name="kubeconfigPaths">
     /// Kubeconfig files the user added beyond the default one (KON-118).
     /// </param>
+    /// <param name="showsCluster">
+    /// Whether a discovered cluster belongs in the switcher (KON-120). Null includes everything, which is
+    /// what discovery itself needs. A cluster the user did not choose is left out here rather than
+    /// filtered further up: a provider that exists gets probed, and a cluster nobody asked for should not
+    /// be contacted at all.
+    /// </param>
     public static List<IBackendProvider> Build(
         bool includeDemo,
         IReadOnlyList<RemoteEngine>? remotes = null,
-        IReadOnlyList<string>? kubeconfigPaths = null)
+        IReadOnlyList<string>? kubeconfigPaths = null,
+        Func<string, bool>? showsCluster = null)
     {
         var providers = new List<IBackendProvider>
         {
@@ -65,9 +72,10 @@ public static class BackendCatalog
                 providers.Add(new RemoteDockerEngineProvider(remote));
         }
 
-        // One cluster backend per kube-context. Yields nothing when there is no kubeconfig, so a
+        // One cluster backend per chosen kube-context. Yields nothing when there is no kubeconfig, so a
         // machine that only runs containers simply shows no Clusters group.
-        providers.AddRange(KubernetesClusterProvider.DiscoverAll(kubeconfigPaths));
+        providers.AddRange(DiscoverClusters(kubeconfigPaths)
+            .Where(p => showsCluster is null || showsCluster(p.Backend)));
 
         if (includeDemo && DemoAllowed)
         {
@@ -79,4 +87,12 @@ public static class BackendCatalog
 
         return providers;
     }
+
+    /// <summary>
+    /// Every cluster in every kubeconfig Kontena reads, chosen or not (KON-120). Files only — nothing is
+    /// contacted — so this is safe to call to find out what is on offer.
+    /// </summary>
+    public static IReadOnlyList<IBackendProvider> DiscoverClusters(
+        IReadOnlyList<string>? kubeconfigPaths = null) =>
+        [.. KubernetesClusterProvider.DiscoverAll(kubeconfigPaths)];
 }

@@ -89,6 +89,51 @@ public partial class BackendNameRow : ViewModelBase
     }
 }
 
+/// <summary>A cluster found in a kubeconfig, whether or not it is in the switcher (KON-120).</summary>
+/// <param name="Backend">Backend id.</param>
+/// <param name="Name">Context name.</param>
+/// <param name="Source">Which kubeconfig it came from.</param>
+public sealed record DiscoveredCluster(string Backend, string Name, string Source);
+
+/// <summary>
+/// One cluster in Settings › Engines › Clusters, with whether it belongs in the switcher (KON-120).
+/// <para>
+/// The wizard adds; this is where you take one away again. It matters most right after the change
+/// landed: an existing installation keeps everything it had, and this is the only way to thin it out.
+/// </para>
+/// </summary>
+public partial class ClusterChoiceRow : ViewModelBase
+{
+    private readonly Action<string, bool> _set;
+    private bool _loading;
+
+    public ClusterChoiceRow(DiscoveredCluster cluster, bool shown, Action<string, bool> set)
+    {
+        ArgumentNullException.ThrowIfNull(cluster);
+
+        Backend = cluster.Backend;
+        Name = cluster.Name;
+        Source = cluster.Source;
+        _set = set;
+
+        _loading = true;
+        _isShown = shown;
+        _loading = false;
+    }
+
+    public string Backend { get; }
+    public string Name { get; }
+    public string Source { get; }
+
+    [ObservableProperty] private bool _isShown;
+
+    partial void OnIsShownChanged(bool value)
+    {
+        if (!_loading)
+            _set(Backend, value);
+    }
+}
+
 /// <summary>
 /// The Settings page: General (appearance + startup), Engines (auto-detect,
 /// default engine, engine list) and About. Every change persists immediately via
@@ -117,7 +162,9 @@ public partial class SettingsViewModel : ViewModelBase
         RegistryCredentials? registries = null,
         Func<IContainerEngine?>? engine = null,
         Func<Task>? onRemotesChanged = null,
-        Action? onNamesChanged = null)
+        Action? onNamesChanged = null,
+        IReadOnlyList<DiscoveredCluster>? clusters = null,
+        Func<Task>? onClustersChanged = null)
     {
         _registries = registries;
         _engineForVerify = engine;
@@ -125,6 +172,8 @@ public partial class SettingsViewModel : ViewModelBase
         _secrets = secrets ?? SecretStore.Create();
         _onRemotesChanged = onRemotesChanged;
         _onNamesChanged = onNamesChanged;
+        _discoveredClusters = clusters ?? [];
+        _onClustersChanged = onClustersChanged;
         _backends = [.. backends ?? engines];
         _store = store;
         _settings = settings;
@@ -145,6 +194,7 @@ public partial class SettingsViewModel : ViewModelBase
         _launchAtLogin = _autostart.IsSupported ? _autostart.IsEnabled() : settings.LaunchAtLogin;
         RefreshRemotes();
         RefreshBackendNames();
+        RefreshClusters();
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
@@ -534,6 +584,38 @@ public partial class SettingsViewModel : ViewModelBase
 
         RegistryNotice = $"Signed out of {row.Host}.";
         RefreshRegistries();
+    }
+
+    // ── Clusters (KON-120) ──────────────────────────────────────────────────
+
+    private readonly IReadOnlyList<DiscoveredCluster> _discoveredClusters;
+    private readonly Func<Task>? _onClustersChanged;
+
+    /// <summary>Every cluster in every kubeconfig Kontena reads, shown or not.</summary>
+    public ObservableCollection<ClusterChoiceRow> Clusters { get; } = [];
+
+    public bool HasClusters => Clusters.Count > 0;
+
+    private void RefreshClusters()
+    {
+        Clusters.Clear();
+        foreach (var cluster in _discoveredClusters)
+            Clusters.Add(new ClusterChoiceRow(cluster, _settings.ShowsCluster(cluster.Backend), SetCluster));
+
+        OnPropertyChanged(nameof(HasClusters));
+    }
+
+    /// <summary>
+    /// Shows or hides a cluster, and rebuilds the backend list — a cluster that is not shown is not a
+    /// provider, so it is not probed either. Which is the point: a cluster nobody asked for should not
+    /// be contacted.
+    /// </summary>
+    private void SetCluster(string backend, bool shown)
+    {
+        _settings = _store.Update(s => s.WithCluster(backend, shown));
+
+        if (_onClustersChanged is not null)
+            _ = _onClustersChanged();
     }
 
     // ── Names in the switcher (KON-119) ─────────────────────────────────────

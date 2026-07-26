@@ -7,6 +7,7 @@ using Kontena.Adapters.Podman;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
+using Kontena.Core.Models;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
 
@@ -30,10 +31,18 @@ public partial class App : Application
 
             // Provider-based: the registry discovers backends (and, later, plugins). BackendCatalog
             // owns the composition so the runtime demo toggle (KON-96) builds the same list.
+            // Which clusters exist is read from files; which of them belong in the switcher is the
+            // user's answer (KON-120). An installation that predates the choice keeps what it had.
+            var clusters = BackendCatalog.DiscoverClusters(settings.KubeconfigPaths)
+                .Select(p => p.Backend)
+                .ToList();
+
+            settings = store.Update(s => s.AdoptExistingClusters(clusters).PruneClusters(clusters));
+
             var registry = new BackendRegistry(
                 BackendCatalog.Build(
                     BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends),
-                    settings.RemoteEngines, settings.KubeconfigPaths));
+                    settings.RemoteEngines, settings.KubeconfigPaths, settings.ShowsCluster));
 
             desktop.MainWindow = new MainWindow
             {

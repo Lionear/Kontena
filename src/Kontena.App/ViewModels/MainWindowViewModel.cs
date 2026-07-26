@@ -226,6 +226,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             _probes = await _registry.ProbeAllAsync();
             BuildSettingsPage();
             RebuildEngineList();
+            RefreshNewClusters();
 
             if (!_settings.Onboarded)
             {
@@ -923,7 +924,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             onRemotesChanged: () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
             // A rename changes no connection, so it must not cost a re-probe: re-read the names and
             // redraw. Probing on every keystroke would make typing a name feel like a reconnect.
-            onNamesChanged: RefreshBackendNames);
+            onNamesChanged: RefreshBackendNames,
+
+            // Every cluster in every kubeconfig, not only the chosen ones — the hidden ones are exactly
+            // what this list is for (KON-120).
+            clusters: DiscoveredClusters(),
+            onClustersChanged: () =>
+                ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)));
     }
 
     /// <summary>
@@ -936,8 +943,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _settings = _settings with { ShowDemoBackends = includeDemo };
         var stored = _store.Load();
         _registry.Replace(BackendCatalog.Build(
-            BackendCatalog.ShouldIncludeDemo(includeDemo), stored.RemoteEngines, stored.KubeconfigPaths));
+            BackendCatalog.ShouldIncludeDemo(includeDemo),
+            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
         _probes = await _registry.ProbeAllAsync();
+        RefreshNewClusters();
 
         RebuildEngineList();
         BuildSettingsPage();
@@ -1014,12 +1023,70 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             item.IsSelected = false;
     }
 
+    // ── New clusters (KON-120) ──────────────────────────────────────────────
+
+    /// <summary>How many contexts are in a kubeconfig Kontena reads but have never been offered.</summary>
+    [ObservableProperty] private int _newClusterCount;
+
+    public bool HasNewClusters => NewClusterCount > 0;
+
+    /// <summary>Reads as a sentence in the switcher, so the count and the noun agree.</summary>
+    public string NewClusterNotice => NewClusterCount == 1
+        ? "1 new cluster found"
+        : $"{NewClusterCount} new clusters found";
+
+    partial void OnNewClusterCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(HasNewClusters));
+        OnPropertyChanged(nameof(NewClusterNotice));
+    }
+
+    /// <summary>
+    /// Counts contexts that exist but have never been offered. Mentioned rather than added: a kubeconfig
+    /// gains clusters that belong to other people, and appearing in the switcher by itself is how a
+    /// production cluster ends up one click from a toy.
+    /// </summary>
+    private void RefreshNewClusters()
+    {
+        var settings = _store.Load();
+        var discovered = BackendCatalog.DiscoverClusters(settings.KubeconfigPaths)
+            .Select(p => p.Backend)
+            .ToList();
+
+        NewClusterCount = settings.NewClusters(discovered).Count;
+    }
+
+    /// <summary>Every cluster in every kubeconfig Kontena reads, for the Settings list.</summary>
+    private IReadOnlyList<DiscoveredCluster> DiscoveredClusters()
+    {
+        var paths = _store.Load().KubeconfigPaths;
+        return
+        [
+            .. BackendCatalog.DiscoverClusters(paths)
+                .Select(p => new DiscoveredCluster(
+                    p.Backend,
+                    p.DisplayName,
+
+                    // The id carries a hash of the file for a non-default kubeconfig; the user needs the
+                    // file, not the hash.
+                    p.Backend.Contains('@', StringComparison.Ordinal)
+                        ? "added kubeconfig"
+                        : "default kubeconfig")),
+        ];
+    }
+
+    /// <summary>The switcher's "n new clusters found" row — opens the wizard where they are chosen.</summary>
+    [RelayCommand]
+    private void ReviewNewClusters() => ShowAddBackend(AddBackendStep.Kubernetes);
+
     /// <summary>
     /// The switcher's "Add engine or cluster…" row (KON-118). Opens the wizard, which ends in a
     /// connection that has actually been made — the reason it is a wizard and not a form.
     /// </summary>
     [RelayCommand]
-    private void ShowAddBackend()
+    private void ShowAddBackend() => ShowAddBackend(AddBackendStep.What);
+
+    private void ShowAddBackend(AddBackendStep start)
     {
         Dialog = new AddBackendViewModel(_store, _probes, CloseDialog, async backend =>
         {
@@ -1032,7 +1099,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 await ActivateAsync(provider);
             }
-        });
+        }, start);
     }
 
     // ── Theme quick-toggle (topbar) ─────────────────────────────────────────

@@ -167,6 +167,22 @@ public sealed record KontenaSettings
     public IReadOnlyDictionary<string, string> BackendNames { get; init; } =
         new Dictionary<string, string>();
 
+    /// <summary>
+    /// Every cluster Kontena has seen, and whether it belongs in the switcher (KON-120).
+    /// <para>
+    /// Local engines are discovered and added; clusters are discovered and offered. A kubeconfig is a
+    /// collection that accumulates — old customers, dead kind clusters, and production — and listing all
+    /// of it puts a production cluster one click from a toy.
+    /// </para>
+    /// <para>
+    /// A context that was seen and declined stays here as <c>false</c>, so it is not offered again every
+    /// launch. Empty on an installation that predates this, which is what triggers the one-time adoption
+    /// of everything already visible.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, bool> KnownClusters { get; init; } =
+        new Dictionary<string, bool>();
+
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";
 
