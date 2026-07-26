@@ -312,7 +312,7 @@ public partial class UpdateViewModel : ViewModelBase
     {
         IsToastVisible = false;
         if (!string.IsNullOrEmpty(Version))
-            _store.Save(_settings() with { DismissedUpdateVersion = Version });
+            _store.Update(s => s with { DismissedUpdateVersion = Version });
     }
 
     [RelayCommand]

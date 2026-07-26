@@ -274,8 +274,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 // Kube-context removed, engine uninstalled, demo backends switched off. Forget it
                 // rather than offering a reconnect that can never succeed, and say so — silently
                 // landing somewhere else is how you end up acting on the wrong cluster.
-                _settings = _settings with { LastBackend = null, PinnedBackend = null, Startup = StartupBackend.LastUsed };
-                _store.Save(_settings);
+                _settings = _store.Update(s => s with
+                {
+                    LastBackend = null, PinnedBackend = null, Startup = StartupBackend.LastUsed,
+                });
                 BuildSettingsPage();
 
                 EnterBackendDown(
@@ -343,12 +345,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         // Onboarding no longer pins: picking an engine here says "start me here", not "and never
         // follow me anywhere else". Activating it records it as last used, which is enough.
-        _settings = _settings with
+        _settings = _store.Update(s => s with
         {
             Onboarded = true,
             AutoDetectEngines = autoDetect,
-        };
-        _store.Save(_settings);
+        });
         BuildSettingsPage(); // reflect the just-chosen default in Settings
 
         IsOnboarding = false;
@@ -443,8 +444,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (_settings.LastBackend == backend)
             return;
 
-        _settings = _settings with { LastBackend = backend };
-        _store.Save(_settings);
+        _settings = _store.Update(s => s with { LastBackend = backend });
     }
 
     private async Task EnterEngineModeAsync(IContainerEngine engine)
@@ -777,14 +777,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
 
         var remembered = _portForwards.Snapshot();
-        var all = new Dictionary<string, IReadOnlyList<RememberedPortForward>>(_settings.PortForwards);
-        if (remembered.Count == 0)
-            all.Remove(_activeBackend);
-        else
-            all[_activeBackend] = remembered;
+        _settings = _store.Update(s =>
+        {
+            var all = new Dictionary<string, IReadOnlyList<RememberedPortForward>>(s.PortForwards);
+            if (remembered.Count == 0)
+                all.Remove(_activeBackend);
+            else
+                all[_activeBackend] = remembered;
 
-        _settings = _settings with { PortForwards = all };
-        _store.Save(_settings);
+            return s with { PortForwards = all };
+        });
     }
 
     /// <summary>
@@ -1005,14 +1007,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             ? ThemePreference.Light
             : ThemePreference.Dark;
 
-        _settings = _settings with { Theme = next };
-
         if (SettingsPage is not null)
+        {
+            _settings = _settings with { Theme = next };
             SettingsPage.Theme = next; // applies + persists via its own handler
+        }
         else
         {
             ThemeApplier.Apply(next);
-            _store.Save(_settings);
+            _settings = _store.Update(s => s with { Theme = next });
         }
 
         SyncThemeToggleIcon();
@@ -1107,12 +1110,14 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (string.IsNullOrWhiteSpace(path))
             return;
 
-        var recent = new List<string> { path };
-        recent.AddRange(_settings.RecentBuildContexts
-            .Where(c => !string.Equals(c, path, StringComparison.Ordinal)));
+        _settings = _store.Update(s =>
+        {
+            var recent = new List<string> { path };
+            recent.AddRange(s.RecentBuildContexts
+                .Where(c => !string.Equals(c, path, StringComparison.Ordinal)));
 
-        _settings = _settings with { RecentBuildContexts = recent.Take(6).ToList() };
-        _store.Save(_settings);
+            return s with { RecentBuildContexts = recent.Take(6).ToList() };
+        });
     }
 
     private void ShowComposeUpDialog()
