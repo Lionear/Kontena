@@ -132,6 +132,13 @@ public sealed record KontenaSettings
     /// </summary>
     public string? DismissedUpdateVersion { get; init; }
 
+    /// <summary>
+    /// Registries Kontena has a login for, without the secrets — those live in the OS keychain, keyed by
+    /// host (KON-114). Logins found in the engine's own config are not listed here: they are read live,
+    /// because they are not ours to remember or to go stale.
+    /// </summary>
+    public IReadOnlyList<RegistryLogin> Registries { get; init; } = [];
+
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";
 

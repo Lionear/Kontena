@@ -75,11 +75,17 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             openCard: () => Dialog = Update,
             closeCard: () => { if (ReferenceEquals(Dialog, Update)) Dialog = null; });
 
+        // One resolver for the process: it reads the keychain and the engine's config on demand, so it
+        // holds no secret of its own.
+        _registryCredentials = new RegistryCredentials(_secrets, store.Load);
+
         SyncThemeToggleIcon();
         _ = InitAsync();
     }
 
     private readonly IUpdateService _updateService;
+    private readonly ISecretStore _secrets = SecretStore.Create();
+    private readonly RegistryCredentials _registryCredentials;
 
     /// <summary>The in-app updater, behind the sidebar entry, the toast and the card (KON-110).</summary>
     public UpdateViewModel Update { get; }
@@ -886,7 +892,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             .Where(e => _probes.First(p => p.Provider.Backend == e.Backend).Provider.Kind == BackendKind.Engine)
             .ToList();
 
-        SettingsPage = new SettingsViewModel(_store, _settings, engines, all, ReloadBackendsAsync, Update);
+        SettingsPage = new SettingsViewModel(
+            _store, _settings, engines, all, ReloadBackendsAsync, Update,
+            secrets: _secrets, registries: _registryCredentials, engine: () => _engine);
     }
 
     /// <summary>
@@ -1041,7 +1049,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 if (Containers is not null)
                     await Containers.LoadAsync();
             },
-            initialImage: initialImage);
+            initialImage: initialImage,
+            credentials: _registryCredentials);
     }
 
     private void ShowPullDialog()
@@ -1049,7 +1058,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (_engine is null)
             return;
 
-        Dialog = new PullImageViewModel(_engine, CloseDialog, onPulled: RefreshAfterPullAsync);
+        Dialog = new PullImageViewModel(
+            _engine, CloseDialog, onPulled: RefreshAfterPullAsync, credentials: _registryCredentials);
     }
 
     private async Task RefreshAfterPullAsync()
