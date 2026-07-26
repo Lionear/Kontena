@@ -34,6 +34,12 @@ public sealed class KubernetesClusterProvider : IBackendProvider
         : $"{KubernetesAdapterModule.BackendId}@{ShortHash(_kubeconfigPath)}:{_context}";
 
     public string DisplayName => _context;
+
+    /// <summary>
+    /// The kubeconfig this context came from, or null for the default one (KON-122). Two files can both
+    /// hold a context called <c>default</c>, so the file is the only thing telling them apart in a list.
+    /// </summary>
+    public string? KubeconfigPath => _kubeconfigPath;
     public string Chip { get; }
     public BackendKind Kind => BackendKind.Cluster;
 

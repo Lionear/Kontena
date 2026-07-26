@@ -114,6 +114,29 @@ public class ClusterVisibilityTests
     }
 
     [Fact]
+    public void Removing_a_kubeconfig_takes_its_clusters_choices_and_names_with_it()
+    {
+        // Removing a file is the only way a cluster leaves without the kubeconfig changing, so the two
+        // prunes have to agree. If only one ran, a re-added file would come back with a name the user
+        // set long ago, or a visibility they no longer remember choosing.
+        const string FromFile = "kubernetes@a1b2c3d4:default";
+
+        var settings = new KontenaSettings()
+            .WithCluster(Prod, shown: true)
+            .WithCluster(FromFile, shown: true)
+            .WithBackendName(FromFile, "Customer cluster", "default");
+
+        // The file is gone, so its contexts are no longer discovered.
+        var remaining = new[] { Prod };
+        var pruned = settings.PruneClusters(remaining).PruneBackendNames(remaining);
+
+        Assert.False(pruned.ShowsCluster(FromFile));
+        Assert.Empty(pruned.NewClusters([Prod]));
+        Assert.Equal("default", pruned.NameFor(FromFile, "default"));
+        Assert.True(pruned.ShowsCluster(Prod));
+    }
+
+    [Fact]
     public void A_choice_can_be_changed()
     {
         var settings = new KontenaSettings()

@@ -89,6 +89,17 @@ public partial class BackendNameRow : ViewModelBase
     }
 }
 
+/// <summary>
+/// A kubeconfig Kontena reads, as shown in Settings › Engines › Kubeconfigs (KON-122).
+/// </summary>
+/// <param name="Path">The file. Empty for the default one, which has no path to remove.</param>
+/// <param name="Label">What the row shows.</param>
+/// <param name="CanRemove">
+/// False for the default kubeconfig. It is listed so it is visible that Kontena always reads it, but
+/// there is nothing to take away — removing it would mean not reading the file every kubectl user has.
+/// </param>
+public sealed record KubeconfigSource(string Path, string Label, bool CanRemove);
+
 /// <summary>A cluster found in a kubeconfig, whether or not it is in the switcher (KON-120).</summary>
 /// <param name="Backend">Backend id.</param>
 /// <param name="Name">Context name.</param>
@@ -164,7 +175,8 @@ public partial class SettingsViewModel : ViewModelBase
         Func<Task>? onRemotesChanged = null,
         Action? onNamesChanged = null,
         IReadOnlyList<DiscoveredCluster>? clusters = null,
-        Func<Task>? onClustersChanged = null)
+        Func<Task>? onClustersChanged = null,
+        IReadOnlyList<KubeconfigSource>? kubeconfigs = null)
     {
         _registries = registries;
         _engineForVerify = engine;
@@ -173,6 +185,7 @@ public partial class SettingsViewModel : ViewModelBase
         _onRemotesChanged = onRemotesChanged;
         _onNamesChanged = onNamesChanged;
         _discoveredClusters = clusters ?? [];
+        Kubeconfigs = [.. kubeconfigs ?? []];
         _onClustersChanged = onClustersChanged;
         _backends = [.. backends ?? engines];
         _store = store;
@@ -584,6 +597,36 @@ public partial class SettingsViewModel : ViewModelBase
 
         RegistryNotice = $"Signed out of {row.Host}.";
         RefreshRegistries();
+    }
+
+    // ── Kubeconfigs (KON-122) ───────────────────────────────────────────────
+
+    /// <summary>The kubeconfigs Kontena reads: the default one, plus whatever was added.</summary>
+    public ObservableCollection<KubeconfigSource> Kubeconfigs { get; } = [];
+
+    public bool HasRemovableKubeconfigs => Kubeconfigs.Any(k => k.CanRemove);
+
+    /// <summary>
+    /// Stops reading a kubeconfig. The file is left alone — this is "no longer read", not "deleted",
+    /// and a config Kontena did not create is not Kontena's to remove.
+    /// </summary>
+    [RelayCommand]
+    private void RemoveKubeconfig(KubeconfigSource? source)
+    {
+        if (source is null || !source.CanRemove)
+            return;
+
+        _settings = _store.Update(s => s with
+        {
+            KubeconfigPaths = [.. s.KubeconfigPaths.Where(p => !string.Equals(p, source.Path, StringComparison.Ordinal))],
+        });
+
+        Kubeconfigs.Remove(source);
+        OnPropertyChanged(nameof(HasRemovableKubeconfigs));
+
+        // Its clusters go with it, along with their names and visibility — the rebuild prunes both.
+        if (_onClustersChanged is not null)
+            _ = _onClustersChanged();
     }
 
     // ── Clusters (KON-120) ──────────────────────────────────────────────────

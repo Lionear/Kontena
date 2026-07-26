@@ -90,6 +90,13 @@ internal static class Program
                 // The offer states must survive the check on launch: with the background download
                 // on, "available" is gone before the scene can ask for anything.
                 AutoDownloadUpdates = opts.Scene is not ("update-toast" or "update-card"),
+
+                // An added kubeconfig, so the row that can be removed is in frame (KON-122). The file
+                // need not exist: the point of the shot is the management row, and a config on a
+                // disconnected drive is a state the list has to survive anyway.
+                KubeconfigPaths = opts.Scene == "settings-engines-kubeconfigs"
+                    ? ["/srv/kubeconfigs/acme.yaml"]
+                    : [],
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
@@ -266,6 +273,7 @@ internal static class Program
             case "settings-engines-tcp":
             case "settings-engines-named":
             case "settings-engines-clusters":
+            case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
                 {
