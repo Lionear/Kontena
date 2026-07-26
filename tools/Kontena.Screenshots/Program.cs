@@ -340,6 +340,16 @@ internal static class Program
                 Settle(rounds: 10);
                 break;
 
+            case "network-attachments":
+                vm.NavigateCommand.Execute("networks");
+                SettleUntil(() => vm.Networks is { HasLoaded: true }, maxRounds: 80);
+                vm.Networks!.Items.First(n => n.CanAttach && !n.IsBuiltIn).AttachmentsCommand.Execute(null);
+                SettleUntil(
+                    () => vm.Dialog is Kontena.App.ViewModels.NetworkAttachmentsViewModel { IsBusy: false },
+                    maxRounds: 120);
+                Settle(rounds: 10);
+                break;
+
             case "new-network":
                 vm.NavigateCommand.Execute("networks");
                 Settle(rounds: 20);

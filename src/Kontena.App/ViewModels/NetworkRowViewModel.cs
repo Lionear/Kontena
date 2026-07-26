@@ -25,6 +25,15 @@ public sealed partial class NetworkRowViewModel : ObservableObject
     public bool IsBuiltIn => _n.IsBuiltIn;
     public bool CanDelete => !_n.IsBuiltIn;
 
+    /// <summary>
+    /// Whether containers can be attached here. host and none are not networks you join — they are modes
+    /// the engine provides — so the action would only ever fail on them (KON-115).
+    /// </summary>
+    public bool CanAttach => _n.Driver is not ("host" or "null" or "none");
+
+    [RelayCommand]
+    private void Attachments() => _parent.RequestNetworkAttachments?.Invoke(_n);
+
     public string AttachedText => _n.AttachedContainers.Count > 0
         ? $"{_n.AttachedContainers.Count} container{(_n.AttachedContainers.Count == 1 ? "" : "s")}"
         : "— none";
