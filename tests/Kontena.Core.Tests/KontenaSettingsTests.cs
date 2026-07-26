@@ -58,16 +58,16 @@ public class KontenaSettingsTests
             DismissedUpdateVersion = "0.3.0",
             Registries =
             [
-                new RegistryLogin("ghcr.io", "rick", RegistryCredentialSource.Kontena),
+                new RegistryLogin("ghcr.io", "octo", RegistryCredentialSource.Kontena),
                 new RegistryLogin("registry.local:5000", "ci", RegistryCredentialSource.Kontena),
             ],
             RemoteEngines =
             [
-                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "build-01", User: "rick"),
+                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "build-01", User: "deploy"),
                 new RemoteEngine("r2", "Lab", RemoteEngineTransport.Tcp, "lab.local", 2376,
-                    CertificateDirectory: "/home/rick/.docker/lab"),
+                    CertificateDirectory: "/srv/docker/certs/lab"),
             ],
-            KubeconfigPaths = ["/home/rick/clients/acme.yaml", "~/Downloads/kubeconfig"],
+            KubeconfigPaths = ["/srv/kubeconfigs/acme.yaml", "~/Downloads/kubeconfig"],
             BackendNames = new Dictionary<string, string>
             {
                 ["kubernetes:gke_myproject-prod_europe-west4_cluster-1"] = "Production EU",
@@ -79,7 +79,7 @@ public class KontenaSettingsTests
                 ["kubernetes:kind-kind"] = false,
             },
             TerminalLigatures = true,
-            RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
+            RecentBuildContexts = ["/srv/build/app", "/srv/build/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
             {
                 ["kubernetes:kind-kind"] =
