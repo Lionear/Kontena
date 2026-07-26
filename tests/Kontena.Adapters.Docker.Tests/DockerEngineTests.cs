@@ -1,4 +1,7 @@
 using System.Text;
+using Docker.DotNet;
+using Docker.DotNet.Models;
+using ContainerState = Kontena.Core.Models.ContainerState;
 using Kontena.Adapters.Docker;
 using Kontena.Core.Errors;
 using Kontena.Core.Models;
@@ -86,6 +89,113 @@ public class DockerEngineTests
         Assert.Contains(networks, n => n.IsBuiltIn);
     }
 
+
+    /// <summary>
+    /// Runs a shell line against a fresh container with <paramref name="volume"/> mounted at /v, waits
+    /// for it to finish, and removes it. Test scaffolding, not part of the adapter's surface.
+    /// </summary>
+    private static async Task WriteIntoVolumeAsync(string volume, string shell)
+    {
+        using var client = new DockerClientConfiguration().CreateClient();
+
+        await client.Images.CreateImageAsync(
+            new ImagesCreateParameters { FromImage = "busybox", Tag = "latest" },
+            null,
+            new Progress<JSONMessage>());
+
+        var created = await client.Containers.CreateContainerAsync(new CreateContainerParameters
+        {
+            Image = "busybox:latest",
+            Cmd = ["sh", "-c", shell],
+            HostConfig = new HostConfig { Binds = [$"{volume}:/v"] },
+        });
+
+        try
+        {
+            await client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters());
+            await client.Containers.WaitContainerAsync(created.ID);
+        }
+        finally
+        {
+            await client.Containers.RemoveContainerAsync(
+                created.ID, new ContainerRemoveParameters { Force = true });
+        }
+    }
+
+    [SkippableFact]
+    public async Task Browsing_a_volume_lists_what_a_container_wrote_into_it()
+    {
+        // The whole feature rests on a claim that cannot be unit-tested: that a volume's contents are
+        // readable from a container that was created but never started. This asserts exactly that,
+        // against a real engine, by writing files with one container and listing them without running
+        // anything at all.
+        using var engine = await ConnectOrSkipAsync();
+
+        var volume = await engine.CreateVolumeAsync(new CreateVolumeRequest
+        {
+            Name = $"kontena-test-{Guid.NewGuid():N}"[..24],
+        });
+
+        try
+        {
+            // Arranged with the raw client rather than through CEAL: seeding a volume needs a command,
+            // which CreateContainerRequest deliberately does not carry. The assertion below is the
+            // CEAL call — that is what is under test.
+            await WriteIntoVolumeAsync(
+                volume.Name,
+                "mkdir -p /v/nested && echo hello > /v/top.txt && echo deep > /v/nested/inner.txt");
+
+            var root = await engine.BrowseVolumeAsync(volume.Name);
+
+            Assert.Equal("/", root.Path);
+            Assert.False(root.Truncated);
+            Assert.Contains(root.Entries, e => e.Name == "top.txt" && !e.IsDirectory && e.SizeBytes > 0);
+            Assert.Contains(root.Entries, e => e.Name == "nested" && e.IsDirectory);
+
+            // One level down, and only that level: inner.txt is a child of nested, not of the root.
+            Assert.DoesNotContain(root.Entries, e => e.Name == "inner.txt");
+
+            var nested = await engine.BrowseVolumeAsync(volume.Name, "/nested");
+            Assert.Equal("/nested", nested.Path);
+            Assert.Contains(nested.Entries, e => e.Name == "inner.txt" && !e.IsDirectory);
+
+            // Directories first, then alphabetical — the order the browser relies on.
+            Assert.Equal(
+                root.Entries.OrderByDescending(e => e.IsDirectory).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase).Select(e => e.Name),
+                root.Entries.Select(e => e.Name));
+        }
+        finally
+        {
+            await engine.RemoveVolumeAsync(volume.Name, force: true);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Browsing_leaves_no_container_behind()
+    {
+        using var engine = await ConnectOrSkipAsync();
+
+        var volume = await engine.CreateVolumeAsync(new CreateVolumeRequest
+        {
+            Name = $"kontena-test-{Guid.NewGuid():N}"[..24],
+        });
+
+        try
+        {
+            var before = (await engine.ListContainersAsync(all: true)).Count;
+            await engine.BrowseVolumeAsync(volume.Name);
+            var after = (await engine.ListContainersAsync(all: true)).Count;
+
+            // The holder container is an implementation detail; finding it in your list afterwards
+            // would make browsing a volume something that litters.
+            Assert.Equal(before, after);
+        }
+        finally
+        {
+            await engine.RemoveVolumeAsync(volume.Name, force: true);
+        }
+    }
+
     [SkippableFact]
     public async Task A_network_created_with_a_subnet_really_has_that_subnet()
     {
@@ -109,7 +219,7 @@ public class DockerEngineTests
             Assert.Equal(subnet, created.Subnet);
 
             // And again from a fresh listing, so it is the engine's answer rather than the create call's.
-            var listed = Assert.Single((await engine.ListNetworksAsync()).Where(n => n.Name == name));
+            var listed = Assert.Single(await engine.ListNetworksAsync(), n => n.Name == name);
             Assert.Equal(subnet, listed.Subnet);
             Assert.Equal("bridge", listed.Driver);
         }

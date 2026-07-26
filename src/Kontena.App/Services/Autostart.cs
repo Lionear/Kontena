@@ -195,7 +195,7 @@ public sealed class RegistryAutostart : IAutostart
                 return false;
 
             if (enabled)
-                key.SetValue(ValueName, RunValue(_target));
+                key.SetValue(ValueName, RunEntry.Value(_target));
             else
                 key.DeleteValue(ValueName, throwOnMissingValue: false);
         }
@@ -207,11 +207,20 @@ public sealed class RegistryAutostart : IAutostart
         return IsEnabled();
     }
 
+}
+
+/// <summary>
+/// The value written under the Run key. Plain string formatting, deliberately outside the
+/// Windows-gated class: it is the part that can be wrong on any machine, so it must be callable — and
+/// assertable — on any machine.
+/// </summary>
+internal static class RunEntry
+{
     /// <summary>
     /// Quoted, because <c>C:\Program Files\…</c> is the normal case and an unquoted path with a space
     /// is read as a command plus arguments — which fails at login, silently, exactly once per login.
     /// </summary>
-    internal static string RunValue(string target) => $"\"{target}\"";
+    internal static string Value(string target) => $"\"{target}\"";
 }
 
 /// <summary>

@@ -461,6 +461,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Volumes = new VolumesViewModel(_engine)
         {
             RequestCreateVolume = ShowCreateVolumeDialog,
+            RequestBrowseVolume = ShowBrowseVolumeDialog,
         };
         Networks = new NetworksViewModel(_engine)
         {
@@ -905,6 +906,14 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     [RelayCommand]
+    private void ShowBrowseVolumeDialog(string volume)
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new BrowseVolumeViewModel(_engine, volume, CloseDialog);
+    }
+
     private void ShowCreateVolumeDialog()
     {
         if (_engine is null)

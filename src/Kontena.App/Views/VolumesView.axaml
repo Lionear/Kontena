@@ -74,6 +74,11 @@
                                                    FontSize="12.5" Foreground="{DynamicResource TextDim}" TextAlignment="Right" VerticalAlignment="Center"/>
                                         <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4"
                                                     HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <Button Classes="qa" Command="{Binding BrowseCommand}" IsVisible="{Binding CanBrowse}"
+                                                    ToolTip.Tip="Browse contents">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                                                      Data="{StaticResource IconFolder}"/>
+                                            </Button>
                                             <Button Classes="qa danger" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete">
                                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Danger}" Data="{StaticResource IconTrash}"/>
                                             </Button>

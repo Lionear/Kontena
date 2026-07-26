@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Formats.Tar;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
@@ -51,6 +53,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = true,
+        SupportsVolumeBrowse = true,
     };
 
     private static Uri DefaultEndpoint() => OperatingSystem.IsWindows()
@@ -407,6 +410,158 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             }, ct).ConfigureAwait(false);
             return new VolumeSummary { Name = v.Name, Driver = v.Driver, Mountpoint = v.Mountpoint };
         });
+
+
+    /// <summary>
+    /// Lists a volume's contents by mounting it into a container that is created but never started.
+    /// <para>
+    /// Docker has no API for reading a volume: its contents only exist to containers. The usual trick
+    /// is to <c>run</c> a shell and parse <c>ls</c>, which needs an image with a shell and a process
+    /// that actually starts. This does neither — the archive endpoint reads from a *created* container,
+    /// so nothing is executed, nothing writes, and the volume is mounted read-only. It also means no
+    /// image needs a shell: any locally present image will do as somewhere to hang the mount.
+    /// </para>
+    /// <para>
+    /// The archive of a directory is a recursive tar, and only its headers are read — the entry bodies
+    /// are skipped without being buffered. Even so it is bounded: a volume with a million files would
+    /// otherwise be a long silence, so listing stops at <see cref="MaxEntries"/> and says it did.
+    /// </para>
+    /// </summary>
+    public ValueTask<VolumeListing> BrowseVolumeAsync(
+        string name, string path = "/", CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var target = NormalizeBrowsePath(path);
+
+            // Any image will do — this container is never started, so nothing in it runs. Preferring a
+            // small one keeps the create cheap on engines that have to unpack layers.
+            var images = await _client.Images.ListImagesAsync(new ImagesListParameters { All = false }, ct)
+                .ConfigureAwait(false);
+            var image = images
+                .Where(i => i.RepoTags?.Count > 0)
+                .OrderBy(i => i.Size)
+                .Select(i => i.RepoTags![0])
+                .FirstOrDefault()
+                ?? throw new EngineException(
+                    "Browsing a volume needs an image to mount it into, and this engine has none. "
+                    + "Pull any image first — nothing from it is run.");
+
+            var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
+            {
+                Image = image,
+                Labels = new Dictionary<string, string> { ["kontena.purpose"] = "volume-browse" },
+                HostConfig = new HostConfig
+                {
+                    AutoRemove = false,
+                    Binds = [$"{name}:{MountPoint}:ro"],
+                },
+            }, ct).ConfigureAwait(false);
+
+            try
+            {
+                var archivePath = MountPoint + target;
+                var response = await _client.Containers.GetArchiveFromContainerAsync(
+                    created.ID,
+                    new GetArchiveFromContainerParameters { Path = archivePath },
+                    statOnly: false,
+                    ct).ConfigureAwait(false);
+
+                await using var stream = response.Stream;
+                return ReadListing(stream, target);
+            }
+            finally
+            {
+                // The container exists only for the mount, so it goes whatever happened above.
+                try
+                {
+                    await _client.Containers.RemoveContainerAsync(
+                        created.ID, new ContainerRemoveParameters { Force = true }, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Leaving a stopped, never-started container behind is untidy, not harmful, and it
+                    // must not turn a successful listing into an error.
+                }
+            }
+        });
+
+
+    /// <summary>
+    /// The immediate children of the listed directory, read from the tar the engine streams back.
+    /// <para>
+    /// Docker roots the archive at the last segment of the requested path, so <c>/vol/app</c> comes back
+    /// as <c>app/</c>, <c>app/config.yml</c>, … Only entries exactly one level below that root are
+    /// children; anything deeper belongs to a subdirectory and is skipped. Entry bodies are never
+    /// copied — <c>GetNextEntry(copyData: false)</c> walks the headers and seeks past the data.
+    /// </para>
+    /// </summary>
+    private static VolumeListing ReadListing(Stream tar, string path)
+    {
+        var entries = new List<VolumeEntry>();
+        var truncated = false;
+
+        using var reader = new TarReader(tar);
+        while (reader.GetNextEntry(copyData: false) is { } entry)
+        {
+            if (entries.Count >= MaxEntries)
+            {
+                truncated = true;
+                break;
+            }
+
+            var relative = entry.Name.Replace('\\', '/').TrimEnd('/');
+            var slash = relative.IndexOf('/', StringComparison.Ordinal);
+            if (slash < 0)
+                continue;                                  // the archive root itself, not a child
+
+            var inside = relative[(slash + 1)..];
+            if (inside.Length == 0 || inside.Contains('/', StringComparison.Ordinal))
+                continue;                                  // deeper than one level
+
+            var isDirectory = entry.EntryType is TarEntryType.Directory;
+            entries.Add(new VolumeEntry(
+                inside,
+                isDirectory,
+                isDirectory ? 0 : entry.Length,
+                entry.ModificationTime == default ? null : entry.ModificationTime));
+        }
+
+        return new VolumeListing(
+            path.Length == 0 ? "/" : path,
+            [.. entries.OrderByDescending(e => e.IsDirectory).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)],
+            truncated);
+    }
+
+    private const string MountPoint = "/kontena-volume";
+    private const int MaxEntries = 5_000;
+
+    /// <summary>
+    /// The path inside the volume, as an absolute path with no trailing slash and no way out of the
+    /// mount. <c>..</c> segments are resolved here rather than passed on: the archive endpoint would
+    /// happily read the container's own filesystem outside the mount.
+    /// </summary>
+    internal static string NormalizeBrowsePath(string path)
+    {
+        var parts = (path ?? string.Empty).Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var stack = new List<string>();
+        foreach (var part in parts)
+        {
+            if (part == ".")
+                continue;
+
+            if (part == "..")
+            {
+                if (stack.Count > 0)
+                    stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+
+            stack.Add(part);
+        }
+
+        return stack.Count == 0 ? string.Empty : "/" + string.Join('/', stack);
+    }
 
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default) =>
         Exec(() => _client.Volumes.RemoveAsync(name, force, ct));

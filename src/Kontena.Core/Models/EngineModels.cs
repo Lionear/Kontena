@@ -49,6 +49,12 @@ public sealed record EngineCapabilities
     /// <summary>Can prune unused resources.</summary>
     public bool SupportsPrune { get; init; }
 
+    /// <summary>
+    /// Can list the contents of a volume. Needs a locally available image to mount it into, so this is
+    /// answered per engine rather than assumed — see <c>BrowseVolumeAsync</c>.
+    /// </summary>
+    public bool SupportsVolumeBrowse { get; init; }
+
     /// <summary>Supports GPU passthrough.</summary>
     public bool SupportsGpu { get; init; }
 

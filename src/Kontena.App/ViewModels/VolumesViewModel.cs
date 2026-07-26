@@ -15,6 +15,12 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
 
     public ObservableCollection<VolumeRowViewModel> Items { get; } = [];
 
+    /// <summary>Whether this engine can read a volume's contents at all (KON-90).</summary>
+    public bool CanBrowse => _engine.Capabilities.SupportsVolumeBrowse;
+
+    /// <summary>Raised when a row's Browse action is used; the shell shows the browser (KON-90).</summary>
+    public Action<string>? RequestBrowseVolume { get; set; }
+
     /// <summary>Raised when New volume is clicked; the shell shows the modal (KON-91).</summary>
     public Action? RequestCreateVolume { get; set; }
 
