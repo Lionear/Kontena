@@ -11,8 +11,9 @@ namespace Kontena.App.Tests;
 /// which nobody spotted until a screenshot showed olive prune buttons.
 /// </para>
 /// <para>
-/// The point is not that everything passes today. Two tokens do not, and fixing them is a design
-/// decision rather than a test's business. What this pins down is that the list cannot grow quietly.
+/// Every text colour clears AA. The four that do not are named, with the reason: they carry short
+/// semibold status labels rather than running text, and clear the large-text floor. That list can
+/// shrink; what this pins down is that it cannot grow quietly.
 /// </para>
 /// </summary>
 public sealed class PaletteContrastTests
@@ -27,7 +28,17 @@ public sealed class PaletteContrastTests
     private static readonly string[] Foregrounds =
         ["Text", "TextDim", "TextFaint", "Primary", "Success", "Info", "Warn", "Danger", "WarnText"];
 
-    /// <summary>Surfaces text sits on.</summary>
+    /// <summary>
+    /// Surfaces text sits on.
+    /// <para>
+    /// The tinted washes (<c>DangerSoft</c> and friends) are deliberately absent, and that is a known
+    /// gap rather than an oversight: in dark they are translucent, so a flat ratio would be a guess,
+    /// and covering them in light only would report half a picture. Measured by hand meanwhile —
+    /// <c>WarnText</c> on <c>WarnSoft</c> is fine at 4.82:1, but the prune buttons (<c>Danger</c> on
+    /// <c>DangerSoft</c>, 3.30:1) and the two info blocks sit below AA. Noted on KON-56; fixing it
+    /// needs the blend computed first.
+    /// </para>
+    /// </summary>
     private static readonly string[] Backgrounds =
         ["Bg", "Surface", "Surface2", "SidebarBg", "SurfaceRaised"];
 
@@ -37,23 +48,17 @@ public sealed class PaletteContrastTests
     /// </summary>
     private static readonly Dictionary<string, string> BelowAa = new(StringComparer.Ordinal)
     {
-        // Used as body text in 159 places and reaching only 2.7:1 — the single biggest accessibility
-        // defect in the app. Correcting it shifts a colour across every screen, so it is Rick's call,
-        // not a test's. Measured proposals live in the KON-56 ticket.
-        ["Dark/TextFaint"] = "2.71:1 on Surface2 — proposed #808B9B reaches 4.57:1",
-        ["Light/TextFaint"] = "2.76:1 on Surface2 — proposed #65707F reaches 4.51:1",
-
         // Status colours carry short, semibold labels (chips, driver names, node conditions) rather
         // than running text. They clear the large-text floor; raising them to 4.5 would flatten the
-        // palette's distinctions.
+        // palette's distinctions, which is a design call rather than a defect.
+        //
+        // TextFaint in both themes and Warn in light used to be on this list too. They were not
+        // judgement calls — TextFaint carried body text at 2.7:1 in 159 places, and light's Warn
+        // cleared no threshold at all — so they were corrected instead of excused (KON-56).
         ["Light/Primary"] = "status label, 3.04:1 — above the 3:1 large-text floor",
         ["Light/Success"] = "status label, 3.04:1 — above the 3:1 large-text floor",
         ["Light/Info"] = "status label, 3.60:1 — above the 3:1 large-text floor",
         ["Light/Danger"] = "status label, 3.51:1 — above the 3:1 large-text floor",
-        // The one status colour that clears no threshold at all — 2.80:1 on Surface2, 3.11:1 at its
-        // best. Unlike the others this is not a judgement call about label size; it is simply too
-        // pale. Proposed #956314 reaches 4.63:1.
-        ["Light/Warn"] = "2.80:1 — clears neither AA nor the 3:1 large-text floor",
     };
 
     [Fact]
@@ -98,12 +103,8 @@ public sealed class PaletteContrastTests
                 // Against the surface it is most likely to sit on — the one it does worst against.
                 var worst = Backgrounds.Where(palette.ContainsKey).Min(bg => Contrast(palette[fg], palette[bg]));
 
-                // TextFaint and light's Warn are the two open questions, each pinned at where it is
-                // now so it cannot drift further while the decision is pending. Everything else on the
-                // list must at least clear the large-text floor.
-                var floor = fg is "TextFaint" ? 2.5 : fg == "Warn" ? 2.75 : AALarge;
-                if (worst < floor)
-                    sunk.Add($"{theme}: {fg} ({palette[fg]}) worst case {worst:0.00}:1, floor {floor:0.0}:1");
+                if (worst < AALarge)
+                    sunk.Add($"{theme}: {fg} ({palette[fg]}) worst case {worst:0.00}:1, floor {AALarge:0.0}:1");
             }
         }
 
