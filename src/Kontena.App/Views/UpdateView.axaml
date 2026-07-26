@@ -1,0 +1,126 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="560"
+             x:Class="Kontena.App.Views.UpdateView"
+             x:DataType="vm:UpdateViewModel">
+    <Border Width="520" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+
+            <!-- Header: what is on offer, and from which stream -->
+            <Grid Margin="24,22,24,18" ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="7">
+                    <TextBlock FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                               IsVisible="{Binding !IsUpToDate}"
+                               Text="{Binding Version, StringFormat='Kontena {0} is available'}"/>
+                    <TextBlock Text="Kontena is up to date" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}" IsVisible="{Binding IsUpToDate}"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsUpToDate}">
+                        <TextBlock Text="{Binding CurrentVersion}" FontSize="12.5" FontFamily="{StaticResource Mono}"
+                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                        <TextBlock Text="→" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}"
+                                   Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
+                        <TextBlock Text="·" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SizeText}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding CurrentVersion, StringFormat='You are on {0}, the newest release on your channel.'}"
+                               FontSize="12.5" Foreground="{DynamicResource TextDim}" IsVisible="{Binding IsUpToDate}"/>
+                </StackPanel>
+
+                <Button Grid.Column="1" Classes="qa" Width="30" Height="30" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" ToolTip.Tip="Close">
+                    <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                          Data="{StaticResource IconClose}"/>
+                </Button>
+            </Grid>
+
+            <!-- This install cannot replace itself: say where the new version comes from instead -->
+            <StackPanel Margin="24,0,24,20" Spacing="12" IsVisible="{Binding !CanSelfUpdate}">
+                <Border Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="10" Padding="14,12">
+                    <StackPanel Orientation="Horizontal" Spacing="11">
+                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Info}"
+                              Data="{StaticResource IconInfo}" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding UnsupportedReason}" FontSize="12.5" TextWrapping="Wrap"
+                                   LineHeight="19" Foreground="{DynamicResource TextDim}" MaxWidth="410"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Release notes -->
+            <StackPanel Margin="24,0,24,18" Spacing="10" IsVisible="{Binding IsAvailable}">
+                <TextBlock Text="WHAT'S NEW" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
+                    <TextBlock Text="{Binding Notes}" FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                               Foreground="{DynamicResource TextDim}"/>
+                </ScrollViewer>
+            </StackPanel>
+
+            <!-- Downloading -->
+            <StackPanel Margin="24,0,24,20" Spacing="11" IsVisible="{Binding IsDownloading}">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Version, StringFormat='Downloading {0}'}"
+                               FontSize="13" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Percent, StringFormat='{}{0}%'}" FontSize="13"
+                               FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Primary}"/>
+                </Grid>
+                <ProgressBar Value="{Binding Percent}" Maximum="100" Height="6"
+                             Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
+                <TextBlock Text="{Binding ProgressDetail}" FontSize="12" FontFamily="{StaticResource Mono}"
+                           Foreground="{DynamicResource TextFaint}"/>
+            </StackPanel>
+
+            <!-- Downloaded and verified -->
+            <StackPanel Margin="24,0,24,20" Spacing="10" IsVisible="{Binding IsReady}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Success}"
+                          Data="{StaticResource IconCheck}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Version, StringFormat='{}{0} downloaded and verified'}"
+                               FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" Foreground="{DynamicResource TextDim}"
+                           Text="Restart Kontena to finish. Your containers keep running — only the app restarts."/>
+            </StackPanel>
+
+            <!-- Failed -->
+            <StackPanel Margin="24,0,24,20" Spacing="11" IsVisible="{Binding IsFailed}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Danger}"
+                          Data="{StaticResource IconWarning}" VerticalAlignment="Center"/>
+                    <TextBlock Text="The update did not finish" FontSize="13.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                           Foreground="{DynamicResource TextDim}"/>
+                <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" Foreground="{DynamicResource TextFaint}"
+                           Text="Nothing has changed — the version you are running is untouched. You can try again, or download the release yourself."/>
+            </StackPanel>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+
+            <!-- Footer: the verbs change with the stage, the layout does not -->
+            <Grid Margin="24,16" ColumnDefinitions="Auto,*,Auto,Auto">
+                <Button Grid.Column="0" Classes="ghost" Command="{Binding OpenDownloadsCommand}"
+                        Content="All releases"/>
+
+                <Button Grid.Column="2" Classes="ghost" Margin="0,0,10,0" Command="{Binding SecondaryCommand}"
+                        Content="{Binding SecondaryLabel}" IsVisible="{Binding ShowSecondary}"/>
+
+                <Button Grid.Column="3" Classes="primary" Command="{Binding PrimaryCommand}"
+                        IsEnabled="{Binding CanRunPrimary}" Content="{Binding PrimaryLabel}"
+                        IsVisible="{Binding CanSelfUpdate}"/>
+
+                <Button Grid.Column="3" Classes="primary" Command="{Binding CloseCommand}" Content="Close"
+                        IsVisible="{Binding !CanSelfUpdate}"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

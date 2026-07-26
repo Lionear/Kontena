@@ -26,16 +26,21 @@ public partial class SettingsViewModel : ViewModelBase
     /// to <paramref name="engines"/> so design-time and tests need not supply it.</param>
     /// <param name="onDemoBackendsChanged">Invoked when the demo toggle flips so the shell can
     /// rebuild the backend set. Null in design-time and test contexts.</param>
+    /// <param name="update">The updater, for the Updates category. Null in design-time and tests.</param>
     public SettingsViewModel(
         SettingsStore store, KontenaSettings settings, IReadOnlyList<EngineListItem> engines,
         IReadOnlyList<EngineListItem>? backends = null,
-        Func<bool, Task>? onDemoBackendsChanged = null)
+        Func<bool, Task>? onDemoBackendsChanged = null,
+        UpdateViewModel? update = null)
     {
         _backends = backends ?? engines;
         _store = store;
         _settings = settings;
         Engines = engines;
         _onDemoBackendsChanged = onDemoBackendsChanged;
+        Update = update;
+        _updateChannel = settings.UpdateChannel;
+        _autoDownloadUpdates = settings.AutoDownloadUpdates;
         _showDemoBackends = BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends);
 
         _theme = settings.Theme;
@@ -77,11 +82,13 @@ public partial class SettingsViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsGeneral));
         OnPropertyChanged(nameof(IsEngines));
+        OnPropertyChanged(nameof(IsUpdates));
         OnPropertyChanged(nameof(IsAbout));
     }
 
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
+    public bool IsUpdates => Category == "updates";
     public bool IsAbout => Category == "about";
 
     [RelayCommand]
@@ -171,6 +178,65 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _launchAtLogin;
     partial void OnLaunchAtLoginChanged(bool value) => Save();
 
+    // ── Updates (KON-110) ───────────────────────────────────────────────────
+
+    /// <summary>The updater, so the category can show its state and trigger a check. Null in tests.</summary>
+    public UpdateViewModel? Update { get; }
+
+    /// <summary>Whether the category is offered at all — it is meaningless without an updater.</summary>
+    public bool HasUpdates => Update is not null;
+
+    /// <summary>
+    /// Whether this install can replace itself. False for a distro package or an unpacked archive:
+    /// the channel and auto-download rows would then promise something that cannot happen.
+    /// </summary>
+    public bool CanSelfUpdate => Update?.CanSelfUpdate ?? false;
+
+    /// <summary>
+    /// The two halves of the category, as named properties rather than a binding-side negation:
+    /// they must never both be on screen, and one expression that can silently fail to evaluate is
+    /// exactly how they end up contradicting each other.
+    /// </summary>
+    public bool ShowUpdatePreferences => CanSelfUpdate;
+
+    public bool ShowUnsupportedNotice => HasUpdates && !CanSelfUpdate;
+
+    [ObservableProperty] private UpdateChannel _updateChannel;
+
+    public bool IsStableChannel => UpdateChannel == UpdateChannel.Stable;
+    public bool IsNightlyChannel => UpdateChannel == UpdateChannel.Nightly;
+
+    partial void OnUpdateChannelChanged(UpdateChannel value)
+    {
+        OnPropertyChanged(nameof(IsStableChannel));
+        OnPropertyChanged(nameof(IsNightlyChannel));
+        OnPropertyChanged(nameof(ChannelHint));
+        Save();
+
+        // The channel decides which feed is read, so what was found on the old one no longer
+        // applies — ask again rather than leave a stale offer on screen.
+        _ = Update?.CheckAsync();
+    }
+
+    public string ChannelHint => UpdateChannel == UpdateChannel.Nightly
+        ? "Nightly builds are cut from develop every night. They carry what is finished but not released — and whatever came with it."
+        : "Tagged releases only. This is the one to be on unless you are testing Kontena itself.";
+
+    [RelayCommand]
+    private void SetUpdateChannel(string channel) =>
+        UpdateChannel = channel == "nightly" ? UpdateChannel.Nightly : UpdateChannel.Stable;
+
+    [ObservableProperty] private bool _autoDownloadUpdates;
+    partial void OnAutoDownloadUpdatesChanged(bool value) => Save();
+
+    /// <summary>Check now — the manual counterpart of the check on launch.</summary>
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync()
+    {
+        if (Update is not null)
+            await Update.CheckAsync(userAsked: true);
+    }
+
     // ── Terminal ────────────────────────────────────────────────────────────
 
     public string[] FontFamilies { get; } =
@@ -216,6 +282,8 @@ public partial class SettingsViewModel : ViewModelBase
             DefaultEngine = null,
             ShowDemoBackends = ShowDemoBackends,
             LaunchAtLogin = LaunchAtLogin,
+            UpdateChannel = UpdateChannel,
+            AutoDownloadUpdates = AutoDownloadUpdates,
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,
             TerminalLigatures = TerminalLigatures,

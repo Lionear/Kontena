@@ -22,6 +22,17 @@ public class KontenaSettingsTests
     }
 
     [Fact]
+    public void Updates_default_to_stable_and_fetched_in_the_background()
+    {
+        // Stable rather than "whatever this build came from": a nightly is a way to test Kontena,
+        // never something an install should drift onto by itself.
+        var settings = new KontenaSettings();
+        Assert.Equal(UpdateChannel.Stable, settings.UpdateChannel);
+        Assert.True(settings.AutoDownloadUpdates);
+        Assert.Null(settings.DismissedUpdateVersion);
+    }
+
+    [Fact]
     public void Round_trips_through_json()
     {
         var original = new KontenaSettings
@@ -30,6 +41,9 @@ public class KontenaSettingsTests
             AutoDetectEngines = false,
             DefaultEngine = "podman",
             LaunchAtLogin = true,
+            UpdateChannel = UpdateChannel.Nightly,
+            AutoDownloadUpdates = false,
+            DismissedUpdateVersion = "0.3.0",
             TerminalLigatures = true,
             RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>

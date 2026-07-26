@@ -33,6 +33,9 @@ namespace Kontena.Screenshots;
 //         apply-kustomize / apply-helm (the render sources — these run the real
 //         kustomize/helm CLIs over the repository's own samples, and skip nothing:
 //         without the tool installed the capture shows the render's error state),
+//         update-{toast,card,downloading,ready,failed} (the in-app updater, driven through the real
+//         state machine against a fake update source), settings-updates and
+//         settings-updates-unmanaged (the Updates category, managed and not),
 //         cluster / cluster-{nodes,namespaces,workloads,pods,services} (the cluster browsers),
 //         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
 //         reached by really switching backend and back, so it exercises the save/restore path),
@@ -83,6 +86,10 @@ internal static class Program
                 PinnedBackend = "docker",
                 LastBackend = "kubernetes:corp-cluster",
                 AutoDetectEngines = true,
+
+                // The offer states must survive the check on launch: with the background download
+                // on, "available" is gone before the scene can ask for anything.
+                AutoDownloadUpdates = opts.Scene is not ("update-toast" or "update-card"),
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
@@ -100,7 +107,25 @@ internal static class Program
                 providers.AddRange(KubernetesClusterProvider.DiscoverAll());
 
             var registry = new BackendRegistry(providers);
-            var viewModel = new MainWindowViewModel(registry, new SettingsStore(), settings);
+
+            // Persist the scene's settings before anything reads them: parts of the app deliberately
+            // re-read the store rather than trust a copy from launch (the updater does), and an empty
+            // store would hand them defaults instead of this scene's choices.
+            var store = new SettingsStore();
+            store.Save(settings);
+
+            // The update scenes need an updater with something to offer: a development run is not a
+            // packaged install, so the real one can only ever render the "cannot update here" state.
+            // settings-updates-unmanaged deliberately keeps the real service, which in a
+            // development run is exactly the "cannot update here" case it wants to show.
+            var updates = opts.Scene.StartsWith("update", StringComparison.Ordinal)
+                          || opts.Scene == "settings-updates"
+                ? new FakeUpdateService(
+                    fail: opts.Scene == "update-failed",
+                    holdAt: opts.Scene == "update-downloading" ? 62 : null)
+                : null;
+
+            var viewModel = new MainWindowViewModel(registry, store, settings, updates);
 
             var window = new MainWindow
             {
@@ -239,6 +264,46 @@ internal static class Program
                 }
 
                 break;
+
+            // The update card (KON-110). Every scene drives the real state machine — check, then
+            // download — rather than posing the view, so a shot that looks right also works.
+            case "update-toast":
+            case "update-card":
+            case "update-downloading":
+            case "update-ready":
+            case "update-failed":
+            case "settings-updates":
+            case "settings-updates-unmanaged":
+            {
+                var settingsPage = vm.SettingsPage as Kontena.App.ViewModels.SettingsViewModel;
+                if (scene.StartsWith("settings-updates", StringComparison.Ordinal))
+                {
+                    vm.ShowSettingsCommand.Execute(null);
+                    settingsPage?.SelectCategoryCommand.Execute("updates");
+                    Settle(rounds: 20);
+                    break;
+                }
+
+                // The check on launch already ran — these scenes wait for where it lands rather
+                // than starting a second one, which is both the real path and one racing download
+                // fewer.
+                SettleUntil(() => vm.Update.Stage != Kontena.App.ViewModels.UpdateStage.None, maxRounds: 200);
+
+                if (scene == "update-toast")
+                    break;                                   // the toast is up; leave the card closed
+
+                if (scene == "update-downloading")
+                    SettleUntil(() => vm.Update.Percent >= 62, maxRounds: 200);
+                else if (scene == "update-ready")
+                    SettleUntil(() => vm.Update.Stage == Kontena.App.ViewModels.UpdateStage.Ready, maxRounds: 400);
+                else if (scene == "update-failed")
+                    SettleUntil(() => vm.Update.Stage == Kontena.App.ViewModels.UpdateStage.Failed, maxRounds: 400);
+
+                vm.Update.OpenCardCommand.Execute(null);
+
+                Settle(rounds: 20);
+                break;
+            }
 
             case "cluster-portforwards":
                 // All three states on one page, and every one of them reached the way the app does it:
