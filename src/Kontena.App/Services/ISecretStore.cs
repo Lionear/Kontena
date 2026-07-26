@@ -99,18 +99,22 @@ public static class SecretStore
     /// <summary>
     /// The store for the current platform, or one that stores nothing where there is none.
     /// <para>
-    /// Only Linux is bound so far. Windows (Credential Manager) and macOS (Keychain Services) are
-    /// separate tickets: unlike autostart, a wrong keychain binding does not merely fail to work — it
-    /// can appear to work while writing somewhere unintended. That is worth doing on a machine where it
-    /// can be checked.
+    /// Each platform's store answers <see cref="ISecretStore.IsAvailable"/> by actually calling its
+    /// backend, and one that cannot is replaced here by the store that refuses. So an unreachable
+    /// keychain becomes "the feature is not offered" rather than a failure on first save — and never a
+    /// quiet fallback to a file.
     /// </para>
     /// </summary>
     public static ISecretStore Create()
     {
-        if (!OperatingSystem.IsLinux())
-            return new UnavailableSecretStore();
+        ISecretStore? store = null;
+        if (OperatingSystem.IsLinux())
+            store = new LibSecretStore();
+        else if (OperatingSystem.IsWindows())
+            store = new WindowsCredentialStore();
+        else if (OperatingSystem.IsMacOS())
+            store = new MacKeychainStore();
 
-        var store = new LibSecretStore();
-        return store.IsAvailable ? store : new UnavailableSecretStore();
+        return store is { IsAvailable: true } ? store : new UnavailableSecretStore();
     }
 }
