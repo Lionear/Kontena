@@ -305,6 +305,13 @@ internal static class Program
                 break;
             }
 
+            case "new-volume":
+                vm.NavigateCommand.Execute("volumes");
+                Settle(rounds: 20);
+                vm.Volumes!.CreateVolumeCommand.Execute(null);
+                Settle(rounds: 10);
+                break;
+
             case "cluster-portforwards":
                 // All three states on one page, and every one of them reached the way the app does it:
                 // two forwards are opened, the backend is switched away and back (which persists them

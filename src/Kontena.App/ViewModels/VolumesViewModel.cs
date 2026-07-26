@@ -15,6 +15,12 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
 
     public ObservableCollection<VolumeRowViewModel> Items { get; } = [];
 
+    /// <summary>Raised when New volume is clicked; the shell shows the modal (KON-91).</summary>
+    public Action? RequestCreateVolume { get; set; }
+
+    [RelayCommand]
+    private void CreateVolume() => RequestCreateVolume?.Invoke();
+
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private string _summary = string.Empty;
