@@ -10,7 +10,7 @@ namespace Kontena.Core.Tests;
 /// </summary>
 public class RemoteEngineTests
 {
-    private static RemoteEngine Ssh(string host = "build-01", string? user = "rick", int? port = null) =>
+    private static RemoteEngine Ssh(string host = "build-01", string? user = "deploy", int? port = null) =>
         new("r1", "Build server", RemoteEngineTransport.Ssh, host, port, user);
 
     private static RemoteEngine Tcp(
@@ -25,7 +25,7 @@ public class RemoteEngineTests
 
     [Fact]
     public void Certificates_make_a_tcp_engine_usable() =>
-        Assert.Null(Tcp(certs: "/home/rick/.docker/certs").Problem);
+        Assert.Null(Tcp(certs: "/srv/docker/certs").Problem);
 
     [Fact]
     public void Insecure_tcp_is_possible_but_only_when_stated_outright() =>
@@ -41,9 +41,9 @@ public class RemoteEngineTests
         Assert.NotNull(Ssh(host: "  ").Problem);
 
     [Theory]
-    [InlineData("rick", null, "ssh://rick@build-01")]
+    [InlineData("deploy", null, "ssh://deploy@build-01")]
     [InlineData(null, null, "ssh://build-01")]
-    [InlineData("rick", 2222, "ssh://rick@build-01:2222")]
+    [InlineData("deploy", 2222, "ssh://deploy@build-01:2222")]
     public void Describes_an_ssh_endpoint_the_way_docker_would(string? user, int? port, string expected) =>
         Assert.Equal(expected, Ssh(user: user, port: port).Endpoint);
 

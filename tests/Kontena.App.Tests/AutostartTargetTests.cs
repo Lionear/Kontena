@@ -15,7 +15,7 @@ public class AutostartTargetTests
     [Theory]
     [InlineData("/Applications/Kontena.app/Contents/MacOS", "/Applications/Kontena.app")]
     [InlineData("/Applications/Kontena.app", "/Applications/Kontena.app")]
-    [InlineData("/Users/rick/Applications/Kontena.app/Contents/MacOS/", "/Users/rick/Applications/Kontena.app")]
+    [InlineData("/Users/dev/Applications/Kontena.app/Contents/MacOS/", "/Users/dev/Applications/Kontena.app")]
     public void Finds_the_app_bundle_above_the_executable(string contentDir, string expected) =>
         Assert.Equal(expected, AppLaunchTarget.BundleFor(contentDir));
 
