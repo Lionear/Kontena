@@ -7,7 +7,7 @@ namespace Kontena.Core.Tests;
 /// launched from Finder or the Dock inherits a minimal environment, so the directories Homebrew
 /// installs to are missing even though the tools are there.
 /// </summary>
-[Collection(EnvironmentCollection.Name)]
+[Collection(ProcessEnvironment.Name)]
 public sealed class ToolLocatorTests : IDisposable
 {
     private readonly string _directory = Path.Combine(

@@ -23,7 +23,7 @@
                     <SolidColorBrush x:Key="Border" Color="#272E39"/>
                     <SolidColorBrush x:Key="Text" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="TextDim" Color="#9AA4B2"/>
-                    <SolidColorBrush x:Key="TextFaint" Color="#5C6675"/>
+                    <SolidColorBrush x:Key="TextFaint" Color="#808B9B"/>
                     <SolidColorBrush x:Key="Primary" Color="#22D3AA"/>
                     <SolidColorBrush x:Key="PrimaryInk" Color="#08201A"/>
                     <SolidColorBrush x:Key="PrimaryDim" Color="#0F9E7E"/>
@@ -57,14 +57,14 @@
                     <SolidColorBrush x:Key="Border" Color="#DCE1E8"/>
                     <SolidColorBrush x:Key="Text" Color="#1B2430"/>
                     <SolidColorBrush x:Key="TextDim" Color="#55606E"/>
-                    <SolidColorBrush x:Key="TextFaint" Color="#8A94A2"/>
+                    <SolidColorBrush x:Key="TextFaint" Color="#65707F"/>
                     <SolidColorBrush x:Key="Primary" Color="#0F9E7E"/>
                     <SolidColorBrush x:Key="PrimaryInk" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="PrimaryDim" Color="#0B7D63"/>
                     <SolidColorBrush x:Key="Accent" Color="#6D5CE0"/>
                     <SolidColorBrush x:Key="Success" Color="#0E9F6E"/>
                     <SolidColorBrush x:Key="Info" Color="#2F7FE0"/>
-                    <SolidColorBrush x:Key="Warn" Color="#C7841A"/>
+                    <SolidColorBrush x:Key="Warn" Color="#956314"/>
                     <SolidColorBrush x:Key="Danger" Color="#E5484D"/>
                     <SolidColorBrush x:Key="DangerInk" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="PrimarySoft" Color="#0F9E7E" Opacity="0.10"/>
@@ -138,7 +138,12 @@
         </Style>
 
         <!-- Small icon action button -->
+        <!-- An icon-only button has no text, so a screen reader announces "button" and nothing more.
+             Every one of these already carries a tooltip saying what it does, so that is the name —
+             taken from the tooltip rather than repeated in a second attribute, which would be one
+             more thing to keep in step and the first to fall out of it (KON-56). -->
         <Style Selector="Button.qa">
+            <Setter Property="AutomationProperties.Name" Value="{Binding $self.(ToolTip.Tip)}"/>
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -153,6 +158,17 @@
         </Style>
         <Style Selector="Button.qa.danger:pointerover /template/ ContentPresenter">
             <Setter Property="TextElement.Foreground" Value="{DynamicResource Danger}"/>
+        </Style>
+
+        <!-- Status dots and the icon glyphs inside buttons are decoration: every one of them sits
+             next to a label that already says the same thing, so announcing them again adds a
+             nameless element between the user and the text. Raw keeps them out of the tree a screen
+             reader walks, without touching how anything looks (KON-56). -->
+        <Style Selector="Ellipse">
+            <Setter Property="AutomationProperties.AccessibilityView" Value="Raw"/>
+        </Style>
+        <Style Selector="Button Path.icon">
+            <Setter Property="AutomationProperties.AccessibilityView" Value="Raw"/>
         </Style>
 
         <!-- Stroke-rendered Lucide icon (fill would turn outlines into blobs) -->
