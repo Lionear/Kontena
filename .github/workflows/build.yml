@@ -165,17 +165,22 @@ jobs:
           - name: Windows x64
             os: windows-latest
             rid: win-x64
-            package: windows
-            publishArgs: "-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true"
+            platform: win
+            mainExe: Kontena.App.exe
+            # No PublishSingleFile: the updater replaces an application *folder* and patches it with
+            # deltas, so it needs the files as files. A self-extracting single exe defeats both.
+            publishArgs: ""
           - name: Linux AppImage
             os: ubuntu-latest
             rid: linux-x64
-            package: appimage
+            platform: linux
+            mainExe: Kontena.App
             publishArgs: ""
           - name: macOS Apple Silicon
             os: macos-14
             rid: osx-arm64
-            package: macos
+            platform: osx
+            mainExe: Kontena.App
             publishArgs: ""
 
     steps:
@@ -212,68 +217,60 @@ jobs:
             ${{ matrix.publishArgs }} \
             -o publish/${{ matrix.rid }}
 
-      - name: Package (Windows zip)
-        if: matrix.package == 'windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Compress-Archive -Path "publish/${{ matrix.rid }}/*" `
-            -DestinationPath "artifacts/Kontena-${{ steps.version.outputs.value }}-${{ matrix.rid }}.zip" -Force
+      # Packaging is Velopack's (KON-110). It produces the user-facing download *and* the update
+      # package and feed for the same channel in one step, which is the point: an installer built
+      # separately from the feed is an installer the updater cannot follow.
+      - name: Install vpk
+        shell: bash
+        run: dotnet tool install -g vpk --version 1.2.0
 
-      - name: Package (macOS zip)
-        if: matrix.package == 'macos'
+      # macOS wants an .icns; the repo carries a .png. Generated here rather than committed, so the
+      # icon has one source of truth.
+      - name: Build macOS icon
+        if: matrix.platform == 'osx'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts
-          ( cd "publish/${{ matrix.rid }}" && zip -qry "../../artifacts/Kontena-${{ steps.version.outputs.value }}-${{ matrix.rid }}.zip" . )
+          ICONSET=icon.iconset
+          mkdir -p "$ICONSET"
+          for size in 16 32 64 128 256 512; do
+            sips -z $size $size src/Kontena.App/Assets/icon.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+            sips -z $((size*2)) $((size*2)) src/Kontena.App/Assets/icon.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$ICONSET" -o icon.icns
 
-      - name: Package (Linux AppImage)
-        if: matrix.package == 'appimage'
+      - name: Package (vpk)
         shell: bash
         env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"   # GitHub runners have no FUSE
-          ARCH: x86_64
+          # The channel carries the platform: one feed per platform per stream, because a feed that
+          # mixed them would offer a Windows package to a Linux install. Mirrors
+          # Kontena.Core.Models.ReleaseChannel, which is what the app asks for.
+          CHANNEL: ${{ matrix.platform }}-${{ needs.setup.outputs.channel }}
+          VERSION: ${{ steps.version.outputs.value }}
+          RID: ${{ matrix.rid }}
+          MAIN_EXE: ${{ matrix.mainExe }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          APPDIR=AppDir
-          rm -rf "$APPDIR"
-          mkdir -p "$APPDIR/usr/bin"
-          cp -r publish/${{ matrix.rid }}/* "$APPDIR/usr/bin/"
-          chmod +x "$APPDIR/usr/bin/Kontena.App"
+          EXTRA=()
+          case "$PLATFORM" in
+            osx)   ICON=icon.icns ;;
+            win)   ICON=src/Kontena.App/Assets/icon.ico ;;
+            *)     ICON=src/Kontena.App/Assets/icon.png
+                   # Same desktop-menu categories the hand-rolled .desktop entry carried.
+                   EXTRA+=(--categories "Development;System") ;;
+          esac
 
-          # Icon (top-level + hicolor path, both referenced by the .desktop entry).
-          cp src/Kontena.App/Assets/icon.png "$APPDIR/kontena.png"
-          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
-          cp src/Kontena.App/Assets/icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/kontena.png"
-
-          cat > "$APPDIR/kontena.desktop" <<'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=Kontena
-          Exec=Kontena.App
-          Icon=kontena
-          Categories=Development;System;
-          Terminal=false
-          EOF
-
-          cat > "$APPDIR/AppRun" <<'EOF'
-          #!/bin/sh
-          HERE="$(dirname "$(readlink -f "$0")")"
-          exec "$HERE/usr/bin/Kontena.App" "$@"
-          EOF
-          chmod +x "$APPDIR/AppRun"
-
-          # appimagetool is the one external binary this pipeline runs, so verify it (the sha256 is the
-          # real lock; a tag is only a download location). Bump both deliberately.
-          APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
-          APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
-          wget -q "$APPIMAGETOOL_URL" -O appimagetool
-          echo "$APPIMAGETOOL_SHA256  appimagetool" | sha256sum -c -
-          chmod +x appimagetool
-
-          mkdir -p artifacts
-          ./appimagetool "$APPDIR" "artifacts/Kontena-${{ steps.version.outputs.value }}-x86_64.AppImage"
+          vpk pack "${EXTRA[@]}" \
+            --packId Kontena \
+            --packTitle Kontena \
+            --packAuthors Lionear \
+            --packVersion "$VERSION" \
+            --packDir "publish/$RID" \
+            --mainExe "$MAIN_EXE" \
+            --icon "$ICON" \
+            --channel "$CHANNEL" \
+            --outputDir artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -331,8 +328,11 @@ jobs:
 
           These builds are unsigned / not notarized.
           Linux: the .AppImage is self-contained — chmod +x and run it.
-          macOS: unzip, then clear quarantine before first launch: xattr -cr Kontena.App.
-          Windows: unzip and run Kontena.App.exe; SmartScreen may warn on first launch."
+          macOS: unzip, then clear quarantine before first launch: xattr -cr Kontena.app.
+          Windows: run the Setup .exe, or unzip the portable build; SmartScreen may warn on first launch.
+
+          Installed copies update themselves from here — see Settings → Updates.
+          The .nupkg and releases.*.json assets are what the updater reads; you do not need to download them."
 
           if [ "$CHANNEL" = stable ]; then
             TARGET=$(git rev-parse "${RELEASE_TAG}^{commit}")

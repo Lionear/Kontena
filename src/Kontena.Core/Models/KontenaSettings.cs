@@ -9,6 +9,22 @@ public enum ThemePreference
     Dark,
 }
 
+/// <summary>
+/// Which stream of releases Kontena offers to update to. One per stream the Build workflow
+/// publishes, so every feed that exists can be subscribed to.
+/// </summary>
+public enum UpdateChannel
+{
+    /// <summary>Tagged releases only — what almost everyone wants.</summary>
+    Stable = 0,
+
+    /// <summary>The rolling prerelease from <c>main</c>: what is promoted, before it is tagged.</summary>
+    Preview,
+
+    /// <summary>The rolling nightly prerelease cut from <c>develop</c> (KON-108).</summary>
+    Nightly,
+}
+
 /// <summary>What Kontena connects to when it starts.</summary>
 public enum StartupBackend
 {
@@ -97,6 +113,24 @@ public sealed record KontenaSettings
 
     /// <summary>Start Kontena at login (stored preference; wiring is platform-specific).</summary>
     public bool LaunchAtLogin { get; init; }
+
+    // ── Updates (KON-110) ─────────────────────────────────────────────────────
+
+    /// <summary>Which release stream to offer updates from.</summary>
+    public UpdateChannel UpdateChannel { get; init; } = UpdateChannel.Stable;
+
+    /// <summary>
+    /// Fetch a found update straight away instead of waiting for the user to ask. On by default:
+    /// the update card offers a restart rather than a download, which is the shorter path, and the
+    /// download is idle-time work either way. Turning it off keeps the check but not the transfer.
+    /// </summary>
+    public bool AutoDownloadUpdates { get; init; } = true;
+
+    /// <summary>
+    /// The version the user last chose to skip the toast for. A toast for the same version on every
+    /// launch is nagging; the sidebar entry stays either way, so the update is never hidden.
+    /// </summary>
+    public string? DismissedUpdateVersion { get; init; }
 
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";

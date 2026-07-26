@@ -49,19 +49,40 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
     }
 
-    public MainWindowViewModel(BackendRegistry registry, SettingsStore store, KontenaSettings settings)
+    /// <param name="updateService">The updater. Defaults to the real one; the screenshot harness
+    /// passes a fake, because the card's interesting states need a packaged install that is behind
+    /// — which a development run never is.</param>
+    public MainWindowViewModel(
+        BackendRegistry registry, SettingsStore store, KontenaSettings settings,
+        IUpdateService? updateService = null)
     {
         _registry = registry;
         _store = store;
         _settings = settings;
+        _updateService = updateService ?? new VelopackUpdateService();
 
         NavItems = [];
         SetEngineNav();
         _portForwards.Changed += OnPortForwardsChanged;
 
+        // The card lives in the same modal slot as every other dialog, so an update never competes
+        // with a Run or a Confirm for the screen.
+        // Read through the store, not this class's copy: the Settings page saves its own record, so
+        // the field here still says what it said at launch. Reading fresh is what makes a channel
+        // switch or an auto-download toggle take effect on the next check instead of after a restart.
+        Update = new UpdateViewModel(
+            _updateService, store, store.Load,
+            openCard: () => Dialog = Update,
+            closeCard: () => { if (ReferenceEquals(Dialog, Update)) Dialog = null; });
+
         SyncThemeToggleIcon();
         _ = InitAsync();
     }
+
+    private readonly IUpdateService _updateService;
+
+    /// <summary>The in-app updater, behind the sidebar entry, the toast and the card (KON-110).</summary>
+    public UpdateViewModel Update { get; }
 
     // Pages
     [ObservableProperty] private ContainersViewModel? _containers;
@@ -207,6 +228,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             await ConnectPreferredAsync();
+
+            // After the shell is usable, never before: a slow or unreachable update server must not
+            // hold up connecting to an engine, which is what the user actually opened Kontena for.
+            _ = Update.CheckAsync();
         }
         catch (Exception ex)
         {
@@ -832,7 +857,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             .Where(e => _probes.First(p => p.Provider.Backend == e.Backend).Provider.Kind == BackendKind.Engine)
             .ToList();
 
-        SettingsPage = new SettingsViewModel(_store, _settings, engines, all, ReloadBackendsAsync);
+        SettingsPage = new SettingsViewModel(_store, _settings, engines, all, ReloadBackendsAsync, Update);
     }
 
     /// <summary>

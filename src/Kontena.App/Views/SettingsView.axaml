@@ -75,6 +75,13 @@
                         <TextBlock Grid.Column="1" Text="Engines" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
+                <Button Classes="snav" Classes.on="{Binding IsUpdates}" Command="{Binding SelectCategoryCommand}"
+                        CommandParameter="updates" IsVisible="{Binding HasUpdates}">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconDownload}"/>
+                        <TextBlock Grid.Column="1" Text="Updates" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
                 <Button Classes="snav" Classes.on="{Binding IsAbout}" Command="{Binding SelectCategoryCommand}" CommandParameter="about">
                     <Grid ColumnDefinitions="Auto,*">
                         <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
@@ -260,6 +267,79 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </Border>
+                </StackPanel>
+
+                <!-- Updates (KON-110) -->
+                <StackPanel IsVisible="{Binding IsUpdates}" Spacing="0">
+                    <TextBlock Text="Updates" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="Which builds Kontena offers, and when it fetches them." FontSize="13.5"
+                               Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+
+                    <!-- An install that cannot replace itself says so before offering any of the rows below -->
+                    <Border Classes="card" Margin="0,0,0,30" IsVisible="{Binding ShowUnsupportedNotice}">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Info}"
+                                  Data="{StaticResource IconInfo}" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="{Binding Update.UnsupportedReason}" FontSize="12.5" TextWrapping="Wrap"
+                                       LineHeight="19" Foreground="{DynamicResource TextDim}" MaxWidth="640"/>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel IsVisible="{Binding ShowUpdatePreferences}" Spacing="0">
+                        <TextBlock Classes="gh" Text="CHANNEL"/>
+                        <Border Classes="card" Padding="0" Margin="0,0,0,30">
+                            <StackPanel>
+                                <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                        <TextBlock Text="Release channel" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                        <TextBlock Text="{Binding ChannelHint}" FontSize="12" TextWrapping="Wrap"
+                                                   MaxWidth="470" Foreground="{DynamicResource TextDim}"/>
+                                    </StackPanel>
+                                    <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                                            BorderThickness="1" CornerRadius="8" Padding="3" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="2">
+                                            <Button Classes="seg" Classes.on="{Binding IsStableChannel}"
+                                                    Command="{Binding SetUpdateChannelCommand}" CommandParameter="stable">
+                                                <TextBlock Text="Stable" VerticalAlignment="Center"/>
+                                            </Button>
+                                            <Button Classes="seg" Classes.on="{Binding IsPreviewChannel}"
+                                                    Command="{Binding SetUpdateChannelCommand}" CommandParameter="preview">
+                                                <TextBlock Text="Preview" VerticalAlignment="Center"/>
+                                            </Button>
+                                            <Button Classes="seg" Classes.on="{Binding IsNightlyChannel}"
+                                                    Command="{Binding SetUpdateChannelCommand}" CommandParameter="nightly">
+                                                <TextBlock Text="Nightly" VerticalAlignment="Center"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <Border Height="1" Background="{DynamicResource Border}"/>
+                                <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                        <TextBlock Text="Download updates automatically" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                        <TextBlock Text="Fetch a new version as soon as it is found, so the update is a restart rather than a wait."
+                                                   FontSize="12" TextWrapping="Wrap" MaxWidth="470" Foreground="{DynamicResource TextDim}"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding AutoDownloadUpdates, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Classes="gh" Text="THIS INSTALL"/>
+                        <Border Classes="card">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}">
+                                        <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Update.SidebarLabel}" FontSize="12"
+                                               Foreground="{DynamicResource Primary}" IsVisible="{Binding Update.HasSidebarEntry}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Classes="ghost" Command="{Binding CheckForUpdatesCommand}"
+                                        Content="Check now" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- About -->

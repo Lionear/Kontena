@@ -107,9 +107,21 @@ See [`changelog.d/README.md`](changelog.d/README.md) for the details.
 ## Builds & releases
 
 CI lives in [`.github/workflows`](.github/workflows): `test.yml` runs the unit tests on every push
-and PR; `build.yml` publishes cross-platform builds. Pushing to `main` refreshes the rolling
-**preview** release; pushing a `v<semver>` tag cuts a real **stable** release (Windows `.zip`, Linux
-`.AppImage`, macOS `.zip`). The builds are unsigned / not notarized for now.
+and PR; `changelog.yml` validates the changelog fragments; `build.yml` publishes cross-platform
+builds. Pushing to `main` refreshes the rolling **preview** release; a nightly schedule refreshes
+the rolling **nightly** prerelease from `develop`; pushing a `v<semver>` tag cuts a real **stable**
+release. The builds are unsigned / not notarized for now.
+
+Packaging is [Velopack](https://velopack.io) (`vpk`), so the same step produces the download and the
+update feed the installed app reads — an installer built apart from its feed is one the updater
+cannot follow. Each build publishes into a channel named `<platform>-<stream>` — three platforms
+times the three streams above (`linux-stable`, `win-nightly`, `osx-preview`, …), and all three
+streams are selectable in Settings → Updates, so no feed is published that nobody can subscribe to.
+The platform is part of the name because a channel is one feed,
+and a mixed feed would offer a Windows package to a Linux install; the app derives the same name
+from `Kontena.Core.Models.ReleaseChannel`, so the two sides cannot drift apart. Alongside the
+download, a release carries a `.nupkg` and a `releases.<channel>.json` — those are the updater's,
+not the user's.
 
 ## Dependencies & notices
 
