@@ -277,6 +277,36 @@
                         </ItemsControl>
                     </Border>
 
+                    <TextBlock Classes="gh" Text="KUBECONFIGS" Margin="0,30,0,12"/>
+                    <Border Classes="card" Margin="0,0,0,14">
+                        <StackPanel Spacing="12">
+                            <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" MaxWidth="620"
+                                       HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"
+                                       Text="The files Kontena reads contexts from. The default one is always read. Removing an added file stops Kontena reading it — the file itself is left alone."/>
+                            <ItemsControl ItemsSource="{Binding Kubeconfigs}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:KubeconfigSource">
+                                        <Grid Margin="0,0,0,6" ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Label}" FontSize="12.5"
+                                                           FontFamily="{StaticResource Mono}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource Text}"/>
+                                                <TextBlock Text="always read" FontSize="11"
+                                                           IsVisible="{Binding !CanRemove}"
+                                                           Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Classes="ghost" Padding="11,5"
+                                                    IsVisible="{Binding CanRemove}"
+                                                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveKubeconfigCommand}"
+                                                    CommandParameter="{Binding}">Remove</Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
                     <TextBlock Classes="gh" Text="CLUSTERS" Margin="0,30,0,12" IsVisible="{Binding HasClusters}"/>
                     <Border Classes="card" Margin="0,0,0,14" IsVisible="{Binding HasClusters}">
                         <StackPanel Spacing="14">

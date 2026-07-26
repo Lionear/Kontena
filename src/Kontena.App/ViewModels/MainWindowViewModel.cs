@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Adapters.Kubernetes;
 using Kontena.App.Services;
 using Kontena.Core;
 using Kontena.Core.Errors;
@@ -930,7 +931,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             // what this list is for (KON-120).
             clusters: DiscoveredClusters(),
             onClustersChanged: () =>
-                ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)));
+                ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+            kubeconfigs: Kubeconfigs());
     }
 
     /// <summary>
@@ -942,6 +944,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         _settings = _settings with { ShowDemoBackends = includeDemo };
         var stored = _store.Load();
+
+        // Prune here rather than only at startup: removing a kubeconfig takes its clusters with it, and
+        // their names and visibility would otherwise linger until the next launch (KON-122).
+        var known = BackendCatalog.DiscoverClusters(stored.KubeconfigPaths).Select(p => p.Backend).ToList();
+        stored = _store.Update(s => s.PruneClusters(known)
+            .PruneBackendNames([.. known, .. s.RemoteEngines.Select(r => r.Backend), "docker", "podman"]));
+
         _registry.Replace(BackendCatalog.Build(
             BackendCatalog.ShouldIncludeDemo(includeDemo),
             stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
@@ -1056,6 +1065,21 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         NewClusterCount = settings.NewClusters(discovered).Count;
     }
 
+    /// <summary>
+    /// The kubeconfigs Kontena reads (KON-122). The default one is listed but not removable: showing it
+    /// answers "where are these clusters coming from" without offering to stop reading the file every
+    /// kubectl user has.
+    /// </summary>
+    private IReadOnlyList<KubeconfigSource> Kubeconfigs()
+    {
+        var stored = _store.Load();
+        return
+        [
+            new KubeconfigSource(string.Empty, Kubeconfig.DefaultPath, CanRemove: false),
+            .. stored.KubeconfigPaths.Select(p => new KubeconfigSource(p, p, CanRemove: true)),
+        ];
+    }
+
     /// <summary>Every cluster in every kubeconfig Kontena reads, for the Settings list.</summary>
     private IReadOnlyList<DiscoveredCluster> DiscoveredClusters()
     {
@@ -1067,11 +1091,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                     p.Backend,
                     p.DisplayName,
 
-                    // The id carries a hash of the file for a non-default kubeconfig; the user needs the
-                    // file, not the hash.
-                    p.Backend.Contains('@', StringComparison.Ordinal)
-                        ? "added kubeconfig"
-                        : "default kubeconfig")),
+                    // Which file, not just "an added one": two kubeconfigs can both hold a context
+                    // called "default", and then the path is the only thing telling the rows apart.
+                    (p as KubernetesClusterProvider)?.KubeconfigPath ?? "default kubeconfig")),
         ];
     }
 
