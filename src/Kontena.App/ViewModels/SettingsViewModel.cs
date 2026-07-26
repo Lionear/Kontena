@@ -27,12 +27,15 @@ public partial class SettingsViewModel : ViewModelBase
     /// <param name="onDemoBackendsChanged">Invoked when the demo toggle flips so the shell can
     /// rebuild the backend set. Null in design-time and test contexts.</param>
     /// <param name="update">The updater, for the Updates category. Null in design-time and tests.</param>
+    /// <param name="autostart">Login-item registration; defaults to this platform's mechanism.</param>
     public SettingsViewModel(
         SettingsStore store, KontenaSettings settings, IReadOnlyList<EngineListItem> engines,
         IReadOnlyList<EngineListItem>? backends = null,
         Func<bool, Task>? onDemoBackendsChanged = null,
-        UpdateViewModel? update = null)
+        UpdateViewModel? update = null,
+        IAutostart? autostart = null)
     {
+        _autostart = autostart ?? Autostart.Create();
         _backends = backends ?? engines;
         _store = store;
         _settings = settings;
@@ -46,7 +49,11 @@ public partial class SettingsViewModel : ViewModelBase
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
         _autoDetect = settings.AutoDetectEngines;
-        _launchAtLogin = settings.LaunchAtLogin;
+
+        // Read from the system, not from the file. Someone can delete the autostart entry by hand or
+        // switch it off in their desktop's own settings, and then our record is stale — showing it
+        // would be claiming an arrangement that no longer exists.
+        _launchAtLogin = _autostart.IsSupported ? _autostart.IsEnabled() : settings.LaunchAtLogin;
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
@@ -166,17 +173,39 @@ public partial class SettingsViewModel : ViewModelBase
 
     // ── Startup ─────────────────────────────────────────────────────────────
 
+    private readonly IAutostart _autostart;
+
     /// <summary>
-    /// Whether the launch-at-login row is offered at all. False everywhere today: nothing writes an
-    /// autostart entry — no <c>~/.config/autostart</c> file, no Run key, no LaunchAgent — so the
-    /// switch only ever recorded its own position. A control that promises something it does not do
-    /// is worse than one that is absent, so it stays hidden until KON-103 makes it true.
+    /// Whether the launch-at-login row is offered at all: only where autostart is implemented and the
+    /// install has a path that will still work after an update (KON-103). A control that promises
+    /// something it does not do is worse than one that is absent.
     /// </summary>
-    /// <remarks>Never assigned, so false — the point is that there is nothing to assign it from yet.</remarks>
-    public bool CanLaunchAtLogin { get; }
+    public bool CanLaunchAtLogin => _autostart.IsSupported;
 
     [ObservableProperty] private bool _launchAtLogin;
-    partial void OnLaunchAtLoginChanged(bool value) => Save();
+
+    /// <summary>
+    /// Guards against the write below coming back as a property change and writing again.
+    /// </summary>
+    private bool _applyingAutostart;
+
+    partial void OnLaunchAtLoginChanged(bool value)
+    {
+        if (_applyingAutostart)
+            return;
+
+        // What the system says after the attempt, not what was asked. If the write did not take, the
+        // switch goes back rather than sitting there claiming something that is not true.
+        var actual = _autostart.Apply(value);
+        if (actual != value)
+        {
+            _applyingAutostart = true;
+            LaunchAtLogin = actual;
+            _applyingAutostart = false;
+        }
+
+        Save();
+    }
 
     // ── Updates (KON-110) ───────────────────────────────────────────────────
 
