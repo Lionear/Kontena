@@ -1,7 +1,8 @@
-using System.Reflection;
 using System.Collections.ObjectModel;
+using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Adapters.Docker;
 using Kontena.App.Services;
 using Kontena.Core.Models;
 using Kontena.Engines;
@@ -18,6 +19,24 @@ namespace Kontena.App.ViewModels;
 public sealed record RegistryRow(string Host, string Username, bool IsInherited)
 {
     public string SourceLabel => IsInherited ? "from your engine config" : "signed in with Kontena";
+}
+
+/// <summary>A configured remote engine, as shown in Settings › Engines.</summary>
+/// <param name="Remote">The stored configuration.</param>
+/// <param name="Connected">Whether it answered the last time backends were probed.</param>
+public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
+{
+    public string Name => Remote.Name;
+    public string Endpoint => Remote.Endpoint;
+
+    public string TransportLabel => Remote.Transport == RemoteEngineTransport.Ssh ? "SSH" : "TCP";
+
+    /// <summary>Insecure TCP is stated in the list, not just at the moment of adding it.</summary>
+    public bool IsInsecure =>
+        Remote.Transport == RemoteEngineTransport.Tcp
+        && string.IsNullOrWhiteSpace(Remote.CertificateDirectory);
+
+    public string Status => Connected ? "connected" : "not reachable";
 }
 
 /// <summary>One engine as shown in the Settings › Engines list.</summary>
@@ -50,12 +69,14 @@ public partial class SettingsViewModel : ViewModelBase
         IAutostart? autostart = null,
         ISecretStore? secrets = null,
         RegistryCredentials? registries = null,
-        Func<IContainerEngine?>? engine = null)
+        Func<IContainerEngine?>? engine = null,
+        Func<Task>? onRemotesChanged = null)
     {
         _registries = registries;
         _engineForVerify = engine;
         _autostart = autostart ?? Autostart.Create();
         _secrets = secrets ?? SecretStore.Create();
+        _onRemotesChanged = onRemotesChanged;
         _backends = backends ?? engines;
         _store = store;
         _settings = settings;
@@ -74,6 +95,7 @@ public partial class SettingsViewModel : ViewModelBase
         // switch it off in their desktop's own settings, and then our record is stale — showing it
         // would be claiming an arrangement that no longer exists.
         _launchAtLogin = _autostart.IsSupported ? _autostart.IsEnabled() : settings.LaunchAtLogin;
+        RefreshRemotes();
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
@@ -442,6 +464,195 @@ public partial class SettingsViewModel : ViewModelBase
 
         RegistryNotice = $"Signed out of {row.Host}.";
         RefreshRegistries();
+    }
+
+    // ── Remote engines (KON-46) ─────────────────────────────────────────────
+
+    private readonly Func<Task>? _onRemotesChanged;
+
+    public ObservableCollection<RemoteEngineRow> RemoteEngines { get; } = [];
+
+    [ObservableProperty] private string _remoteName = string.Empty;
+    [ObservableProperty] private string _remoteHost = string.Empty;
+    [ObservableProperty] private string _remoteUser = string.Empty;
+    [ObservableProperty] private string _remotePort = string.Empty;
+    [ObservableProperty] private string _remoteSocketPath = string.Empty;
+    [ObservableProperty] private string _remoteCertificateDirectory = string.Empty;
+    [ObservableProperty] private bool _remoteAllowInsecure;
+    [ObservableProperty] private bool _remoteIsSsh = true;
+    [ObservableProperty] private bool _isRemoteBusy;
+    [ObservableProperty] private string? _remoteError;
+    [ObservableProperty] private string? _remoteNotice;
+
+    public bool RemoteIsTcp => !RemoteIsSsh;
+
+    /// <summary>Shown for TCP only, and only until certificates are given.</summary>
+    public bool ShowInsecureWarning => RemoteIsTcp && string.IsNullOrWhiteSpace(RemoteCertificateDirectory);
+
+    public bool CanAddRemote => !IsRemoteBusy && Draft().Problem is null;
+
+    [RelayCommand]
+    private void SetRemoteTransport(string transport) => RemoteIsSsh = transport != "tcp";
+
+    partial void OnRemoteIsSshChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RemoteIsTcp));
+        OnPropertyChanged(nameof(ShowInsecureWarning));
+        OnRemoteFieldChanged();
+    }
+
+    partial void OnRemoteNameChanged(string value) => OnRemoteFieldChanged();
+    partial void OnRemoteHostChanged(string value) => OnRemoteFieldChanged();
+    partial void OnRemotePortChanged(string value) => OnRemoteFieldChanged();
+    partial void OnRemoteAllowInsecureChanged(bool value) => OnRemoteFieldChanged();
+    partial void OnIsRemoteBusyChanged(bool value) => OnPropertyChanged(nameof(CanAddRemote));
+
+    partial void OnRemoteCertificateDirectoryChanged(string value)
+    {
+        OnPropertyChanged(nameof(ShowInsecureWarning));
+        OnRemoteFieldChanged();
+    }
+
+    private void OnRemoteFieldChanged()
+    {
+        OnPropertyChanged(nameof(CanAddRemote));
+        RemoteError = null;
+        RemoteNotice = null;
+    }
+
+    /// <summary>
+    /// The connection the form currently describes. Built rather than validated field by field, so the one
+    /// rule that matters — TCP without certificates is refused — lives in the model and not in the view.
+    /// </summary>
+    private RemoteEngine Draft(string? id = null)
+    {
+        var port = int.TryParse(RemotePort.Trim(), out var parsed) && parsed > 0 ? parsed : (int?)null;
+        var host = RemoteHost.Trim();
+        var user = RemoteUser.Trim();
+        var socket = RemoteSocketPath.Trim();
+        var certificates = RemoteCertificateDirectory.Trim();
+
+        return new RemoteEngine(
+            id ?? Guid.NewGuid().ToString("N")[..12],
+            string.IsNullOrWhiteSpace(RemoteName) ? host : RemoteName.Trim(),
+            RemoteIsSsh ? RemoteEngineTransport.Ssh : RemoteEngineTransport.Tcp,
+            host,
+            port,
+            RemoteIsSsh && user.Length > 0 ? user : null,
+            RemoteIsSsh && socket.Length > 0 ? socket : null,
+            !RemoteIsSsh && certificates.Length > 0 ? certificates : null,
+            !RemoteIsSsh && RemoteAllowInsecure);
+    }
+
+    private void RefreshRemotes()
+    {
+        RemoteEngines.Clear();
+        foreach (var remote in _settings.RemoteEngines)
+        {
+            var connected = _backends.Any(b => b.Backend == remote.Backend && b.Connected);
+            RemoteEngines.Add(new RemoteEngineRow(remote, connected));
+        }
+    }
+
+    /// <summary>
+    /// Actually connects, before anything is saved. For SSH that means opening the tunnel and asking the
+    /// daemon through it — the only way to tell "the host is reachable" from "the engine answers", which are
+    /// different problems with different fixes.
+    /// </summary>
+    [RelayCommand]
+    private async Task TestRemoteAsync()
+    {
+        var draft = Draft();
+        if (draft.Problem is { } problem)
+        {
+            RemoteError = problem;
+            return;
+        }
+
+        RemoteError = null;
+        RemoteNotice = null;
+        IsRemoteBusy = true;
+        try
+        {
+            var info = await Task.Run(async () =>
+            {
+                var backend = new RemoteDockerEngineProvider(draft).CreateBackend();
+                try
+                {
+                    await backend.PingAsync();
+                    return await backend.GetInfoAsync();
+                }
+                finally
+                {
+                    // Disposing takes the tunnel with it: a test must not leave a connection behind.
+                    (backend as IDisposable)?.Dispose();
+                }
+            });
+
+            RemoteNotice = $"Connected — {info.DisplayName} {info.Version}.".Replace("  ", " ", StringComparison.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            // ssh's and the daemon's own words. "Permission denied (publickey)" and "Host key verification
+            // failed" say exactly what to fix, and nothing written here would say it better.
+            RemoteError = ex.Message;
+        }
+        finally
+        {
+            IsRemoteBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddRemoteAsync()
+    {
+        var draft = Draft();
+        if (draft.Problem is { } problem)
+        {
+            RemoteError = problem;
+            return;
+        }
+
+        _settings = _settings with { RemoteEngines = [.. _settings.RemoteEngines, draft] };
+        _store.Save(_settings);
+
+        RemoteName = string.Empty;
+        RemoteHost = string.Empty;
+        RemoteUser = string.Empty;
+        RemotePort = string.Empty;
+        RemoteSocketPath = string.Empty;
+        RemoteCertificateDirectory = string.Empty;
+        RemoteAllowInsecure = false;
+        RemoteNotice = $"Added {draft.Name}.";
+
+        RefreshRemotes();
+
+        // The switcher is built from the provider list, so it has to be rebuilt for the new entry to appear.
+        if (_onRemotesChanged is not null)
+            await _onRemotesChanged();
+    }
+
+    [RelayCommand]
+    private async Task RemoveRemoteAsync(RemoteEngineRow? row)
+    {
+        if (row is null)
+            return;
+
+        _settings = _settings with
+        {
+            RemoteEngines = [.. _settings.RemoteEngines.Where(r => r.Id != row.Remote.Id)],
+        };
+        _store.Save(_settings);
+
+        // Anything kept in the keychain for this remote goes with it, so a re-add cannot inherit an old
+        // secret belonging to a host that is no longer configured.
+        await _secrets.DeleteAsync(SecretKeys.Engine(row.Remote.Id));
+
+        RemoteNotice = $"Removed {row.Name}.";
+        RefreshRemotes();
+
+        if (_onRemotesChanged is not null)
+            await _onRemotesChanged();
     }
 
     // ── Terminal ────────────────────────────────────────────────────────────

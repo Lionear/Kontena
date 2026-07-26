@@ -895,7 +895,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         SettingsPage = new SettingsViewModel(
             _store, _settings, engines, all, ReloadBackendsAsync, Update,
-            secrets: _secrets, registries: _registryCredentials, engine: () => _engine);
+            secrets: _secrets, registries: _registryCredentials, engine: () => _engine,
+            // Adding or removing a remote changes the provider list, which is what the switcher is built
+            // from — so the same rebuild the demo toggle uses (KON-46).
+            onRemotesChanged: () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)));
     }
 
     /// <summary>
@@ -906,7 +909,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private async Task ReloadBackendsAsync(bool includeDemo)
     {
         _settings = _settings with { ShowDemoBackends = includeDemo };
-        _registry.Replace(BackendCatalog.Build(BackendCatalog.ShouldIncludeDemo(includeDemo)));
+        _registry.Replace(BackendCatalog.Build(
+            BackendCatalog.ShouldIncludeDemo(includeDemo), _store.Load().RemoteEngines));
         _probes = await _registry.ProbeAllAsync();
 
         RebuildEngineList();

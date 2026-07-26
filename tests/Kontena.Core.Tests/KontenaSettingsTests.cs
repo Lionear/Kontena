@@ -61,6 +61,12 @@ public class KontenaSettingsTests
                 new RegistryLogin("ghcr.io", "rick", RegistryCredentialSource.Kontena),
                 new RegistryLogin("registry.local:5000", "ci", RegistryCredentialSource.Kontena),
             ],
+            RemoteEngines =
+            [
+                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "build-01", User: "rick"),
+                new RemoteEngine("r2", "Lab", RemoteEngineTransport.Tcp, "lab.local", 2376,
+                    CertificateDirectory: "/home/rick/.docker/lab"),
+            ],
             TerminalLigatures = true,
             RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
@@ -85,6 +91,8 @@ public class KontenaSettingsTests
         // Hosts and usernames survive; the secrets were never in here to begin with — they live in the
         // keychain, which is the point of storing only this much.
         Assert.Equal(original.Registries, restored.Registries);
+        // Transport, host, port and the certificate path survive; the secrets never lived here.
+        Assert.Equal(original.RemoteEngines, restored.RemoteEngines);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -94,6 +102,7 @@ public class KontenaSettingsTests
                 RecentBuildContexts = restored.RecentBuildContexts,
                 PortForwards = restored.PortForwards,
                 Registries = restored.Registries,
+                RemoteEngines = restored.RemoteEngines,
             },
             restored);
     }

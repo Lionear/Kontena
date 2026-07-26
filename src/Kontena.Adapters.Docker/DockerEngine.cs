@@ -26,6 +26,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
 {
     private readonly DockerClient _client;
     private readonly Uri _endpoint;
+    private readonly IAsyncDisposable? _attached;
     private readonly string _backend;
     private readonly string _displayName;
 
@@ -33,13 +34,31 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
     /// The Docker Engine API is also spoken by Podman, so this adapter serves both:
     /// pass the Podman socket plus a "podman"/"Podman" identity to reuse it.
     /// </summary>
-    public DockerEngine(Uri? endpoint = null, string backend = "docker", string displayName = "Docker")
+    /// <param name="certificateDirectory">
+    /// Directory holding <c>ca.pem</c>, <c>cert.pem</c> and <c>key.pem</c> for a TLS endpoint — the
+    /// <c>DOCKER_CERT_PATH</c> layout, so an existing setup can be pointed at rather than rebuilt. Null
+    /// for a local socket or an explicitly insecure TCP endpoint (KON-46).
+    /// </param>
+    /// <param name="attached">
+    /// Something whose lifetime belongs to this engine and is disposed with it — the SSH tunnel a remote
+    /// engine speaks through (KON-46). The tunnel must outlive every call and die with the connection, and
+    /// tying it to the client is the only way that is not a second lifetime to get wrong.
+    /// </param>
+    public DockerEngine(
+        Uri? endpoint = null, string backend = "docker", string displayName = "Docker",
+        string? certificateDirectory = null, IAsyncDisposable? attached = null)
     {
+        _attached = attached;
         _endpoint = endpoint ?? DefaultEndpoint();
         _backend = backend;
         _displayName = displayName;
-        _client = new DockerClientConfiguration(_endpoint).CreateClient();
+
+        var credentials = LoadCertificates(certificateDirectory);
+        _client = new DockerClientConfiguration(_endpoint, credentials).CreateClient();
     }
+
+    private static MutualTlsCredentials? LoadCertificates(string? directory) =>
+        string.IsNullOrWhiteSpace(directory) ? null : MutualTlsCredentials.FromDirectory(directory);
 
     public string Backend => _backend;
 
@@ -929,7 +948,15 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         }
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        _client.Dispose();
+
+        // Synchronous because IContainerEngine is disposed synchronously by the shell; the tunnel's own
+        // teardown is a kill and a file delete, so there is nothing here worth an async path.
+        if (_attached is { } attached)
+            attached.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
 
     // ── Mapping helpers ─────────────────────────────────────────────────────
 
