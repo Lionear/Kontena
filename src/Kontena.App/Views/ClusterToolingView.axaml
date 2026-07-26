@@ -1,0 +1,130 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.ClusterToolingView"
+             x:DataType="vm:ClusterToolingViewModel">
+
+    <StackPanel Spacing="0">
+        <TextBlock Text="Local clusters" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+        <TextBlock Text="Kontena drives kind or minikube to build a Kubernetes cluster on this machine. Neither ships with Kontena, so the tool has to be here first."
+                   FontSize="13.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" MaxWidth="620"
+                   HorizontalAlignment="Left" Margin="0,4,0,26"/>
+
+        <Border Classes="card">
+            <StackPanel Spacing="0">
+
+                <TextBlock Text="CLUSTER TOOLING" FontSize="11.5" FontWeight="Bold"
+                           Foreground="{DynamicResource TextFaint}" Margin="0,0,0,14"/>
+
+                <ItemsControl ItemsSource="{Binding Tools}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ClusterToolRowViewModel">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+                                <StackPanel Grid.Column="0" Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="9">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Ellipse Width="7" Height="7" Fill="{Binding StateBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding StateText}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{Binding StateBrush}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Detail}" FontSize="12.5" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextFaint}"/>
+
+                                    <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                                            BorderThickness="1" CornerRadius="8" Padding="11,9" Margin="0,7,0,0"
+                                            IsVisible="{Binding IsOutdated}" MaxWidth="520" HorizontalAlignment="Left">
+                                        <TextBlock Text="{Binding OutdatedConsequence}" FontSize="12.5" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource WarnText}"/>
+                                    </Border>
+
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0" MaxWidth="520"
+                                          HorizontalAlignment="Left" IsVisible="{Binding HasHint}">
+                                        <Border Grid.Column="0" Background="{DynamicResource Console}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                CornerRadius="8" Padding="11,8">
+                                            <TextBlock Text="{Binding HintCommand}" FontFamily="{StaticResource Mono}"
+                                                       FontSize="12" Foreground="#C9D3DF" TextTrimming="CharacterEllipsis"/>
+                                        </Border>
+                                        <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0" Content="Copy"
+                                                Click="OnCopyClick" Tag="{Binding HintCommand}"/>
+                                    </Grid>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                            VerticalAlignment="Top" Margin="16,0,0,0">
+                                    <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}"
+                                            IsVisible="{Binding CanInstall}"/>
+                                    <Button Classes="ghost" Content="Download" Command="{Binding DownloadCommand}"
+                                            IsVisible="{Binding CanDownload}"
+                                            ToolTip.Tip="Fetch the official release into Kontena's own folder"/>
+                                    <Button Classes="ghost" Content="Remove" Command="{Binding RemoveCommand}"
+                                            IsVisible="{Binding CanRemove}"/>
+                                    <Button Classes="ghost" Content="Docs" Command="{Binding DocumentationCommand}"
+                                            IsVisible="{Binding HasDocumentation}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Running: the package manager's own output, or the download's progress. -->
+                <StackPanel Spacing="10" Margin="0,6,0,0" IsVisible="{Binding IsBusy}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding BusyTitle}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
+                    </Grid>
+
+                    <ProgressBar IsVisible="{Binding HasProgress}" Value="{Binding Progress}" Maximum="120"
+                                 Height="6" CornerRadius="999" Background="{DynamicResource Surface2}"
+                                 Foreground="{DynamicResource Primary}"/>
+
+                    <Border Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="10" Padding="13,11" MaxHeight="190">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Output}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                                   Foreground="#C9D3DF" TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+
+                <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerSoftBorder}"
+                        BorderThickness="1" CornerRadius="10" Padding="13,11" Margin="0,6,0,0"
+                        IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text}"/>
+                </Border>
+
+                <Grid ColumnDefinitions="Auto,*" Margin="0,16,0,0">
+                    <Button Grid.Column="0" Classes="ghost" Content="Re-check" Command="{Binding LoadCommand}"
+                            IsEnabled="{Binding !IsBusy}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Where Kontena's own copies live. Shown always, not only after downloading one: a folder
+             the app writes executables into should never be something you discover. -->
+        <Border Classes="card" Margin="0,16,0,0">
+            <StackPanel Spacing="7">
+                <TextBlock Text="KONTENA'S OWN COPIES" FontSize="11.5" FontWeight="Bold"
+                           Foreground="{DynamicResource TextFaint}"/>
+                <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"
+                           Text="Where a tool cannot come from a package manager, Kontena can fetch the publisher's release into a folder of its own. Those copies are checked against the published SHA-256 when they arrive and again before every run, they are never added to your PATH, and no package manager updates them — Kontena does."/>
+                <SelectableTextBlock Text="{Binding ManagedRoot}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                     Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

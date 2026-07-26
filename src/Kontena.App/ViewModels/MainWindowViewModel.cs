@@ -940,7 +940,17 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             clusters: DiscoveredClusters(),
             onClustersChanged: () =>
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
-            kubeconfigs: Kubeconfigs());
+            kubeconfigs: Kubeconfigs())
+        {
+            // Local clusters (KON-109). Built here so it lives as long as the settings page and gets
+            // disposed with it — an install left running against a page nobody is on would finish out
+            // of sight.
+            ClusterTooling = new ClusterToolingViewModel
+            {
+                RequestOpenUrl = Browser.OpenUrl,
+                RequestConfirm = ShowConfirm,
+            },
+        };
 
         SettingsPage.RequestConfirm = ShowConfirm;
     }

@@ -70,6 +70,9 @@
 
     <StreamGeometry x:Key="IconMonitor">M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z M8 21h8 M12 17v4</StreamGeometry>
 
+    <!-- Lucide "boxes" — a small group of nodes, for the local-cluster tooling page. -->
+    <StreamGeometry x:Key="IconCluster">M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z M7 16.5L2.26 13.74 M7 16.5v5.17 M7 16.5l4.74-2.76 M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z M17 16.5l-4.74-2.76 M17 16.5v5.17 M17 16.5l4.74-2.76 M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z M12 8L7.26 5.24 M12 8v5.5 M12 8l4.74-2.76</StreamGeometry>
+
     <StreamGeometry x:Key="IconBox">M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z M3.3 7l8.7 5 8.7-5 M12 22V12</StreamGeometry>
 
     <StreamGeometry x:Key="IconFolder">M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z</StreamGeometry>

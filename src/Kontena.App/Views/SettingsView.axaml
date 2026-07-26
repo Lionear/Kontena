@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
@@ -87,6 +88,13 @@
                     <Grid ColumnDefinitions="Auto,*">
                         <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconDownload}"/>
                         <TextBlock Grid.Column="1" Text="Updates" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
+                <Button Classes="snav" Classes.on="{Binding IsClusters}" Command="{Binding SelectCategoryCommand}"
+                        CommandParameter="clusters" IsVisible="{Binding ClusterTooling, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconCluster}"/>
+                        <TextBlock Grid.Column="1" Text="Local clusters" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
                 <Button Classes="snav" Classes.on="{Binding IsAbout}" Command="{Binding SelectCategoryCommand}" CommandParameter="about">
@@ -659,6 +667,9 @@
                         </Border>
                     </StackPanel>
                 </StackPanel>
+
+                <!-- Local clusters (KON-109) — its own view, so this file does not grow a sixth page. -->
+                <views:ClusterToolingView DataContext="{Binding ClusterTooling}" IsVisible="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).IsClusters}"/>
 
                 <!-- About -->
                 <StackPanel IsVisible="{Binding IsAbout}" Spacing="0">

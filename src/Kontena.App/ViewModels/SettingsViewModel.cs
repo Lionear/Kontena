@@ -255,6 +255,13 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsEngines));
         OnPropertyChanged(nameof(IsUpdates));
         OnPropertyChanged(nameof(IsRegistries));
+        OnPropertyChanged(nameof(IsClusters));
+
+        // Re-check on entry rather than on build: tooling can be installed in a terminal while the
+        // page is open, and a stale "not installed" is the kind of wrong that makes people click
+        // Install twice.
+        if (Category == "clusters" && ClusterTooling is { } tooling)
+            _ = tooling.LoadAsync();
 
         // Read fresh on entry: a login can have been added by docker login, or revoked in the keychain,
         // since the page was built.
@@ -264,10 +271,17 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     public bool IsRegistries => Category == "registries";
+    public bool IsClusters => Category == "clusters";
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
     public bool IsUpdates => Category == "updates";
     public bool IsAbout => Category == "about";
+
+    /// <summary>
+    /// Local clusters (KON-109). An init property rather than a thirteenth constructor parameter —
+    /// this page owns its own state and needs nothing from settings.
+    /// </summary>
+    public ClusterToolingViewModel? ClusterTooling { get; init; }
 
     [RelayCommand]
     private void SelectCategory(string category) => Category = category;
