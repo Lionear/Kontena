@@ -126,10 +126,15 @@ internal static class Program
             // settings-updates-unmanaged deliberately keeps the real service, which in a
             // development run is exactly the "cannot update here" case it wants to show.
             var updates = opts.Scene.StartsWith("update", StringComparison.Ordinal)
-                          || opts.Scene == "settings-updates"
+                          || opts.Scene is "settings-updates" or "settings-updates-following"
                 ? new FakeUpdateService(
                     fail: opts.Scene == "update-failed",
-                    holdAt: opts.Scene == "update-downloading" ? 62 : null)
+                    holdAt: opts.Scene == "update-downloading" ? 62 : null,
+
+                    // A nightly build with no stored choice, which is the whole subject of that scene.
+                    buildChannel: opts.Scene == "settings-updates-following"
+                        ? UpdateChannel.Nightly
+                        : UpdateChannel.Stable)
                 : null;
 
             var viewModel = new MainWindowViewModel(registry, store, settings, updates);
@@ -371,6 +376,7 @@ internal static class Program
             case "update-failed":
             case "settings-updates":
             case "settings-updates-unmanaged":
+            case "settings-updates-following":
             {
                 var settingsPage = vm.SettingsPage as Kontena.App.ViewModels.SettingsViewModel;
                 if (scene.StartsWith("settings-updates", StringComparison.Ordinal))

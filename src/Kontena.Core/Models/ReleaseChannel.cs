@@ -45,4 +45,45 @@ public static class ReleaseChannel
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "win"
         : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "osx"
         : "linux";
+
+    /// <summary>
+    /// Which stream a build belongs to, read from its own version string (KON-123).
+    /// <para>
+    /// The workflow publishes a nightly as <c>0.2.0-nightly.20260726.26</c> and a preview as
+    /// <c>0.2.0-preview.…</c>, and passes that same string to both the compiler and the packaging step.
+    /// So the prerelease tag is not a hint about the channel — it is the string the channel was named
+    /// from, which is why nothing else needs to be shipped alongside the binary to answer this.
+    /// </para>
+    /// <para>
+    /// Anything without one of those tags is <see cref="UpdateChannel.Stable"/>: a tagged release has no
+    /// prerelease part, and a development build has no update feed to be wrong about.
+    /// </para>
+    /// </summary>
+    /// <param name="version">
+    /// An informational version, e.g. <c>0.2.0-nightly.20260726.26+abc1234</c>. Build metadata after
+    /// <c>+</c> is ignored — SourceLink appends the commit there, and it is not part of the version.
+    /// </param>
+    public static UpdateChannel FromVersion(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return UpdateChannel.Stable;
+
+        var withoutMetadata = version.Split('+', 2)[0];
+
+        var dash = withoutMetadata.IndexOf('-', StringComparison.Ordinal);
+        if (dash < 0)
+            return UpdateChannel.Stable;
+
+        // The tag is the first dot-separated identifier of the prerelease part: "nightly.20260726.26"
+        // starts with "nightly". Matching the whole prerelease would break the moment the workflow
+        // changes what it appends after it.
+        var prerelease = withoutMetadata[(dash + 1)..];
+        var tag = prerelease.Split('.', 2)[0];
+
+        return tag.Equals(Stream(UpdateChannel.Nightly), StringComparison.OrdinalIgnoreCase)
+            ? UpdateChannel.Nightly
+            : tag.Equals(Stream(UpdateChannel.Preview), StringComparison.OrdinalIgnoreCase)
+                ? UpdateChannel.Preview
+                : UpdateChannel.Stable;
+    }
 }

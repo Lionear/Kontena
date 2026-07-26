@@ -613,6 +613,15 @@
                                         </StackPanel>
                                     </Border>
                                 </Grid>
+
+                                <!-- Why the channel is what it is, when nobody picked it (KON-123). -->
+                                <Border Background="{DynamicResource InfoSoft}" Margin="18,0,18,15" Padding="12,10"
+                                        CornerRadius="9" IsVisible="{Binding IsFollowingBuildChannel}">
+                                    <TextBlock Text="{Binding FollowingBuildNote}" FontSize="12.5"
+                                               TextWrapping="Wrap" LineHeight="19" MaxWidth="620"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource Text}"/>
+                                </Border>
+
                                 <Border Height="1" Background="{DynamicResource Border}"/>
                                 <Grid Margin="18,15" ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">

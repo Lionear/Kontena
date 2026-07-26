@@ -193,7 +193,11 @@ public partial class SettingsViewModel : ViewModelBase
         Engines = [.. engines];
         _onDemoBackendsChanged = onDemoBackendsChanged;
         Update = update;
-        _updateChannel = settings.UpdateChannel;
+        // Resolved, not raw: the dropdown shows what updates will actually follow. Choosing one in the
+        // page then stores it, which is exactly when "not chosen" should become a choice (KON-123).
+        _buildChannel = update?.BuildChannel ?? UpdateChannel.Stable;
+        _updateChannel = settings.ResolvedUpdateChannel(_buildChannel);
+        _channelWasChosen = settings.UpdateChannel is not null;
         _autoDownloadUpdates = settings.AutoDownloadUpdates;
         _showDemoBackends = BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends);
 
@@ -413,12 +417,30 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty] private UpdateChannel _updateChannel;
 
+    private readonly UpdateChannel _buildChannel;
+
+    /// <summary>False until the user picks a channel; drives the "following this build" note.</summary>
+    private bool _channelWasChosen;
+
+    /// <summary>
+    /// Shown while the channel is only being followed rather than chosen, and only when that means
+    /// something — on a stable build "following the build" and "stable" are the same sentence.
+    /// </summary>
+    public bool IsFollowingBuildChannel => !_channelWasChosen && _buildChannel != UpdateChannel.Stable;
+
+    public string FollowingBuildNote =>
+        $"This is a {ReleaseChannel.Stream(_buildChannel)} build, so Kontena is following that channel. "
+        + "Pick one to decide for yourself.";
+
     public bool IsStableChannel => UpdateChannel == UpdateChannel.Stable;
     public bool IsPreviewChannel => UpdateChannel == UpdateChannel.Preview;
     public bool IsNightlyChannel => UpdateChannel == UpdateChannel.Nightly;
 
     partial void OnUpdateChannelChanged(UpdateChannel value)
     {
+        // Touching the control is the choice, even when it lands on the value already shown.
+        _channelWasChosen = true;
+        OnPropertyChanged(nameof(IsFollowingBuildChannel));
         OnPropertyChanged(nameof(IsStableChannel));
         OnPropertyChanged(nameof(IsPreviewChannel));
         OnPropertyChanged(nameof(IsNightlyChannel));
@@ -970,7 +992,10 @@ public partial class SettingsViewModel : ViewModelBase
             DefaultEngine = null,
             ShowDemoBackends = ShowDemoBackends,
             LaunchAtLogin = LaunchAtLogin,
-            UpdateChannel = UpdateChannel,
+            // Null until the channel is actually chosen. Save runs on every settings change, so writing
+            // the resolved value here would turn "following this build" into a choice the moment someone
+            // flipped the theme (KON-123).
+            UpdateChannel = _channelWasChosen ? UpdateChannel : null,
             AutoDownloadUpdates = AutoDownloadUpdates,
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,

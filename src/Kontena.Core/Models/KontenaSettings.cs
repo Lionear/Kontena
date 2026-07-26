@@ -116,8 +116,29 @@ public sealed record KontenaSettings
 
     // ── Updates (KON-110) ─────────────────────────────────────────────────────
 
-    /// <summary>Which release stream to offer updates from.</summary>
-    public UpdateChannel UpdateChannel { get; init; } = UpdateChannel.Stable;
+    /// <summary>
+    /// Which release stream to offer updates from, or null when the user has never chosen (KON-123).
+    /// <para>
+    /// Nullable for the same reason as <see cref="ShowDemoBackends"/>: "not chosen" and "chose Stable"
+    /// are different answers. Someone who deliberately downloaded a nightly has already made the choice
+    /// by downloading it, and offering them a move to stable on first launch overrules it.
+    /// </para>
+    /// <para>
+    /// A stored choice always wins — see <see cref="ResolvedUpdateChannel"/>. That is what keeps the
+    /// rule from KON-110 intact: an install never drifts onto a rolling stream by itself.
+    /// </para>
+    /// </summary>
+    public UpdateChannel? UpdateChannel { get; init; }
+
+    /// <summary>
+    /// The channel to actually read: what the user chose, or failing that the stream this build came
+    /// from.
+    /// </summary>
+    /// <param name="buildChannel">
+    /// The running build's own stream, from <see cref="ReleaseChannel.FromVersion"/>.
+    /// </param>
+    public UpdateChannel ResolvedUpdateChannel(UpdateChannel buildChannel) =>
+        UpdateChannel ?? buildChannel;
 
     /// <summary>
     /// Fetch a found update straight away instead of waiting for the user to ask. On by default:
