@@ -4,8 +4,8 @@ using Velopack.Locators;
 namespace Kontena.App.Services;
 
 /// <summary>
-/// The command that starts this copy of Kontena again, for anything outside the app that needs to
-/// launch it — today only autostart (KON-103).
+/// The path that starts this copy of Kontena again, for anything outside the app that needs to launch
+/// it — today only autostart (KON-103).
 /// <para>
 /// This is the part that goes wrong quietly, so it is deliberately its own step. An autostart entry
 /// pointing at the wrong path fails at login with no message, and you find out a week later.
@@ -30,24 +30,59 @@ internal static class AppLaunchTarget
         if (!string.IsNullOrEmpty(appImage) && File.Exists(appImage))
             return appImage;
 
-        // A Velopack install keeps the current version behind a stable directory, so the executable
-        // there is the one to point at rather than today's versioned folder.
+        // A Velopack install keeps the current version behind a stable directory, so what lives there
+        // is what to point at rather than today's versioned folder.
         try
         {
             if (VelopackLocator.IsCurrentSet)
             {
                 var content = VelopackLocator.Current.AppContentDir;
                 if (!string.IsNullOrEmpty(content))
-                {
-                    var exe = Path.Combine(content, ExecutableName);
-                    if (File.Exists(exe))
-                        return exe;
-                }
+                    return FromContentDir(content);
             }
         }
         catch (Exception)
         {
             // No Velopack context (a test host, a plain build) — which is a "no", handled below.
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The launch path inside an installed app's content directory, or null when it does not hold what
+    /// this platform needs. Separate and internal so the per-platform rule is testable anywhere: it is
+    /// the rule, not the file write, that decides whether autostart works.
+    /// </summary>
+    internal static string? FromContentDir(string contentDir)
+    {
+        // macOS launches bundles, not executables. Opening the binary inside a .app directly gives a
+        // process without its bundle identity — no icon, no login-item entry the user can manage — so
+        // walk up to the bundle and hand that over instead.
+        if (OperatingSystem.IsMacOS())
+        {
+            var bundle = BundleFor(contentDir);
+            return bundle is not null && Directory.Exists(bundle) ? bundle : null;
+        }
+
+        var exe = Path.Combine(contentDir, ExecutableName);
+        return File.Exists(exe) ? exe : null;
+    }
+
+    /// <summary>The nearest <c>.app</c> directory at or above <paramref name="path"/>, or null.</summary>
+    internal static string? BundleFor(string path)
+    {
+        var current = path.TrimEnd(Path.DirectorySeparatorChar);
+        while (!string.IsNullOrEmpty(current))
+        {
+            if (current.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+                return current;
+
+            var parent = Path.GetDirectoryName(current);
+            if (parent == current)
+                break;
+
+            current = parent ?? string.Empty;
         }
 
         return null;
