@@ -911,8 +911,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private async Task ReloadBackendsAsync(bool includeDemo)
     {
         _settings = _settings with { ShowDemoBackends = includeDemo };
+        var stored = _store.Load();
         _registry.Replace(BackendCatalog.Build(
-            BackendCatalog.ShouldIncludeDemo(includeDemo), _store.Load().RemoteEngines));
+            BackendCatalog.ShouldIncludeDemo(includeDemo), stored.RemoteEngines, stored.KubeconfigPaths));
         _probes = await _registry.ProbeAllAsync();
 
         RebuildEngineList();
@@ -991,16 +992,24 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// The switcher's "Add engine or cluster…" row. Adding one means configuring a remote engine, and that
-    /// lives in Settings › Engines — so this opens exactly there rather than dropping the user on the
-    /// General page to go looking for it.
+    /// The switcher's "Add engine or cluster…" row (KON-118). Opens the wizard, which ends in a
+    /// connection that has actually been made — the reason it is a wizard and not a form.
     /// </summary>
     [RelayCommand]
-    private void ShowAddEngine()
+    private void ShowAddBackend()
     {
-        ShowSettings();
-        if (SettingsPage is not null)
-            SettingsPage.Category = "engines";
+        Dialog = new AddBackendViewModel(_store, _probes, CloseDialog, async backend =>
+        {
+            await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));
+
+            // Switch to what was just added, but only if it is really there: a rebuild can drop a
+            // provider whose configuration turned out to be unusable.
+            if (backend is { Length: > 0 }
+                && _registry.Providers.FirstOrDefault(p => p.Backend == backend) is { } provider)
+            {
+                await ActivateAsync(provider);
+            }
+        });
     }
 
     // ── Theme quick-toggle (topbar) ─────────────────────────────────────────

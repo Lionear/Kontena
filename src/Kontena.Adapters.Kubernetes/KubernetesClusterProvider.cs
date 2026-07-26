@@ -11,26 +11,61 @@ namespace Kontena.Adapters.Kubernetes;
 public sealed class KubernetesClusterProvider : IBackendProvider
 {
     private readonly string _context;
+    private readonly string? _kubeconfigPath;
 
-    public KubernetesClusterProvider(string context)
+    /// <param name="context">The kube-context name.</param>
+    /// <param name="kubeconfigPath">
+    /// The file it came from, or null for the default kubeconfig (KON-118).
+    /// </param>
+    public KubernetesClusterProvider(string context, string? kubeconfigPath = null)
     {
         _context = context;
+        _kubeconfigPath = string.IsNullOrWhiteSpace(kubeconfigPath) ? null : kubeconfigPath;
         Chip = ChipFor(context);
     }
 
-    public string Backend => $"{KubernetesAdapterModule.BackendId}:{_context}";
+    /// <summary>
+    /// Stable id. A context name is only unique within one kubeconfig — two files can both hold
+    /// <c>default</c> — so a non-default file contributes a short hash of its path. Hashed rather than
+    /// embedded because this id ends up in settings, and a file path is not something to spread around.
+    /// </summary>
+    public string Backend => _kubeconfigPath is null
+        ? $"{KubernetesAdapterModule.BackendId}:{_context}"
+        : $"{KubernetesAdapterModule.BackendId}@{ShortHash(_kubeconfigPath)}:{_context}";
+
     public string DisplayName => _context;
     public string Chip { get; }
     public BackendKind Kind => BackendKind.Cluster;
 
-    public IBackend CreateBackend() => new KubernetesClusterEngine(_context);
+    public IBackend CreateBackend() => new KubernetesClusterEngine(_context, _kubeconfigPath);
 
     /// <summary>
-    /// One provider per context in the user's kubeconfig. Returns nothing when there is no
-    /// kubeconfig, so a machine without Kubernetes simply shows no Clusters group.
+    /// One provider per context, from the default kubeconfig plus any files the user added. Returns
+    /// nothing when there is no kubeconfig, so a machine without Kubernetes simply shows no Clusters group.
     /// </summary>
-    public static IReadOnlyList<KubernetesClusterProvider> DiscoverAll() =>
-        [.. Kubeconfig.LoadContexts().Select(c => new KubernetesClusterProvider(c.Name))];
+    /// <param name="extraPaths">
+    /// Kubeconfig files beyond the default one. A path that cannot be read yields no contexts rather than
+    /// throwing: a config on a disconnected drive should cost its own entries, not the whole switcher.
+    /// </param>
+    public static IReadOnlyList<KubernetesClusterProvider> DiscoverAll(IReadOnlyList<string>? extraPaths = null)
+    {
+        var providers = new List<KubernetesClusterProvider>(
+            Kubeconfig.LoadContexts().Select(c => new KubernetesClusterProvider(c.Name)));
+
+        foreach (var path in extraPaths ?? [])
+        {
+            providers.AddRange(
+                Kubeconfig.LoadContexts(path).Select(c => new KubernetesClusterProvider(c.Name, path)));
+        }
+
+        return providers;
+    }
+
+    private static string ShortHash(string value)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexStringLower(bytes)[..8];
+    }
 
     /// <summary>
     /// A short chip from the context name — "kind-kind" → "KIND", "gke_prod_eu" → "GKE". Falls back

@@ -138,10 +138,22 @@ public sealed record KontenaSettings
     /// because they are not ours to remember or to go stale.
     /// </summary>
     public IReadOnlyList<RegistryLogin> Registries { get; init; } = [];
+
+    /// <summary>
     /// Engines on other hosts, added by the user (KON-46). Nothing secret is in here — an SSH key
     /// passphrase or a certificate password belongs in the keychain, keyed by the remote's id.
     /// </summary>
     public IReadOnlyList<RemoteEngine> RemoteEngines { get; init; } = [];
+
+    /// <summary>
+    /// Kubeconfig files beyond the default one, added by the user (KON-118). The default
+    /// (<c>$KUBECONFIG</c>, else <c>~/.kube/config</c>) is always read and is never listed here — a
+    /// downloaded cluster config that lives somewhere else has no other way to be found.
+    /// <para>
+    /// Paths only. Kontena reads these files and never writes to them.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> KubeconfigPaths { get; init; } = [];
 
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";

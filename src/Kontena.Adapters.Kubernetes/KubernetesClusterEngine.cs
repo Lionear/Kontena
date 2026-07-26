@@ -36,12 +36,16 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     private string _context;
     private ClusterCapabilities _capabilities;
 
+    private readonly string? _kubeconfigPath;
+
     /// <param name="context">The kube-context to connect through.</param>
-    public KubernetesClusterEngine(string context)
+    /// <param name="kubeconfigPath">The kubeconfig it came from, or null for the default one (KON-118).</param>
+    public KubernetesClusterEngine(string context, string? kubeconfigPath = null)
     {
         _context = context;
-        _contexts = [.. Kubeconfig.LoadContexts()];
-        _client = new k8s.Kubernetes(Kubeconfig.ConfigFor(context));
+        _kubeconfigPath = string.IsNullOrWhiteSpace(kubeconfigPath) ? null : kubeconfigPath;
+        _contexts = [.. Kubeconfig.LoadContexts(_kubeconfigPath)];
+        _client = new k8s.Kubernetes(Kubeconfig.ConfigFor(context, _kubeconfigPath));
         _metrics = new ClusterMetrics(
             new MetricsServerSource(_client),
             new KubeletSummarySource(_client, NodeNamesAsync));

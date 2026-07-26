@@ -67,6 +67,7 @@ public class KontenaSettingsTests
                 new RemoteEngine("r2", "Lab", RemoteEngineTransport.Tcp, "lab.local", 2376,
                     CertificateDirectory: "/home/rick/.docker/lab"),
             ],
+            KubeconfigPaths = ["/home/rick/clients/acme.yaml", "~/Downloads/kubeconfig"],
             TerminalLigatures = true,
             RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
@@ -93,6 +94,9 @@ public class KontenaSettingsTests
         Assert.Equal(original.Registries, restored.Registries);
         // Transport, host, port and the certificate path survive; the secrets never lived here.
         Assert.Equal(original.RemoteEngines, restored.RemoteEngines);
+
+        // Paths only — a kubeconfig is read where it lies and never copied into settings.
+        Assert.Equal(original.KubeconfigPaths, restored.KubeconfigPaths);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -103,6 +107,7 @@ public class KontenaSettingsTests
                 PortForwards = restored.PortForwards,
                 Registries = restored.Registries,
                 RemoteEngines = restored.RemoteEngines,
+                KubeconfigPaths = restored.KubeconfigPaths,
             },
             restored);
     }

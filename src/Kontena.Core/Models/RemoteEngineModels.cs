@@ -91,3 +91,67 @@ public sealed record RemoteEngine(
         }
     }
 }
+
+/// <summary>
+/// A remote engine as a form still holds it — raw text, nothing validated yet (KON-118).
+/// <para>
+/// Two places now describe the same connection: the add wizard and the Settings page. Building the
+/// <see cref="RemoteEngine"/> from one type keeps the awkward parts — which fields belong to which
+/// transport, what an empty box means — in one place. Fields that do not apply to the chosen transport
+/// are dropped rather than carried along, so a path typed into the SSH form cannot come back as a
+/// certificate directory after switching to TCP.
+/// </para>
+/// </summary>
+public sealed record RemoteEngineDraft
+{
+    /// <summary>What the switcher shows. Falls back to the host when left empty.</summary>
+    public string Name { get; init; } = string.Empty;
+
+    public string Host { get; init; } = string.Empty;
+    public string User { get; init; } = string.Empty;
+
+    /// <summary>Free text: an unparseable or non-positive port means "the transport's default".</summary>
+    public string Port { get; init; } = string.Empty;
+
+    public string SocketPath { get; init; } = string.Empty;
+    public string CertificateDirectory { get; init; } = string.Empty;
+    public bool AllowInsecure { get; init; }
+
+    /// <summary>SSH is the default: it is the transport most people already have working.</summary>
+    public bool IsSsh { get; init; } = true;
+
+    /// <summary>Certificates are only meaningful over TCP, and only when the user gave a directory.</summary>
+    public bool HasCertificates => !IsSsh && !string.IsNullOrWhiteSpace(CertificateDirectory);
+
+    /// <summary>
+    /// Whether the TCP endpoint would be unauthenticated. Shown while the form is being filled in,
+    /// which is the moment the choice is actually being made.
+    /// </summary>
+    public bool IsInsecureTcp => !IsSsh && string.IsNullOrWhiteSpace(CertificateDirectory);
+
+    /// <summary>The engine this form describes. <paramref name="id"/> is generated when not given.</summary>
+    public RemoteEngine Build(string? id = null)
+    {
+        var port = int.TryParse(Port.Trim(), System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            && parsed > 0 ? parsed : (int?)null;
+
+        var host = Host.Trim();
+        var user = User.Trim();
+        var socket = SocketPath.Trim();
+        var certificates = CertificateDirectory.Trim();
+
+        return new RemoteEngine(
+            id ?? Guid.NewGuid().ToString("N")[..12],
+            string.IsNullOrWhiteSpace(Name) ? host : Name.Trim(),
+            IsSsh ? RemoteEngineTransport.Ssh : RemoteEngineTransport.Tcp,
+            host,
+            port,
+            IsSsh && user.Length > 0 ? user : null,
+            IsSsh && socket.Length > 0 ? socket : null,
+            !IsSsh && certificates.Length > 0 ? certificates : null,
+            !IsSsh && AllowInsecure);
+    }
+
+    /// <summary>Why this form cannot be used yet, or null. Delegates to the model's own rule.</summary>
+    public string? Problem => Build("draft").Problem;
+}

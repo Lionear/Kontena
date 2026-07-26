@@ -1,0 +1,413 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="620"
+             x:Class="Kontena.App.Views.AddBackendView"
+             x:DataType="vm:AddBackendViewModel">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="Terminal" Color="#0D1117"/>
+        <SolidColorBrush x:Key="TerminalInk" Color="#C9D3DF"/>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="Border.step">
+            <Setter Property="Height" Value="3"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="Background" Value="{DynamicResource Border}"/>
+        </Style>
+        <Style Selector="Border.step.on">
+            <Setter Property="Background" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaised}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+
+        <!-- A whole row is the target, so the choice reads as one thing rather than a link inside a card. -->
+        <Style Selector="Button.choice">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaised}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Button.choice:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryDim}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Width="660" MaxHeight="700" Background="{DynamicResource Surface}"
+            BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="14"
+            ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <DockPanel>
+
+            <!-- ── Header ─────────────────────────────────────────────── -->
+            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                <Grid Margin="22,18,18,16" ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}"/>
+                        <TextBlock Text="{Binding Subtitle}" FontSize="12.5" TextWrapping="Wrap"
+                                   MaxWidth="520" HorizontalAlignment="Left"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,8,0,0">
+                            <Border Classes="step on"/>
+                            <Border Classes="step" Classes.on="{Binding IsStepTwoActive}"/>
+                            <Border Classes="step" Classes.on="{Binding IsStepThreeActive}"/>
+                            <TextBlock Text="{Binding StepLabel}" FontSize="11" Margin="4,0,0,0"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource TextFaint}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="qa" Width="32" Height="32" VerticalAlignment="Top"
+                            Command="{Binding CloseCommand}" ToolTip.Tip="Close">
+                        <Path Classes="icon" Width="13" Height="13" Data="{StaticResource IconClose}"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- ── Footer ─────────────────────────────────────────────── -->
+            <Border DockPanel.Dock="Bottom" Background="{DynamicResource Raised}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
+                <Grid Margin="22,14" ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Button Grid.Column="0" Classes="ghost" Command="{Binding BackCommand}"
+                            IsVisible="{Binding CanGoBack}">Back</Button>
+                    <Button Grid.Column="2" Classes="ghost" Margin="0,0,10,0"
+                            Command="{Binding CloseCommand}">Cancel</Button>
+                    <Button Grid.Column="3" Classes="primary" Command="{Binding PrimaryCommand}"
+                            IsEnabled="{Binding CanContinue}" Content="{Binding PrimaryLabel}"/>
+                </Grid>
+            </Border>
+
+            <!-- ── Body ───────────────────────────────────────────────── -->
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <Panel Margin="22,18">
+
+                    <!-- ══ Step 1 · what ══════════════════════════════ -->
+                    <StackPanel Spacing="10" IsVisible="{Binding IsWhat}">
+                        <StackPanel Spacing="9" IsVisible="{Binding HasDetected}">
+                            <TextBlock Classes="label" Text="ALREADY FOUND ON THIS MACHINE"/>
+                            <Border Classes="card">
+                                <ItemsControl ItemsSource="{Binding Detected}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:DetectedBackend">
+                                            <Grid Margin="13,11" ColumnDefinitions="Auto,*,Auto">
+                                                <Border Grid.Column="0" Width="30" Height="30" CornerRadius="8"
+                                                        Background="{DynamicResource Surface2}">
+                                                    <TextBlock Text="{Binding Chip}" FontSize="11" FontWeight="Bold"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextDim}"/>
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Margin="11,0" Spacing="1">
+                                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource Text}"/>
+                                                    <TextBlock Text="{Binding Detail}" FontSize="11.5"
+                                                               FontFamily="{StaticResource Mono}" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="11"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFaint}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                            <TextBlock Classes="hint"
+                                       Text="Kontena finds local engines and the contexts in your default kubeconfig by itself, and re-scans when one starts or stops. There is nothing to add for these."/>
+                        </StackPanel>
+
+                        <TextBlock Classes="label" Text="SOMEWHERE ELSE" Margin="0,10,0,0"/>
+
+                        <Button Classes="choice" HorizontalAlignment="Stretch" Padding="13"
+                                Command="{Binding ChooseRemoteEngineCommand}">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Container engine on another host" FontSize="13.5"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                <TextBlock Classes="hint" MaxWidth="560" HorizontalAlignment="Left"
+                                           Text="Docker or Podman on a server or VM, reached over SSH or a TLS port."/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Classes="choice" HorizontalAlignment="Stretch" Padding="13"
+                                Command="{Binding ChooseKubernetesCommand}">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Kubernetes cluster" FontSize="13.5"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                <TextBlock Classes="hint" MaxWidth="560" HorizontalAlignment="Left"
+                                           Text="From a kubeconfig file Kontena has not picked up — a downloaded one, or a path outside ~/.kube."/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- ══ Step 2 · remote engine ═════════════════════ -->
+                    <StackPanel Spacing="14" IsVisible="{Binding IsRemoteEngine}">
+                        <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <Button Classes="seg" Classes.on="{Binding IsSsh}"
+                                        Command="{Binding SetTransportCommand}" CommandParameter="ssh">
+                                    <TextBlock Text="SSH" VerticalAlignment="Center"/>
+                                </Button>
+                                <Button Classes="seg" Classes.on="{Binding IsTcp}"
+                                        Command="{Binding SetTransportCommand}" CommandParameter="tcp">
+                                    <TextBlock Text="TCP + TLS" VerticalAlignment="Center"/>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <Grid ColumnDefinitions="*,12,130">
+                            <StackPanel Grid.Column="0" Spacing="7">
+                                <TextBlock Classes="label" Text="HOST"/>
+                                <TextBox Text="{Binding Host, Mode=TwoWay}" PlaceholderText="build-01.example.com"
+                                         FontFamily="{StaticResource Mono}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="7">
+                                <TextBlock Classes="label" Text="PORT"/>
+                                <TextBox Text="{Binding Port, Mode=TwoWay}" FontFamily="{StaticResource Mono}"
+                                         PlaceholderText="{Binding PortPlaceholder}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- SSH -->
+                        <StackPanel Spacing="14" IsVisible="{Binding IsSsh}">
+                            <StackPanel Spacing="7">
+                                <TextBlock Classes="label" Text="USER"/>
+                                <TextBox Text="{Binding User, Mode=TwoWay}" FontFamily="{StaticResource Mono}"/>
+                                <TextBlock Classes="hint"
+                                           Text="Leave empty to let ssh decide, which respects your ssh_config."/>
+                            </StackPanel>
+                            <Border Background="{DynamicResource InfoSoft}" CornerRadius="10" Padding="12,11">
+                                <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                           Foreground="{DynamicResource Text}"
+                                           Text="Kontena uses the ssh client already on this machine — your keys, your agent, your jump hosts. Nothing new to generate or hand out. Password prompts are not supported: a key or an agent is the way in."/>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- TCP -->
+                        <StackPanel Spacing="12" IsVisible="{Binding IsTcp}">
+                            <StackPanel Spacing="7" IsEnabled="{Binding CertificatesApply}">
+                                <TextBlock Classes="label" Text="CERTIFICATE DIRECTORY"/>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox Grid.Column="0" Text="{Binding CertificateDirectory, Mode=TwoWay}"
+                                             FontFamily="{StaticResource Mono}" PlaceholderText="~/.docker/certs/build-01"/>
+                                    <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0"
+                                            Click="OnBrowseCertificates">Browse…</Button>
+                                </Grid>
+                                <TextBlock Classes="hint"
+                                           Text="The folder holding ca.pem, cert.pem and key.pem — the same layout DOCKER_CERT_PATH uses, so an existing setup can be pointed at rather than rebuilt."/>
+                            </StackPanel>
+
+                            <Border Classes="card" Padding="12,11">
+                                <CheckBox IsChecked="{Binding AllowInsecure, Mode=TwoWay}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="This port has no TLS" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Text}"/>
+                                        <TextBlock Classes="hint" MaxWidth="500" HorizontalAlignment="Left"
+                                                   Text="An unauthenticated engine on a network port hands root on that host to anyone who can reach it. Only tick this for a machine you trust and a network you control."/>
+                                    </StackPanel>
+                                </CheckBox>
+                            </Border>
+
+                            <Border Background="{DynamicResource DangerSoft}" CornerRadius="10" Padding="12,11"
+                                    IsVisible="{Binding ShowInsecureWarning}">
+                                <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                           Foreground="{DynamicResource Text}"
+                                           Text="Anyone who can reach this port controls that host. Kontena will connect, and will keep saying so in the engine list."/>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Spacing="7">
+                            <TextBlock Classes="label" Text="NAME IN THE SWITCHER"/>
+                            <TextBox Text="{Binding Name, Mode=TwoWay}" PlaceholderText="Build server"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Danger}" FontSize="12.5"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                    </StackPanel>
+
+                    <!-- ══ Step 2 · Kubernetes ════════════════════════ -->
+                    <StackPanel Spacing="14" IsVisible="{Binding IsKubernetes}">
+                        <StackPanel Spacing="7">
+                            <TextBlock Classes="label" Text="KUBECONFIG"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" Text="{Binding KubeconfigPath, Mode=TwoWay}"
+                                         FontFamily="{StaticResource Mono}"/>
+                                <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0"
+                                        Click="OnBrowseKubeconfig">Browse…</Button>
+                            </Grid>
+                            <TextBlock Classes="hint" Text="Read only. Kontena never writes to your kubeconfig."/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding KubeconfigProblem}" Foreground="{DynamicResource Warn}"
+                                   FontSize="12.5" TextWrapping="Wrap"
+                                   IsVisible="{Binding KubeconfigProblem, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+                        <StackPanel Spacing="9" IsVisible="{Binding HasContexts}">
+                            <TextBlock Classes="label" Text="CONTEXTS IN THIS FILE"/>
+                            <Border Classes="card">
+                                <ItemsControl ItemsSource="{Binding Contexts}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:KubeContextChoice">
+                                            <Grid Margin="13,10" ColumnDefinitions="Auto,*,Auto">
+                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                          IsEnabled="{Binding !AlreadyAdded}"/>
+                                                <StackPanel Grid.Column="1" Margin="4,0,0,0" Spacing="1">
+                                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource Text}"/>
+                                                    <TextBlock Text="{Binding Detail}" FontSize="11.5"
+                                                               FontFamily="{StaticResource Mono}" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding StatusLabel}" FontSize="11"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFaint}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                            <TextBlock Classes="hint"
+                                       Text="Each context becomes its own entry in the switcher. Unticking one here does not change the file."/>
+                        </StackPanel>
+
+                        <Border Background="{DynamicResource InfoSoft}" CornerRadius="10" Padding="12,11">
+                            <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                       Foreground="{DynamicResource Text}"
+                                       Text="A cluster opens the Kubernetes side of Kontena — workloads, config, storage — not the container pages. The switcher groups them apart for that reason."/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ══ Step 3 · testing ═══════════════════════════ -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsTesting}">
+                        <TextBlock FontSize="13.5" Foreground="{DynamicResource Text}"
+                                   Text="{Binding TestTarget, StringFormat='Connecting to {0}.'}"/>
+                        <TextBlock Classes="hint"
+                                   Text="Nothing is stored until this comes back. A saved connection that has never worked is worse than none."/>
+                        <Border Classes="card" Margin="0,12,0,0" Padding="6">
+                            <ItemsControl ItemsSource="{Binding ProbeSteps}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ProbeStepViewModel">
+                                        <Grid Margin="10,9" ColumnDefinitions="Auto,*,Auto">
+                                            <Panel Grid.Column="0" Width="18" Height="18">
+                                                <Path Classes="icon" Data="{StaticResource IconCheck}"
+                                                      Width="13" Height="13" Stroke="{DynamicResource Success}"
+                                                      IsVisible="{Binding IsDone}"/>
+                                                <Path Classes="icon" Data="{StaticResource IconClose}"
+                                                      Width="12" Height="12" Stroke="{DynamicResource Danger}"
+                                                      IsVisible="{Binding IsFailed}"/>
+                                                <Ellipse Width="8" Height="8" Fill="{DynamicResource Primary}"
+                                                         IsVisible="{Binding IsRunning}"/>
+                                                <Ellipse Width="6" Height="6" Fill="{DynamicResource TextFaint}"
+                                                         IsVisible="{Binding IsWaiting}"/>
+                                            </Panel>
+                                            <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="13" Margin="11,0,0,0"
+                                                       Foreground="{DynamicResource Text}"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Elapsed}" FontSize="11"
+                                                       FontFamily="{StaticResource Mono}"
+                                                       Foreground="{DynamicResource TextFaint}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ══ Step 3 · connected ═════════════════════════ -->
+                    <StackPanel Spacing="14" IsVisible="{Binding IsConnected}">
+                        <Border Background="{DynamicResource SuccessSoft}" CornerRadius="10" Padding="15">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{Binding SuccessHeadline}" FontSize="14.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                <ItemsControl ItemsSource="{Binding Facts}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <Border Background="{DynamicResource Surface}" CornerRadius="7"
+                                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                    Padding="9,4" Margin="0,0,6,6">
+                                                <TextBlock Text="{Binding}" FontSize="11.5"
+                                                           FontFamily="{StaticResource Mono}"
+                                                           Foreground="{DynamicResource TextDim}"/>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Spacing="7">
+                            <TextBlock Classes="label" Text="NAME IN THE SWITCHER"/>
+                            <TextBox Text="{Binding Name, Mode=TwoWay}"/>
+                        </StackPanel>
+
+                        <Border Background="{DynamicResource InfoSoft}" CornerRadius="10" Padding="12,11">
+                            <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                       Foreground="{DynamicResource Text}"
+                                       Text="Nothing secret is written to your settings file. A key passphrase or certificate password goes to your system keychain."/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ══ Step 3 · refused ═══════════════════════════ -->
+                    <StackPanel Spacing="14" IsVisible="{Binding IsRefused}">
+                        <Border Background="{DynamicResource DangerSoft}" CornerRadius="10" Padding="15">
+                            <StackPanel Spacing="9">
+                                <TextBlock Text="{Binding FailureHeadline}" FontSize="14.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding FailureExplanation}" FontSize="12.5" TextWrapping="Wrap"
+                                           LineHeight="19" Foreground="{DynamicResource TextDim}"/>
+
+                                <Border Background="{StaticResource Terminal}" CornerRadius="9" Padding="12,10"
+                                        IsVisible="{Binding FailureOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                    <TextBlock Text="{Binding FailureOutput}" FontSize="12"
+                                               FontFamily="{StaticResource Mono}" TextWrapping="Wrap"
+                                               Foreground="{StaticResource TerminalInk}"/>
+                                </Border>
+
+                                <ItemsControl ItemsSource="{Binding FailureHints}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <Grid ColumnDefinitions="Auto,*" Margin="0,3,0,0">
+                                                <TextBlock Grid.Column="0" Text="·" Foreground="{DynamicResource TextFaint}"
+                                                           Margin="2,0,8,0"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12.5"
+                                                           TextWrapping="Wrap" LineHeight="19"
+                                                           Foreground="{DynamicResource TextDim}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{DynamicResource WarnSoft}" CornerRadius="10" Padding="12,11">
+                            <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource Text}"
+                                       Text="Nothing was stored. Go back, change what you need, and test again."/>
+                        </Border>
+                    </StackPanel>
+
+                </Panel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>
