@@ -63,4 +63,69 @@ public class ReleaseChannelTests
     [Fact]
     public void Current_platform_is_one_of_the_three_the_build_matrix_produces() =>
         Assert.Contains(ReleaseChannel.CurrentPlatform, Platforms);
+
+    // ── Reading a build's own stream (KON-123) ───────────────────────────────
+
+    [Theory]
+    [InlineData("0.2.0-nightly.20260726.26", UpdateChannel.Nightly)]
+    [InlineData("0.2.0-preview.20260726.3", UpdateChannel.Preview)]
+    [InlineData("0.2.0", UpdateChannel.Stable)]
+    [InlineData("1.0.0", UpdateChannel.Stable)]
+    public void The_prerelease_tag_names_the_stream(string version, UpdateChannel expected) =>
+        // These are the strings build.yml actually stamps, which is why the tag can be trusted: it is
+        // the same word the channel was named from, not a hint about it.
+        Assert.Equal(expected, ReleaseChannel.FromVersion(version));
+
+    [Fact]
+    public void Build_metadata_is_not_part_of_the_version()
+    {
+        // SourceLink appends "+<commit>". Reading it as part of the version would misread every build
+        // the moment that is switched on.
+        Assert.Equal(UpdateChannel.Nightly, ReleaseChannel.FromVersion("0.2.0-nightly.20260726.26+9f8e7d6"));
+        Assert.Equal(UpdateChannel.Stable, ReleaseChannel.FromVersion("0.2.0+9f8e7d6"));
+    }
+
+    [Fact]
+    public void Only_the_first_prerelease_identifier_is_read()
+    {
+        // The workflow appends a date and a run number after the tag. Matching the whole prerelease
+        // would break the next time that shape changes.
+        Assert.Equal(UpdateChannel.Nightly, ReleaseChannel.FromVersion("0.2.0-nightly"));
+        Assert.Equal(UpdateChannel.Nightly, ReleaseChannel.FromVersion("0.2.0-nightly.1.2.3.4"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void An_unreadable_version_is_treated_as_stable(string? version) =>
+        // A host that stamps nothing has no update feed to be wrong about, and stable offers the least.
+        Assert.Equal(UpdateChannel.Stable, ReleaseChannel.FromVersion(version));
+
+    [Fact]
+    public void An_unknown_prerelease_tag_is_not_guessed_at()
+    {
+        // "rc" is not a channel Kontena publishes. Treating it as one would point the updater at a feed
+        // that does not exist.
+        Assert.Equal(UpdateChannel.Stable, ReleaseChannel.FromVersion("0.2.0-rc.1"));
+        Assert.Equal(UpdateChannel.Stable, ReleaseChannel.FromVersion("0.2.0-alpha"));
+    }
+
+    [Fact]
+    public void The_tag_is_read_regardless_of_casing() =>
+        Assert.Equal(UpdateChannel.Nightly, ReleaseChannel.FromVersion("0.2.0-Nightly.1"));
+
+    [Fact]
+    public void What_it_reads_is_what_the_packaging_step_writes()
+    {
+        // The round trip that matters: the stream name in a channel id and the tag in a version are the
+        // same word, so a build cannot end up reporting a channel it was not published on.
+        foreach (var channel in Enum.GetValues<UpdateChannel>())
+        {
+            var stream = ReleaseChannel.Stream(channel);
+            var version = channel == UpdateChannel.Stable ? "0.2.0" : $"0.2.0-{stream}.20260726.1";
+
+            Assert.Equal(channel, ReleaseChannel.FromVersion(version));
+        }
+    }
 }

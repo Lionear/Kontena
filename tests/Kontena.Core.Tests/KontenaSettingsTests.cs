@@ -34,14 +34,48 @@ public class KontenaSettingsTests
     }
 
     [Fact]
-    public void Updates_default_to_stable_and_fetched_in_the_background()
+    public void An_unchosen_channel_follows_the_build_it_came_from()
     {
-        // Stable rather than "whatever this build came from": a nightly is a way to test Kontena,
-        // never something an install should drift onto by itself.
+        // Downloading a nightly is itself the choice, and answering it with "actually, stable" on first
+        // launch overrules the user. The rule that stops drift is elsewhere: a *stored* choice wins,
+        // so an install never moves onto a rolling stream by itself (KON-110, KON-123).
+        var fresh = new KontenaSettings();
+
+        Assert.Null(fresh.UpdateChannel);
+        Assert.Equal(UpdateChannel.Nightly, fresh.ResolvedUpdateChannel(UpdateChannel.Nightly));
+        Assert.Equal(UpdateChannel.Preview, fresh.ResolvedUpdateChannel(UpdateChannel.Preview));
+        Assert.Equal(UpdateChannel.Stable, fresh.ResolvedUpdateChannel(UpdateChannel.Stable));
+    }
+
+    [Fact]
+    public void A_chosen_channel_beats_the_build()
+    {
+        // The whole point of storing it: a nightly build whose user asked for stable stays on stable,
+        // and a stable install that opted into nightly is not dragged back.
+        var chosen = new KontenaSettings { UpdateChannel = UpdateChannel.Stable };
+        Assert.Equal(UpdateChannel.Stable, chosen.ResolvedUpdateChannel(UpdateChannel.Nightly));
+
+        var opted = new KontenaSettings { UpdateChannel = UpdateChannel.Nightly };
+        Assert.Equal(UpdateChannel.Nightly, opted.ResolvedUpdateChannel(UpdateChannel.Stable));
+    }
+
+    [Fact]
+    public void Updates_are_fetched_in_the_background_by_default()
+    {
         var settings = new KontenaSettings();
-        Assert.Equal(UpdateChannel.Stable, settings.UpdateChannel);
         Assert.True(settings.AutoDownloadUpdates);
         Assert.Null(settings.DismissedUpdateVersion);
+    }
+
+    [Fact]
+    public void An_existing_install_keeps_the_channel_already_in_its_file()
+    {
+        // Before KON-123 the field was not nullable, so every settings file on disk already spells out
+        // a channel. That counts as chosen, which is what makes this change drift-free.
+        var restored = JsonSerializer.Deserialize<KontenaSettings>(
+            """{"UpdateChannel": "Stable"}""", Options);
+
+        Assert.Equal(UpdateChannel.Stable, restored!.ResolvedUpdateChannel(UpdateChannel.Nightly));
     }
 
     [Fact]

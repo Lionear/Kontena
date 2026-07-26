@@ -103,6 +103,9 @@ public partial class UpdateViewModel : ViewModelBase
 
     public string CurrentVersion => _service.CurrentVersion;
 
+    /// <summary>The stream this build came from — what a fresh install follows (KON-123).</summary>
+    public UpdateChannel BuildChannel => _service.BuildChannel;
+
     /// <summary>
     /// False for an install that cannot replace itself — a distro package, or a build directory.
     /// The card then explains that and links to the downloads instead of offering a restart.
@@ -195,7 +198,7 @@ public partial class UpdateViewModel : ViewModelBase
         try
         {
             var settings = _settings();
-            var found = await _service.CheckAsync(settings.UpdateChannel, ct).ConfigureAwait(true);
+            var found = await _service.CheckAsync(settings.ResolvedUpdateChannel(_service.BuildChannel), ct).ConfigureAwait(true);
 
             if (found is null)
             {

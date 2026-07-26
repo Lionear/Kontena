@@ -22,8 +22,14 @@ public sealed class FakeUpdateService : IUpdateService
     /// "downloading" is a race the renderer loses: pumping the dispatcher to reach 62% also carries
     /// it to 100%, and the shot shows the finished state instead.
     /// </param>
-    public FakeUpdateService(bool fail = false, int? holdAt = null)
+    /// <param name="buildChannel">
+    /// The stream to claim this build came from (KON-123). Stable unless a scene is about what a
+    /// nightly download does on first launch.
+    /// </param>
+    public FakeUpdateService(bool fail = false, int? holdAt = null,
+        UpdateChannel buildChannel = UpdateChannel.Stable)
     {
+        BuildChannel = buildChannel;
         _fail = fail;
         _holdAt = holdAt;
     }
@@ -31,6 +37,8 @@ public sealed class FakeUpdateService : IUpdateService
     public UpdateSupport Support => UpdateSupport.Supported;
 
     public string CurrentVersion => "0.1.0";
+
+    public UpdateChannel BuildChannel { get; }
 
     public Task<AvailableUpdate?> CheckAsync(UpdateChannel channel, CancellationToken ct = default) =>
         Task.FromResult<AvailableUpdate?>(new AvailableUpdate("0.2.0", 68 * 1000 * 1000,
