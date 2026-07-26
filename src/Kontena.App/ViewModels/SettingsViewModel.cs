@@ -204,11 +204,13 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private UpdateChannel _updateChannel;
 
     public bool IsStableChannel => UpdateChannel == UpdateChannel.Stable;
+    public bool IsPreviewChannel => UpdateChannel == UpdateChannel.Preview;
     public bool IsNightlyChannel => UpdateChannel == UpdateChannel.Nightly;
 
     partial void OnUpdateChannelChanged(UpdateChannel value)
     {
         OnPropertyChanged(nameof(IsStableChannel));
+        OnPropertyChanged(nameof(IsPreviewChannel));
         OnPropertyChanged(nameof(IsNightlyChannel));
         OnPropertyChanged(nameof(ChannelHint));
         Save();
@@ -218,13 +220,25 @@ public partial class SettingsViewModel : ViewModelBase
         _ = Update?.CheckAsync();
     }
 
-    public string ChannelHint => UpdateChannel == UpdateChannel.Nightly
-        ? "Nightly builds are cut from develop every night. They carry what is finished but not released — and whatever came with it."
-        : "Tagged releases only. This is the one to be on unless you are testing Kontena itself.";
+    /// <summary>What the chosen channel means, in terms of how finished the builds on it are.</summary>
+    public string ChannelHint => UpdateChannel switch
+    {
+        UpdateChannel.Nightly =>
+            "Cut from develop every night: everything that is finished, and whatever came with it. "
+            + "The first place a regression shows up.",
+        UpdateChannel.Preview =>
+            "Built from main — what has been promoted for the next release, before it is tagged. "
+            + "Ahead of stable, past the roughest edges of nightly.",
+        _ => "Tagged releases only. This is the one to be on unless you are testing Kontena itself.",
+    };
 
     [RelayCommand]
-    private void SetUpdateChannel(string channel) =>
-        UpdateChannel = channel == "nightly" ? UpdateChannel.Nightly : UpdateChannel.Stable;
+    private void SetUpdateChannel(string channel) => UpdateChannel = channel switch
+    {
+        "nightly" => UpdateChannel.Nightly,
+        "preview" => UpdateChannel.Preview,
+        _ => UpdateChannel.Stable,
+    };
 
     [ObservableProperty] private bool _autoDownloadUpdates;
     partial void OnAutoDownloadUpdatesChanged(bool value) => Save();

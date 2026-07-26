@@ -16,10 +16,22 @@ namespace Kontena.Core.Models;
 public static class ReleaseChannel
 {
     /// <summary>The channel id for a stream on a given platform, e.g. <c>osx-stable</c>.</summary>
-    /// <param name="channel">Stable or nightly.</param>
+    /// <param name="channel">Which stream.</param>
     /// <param name="platform">Platform moniker: <c>win</c>, <c>linux</c> or <c>osx</c>.</param>
     public static string For(UpdateChannel channel, string platform) =>
-        $"{platform}-{(channel == UpdateChannel.Nightly ? "nightly" : "stable")}";
+        $"{platform}-{Stream(channel)}";
+
+    /// <summary>
+    /// The stream part of a channel id. These strings are also what <c>build.yml</c> resolves as its
+    /// channel, which is why they are spelled out rather than derived from the enum name — the
+    /// workflow's vocabulary is the contract, not C#'s casing.
+    /// </summary>
+    public static string Stream(UpdateChannel channel) => channel switch
+    {
+        UpdateChannel.Nightly => "nightly",
+        UpdateChannel.Preview => "preview",
+        _ => "stable",
+    };
 
     /// <summary>The channel id for a stream on the platform this process is running on.</summary>
     public static string ForCurrentPlatform(UpdateChannel channel) => For(channel, CurrentPlatform);

@@ -112,9 +112,9 @@ public sealed class VelopackUpdateService : IUpdateService
     {
         _channel = channel;
 
-        // Nightlies are published as GitHub prereleases, so the source has to be told to look at
-        // them; the channel below is what actually decides which feed is read.
-        var source = new GithubSource(RepositoryUrl, null, prerelease: channel == UpdateChannel.Nightly);
+        // Both rolling streams are published as GitHub prereleases, so the source has to be told to
+        // look at them; the channel below is what actually decides which feed is read.
+        var source = new GithubSource(RepositoryUrl, null, prerelease: channel != UpdateChannel.Stable);
         return new UpdateManager(source, new UpdateOptions
         {
             ExplicitChannel = ReleaseChannel.ForCurrentPlatform(channel),

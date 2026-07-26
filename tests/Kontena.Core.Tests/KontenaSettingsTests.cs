@@ -22,6 +22,18 @@ public class KontenaSettingsTests
     }
 
     [Fact]
+    public void Update_channel_is_stored_by_name_so_a_new_channel_can_be_slotted_in()
+    {
+        // Preview was added between Stable and Nightly, which renumbered Nightly. That is only safe
+        // because the file holds names: a settings file written before the insert must still come
+        // back as Nightly, not as whatever now sits at its old ordinal.
+        var restored = JsonSerializer.Deserialize<KontenaSettings>(
+            """{"UpdateChannel": "Nightly"}""", Options);
+
+        Assert.Equal(UpdateChannel.Nightly, restored!.UpdateChannel);
+    }
+
+    [Fact]
     public void Updates_default_to_stable_and_fetched_in_the_background()
     {
         // Stable rather than "whatever this build came from": a nightly is a way to test Kontena,

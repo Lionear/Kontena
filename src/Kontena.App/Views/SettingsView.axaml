@@ -302,6 +302,10 @@
                                                     Command="{Binding SetUpdateChannelCommand}" CommandParameter="stable">
                                                 <TextBlock Text="Stable" VerticalAlignment="Center"/>
                                             </Button>
+                                            <Button Classes="seg" Classes.on="{Binding IsPreviewChannel}"
+                                                    Command="{Binding SetUpdateChannelCommand}" CommandParameter="preview">
+                                                <TextBlock Text="Preview" VerticalAlignment="Center"/>
+                                            </Button>
                                             <Button Classes="seg" Classes.on="{Binding IsNightlyChannel}"
                                                     Command="{Binding SetUpdateChannelCommand}" CommandParameter="nightly">
                                                 <TextBlock Text="Nightly" VerticalAlignment="Center"/>

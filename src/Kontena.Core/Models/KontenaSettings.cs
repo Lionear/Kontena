@@ -9,11 +9,17 @@ public enum ThemePreference
     Dark,
 }
 
-/// <summary>Which stream of releases Kontena offers to update to.</summary>
+/// <summary>
+/// Which stream of releases Kontena offers to update to. One per stream the Build workflow
+/// publishes, so every feed that exists can be subscribed to.
+/// </summary>
 public enum UpdateChannel
 {
     /// <summary>Tagged releases only — what almost everyone wants.</summary>
     Stable = 0,
+
+    /// <summary>The rolling prerelease from <c>main</c>: what is promoted, before it is tagged.</summary>
+    Preview,
 
     /// <summary>The rolling nightly prerelease cut from <c>develop</c> (KON-108).</summary>
     Nightly,
