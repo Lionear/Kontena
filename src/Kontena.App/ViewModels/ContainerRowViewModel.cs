@@ -96,5 +96,5 @@ public partial class ContainerRowViewModel : ObservableObject
     private Task Restart() => _parent.RestartAsync(Id);
 
     [RelayCommand]
-    private Task Remove() => _parent.RemoveAsync(Id);
+    private void Remove() => _parent.ConfirmRemove(this);
 }

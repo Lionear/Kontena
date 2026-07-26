@@ -32,6 +32,9 @@
                     <SolidColorBrush x:Key="Info" Color="#5AB8FF"/>
                     <SolidColorBrush x:Key="Warn" Color="#F5B14C"/>
                     <SolidColorBrush x:Key="Danger" Color="#F87171"/>
+                    <!-- Ink for text sitting on Danger. Dark's red is the light one, so the label has
+                         to go dark here and white in the light theme — the mirror of PrimaryInk. -->
+                    <SolidColorBrush x:Key="DangerInk" Color="#2A0A0A"/>
                     <SolidColorBrush x:Key="PrimarySoft" Color="#22D3AA" Opacity="0.10"/>
                     <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
                     <SolidColorBrush x:Key="Console" Color="#0A0D12"/>
@@ -63,6 +66,7 @@
                     <SolidColorBrush x:Key="Info" Color="#2F7FE0"/>
                     <SolidColorBrush x:Key="Warn" Color="#C7841A"/>
                     <SolidColorBrush x:Key="Danger" Color="#E5484D"/>
+                    <SolidColorBrush x:Key="DangerInk" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="PrimarySoft" Color="#0F9E7E" Opacity="0.10"/>
                     <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
                     <SolidColorBrush x:Key="Console" Color="#0F141B"/>
@@ -116,6 +120,12 @@
             <Setter Property="Padding" Value="15,9"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <!-- The confirm button of a destructive dialog. Until KON-126 it rendered as .primary, so the
+             button that deletes a volume looked exactly like the one that saves a setting. -->
+        <Style Selector="Button.primary.danger">
+            <Setter Property="Background" Value="{DynamicResource Danger}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerInk}"/>
         </Style>
         <Style Selector="Button.ghost">
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>

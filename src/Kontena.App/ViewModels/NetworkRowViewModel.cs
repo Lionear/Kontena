@@ -46,6 +46,9 @@ public sealed partial class NetworkRowViewModel : ObservableObject
         _ => "#5C6675",
     }));
 
+    /// <summary>How many containers are attached; the confirm names the count (KON-126).</summary>
+    public int AttachedCount => _n.AttachedContainers.Count;
+
     [RelayCommand(CanExecute = nameof(CanDelete))]
-    private Task Delete() => _parent.DeleteAsync(Id);
+    private void Delete() => _parent.ConfirmDelete(this);
 }

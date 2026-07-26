@@ -39,6 +39,9 @@ public sealed partial class ImageRowViewModel : ObservableObject
     public string UseText => _i.InUse ? "In use" : "Unused";
     public IBrush UseBrush => new SolidColorBrush(Color.Parse(_i.InUse ? "#34D399" : "#5C6675"));
 
+    /// <summary>Repository and tag as one string, for the confirm message (KON-126).</summary>
+    public string Reference => string.IsNullOrEmpty(_i.Repository) ? ShortId : $"{_i.Repository}:{_i.Tag}";
+
     [RelayCommand]
-    private Task Delete() => _parent.DeleteAsync(Id);
+    private void Delete() => _parent.ConfirmDelete(this);
 }

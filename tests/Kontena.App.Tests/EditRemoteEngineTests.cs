@@ -155,7 +155,13 @@ public sealed class EditRemoteEngineTests : IDisposable
         var vm = Subject(out var store);
 
         vm.EditRemoteCommand.Execute(vm.RemoteEngines[0]);
-        await vm.RemoveRemoteCommand.ExecuteAsync(vm.RemoteEngines[0]);
+
+        // Removing asks first now (KON-126), so the test confirms on the user's behalf.
+        ConfirmRequest? asked = null;
+        vm.RequestConfirm = request => asked = request;
+        vm.RemoveRemoteCommand.Execute(vm.RemoteEngines[0]);
+        Assert.NotNull(asked);
+        await asked.OnConfirm();
 
         Assert.False(vm.IsEditingRemote);
         Assert.Empty(vm.RemoteHost);

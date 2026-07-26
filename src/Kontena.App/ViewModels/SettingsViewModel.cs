@@ -603,11 +603,24 @@ public partial class SettingsViewModel : ViewModelBase
 
     /// <summary>Removes a login Kontena stored, secret included.</summary>
     [RelayCommand]
-    private async Task SignOutAsync(RegistryRow? row)
+    private void SignOut(RegistryRow? row)
     {
         if (row is null || row.IsInherited || _registries is null)
             return;
 
+        // Worth confirming — a sign-out you did not mean breaks the next pull — but no image or data is
+        // touched, so the wording says that rather than warning about loss (KON-126).
+        Confirm(
+            "Sign out of registry",
+            $"Sign out of {row.Host}? The stored login is removed from your keychain. Images you already" +
+            " pulled stay; pulling or pushing private ones needs a new sign-in.",
+            "Sign out",
+            () => SignOutAsync(row),
+            destructive: false);
+    }
+
+    private async Task SignOutAsync(RegistryRow row)
+    {
         // The secret goes first: an entry left in the keychain after the row is gone is a credential
         // nobody can see and nobody will remove.
         await _secrets.DeleteAsync(SecretKeys.Registry(row.Host));
@@ -638,6 +651,19 @@ public partial class SettingsViewModel : ViewModelBase
         if (source is null || !source.CanRemove)
             return;
 
+        // Confirmed, but not dressed up as data loss (KON-126): nothing on disk changes, so threatening
+        // would teach people to click these away — and then the volume dialog stops working too.
+        Confirm(
+            "Stop reading this kubeconfig",
+            $"Stop reading \"{source.Label}\"? The file stays exactly where it is; its clusters just no" +
+            " longer appear in Kontena. You can add it back at any time.",
+            "Stop reading",
+            () => { RemoveKubeconfigCore(source); return Task.CompletedTask; },
+            destructive: false);
+    }
+
+    private void RemoveKubeconfigCore(KubeconfigSource source)
+    {
         _settings = _store.Update(s => s with
         {
             KubeconfigPaths = [.. s.KubeconfigPaths.Where(p => !string.Equals(p, source.Path, StringComparison.Ordinal))],
@@ -995,11 +1021,24 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task RemoveRemoteAsync(RemoteEngineRow? row)
+    private void RemoveRemote(RemoteEngineRow? row)
     {
         if (row is null)
             return;
 
+        // A removed remote cannot be undone from inside Kontena — the connection details and its stored
+        // secret are both gone, and re-adding means typing them again (KON-126, and KON-116 is exactly
+        // what losing these silently looks like).
+        Confirm(
+            "Remove remote engine",
+            $"Remove \"{row.Name}\"? Kontena forgets how to reach it, along with the password or key it" +
+            " kept for it — you would have to enter those again. The host itself is untouched.",
+            "Remove",
+            () => RemoveRemoteAsync(row));
+    }
+
+    private async Task RemoveRemoteAsync(RemoteEngineRow row)
+    {
         _settings = _store.Update(s => s with
         {
             RemoteEngines = [.. s.RemoteEngines.Where(r => r.Id != row.Remote.Id)],

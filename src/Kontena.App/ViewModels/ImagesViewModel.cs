@@ -76,6 +76,24 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Ask before deleting an image (KON-126). An image is the one removal on these pages that is
+    /// genuinely recoverable — you pull it again — so the message says so instead of threatening.
+    /// </summary>
+    public void ConfirmDelete(ImageRowViewModel row)
+    {
+        var inUse = row.InUse
+            ? " A container is still using it, so the delete may be refused."
+            : string.Empty;
+
+        Confirm(
+            "Delete image",
+            $"Delete image \"{row.Reference}\"? It has to be pulled again before anything can run" +
+            $" from it.{inUse}",
+            "Delete",
+            () => DeleteAsync(row.Id));
+    }
+
     public async Task DeleteAsync(string id)
     {
         try { await _engine.RemoveImageAsync(id, force: true); }

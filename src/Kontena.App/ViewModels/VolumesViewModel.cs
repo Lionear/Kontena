@@ -49,7 +49,10 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
 
         HasDangling = dangling.Count > 0;
         var reclaim = Format.Size(dangling.Sum(v => v.SizeBytes ?? 0));
-        PruneSummary = $"Remove {dangling.Count} dangling volume{(dangling.Count == 1 ? "" : "s")} and free ~{reclaim}?";
+        // Same shape as the other prune banners, plus what is unique here: a pruned volume takes its
+        // contents with it, and no other page's prune destroys data (KON-126).
+        PruneSummary = $"Remove {dangling.Count} dangling volume{(dangling.Count == 1 ? "" : "s")}"
+            + $" and free ~{reclaim}? Their contents go with them.";
         if (!HasDangling)
             PruneArmed = false;
 
@@ -70,6 +73,25 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
         try { await _engine.PruneVolumesAsync(); }
         catch { /* nothing to prune or engine hiccup */ }
         await LoadAsync();
+    }
+
+    /// <summary>
+    /// Ask before removing a volume (KON-126). A volume is the one thing on this page that holds data
+    /// nothing else has a copy of, so the message says exactly that — and names what has it mounted,
+    /// because "not mounted" is the difference between a safe delete and a broken container.
+    /// </summary>
+    public void ConfirmDelete(VolumeRowViewModel row)
+    {
+        var mounted = row.MountedBy.Count > 0
+            ? $" It is mounted by {string.Join(", ", row.MountedBy)}, which will lose it."
+            : string.Empty;
+
+        Confirm(
+            "Delete volume",
+            $"Delete volume \"{row.Name}\"? Everything stored in it is removed with it and cannot be" +
+            $" brought back.{mounted}",
+            "Delete",
+            () => DeleteAsync(row.Name));
     }
 
     public async Task DeleteAsync(string name)

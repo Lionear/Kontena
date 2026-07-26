@@ -18,7 +18,8 @@
             <Border Height="1" Background="{DynamicResource Border}"/>
             <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
                 <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CancelCommand}">Cancel</Button>
-                <Button Grid.Column="2" Classes="primary" Command="{Binding ConfirmCommand}" IsEnabled="{Binding !IsBusy}"
+                <Button Grid.Column="2" Classes="primary" Classes.danger="{Binding Destructive}"
+                        Command="{Binding ConfirmCommand}" IsEnabled="{Binding !IsBusy}"
                         Content="{Binding ConfirmLabel}"/>
             </Grid>
         </StackPanel>

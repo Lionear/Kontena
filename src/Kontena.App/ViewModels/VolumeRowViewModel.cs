@@ -25,6 +25,9 @@ public sealed partial class VolumeRowViewModel : ObservableObject
         ? string.Join(", ", _v.UsedBy)
         : "— not mounted";
 
+    /// <summary>Containers that have this volume mounted; the confirm names them (KON-126).</summary>
+    public IReadOnlyList<string> MountedBy => _v.UsedBy;
+
     /// <summary>
     /// Whether the browse action is offered for this row. Reading a volume needs the engine to mount it
     /// into a container, so it is a capability rather than something every backend can do.
@@ -35,5 +38,5 @@ public sealed partial class VolumeRowViewModel : ObservableObject
     private void Browse() => _parent.RequestBrowseVolume?.Invoke(Name);
 
     [RelayCommand]
-    private Task Delete() => _parent.DeleteAsync(Name);
+    private void Delete() => _parent.ConfirmDelete(this);
 }

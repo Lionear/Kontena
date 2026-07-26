@@ -479,27 +479,32 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             RequestOpenDetail = ShowContainerDetail,
             RequestRunContainer = image => _ = ShowRunDialogAsync(image),
             RequestPullImage = ShowPullDialog,
+            RequestConfirm = ShowConfirm,
         };
         Images = new ImagesViewModel(_engine)
         {
             RequestPullImage = ShowPullDialog,
             RequestBuildImage = ShowBuildDialog,
+            RequestConfirm = ShowConfirm,
         };
         Volumes = new VolumesViewModel(_engine)
         {
             RequestCreateVolume = ShowCreateVolumeDialog,
             RequestBrowseVolume = ShowBrowseVolumeDialog,
+            RequestConfirm = ShowConfirm,
         };
         Networks = new NetworksViewModel(_engine)
         {
             RequestCreateNetwork = ShowCreateNetworkDialog,
             RequestNetworkAttachments = ShowNetworkAttachmentsDialog,
+            RequestConfirm = ShowConfirm,
         };
         ComposeProjects = new ComposeProjectsViewModel(_engine)
         {
             RequestOpenDetail = ShowContainerDetail,
             RequestNewProject = ShowComposeUpDialog,
             RequestProjectLogs = ShowComposeLogsDialog,
+            RequestConfirm = ShowConfirm,
         };
         Activity = new ActivityViewModel(_activityLog);
 
@@ -889,7 +894,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         var current = _store.Load();
         var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
 
-        _detail = new ContainerDetailViewModel(_engine, summary, ShowContainers, font);
+        _detail = new ContainerDetailViewModel(_engine, summary, ShowContainers, font)
+        {
+            RequestConfirm = ShowConfirm,
+        };
         CurrentPage = _detail;
     }
 
@@ -933,7 +941,26 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             onClustersChanged: () =>
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
             kubeconfigs: Kubeconfigs());
+
+        SettingsPage.RequestConfirm = ShowConfirm;
     }
+
+    /// <summary>
+    /// Put a confirmation in front of a page's action (KON-126). Pages never build the modal themselves
+    /// — they describe what they are about to do, and this is the one place that decides how it is asked.
+    /// </summary>
+    private void ShowConfirm(ConfirmRequest request)
+        => Dialog = new ConfirmViewModel(
+            request.Title,
+            request.Message,
+            request.ConfirmLabel,
+            onConfirm: async () =>
+            {
+                await request.OnConfirm();
+                CloseDialog();
+            },
+            onClose: CloseDialog,
+            destructive: request.Destructive);
 
     /// <summary>
     /// Rebuild the backend set after the demo toggle changed (KON-96), re-probe, and refresh the
