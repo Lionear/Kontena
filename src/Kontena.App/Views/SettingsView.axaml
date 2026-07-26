@@ -438,10 +438,12 @@
                                              FontFamily="{StaticResource Mono}" MaxWidth="260" HorizontalAlignment="Left"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                                    <Button Classes="ghost" Command="{Binding CancelEditRemoteCommand}"
+                                            IsVisible="{Binding IsEditingRemote}" Content="Cancel"/>
                                     <Button Classes="ghost" Command="{Binding TestRemoteCommand}"
                                             IsEnabled="{Binding !IsRemoteBusy}" Content="Test connection"/>
                                     <Button Classes="primary" Command="{Binding AddRemoteCommand}"
-                                            IsEnabled="{Binding CanAddRemote}" Content="Add engine"/>
+                                            IsEnabled="{Binding CanAddRemote}" Content="{Binding RemoteSubmitLabel}"/>
                                 </StackPanel>
                             </Grid>
 
@@ -479,9 +481,15 @@
                                                 <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
                                             </StackPanel>
                                         </StackPanel>
-                                        <Button Grid.Column="1" Classes="ghost" VerticalAlignment="Center" Content="Remove"
-                                                Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveRemoteCommand}"
-                                                CommandParameter="{Binding}"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                                    VerticalAlignment="Center">
+                                            <Button Classes="ghost" Content="Edit"
+                                                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).EditRemoteCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Classes="ghost" Content="Remove"
+                                                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveRemoteCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

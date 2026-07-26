@@ -760,6 +760,27 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private string? _remoteError;
     [ObservableProperty] private string? _remoteNotice;
 
+    /// <summary>
+    /// The remote being edited, or null while the form is adding a new one (KON-125).
+    /// <para>
+    /// Kept as an id rather than a copy of the row, because that id is the whole point of editing: the
+    /// name the user gave it, its keychain entry, its remembered port forwards and a launch pin all
+    /// hang off it. Remove-and-re-add loses every one of them silently.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private string? _editingRemoteId;
+
+    public bool IsEditingRemote => EditingRemoteId is not null;
+
+    /// <summary>The form's primary action names what it will do, not what the section is called.</summary>
+    public string RemoteSubmitLabel => IsEditingRemote ? "Save changes" : "Add engine";
+
+    partial void OnEditingRemoteIdChanged(string? value)
+    {
+        OnPropertyChanged(nameof(IsEditingRemote));
+        OnPropertyChanged(nameof(RemoteSubmitLabel));
+    }
+
     public bool RemoteIsTcp => !RemoteIsSsh;
 
     /// <summary>Shown for TCP only, and only until certificates are given.</summary>
@@ -800,6 +821,10 @@ public partial class SettingsViewModel : ViewModelBase
     /// The connection the form currently describes. Built rather than validated field by field, so the one
     /// rule that matters — TCP without certificates is refused — lives in the model and not in the view.
     /// </summary>
+    /// <summary>
+    /// The connection the form describes. While editing, the existing id is reused unless one is given
+    /// — an edit must not mint a new backend (KON-125).
+    /// </summary>
     private RemoteEngine Draft(string? id = null) => new RemoteEngineDraft
     {
         Name = RemoteName,
@@ -810,7 +835,7 @@ public partial class SettingsViewModel : ViewModelBase
         CertificateDirectory = RemoteCertificateDirectory,
         AllowInsecure = RemoteAllowInsecure,
         IsSsh = RemoteIsSsh,
-    }.Build(id);
+    }.Build(id ?? EditingRemoteId);
 
     private void RefreshRemotes()
     {
@@ -871,6 +896,51 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Loads a stored remote into the form so it can be changed in place (KON-125).</summary>
+    [RelayCommand]
+    private void EditRemote(RemoteEngineRow? row)
+    {
+        if (row is null)
+            return;
+
+        var remote = row.Remote;
+
+        EditingRemoteId = remote.Id;
+        RemoteIsSsh = remote.Transport == RemoteEngineTransport.Ssh;
+        RemoteName = remote.Name;
+        RemoteHost = remote.Host;
+        RemoteUser = remote.User ?? string.Empty;
+        RemotePort = remote.Port?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        RemoteSocketPath = remote.SocketPath ?? string.Empty;
+        RemoteCertificateDirectory = remote.CertificateDirectory ?? string.Empty;
+        RemoteAllowInsecure = remote.AllowInsecureTcp;
+
+        RemoteError = null;
+        RemoteNotice = null;
+    }
+
+    /// <summary>Leaves edit mode without writing anything, and empties the form.</summary>
+    [RelayCommand]
+    private void CancelEditRemote() => ClearRemoteForm();
+
+    private void ClearRemoteForm()
+    {
+        EditingRemoteId = null;
+        RemoteIsSsh = true;
+        RemoteName = string.Empty;
+        RemoteHost = string.Empty;
+        RemoteUser = string.Empty;
+        RemotePort = string.Empty;
+        RemoteSocketPath = string.Empty;
+        RemoteCertificateDirectory = string.Empty;
+        RemoteAllowInsecure = false;
+        RemoteError = null;
+    }
+
+    /// <summary>
+    /// Stores the form: a new remote, or the one being edited under its existing id. Same command for
+    /// both, so there is one path that validates and one that writes.
+    /// </summary>
     [RelayCommand]
     private async Task AddRemoteAsync()
     {
@@ -881,20 +951,23 @@ public partial class SettingsViewModel : ViewModelBase
             return;
         }
 
-        _settings = _store.Update(s => s with { RemoteEngines = [.. s.RemoteEngines, draft] });
+        var editing = EditingRemoteId;
 
-        RemoteName = string.Empty;
-        RemoteHost = string.Empty;
-        RemoteUser = string.Empty;
-        RemotePort = string.Empty;
-        RemoteSocketPath = string.Empty;
-        RemoteCertificateDirectory = string.Empty;
-        RemoteAllowInsecure = false;
-        RemoteNotice = $"Added {draft.Name}.";
+        _settings = _store.Update(s => editing is null
+            ? s with { RemoteEngines = [.. s.RemoteEngines, draft] }
 
+            // Replaced in place, keeping its position in the list: the switcher reads this order, and a
+            // saved edit that jumped an entry to the bottom would read as something else having changed.
+            : s with
+            {
+                RemoteEngines = [.. s.RemoteEngines.Select(r => r.Id == editing ? draft : r)],
+            });
+
+        RemoteNotice = editing is null ? $"Added {draft.Name}." : $"Saved {draft.Name}.";
+        ClearRemoteForm();
         RefreshRemotes();
 
-        // The switcher is built from the provider list, so it has to be rebuilt for the new entry to appear.
+        // The switcher is built from the provider list, so it has to be rebuilt for the change to show.
         if (_onRemotesChanged is not null)
             await _onRemotesChanged();
     }
@@ -913,6 +986,10 @@ public partial class SettingsViewModel : ViewModelBase
         // Anything kept in the keychain for this remote goes with it, so a re-add cannot inherit an old
         // secret belonging to a host that is no longer configured.
         await _secrets.DeleteAsync(SecretKeys.Engine(row.Remote.Id));
+
+        // Editing something that no longer exists would save it back on the next click.
+        if (EditingRemoteId == row.Remote.Id)
+            ClearRemoteForm();
 
         RemoteNotice = $"Removed {row.Name}.";
         RefreshRemotes();
