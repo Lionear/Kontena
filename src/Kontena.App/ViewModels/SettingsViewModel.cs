@@ -420,12 +420,14 @@ public partial class SettingsViewModel : ViewModelBase
                 return;
             }
 
-            var others = _settings.Registries.Where(r => !RegistryHost.SameHost(r.Host, host));
-            _settings = _settings with
+            _settings = _store.Update(s => s with
             {
-                Registries = [.. others, new RegistryLogin(host, credential.Username, RegistryCredentialSource.Kontena)],
-            };
-            _store.Save(_settings);
+                Registries =
+                [
+                    .. s.Registries.Where(r => !RegistryHost.SameHost(r.Host, host)),
+                    new RegistryLogin(host, credential.Username, RegistryCredentialSource.Kontena),
+                ],
+            });
 
             // Cleared immediately: there is no reason for the secret to stay in a text box, and the row
             // below is the confirmation that it landed.
@@ -456,11 +458,10 @@ public partial class SettingsViewModel : ViewModelBase
         // nobody can see and nobody will remove.
         await _secrets.DeleteAsync(SecretKeys.Registry(row.Host));
 
-        _settings = _settings with
+        _settings = _store.Update(s => s with
         {
-            Registries = [.. _settings.Registries.Where(r => !RegistryHost.SameHost(r.Host, row.Host))],
-        };
-        _store.Save(_settings);
+            Registries = [.. s.Registries.Where(r => !RegistryHost.SameHost(r.Host, row.Host))],
+        });
 
         RegistryNotice = $"Signed out of {row.Host}.";
         RefreshRegistries();
@@ -613,8 +614,7 @@ public partial class SettingsViewModel : ViewModelBase
             return;
         }
 
-        _settings = _settings with { RemoteEngines = [.. _settings.RemoteEngines, draft] };
-        _store.Save(_settings);
+        _settings = _store.Update(s => s with { RemoteEngines = [.. s.RemoteEngines, draft] });
 
         RemoteName = string.Empty;
         RemoteHost = string.Empty;
@@ -638,11 +638,10 @@ public partial class SettingsViewModel : ViewModelBase
         if (row is null)
             return;
 
-        _settings = _settings with
+        _settings = _store.Update(s => s with
         {
-            RemoteEngines = [.. _settings.RemoteEngines.Where(r => r.Id != row.Remote.Id)],
-        };
-        _store.Save(_settings);
+            RemoteEngines = [.. s.RemoteEngines.Where(r => r.Id != row.Remote.Id)],
+        });
 
         // Anything kept in the keychain for this remote goes with it, so a re-add cannot inherit an old
         // secret belonging to a host that is no longer configured.
@@ -687,7 +686,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(StartupHint));
 
-        _settings = _settings with
+        _settings = _store.Update(s => s with
         {
             Theme = Theme,
             CompactDensity = CompactDensity,
@@ -705,7 +704,6 @@ public partial class SettingsViewModel : ViewModelBase
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,
             TerminalLigatures = TerminalLigatures,
-        };
-        _store.Save(_settings);
+        });
     }
 }

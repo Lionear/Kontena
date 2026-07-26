@@ -72,15 +72,13 @@ public partial class MainWindow : Window
     {
         CaptureNormal();
 
-        var settings = _store.Load() with
+        _store.Update(s => s with
         {
             WindowWidth = _normalWidth,
             WindowHeight = _normalHeight,
             WindowX = _normalX,
             WindowY = _normalY,
             WindowMaximized = WindowState == WindowState.Maximized,
-        };
-
-        _store.Save(settings);
+        });
     }
 }
