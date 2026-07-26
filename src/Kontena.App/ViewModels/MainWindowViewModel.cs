@@ -458,7 +458,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             RequestPullImage = ShowPullDialog,
             RequestBuildImage = ShowBuildDialog,
         };
-        Volumes = new VolumesViewModel(_engine);
+        Volumes = new VolumesViewModel(_engine)
+        {
+            RequestCreateVolume = ShowCreateVolumeDialog,
+        };
         Networks = new NetworksViewModel(_engine);
         ComposeProjects = new ComposeProjectsViewModel(_engine)
         {
@@ -883,6 +886,20 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             await ActivateAsync(replacement.Provider);
         else
             EnterBackendDown("No backend is reachable", "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.");
+    }
+
+    [RelayCommand]
+    private void ShowCreateVolumeDialog()
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new CreateVolumeViewModel(_engine, CloseDialog, onCreated: async () =>
+        {
+            if (Volumes is not null)
+                await Volumes.LoadAsync();
+            await UpdateNavCountsAsync();
+        });
     }
 
     [RelayCommand]
