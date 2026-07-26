@@ -33,9 +33,11 @@ public partial class SettingsViewModel : ViewModelBase
         IReadOnlyList<EngineListItem>? backends = null,
         Func<bool, Task>? onDemoBackendsChanged = null,
         UpdateViewModel? update = null,
-        IAutostart? autostart = null)
+        IAutostart? autostart = null,
+        ISecretStore? secrets = null)
     {
         _autostart = autostart ?? Autostart.Create();
+        _secrets = secrets ?? SecretStore.Create();
         _backends = backends ?? engines;
         _store = store;
         _settings = settings;
@@ -279,6 +281,21 @@ public partial class SettingsViewModel : ViewModelBase
         if (Update is not null)
             await Update.CheckAsync(userAsked: true);
     }
+
+    // ── Credentials (KON-52) ────────────────────────────────────────────────
+
+    private readonly ISecretStore _secrets;
+
+    /// <summary>
+    /// Whether the OS keychain can be reached. Worth stating before anyone types a password: the answer
+    /// decides whether Kontena is able to keep one at all, and it is not something a user can otherwise
+    /// find out except by trying.
+    /// </summary>
+    public bool HasKeychain => _secrets.IsAvailable;
+
+    public string KeychainStatus => _secrets.IsAvailable
+        ? "Credentials are stored in your system keychain, never in Kontena's own files. You can inspect and revoke them there."
+        : "No system keychain is reachable on this session, so Kontena cannot store credentials. It will not write them anywhere else instead.";
 
     // ── Terminal ────────────────────────────────────────────────────────────
 
