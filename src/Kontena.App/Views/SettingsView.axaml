@@ -75,6 +75,13 @@
                         <TextBlock Grid.Column="1" Text="Engines" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
+                <Button Classes="snav" Classes.on="{Binding IsRegistries}" Command="{Binding SelectCategoryCommand}"
+                        CommandParameter="registries" IsVisible="{Binding HasRegistries}">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconLayers}"/>
+                        <TextBlock Grid.Column="1" Text="Registries" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
                 <Button Classes="snav" Classes.on="{Binding IsUpdates}" Command="{Binding SelectCategoryCommand}"
                         CommandParameter="updates" IsVisible="{Binding HasUpdates}">
                     <Grid ColumnDefinitions="Auto,*">
@@ -400,6 +407,84 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </Border>
+                </StackPanel>
+
+                <!-- Registries (KON-114) -->
+                <StackPanel IsVisible="{Binding IsRegistries}" Spacing="0">
+                    <TextBlock Text="Registries" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="Sign in to pull private images. Passwords and tokens go to your system keychain, never to a file."
+                               FontSize="13.5" TextWrapping="Wrap" MaxWidth="640" HorizontalAlignment="Left"
+                               Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+
+                    <TextBlock Classes="gh" Text="SIGN IN"/>
+                    <Border Classes="card" Margin="0,0,0,30">
+                        <StackPanel Spacing="14">
+                            <Grid ColumnDefinitions="*,12,*">
+                                <StackPanel Grid.Column="0" Spacing="7">
+                                    <TextBlock Text="REGISTRY" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBox Text="{Binding RegistryHostInput, Mode=TwoWay}" PlaceholderText="ghcr.io"
+                                             FontFamily="{StaticResource Mono}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="7">
+                                    <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBox Text="{Binding RegistryUsername, Mode=TwoWay}" PlaceholderText="your-account"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Spacing="7">
+                                <TextBlock Text="PASSWORD OR TOKEN" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                <TextBox Text="{Binding RegistrySecret, Mode=TwoWay}" PasswordChar="•"/>
+                                <TextBlock Text="For most registries a token is the right answer, not your account password."
+                                           FontSize="12" Foreground="{DynamicResource TextFaint}"/>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding RegistryError}" FontSize="12.5" TextWrapping="Wrap"
+                                       IsVisible="{Binding RegistryError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       Foreground="{DynamicResource Danger}"/>
+                            <TextBlock Text="{Binding RegistryNotice}" FontSize="12.5"
+                                       IsVisible="{Binding RegistryNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       Foreground="{DynamicResource Success}"/>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFaint}"
+                                           Text="Kontena checks the login with the registry before saving it."/>
+                                <Button Grid.Column="1" Classes="primary" Command="{Binding LogInCommand}"
+                                        IsEnabled="{Binding CanLogIn}" Content="Sign in"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Classes="gh" Text="SIGNED IN"/>
+                    <Border Classes="card" Padding="0">
+                        <StackPanel>
+                            <ItemsControl ItemsSource="{Binding Registries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RegistryRow">
+                                        <Grid Margin="18,14" ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Host}" FontSize="13.5" FontWeight="SemiBold"
+                                                           FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                                    <TextBlock Text="{Binding Username}" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
+                                                    <TextBlock Text="{Binding SourceLabel}" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Classes="ghost" VerticalAlignment="Center"
+                                                    IsVisible="{Binding !IsInherited}" Content="Sign out"
+                                                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).SignOutCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Margin="18,16" FontSize="12.5" Foreground="{DynamicResource TextFaint}"
+                                       IsVisible="{Binding !Registries.Count}"
+                                       Text="No registry logins yet. Public images need none."/>
+                        </StackPanel>
                     </Border>
                 </StackPanel>
 

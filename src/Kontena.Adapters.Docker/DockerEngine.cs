@@ -114,7 +114,11 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Exec(async () =>
         {
             if (!await ImageExistsAsync(request.Image, ct).ConfigureAwait(false))
-                await PullCoreAsync(request.Image, new NullProgress(), ct).ConfigureAwait(false);
+                // Anonymous on purpose: a credential has no business in CreateContainerRequest, which is
+                // a record that gets passed around and logged. A private image is pulled first — the Run
+                // dialog does exactly that — and this only covers the case where it is already local or
+                // public.
+                await PullCoreAsync(request.Image, credential: null, new NullProgress(), ct).ConfigureAwait(false);
 
             var exposed = new Dictionary<string, EmptyStruct>();
             var bindings = new Dictionary<string, IList<DockerPortBinding>>();
@@ -254,7 +258,8 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         });
 
     public async IAsyncEnumerable<PullProgress> PullImageAsync(
-        string reference, [EnumeratorCancellation] CancellationToken ct = default)
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         var channel = Channel.CreateUnbounded<JSONMessage>(new UnboundedChannelOptions { SingleReader = true });
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -263,7 +268,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         {
             try
             {
-                await PullCoreAsync(reference, new ChannelProgress<JSONMessage>(channel.Writer), linked.Token).ConfigureAwait(false);
+                await PullCoreAsync(reference, credential, new ChannelProgress<JSONMessage>(channel.Writer), linked.Token).ConfigureAwait(false);
                 channel.Writer.TryComplete();
             }
             catch (Exception ex)
@@ -1172,13 +1177,41 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         }
     }
 
-    private Task PullCoreAsync(string reference, IProgress<JSONMessage> progress, CancellationToken ct)
+    private Task PullCoreAsync(
+        string reference, RegistryCredential? credential, IProgress<JSONMessage> progress, CancellationToken ct)
     {
         var (repo, tag) = SplitRepoTag(reference);
         return _client.Images.CreateImageAsync(
             new ImagesCreateParameters { FromImage = repo, Tag = tag },
-            authConfig: null, progress, ct);
+            ToAuthConfig(credential), progress, ct);
     }
+
+    /// <summary>
+    /// The credential in the shape the engine API takes, or null to pull anonymously.
+    /// <para>
+    /// <c>ServerAddress</c> is sent as the host on its own. Docker matches it against the reference being
+    /// pulled, and a scheme or a trailing path — which is how Hub logins are written in
+    /// <c>config.json</c> — makes that match fail silently, falling back to an anonymous pull.
+    /// </para>
+    /// </summary>
+    private static AuthConfig? ToAuthConfig(RegistryCredential? credential) =>
+        credential is null
+            ? null
+            : new AuthConfig
+            {
+                ServerAddress = RegistryHost.Canonical(credential.Host),
+                Username = credential.Username,
+                Password = credential.Secret,
+            };
+
+    /// <summary>
+    /// Asks the engine to authenticate against the registry — the daemon's <c>/auth</c> endpoint — so a
+    /// login can be checked before it is stored.
+    /// </summary>
+    public ValueTask VerifyRegistryLoginAsync(RegistryCredential credential, CancellationToken ct = default) =>
+        // A refusal is an exception from the daemon, which Exec turns into a Kontena error carrying the
+        // registry's own message — usually clearer than anything this layer could write.
+        Exec(() => _client.System.AuthenticateAsync(ToAuthConfig(credential), ct));
 
     private static (string Repository, string Tag) SplitRepoTag(string reference)
     {

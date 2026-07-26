@@ -256,13 +256,19 @@ internal static class Program
 
             case "settings":
             case "settings-about":
-            case "settings-engines-tcp":
+            case "settings-registries":
             case "settings-engines":
+            case "settings-engines-tcp":
                 vm.ShowSettingsCommand.Execute(null);
-                if (scene is "settings-engines" or "settings-engines-tcp" or "settings-about"
-                    && vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
+                if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
                 {
-                    s.SelectCategoryCommand.Execute(scene == "settings-about" ? "about" : "engines");
+                    s.SelectCategoryCommand.Execute(scene switch
+                    {
+                        "settings-about" => "about",
+                        "settings-registries" => "registries",
+                        "settings" => "general",
+                        _ => "engines",
+                    });
 
                     // The TCP form is where the security decision lives, so it gets its own shot.
                     if (scene == "settings-engines-tcp")
@@ -270,6 +276,7 @@ internal static class Program
 
                     Settle(rounds: 20);
                 }
+
 
                 break;
 

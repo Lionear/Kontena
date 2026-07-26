@@ -5,8 +5,21 @@ using CommunityToolkit.Mvvm.Input;
 using Kontena.Adapters.Docker;
 using Kontena.App.Services;
 using Kontena.Core.Models;
+using Kontena.Engines;
 
 namespace Kontena.App.ViewModels;
+
+/// <summary>One registry as shown in Settings › Registries.</summary>
+/// <param name="Host">Registry host.</param>
+/// <param name="Username">Who you are on it, or empty when the config did not say.</param>
+/// <param name="IsInherited">
+/// True for a login read from the engine's own config. Shown because "why does this registry work when I
+/// never logged in here?" deserves an answer — and because Kontena cannot remove what it did not store.
+/// </param>
+public sealed record RegistryRow(string Host, string Username, bool IsInherited)
+{
+    public string SourceLabel => IsInherited ? "from your engine config" : "signed in with Kontena";
+}
 
 /// <summary>A configured remote engine, as shown in Settings › Engines.</summary>
 /// <param name="Remote">The stored configuration.</param>
@@ -55,8 +68,12 @@ public partial class SettingsViewModel : ViewModelBase
         UpdateViewModel? update = null,
         IAutostart? autostart = null,
         ISecretStore? secrets = null,
+        RegistryCredentials? registries = null,
+        Func<IContainerEngine?>? engine = null,
         Func<Task>? onRemotesChanged = null)
     {
+        _registries = registries;
+        _engineForVerify = engine;
         _autostart = autostart ?? Autostart.Create();
         _secrets = secrets ?? SecretStore.Create();
         _onRemotesChanged = onRemotesChanged;
@@ -115,9 +132,16 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGeneral));
         OnPropertyChanged(nameof(IsEngines));
         OnPropertyChanged(nameof(IsUpdates));
+        OnPropertyChanged(nameof(IsRegistries));
+
+        // Read fresh on entry: a login can have been added by docker login, or revoked in the keychain,
+        // since the page was built.
+        if (Category == "registries")
+            RefreshRegistries();
         OnPropertyChanged(nameof(IsAbout));
     }
 
+    public bool IsRegistries => Category == "registries";
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
     public bool IsUpdates => Category == "updates";
@@ -319,6 +343,128 @@ public partial class SettingsViewModel : ViewModelBase
     public string KeychainStatus => _secrets.IsAvailable
         ? "Credentials are stored in your system keychain, never in Kontena's own files. You can inspect and revoke them there."
         : "No system keychain is reachable on this session, so Kontena cannot store credentials. It will not write them anywhere else instead.";
+
+    // ── Registries (KON-114) ────────────────────────────────────────────────
+
+    private readonly RegistryCredentials? _registries;
+    private readonly Func<IContainerEngine?>? _engineForVerify;
+
+    /// <summary>Whether the category is offered: it needs a keychain to put a new login in.</summary>
+    public bool HasRegistries => _registries is not null && HasKeychain;
+
+    public ObservableCollection<RegistryRow> Registries { get; } = [];
+
+    [ObservableProperty] private string _registryHostInput = string.Empty;
+    [ObservableProperty] private string _registryUsername = string.Empty;
+    [ObservableProperty] private string _registrySecret = string.Empty;
+    [ObservableProperty] private bool _isRegistryBusy;
+    [ObservableProperty] private string? _registryError;
+    [ObservableProperty] private string? _registryNotice;
+
+    public bool CanLogIn =>
+        !IsRegistryBusy
+        && !string.IsNullOrWhiteSpace(RegistryHostInput)
+        && !string.IsNullOrWhiteSpace(RegistryUsername)
+        && !string.IsNullOrWhiteSpace(RegistrySecret);
+
+    partial void OnRegistryHostInputChanged(string value) => OnLoginFieldChanged();
+    partial void OnRegistryUsernameChanged(string value) => OnLoginFieldChanged();
+    partial void OnRegistrySecretChanged(string value) => OnLoginFieldChanged();
+    partial void OnIsRegistryBusyChanged(bool value) => OnPropertyChanged(nameof(CanLogIn));
+
+    private void OnLoginFieldChanged()
+    {
+        OnPropertyChanged(nameof(CanLogIn));
+        RegistryError = null;
+        RegistryNotice = null;
+    }
+
+    private void RefreshRegistries()
+    {
+        if (_registries is null)
+            return;
+
+        Registries.Clear();
+        foreach (var login in _registries.List())
+        {
+            Registries.Add(new RegistryRow(
+                login.Host, login.Username, login.Source == RegistryCredentialSource.EngineConfig));
+        }
+    }
+
+    /// <summary>
+    /// Verifies the login against the registry, and only then stores it. Storing an unverified credential
+    /// would look configured and fail later at a pull, with an error naming the image rather than the
+    /// account.
+    /// </summary>
+    [RelayCommand]
+    private async Task LogInAsync()
+    {
+        if (_registries is null || !CanLogIn)
+            return;
+
+        var host = RegistryHost.Canonical(RegistryHostInput);
+        var credential = new RegistryCredential(host, RegistryUsername.Trim(), RegistrySecret);
+
+        RegistryError = null;
+        RegistryNotice = null;
+        IsRegistryBusy = true;
+        try
+        {
+            if (_engineForVerify?.Invoke() is { } engine)
+                await engine.VerifyRegistryLoginAsync(credential);
+
+            if (!await _secrets.SetAsync(SecretKeys.Registry(host), credential.Secret))
+            {
+                RegistryError = "The login was accepted but could not be saved to your keychain, so it has not been kept.";
+                return;
+            }
+
+            var others = _settings.Registries.Where(r => !RegistryHost.SameHost(r.Host, host));
+            _settings = _settings with
+            {
+                Registries = [.. others, new RegistryLogin(host, credential.Username, RegistryCredentialSource.Kontena)],
+            };
+            _store.Save(_settings);
+
+            // Cleared immediately: there is no reason for the secret to stay in a text box, and the row
+            // below is the confirmation that it landed.
+            RegistrySecret = string.Empty;
+            RegistryUsername = string.Empty;
+            RegistryHostInput = string.Empty;
+            RegistryNotice = $"Signed in to {host}.";
+            RefreshRegistries();
+        }
+        catch (Exception ex)
+        {
+            RegistryError = ex.Message;
+        }
+        finally
+        {
+            IsRegistryBusy = false;
+        }
+    }
+
+    /// <summary>Removes a login Kontena stored, secret included.</summary>
+    [RelayCommand]
+    private async Task SignOutAsync(RegistryRow? row)
+    {
+        if (row is null || row.IsInherited || _registries is null)
+            return;
+
+        // The secret goes first: an entry left in the keychain after the row is gone is a credential
+        // nobody can see and nobody will remove.
+        await _secrets.DeleteAsync(SecretKeys.Registry(row.Host));
+
+        _settings = _settings with
+        {
+            Registries = [.. _settings.Registries.Where(r => !RegistryHost.SameHost(r.Host, row.Host))],
+        };
+        _store.Save(_settings);
+
+        RegistryNotice = $"Signed out of {row.Host}.";
+        RefreshRegistries();
+    }
 
     // ── Remote engines (KON-46) ─────────────────────────────────────────────
 

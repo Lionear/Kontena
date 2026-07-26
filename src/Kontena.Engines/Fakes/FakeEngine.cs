@@ -183,7 +183,8 @@ public sealed class FakeEngine : IContainerEngine
     }
 
     public async IAsyncEnumerable<PullProgress> PullImageAsync(
-        string reference, [EnumeratorCancellation] CancellationToken ct = default)
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         const long total = 48_000_000;
         for (var step = 1; step <= 4; step++)
@@ -314,6 +315,18 @@ public sealed class FakeEngine : IContainerEngine
     /// directories come back empty rather than throwing: an empty directory is an ordinary thing to
     /// open, and the seed does not pretend to model a filesystem.
     /// </summary>
+    /// <summary>
+    /// Accepts any login with both fields filled, and refuses the rest — enough to exercise both paths in
+    /// the UI without a registry to talk to.
+    /// </summary>
+    public ValueTask VerifyRegistryLoginAsync(RegistryCredential credential, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(credential.Username) || string.IsNullOrWhiteSpace(credential.Secret))
+            throw new InvalidOperationException("A username and a password or token are both required.");
+
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default)
     {

@@ -133,6 +133,11 @@ public sealed record KontenaSettings
     public string? DismissedUpdateVersion { get; init; }
 
     /// <summary>
+    /// Registries Kontena has a login for, without the secrets — those live in the OS keychain, keyed by
+    /// host (KON-114). Logins found in the engine's own config are not listed here: they are read live,
+    /// because they are not ours to remember or to go stale.
+    /// </summary>
+    public IReadOnlyList<RegistryLogin> Registries { get; init; } = [];
     /// Engines on other hosts, added by the user (KON-46). Nothing secret is in here — an SSH key
     /// passphrase or a certificate password belongs in the keychain, keyed by the remote's id.
     /// </summary>
