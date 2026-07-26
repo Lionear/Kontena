@@ -53,6 +53,17 @@ public sealed class VelopackUpdateService : IUpdateService
     public string CurrentVersion { get; } =
         typeof(VelopackUpdateService).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
+    /// <summary>
+    /// Read from the assembly's informational version, which carries the full string the workflow
+    /// stamped — <c>0.2.0-nightly.20260726.26</c>. The assembly *version* cannot answer this: it is
+    /// numeric only, so the prerelease tag that names the channel is gone by the time it is written.
+    /// </summary>
+    public UpdateChannel BuildChannel { get; } = ReleaseChannel.FromVersion(
+        typeof(VelopackUpdateService).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion);
+
     public async Task<AvailableUpdate?> CheckAsync(UpdateChannel channel, CancellationToken ct = default)
     {
         if (Support != UpdateSupport.Supported)

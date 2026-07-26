@@ -43,6 +43,12 @@ public interface IUpdateService
     string CurrentVersion { get; }
 
     /// <summary>
+    /// The stream this build was published on (KON-123). What a fresh install follows when the user has
+    /// not chosen a channel — downloading a nightly is itself the choice.
+    /// </summary>
+    UpdateChannel BuildChannel { get; }
+
+    /// <summary>
     /// A newer version on <paramref name="channel"/>, or null when this install is current. Also
     /// null when <see cref="Support"/> is not <see cref="UpdateSupport.Supported"/> — there is
     /// nothing to offer if it cannot be applied.
