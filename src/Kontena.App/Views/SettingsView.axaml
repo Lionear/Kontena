@@ -281,7 +281,8 @@
                             <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Info}"
                                   Data="{StaticResource IconInfo}" VerticalAlignment="Top" Margin="0,2,0,0"/>
                             <TextBlock Text="{Binding Update.UnsupportedReason}" FontSize="12.5" TextWrapping="Wrap"
-                                       LineHeight="19" Foreground="{DynamicResource TextDim}" MaxWidth="640"/>
+                                       LineHeight="19" Foreground="{DynamicResource TextDim}" MaxWidth="640"
+                                       HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
 
@@ -293,7 +294,8 @@
                                     <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
                                         <TextBlock Text="Release channel" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                                         <TextBlock Text="{Binding ChannelHint}" FontSize="12" TextWrapping="Wrap"
-                                                   MaxWidth="470" Foreground="{DynamicResource TextDim}"/>
+                                                   MaxWidth="470" Foreground="{DynamicResource TextDim}"
+                                                   HorizontalAlignment="Left"/>
                                     </StackPanel>
                                     <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
                                             BorderThickness="1" CornerRadius="8" Padding="3" VerticalAlignment="Center">
@@ -318,7 +320,8 @@
                                     <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
                                         <TextBlock Text="Download updates automatically" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                                         <TextBlock Text="Fetch a new version as soon as it is found, so the update is a restart rather than a wait."
-                                                   FontSize="12" TextWrapping="Wrap" MaxWidth="470" Foreground="{DynamicResource TextDim}"/>
+                                                   FontSize="12" TextWrapping="Wrap" MaxWidth="470"
+                                                   Foreground="{DynamicResource TextDim}" HorizontalAlignment="Left"/>
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" IsChecked="{Binding AutoDownloadUpdates, Mode=TwoWay}" VerticalAlignment="Center"/>
                                 </Grid>
