@@ -9,7 +9,7 @@ namespace Kontena.Core.Tests;
 /// every machine that can run these tests, and the behaviour under test is the running, not the tool.
 /// </para>
 /// </summary>
-[Collection(EnvironmentCollection.Name)]
+[Collection(ProcessEnvironment.Name)]
 public sealed class ToolRunnerTests
 {
     private static readonly ExternalTool Dotnet = new("dotnet", "dotnet", ["--version"], []);

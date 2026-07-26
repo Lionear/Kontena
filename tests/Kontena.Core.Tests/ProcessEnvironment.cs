@@ -10,7 +10,7 @@ namespace Kontena.Core.Tests;
 /// </para>
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class EnvironmentCollection
+public sealed class ProcessEnvironment
 {
     public const string Name = "process environment";
 }
