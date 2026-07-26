@@ -432,12 +432,35 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         CreateNetworkRequest request, CancellationToken ct = default) =>
         Exec(async () =>
         {
-            var response = await _client.Networks.CreateNetworkAsync(new NetworksCreateParameters
+            var parameters = new NetworksCreateParameters
             {
                 Name = request.Name,
                 Driver = request.Driver,
-            }, ct).ConfigureAwait(false);
-            return new NetworkSummary { Id = response.ID, Name = request.Name, Driver = request.Driver, Subnet = request.Subnet };
+            };
+
+            // A subnet has to be sent as IPAM config or Docker assigns one from its own pool. Without
+            // this, the network came back reporting the subnet that was asked for while actually
+            // having a different one — the summary was describing the request, not the network.
+            if (!string.IsNullOrWhiteSpace(request.Subnet))
+            {
+                parameters.IPAM = new IPAM
+                {
+                    Config = [new IPAMConfig { Subnet = request.Subnet }],
+                };
+            }
+
+            var response = await _client.Networks.CreateNetworkAsync(parameters, ct).ConfigureAwait(false);
+
+            // Read the network back rather than echoing the request: the engine decides the id, and
+            // when no subnet was asked for it also decides the subnet.
+            var created = await _client.Networks.InspectNetworkAsync(response.ID, ct).ConfigureAwait(false);
+            return new NetworkSummary
+            {
+                Id = created.ID,
+                Name = created.Name,
+                Driver = created.Driver,
+                Subnet = created.IPAM?.Config?.FirstOrDefault()?.Subnet ?? string.Empty,
+            };
         });
 
     public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>

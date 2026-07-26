@@ -87,6 +87,59 @@ public class DockerEngineTests
     }
 
     [SkippableFact]
+    public async Task A_network_created_with_a_subnet_really_has_that_subnet()
+    {
+        // The adapter used to send only name and driver, then return a summary echoing the subnet from
+        // the request — so the network reported a subnet Docker had never been told about, while
+        // actually using one from its own pool. This asserts against the engine, not the echo.
+        using var engine = await ConnectOrSkipAsync();
+
+        var name = $"kontena-test-{Guid.NewGuid():N}"[..24];
+        const string subnet = "172.28.240.0/24";
+
+        var created = await engine.CreateNetworkAsync(new CreateNetworkRequest
+        {
+            Name = name,
+            Driver = "bridge",
+            Subnet = subnet,
+        });
+
+        try
+        {
+            Assert.Equal(subnet, created.Subnet);
+
+            // And again from a fresh listing, so it is the engine's answer rather than the create call's.
+            var listed = Assert.Single((await engine.ListNetworksAsync()).Where(n => n.Name == name));
+            Assert.Equal(subnet, listed.Subnet);
+            Assert.Equal("bridge", listed.Driver);
+        }
+        finally
+        {
+            await engine.RemoveNetworkAsync(created.Id);
+        }
+    }
+
+    [SkippableFact]
+    public async Task A_network_created_without_a_subnet_reports_the_one_the_engine_chose()
+    {
+        using var engine = await ConnectOrSkipAsync();
+
+        var name = $"kontena-test-{Guid.NewGuid():N}"[..24];
+        var created = await engine.CreateNetworkAsync(new CreateNetworkRequest { Name = name });
+
+        try
+        {
+            // Not empty: leaving the field blank means "engine decides", and the summary should then
+            // say what it decided rather than repeating our blank.
+            Assert.False(string.IsNullOrWhiteSpace(created.Subnet));
+        }
+        finally
+        {
+            await engine.RemoveNetworkAsync(created.Id);
+        }
+    }
+
+    [SkippableFact]
     public async Task Run_lifecycle_and_remove_a_throwaway_container()
     {
         using var engine = await ConnectOrSkipAsync();

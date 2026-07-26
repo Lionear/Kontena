@@ -462,7 +462,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             RequestCreateVolume = ShowCreateVolumeDialog,
         };
-        Networks = new NetworksViewModel(_engine);
+        Networks = new NetworksViewModel(_engine)
+        {
+            RequestCreateNetwork = ShowCreateNetworkDialog,
+        };
         ComposeProjects = new ComposeProjectsViewModel(_engine)
         {
             RequestOpenDetail = ShowContainerDetail,
@@ -886,6 +889,19 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             await ActivateAsync(replacement.Provider);
         else
             EnterBackendDown("No backend is reachable", "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.");
+    }
+
+    private void ShowCreateNetworkDialog()
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new CreateNetworkViewModel(_engine, CloseDialog, onCreated: async () =>
+        {
+            if (Networks is not null)
+                await Networks.LoadAsync();
+            await UpdateNavCountsAsync();
+        });
     }
 
     [RelayCommand]

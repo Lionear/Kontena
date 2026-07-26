@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="380"
+             x:Class="Kontena.App.Views.CreateNetworkView"
+             x:DataType="vm:CreateNetworkViewModel">
+    <Border Width="480" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+            <StackPanel Margin="24,22,24,20" Spacing="16">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="New network" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" HorizontalAlignment="Left"
+                               Foreground="{DynamicResource TextDim}" MaxWidth="420"
+                               Text="Containers on the same user-defined network reach each other by name. Attach one from the Run container dialog."/>
+                </StackPanel>
+
+                <StackPanel Spacing="7">
+                    <TextBlock Text="NAME" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                    <TextBox Text="{Binding Name, Mode=TwoWay}" PlaceholderText="app-net"
+                             FontFamily="{StaticResource Mono}"/>
+                </StackPanel>
+
+                <StackPanel Spacing="7">
+                    <TextBlock Text="DRIVER" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                    <ComboBox ItemsSource="{Binding Drivers}" SelectedItem="{Binding Driver, Mode=TwoWay}"
+                              HorizontalAlignment="Stretch"/>
+                </StackPanel>
+
+                <StackPanel Spacing="7">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="SUBNET" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                        <TextBlock Text="OPTIONAL" FontSize="10" Foreground="{DynamicResource TextFaint}"/>
+                    </StackPanel>
+                    <TextBox Text="{Binding Subnet, Mode=TwoWay}" PlaceholderText="172.28.0.0/16"
+                             FontFamily="{StaticResource Mono}"/>
+                    <TextBlock Text="{Binding SubnetProblem}" FontSize="12"
+                               IsVisible="{Binding SubnetProblem, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Foreground="{DynamicResource Warn}" TextWrapping="Wrap"/>
+                    <TextBlock Text="Left empty, the engine picks one from its own pool." FontSize="12"
+                               IsVisible="{Binding SubnetProblem, Converter={x:Static ObjectConverters.IsNull}}"
+                               Foreground="{DynamicResource TextFaint}"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+            <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
+                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CancelCommand}">Cancel</Button>
+                <Button Grid.Column="2" Classes="primary" Command="{Binding CreateCommand}"
+                        IsEnabled="{Binding CanCreate}">Create network</Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>
