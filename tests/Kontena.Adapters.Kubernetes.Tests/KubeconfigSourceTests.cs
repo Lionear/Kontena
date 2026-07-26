@@ -22,8 +22,8 @@ public class KubeconfigSourceTests
     {
         // "default" and "kubernetes-admin@kubernetes" are everywhere. Without the file in the id, adding a
         // second kubeconfig would silently take over the first one's entry.
-        var a = new KubernetesClusterProvider("default", "/home/rick/work.yaml");
-        var b = new KubernetesClusterProvider("default", "/home/rick/client.yaml");
+        var a = new KubernetesClusterProvider("default", "/srv/kubeconfigs/work.yaml");
+        var b = new KubernetesClusterProvider("default", "/srv/kubeconfigs/client.yaml");
 
         Assert.NotEqual(a.Backend, b.Backend);
         Assert.StartsWith("kubernetes@", a.Backend, StringComparison.Ordinal);
@@ -35,18 +35,18 @@ public class KubeconfigSourceTests
     {
         // The id is stored, so it has to survive a restart.
         Assert.Equal(
-            new KubernetesClusterProvider("default", "/home/rick/work.yaml").Backend,
-            new KubernetesClusterProvider("default", "/home/rick/work.yaml").Backend);
+            new KubernetesClusterProvider("default", "/srv/kubeconfigs/work.yaml").Backend,
+            new KubernetesClusterProvider("default", "/srv/kubeconfigs/work.yaml").Backend);
     }
 
     [Fact]
     public void The_file_path_does_not_appear_in_the_id()
     {
-        // Settings are plain text a user may share when reporting a bug; a home directory layout is not
-        // something to spread around for a lookup key.
-        var provider = new KubernetesClusterProvider("default", "/home/rick/secret-customer/kubeconfig");
-        Assert.DoesNotContain("secret-customer", provider.Backend, StringComparison.Ordinal);
-        Assert.DoesNotContain("/home", provider.Backend, StringComparison.Ordinal);
+        // Settings are plain text a user may share when reporting a bug; where their files live, and who
+        // they are for, is not something to spread around for the sake of a lookup key.
+        var provider = new KubernetesClusterProvider("default", "/srv/kubeconfigs/confidential-customer/kubeconfig");
+        Assert.DoesNotContain("confidential-customer", provider.Backend, StringComparison.Ordinal);
+        Assert.DoesNotContain("/srv", provider.Backend, StringComparison.Ordinal);
     }
 
     [Fact]
