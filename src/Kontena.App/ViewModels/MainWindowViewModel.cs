@@ -990,6 +990,19 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             item.IsSelected = false;
     }
 
+    /// <summary>
+    /// The switcher's "Add engine or cluster…" row. Adding one means configuring a remote engine, and that
+    /// lives in Settings › Engines — so this opens exactly there rather than dropping the user on the
+    /// General page to go looking for it.
+    /// </summary>
+    [RelayCommand]
+    private void ShowAddEngine()
+    {
+        ShowSettings();
+        if (SettingsPage is not null)
+            SettingsPage.Category = "engines";
+    }
+
     // ── Theme quick-toggle (topbar) ─────────────────────────────────────────
 
     /// <summary>Resource key of the icon shown on the topbar theme button.</summary>

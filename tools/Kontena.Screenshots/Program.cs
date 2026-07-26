@@ -280,6 +280,14 @@ internal static class Program
 
                 break;
 
+            // The switcher's "Add engine or cluster…" row, driven through its own command rather than by
+            // opening Settings directly — the row spent a release doing nothing, and only running what the
+            // button actually runs would have shown that.
+            case "add-engine":
+                vm.ShowAddEngineCommand.Execute(null);
+                Settle(rounds: 20);
+                break;
+
             // The update card (KON-110). Every scene drives the real state machine — check, then
             // download — rather than posing the view, so a shot that looks right also works.
             case "update-toast":
