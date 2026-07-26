@@ -256,12 +256,18 @@ internal static class Program
 
             case "settings":
             case "settings-about":
+            case "settings-engines-tcp":
             case "settings-engines":
                 vm.ShowSettingsCommand.Execute(null);
-                if (scene is "settings-engines" or "settings-about"
+                if (scene is "settings-engines" or "settings-engines-tcp" or "settings-about"
                     && vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
                 {
                     s.SelectCategoryCommand.Execute(scene == "settings-about" ? "about" : "engines");
+
+                    // The TCP form is where the security decision lives, so it gets its own shot.
+                    if (scene == "settings-engines-tcp")
+                        s.SetRemoteTransportCommand.Execute("tcp");
+
                     Settle(rounds: 20);
                 }
 

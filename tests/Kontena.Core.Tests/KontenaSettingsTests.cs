@@ -56,6 +56,12 @@ public class KontenaSettingsTests
             UpdateChannel = UpdateChannel.Nightly,
             AutoDownloadUpdates = false,
             DismissedUpdateVersion = "0.3.0",
+            RemoteEngines =
+            [
+                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "build-01", User: "rick"),
+                new RemoteEngine("r2", "Lab", RemoteEngineTransport.Tcp, "lab.local", 2376,
+                    CertificateDirectory: "/home/rick/.docker/lab"),
+            ],
             TerminalLigatures = true,
             RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
@@ -76,11 +82,19 @@ public class KontenaSettingsTests
         // their contents), so verify them by sequence, then compare the scalar members with both
         // aligned.
         Assert.Equal(original.RecentBuildContexts, restored!.RecentBuildContexts);
+
+        // Transport, host, port and the certificate path survive; the secrets never lived here.
+        Assert.Equal(original.RemoteEngines, restored.RemoteEngines);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
         Assert.Equal(
-            original with { RecentBuildContexts = restored.RecentBuildContexts, PortForwards = restored.PortForwards },
+            original with
+            {
+                RecentBuildContexts = restored.RecentBuildContexts,
+                PortForwards = restored.PortForwards,
+                RemoteEngines = restored.RemoteEngines,
+            },
             restored);
     }
 

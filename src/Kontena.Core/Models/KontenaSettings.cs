@@ -132,6 +132,12 @@ public sealed record KontenaSettings
     /// </summary>
     public string? DismissedUpdateVersion { get; init; }
 
+    /// <summary>
+    /// Engines on other hosts, added by the user (KON-46). Nothing secret is in here — an SSH key
+    /// passphrase or a certificate password belongs in the keychain, keyed by the remote's id.
+    /// </summary>
+    public IReadOnlyList<RemoteEngine> RemoteEngines { get; init; } = [];
+
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";
 

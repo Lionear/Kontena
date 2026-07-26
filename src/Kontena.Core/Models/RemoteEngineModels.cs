@@ -1,0 +1,93 @@
+namespace Kontena.Core.Models;
+
+/// <summary>How Kontena reaches an engine that is not on this machine.</summary>
+public enum RemoteEngineTransport
+{
+    /// <summary>
+    /// Over SSH, by forwarding the remote engine's socket to a local one. What <c>DOCKER_HOST=ssh://…</c>
+    /// does, and what most people already have working: existing keys, existing agent, nothing to
+    /// generate or distribute.
+    /// </summary>
+    Ssh = 0,
+
+    /// <summary>
+    /// Straight to a TCP port. Requires TLS client certificates unless explicitly allowed without —
+    /// an unauthenticated Docker socket on a network port hands root on that host to anyone who can
+    /// reach it.
+    /// </summary>
+    Tcp,
+}
+
+/// <summary>
+/// A remote engine as the user configured it. Persisted in settings; nothing secret is in here — an SSH
+/// key passphrase or a certificate password belongs in the keychain, keyed by <see cref="Id"/>.
+/// </summary>
+/// <param name="Id">Stable id, so the keychain entry and the remembered choices survive a rename.</param>
+/// <param name="Name">What the switcher shows.</param>
+/// <param name="Transport">SSH or TCP.</param>
+/// <param name="Host">Hostname or address. For SSH this may be an <c>ssh_config</c> alias.</param>
+/// <param name="Port">SSH port, or the engine's TCP port. Null means the transport's default.</param>
+/// <param name="User">SSH user. Null lets ssh decide, which respects <c>ssh_config</c>.</param>
+/// <param name="SocketPath">Remote socket to forward. Null means the engine's usual path.</param>
+/// <param name="CertificateDirectory">
+/// Directory holding <c>ca.pem</c>, <c>cert.pem</c> and <c>key.pem</c> — the same layout
+/// <c>DOCKER_CERT_PATH</c> uses, so an existing setup can be pointed at rather than rebuilt.
+/// </param>
+/// <param name="AllowInsecureTcp">
+/// Explicit acknowledgement that this TCP endpoint has no TLS. False by default and never set on the
+/// user's behalf: it is the difference between a private connection and an open door.
+/// </param>
+public sealed record RemoteEngine(
+    string Id,
+    string Name,
+    RemoteEngineTransport Transport,
+    string Host,
+    int? Port = null,
+    string? User = null,
+    string? SocketPath = null,
+    string? CertificateDirectory = null,
+    bool AllowInsecureTcp = false)
+{
+    /// <summary>The backend id this appears under, unique per configured remote.</summary>
+    public string Backend => $"docker-remote:{Id}";
+
+    /// <summary>The remote socket to forward over SSH when none was given.</summary>
+    public const string DefaultSocketPath = "/var/run/docker.sock";
+
+    /// <summary>Docker's TLS port. 2375 is the unencrypted one and is not a default here on purpose.</summary>
+    public const int DefaultTlsPort = 2376;
+
+    /// <summary>What the user is connecting to, in one line, for the switcher's second row.</summary>
+    public string Endpoint => Transport switch
+    {
+        RemoteEngineTransport.Ssh => $"ssh://{(User is { Length: > 0 } u ? u + "@" : string.Empty)}{Host}"
+            + (Port is { } p ? $":{p}" : string.Empty),
+        _ => $"tcp://{Host}:{Port ?? DefaultTlsPort}",
+    };
+
+    /// <summary>
+    /// Why this configuration cannot be used, or null when it can. Checked before a connection is
+    /// attempted so the complaint names the field rather than surfacing as a transport error later.
+    /// </summary>
+    public string? Problem
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Host))
+                return "A host is required.";
+
+            if (Transport == RemoteEngineTransport.Tcp)
+            {
+                var hasCerts = !string.IsNullOrWhiteSpace(CertificateDirectory);
+                if (!hasCerts && !AllowInsecureTcp)
+                {
+                    return "A TCP engine needs TLS certificates. Without them the connection is "
+                        + "unauthenticated and unencrypted, which gives anyone who can reach the port "
+                        + "control of that host.";
+                }
+            }
+
+            return null;
+        }
+    }
+}

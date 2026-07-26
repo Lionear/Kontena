@@ -269,6 +269,138 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </Border>
+
+                    <TextBlock Classes="gh" Text="REMOTE ENGINES" Margin="0,30,0,12"/>
+                    <Border Classes="card" Margin="0,0,0,14">
+                        <StackPanel Spacing="14">
+                            <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" MaxWidth="620"
+                                       HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"
+                                       Text="An engine on another host appears in the switcher like a local one. Over SSH Kontena forwards the remote socket using your existing keys and agent; over TCP it needs TLS certificates."/>
+
+                            <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal" Spacing="2">
+                                    <Button Classes="seg" Classes.on="{Binding RemoteIsSsh}"
+                                            Command="{Binding SetRemoteTransportCommand}" CommandParameter="ssh">
+                                        <TextBlock Text="SSH" VerticalAlignment="Center"/>
+                                    </Button>
+                                    <Button Classes="seg" Classes.on="{Binding RemoteIsTcp}"
+                                            Command="{Binding SetRemoteTransportCommand}" CommandParameter="tcp">
+                                        <TextBlock Text="TCP + TLS" VerticalAlignment="Center"/>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+
+                            <Grid ColumnDefinitions="*,12,*">
+                                <StackPanel Grid.Column="0" Spacing="7">
+                                    <TextBlock Text="HOST" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBox Text="{Binding RemoteHost, Mode=TwoWay}" PlaceholderText="build-01.example.com"
+                                             FontFamily="{StaticResource Mono}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="7">
+                                    <TextBlock Text="NAME" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBox Text="{Binding RemoteName, Mode=TwoWay}" PlaceholderText="Build server"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- SSH -->
+                            <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding RemoteIsSsh}">
+                                <StackPanel Grid.Column="0" Spacing="7">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="USER" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                        <TextBlock Text="OPTIONAL" FontSize="10" Foreground="{DynamicResource TextFaint}"/>
+                                    </StackPanel>
+                                    <TextBox Text="{Binding RemoteUser, Mode=TwoWay}" PlaceholderText="leave empty to use ssh_config"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="7">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="REMOTE SOCKET" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                        <TextBlock Text="OPTIONAL" FontSize="10" Foreground="{DynamicResource TextFaint}"/>
+                                    </StackPanel>
+                                    <TextBox Text="{Binding RemoteSocketPath, Mode=TwoWay}" PlaceholderText="/var/run/docker.sock"
+                                             FontFamily="{StaticResource Mono}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- TCP -->
+                            <StackPanel Spacing="7" IsVisible="{Binding RemoteIsTcp}">
+                                <TextBlock Text="CERTIFICATE DIRECTORY" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                <TextBox Text="{Binding RemoteCertificateDirectory, Mode=TwoWay}"
+                                         PlaceholderText="~/.docker/certs — holding ca.pem, cert.pem and key.pem"
+                                         FontFamily="{StaticResource Mono}"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="8" IsVisible="{Binding ShowInsecureWarning}">
+                                <StackPanel Orientation="Horizontal" Spacing="11">
+                                    <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Danger}"
+                                          Data="{StaticResource IconWarning}" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" MaxWidth="560"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"
+                                               Text="Without certificates this connection is unauthenticated and unencrypted. Anyone who can reach that port controls the host — including containers on your own network."/>
+                                </StackPanel>
+                                <CheckBox IsChecked="{Binding RemoteAllowInsecure, Mode=TwoWay}" FontSize="12.5"
+                                          Content="Connect without TLS anyway"/>
+                            </StackPanel>
+
+                            <Grid ColumnDefinitions="*,12,Auto">
+                                <StackPanel Grid.Column="0" Spacing="7">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="PORT" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                        <TextBlock Text="OPTIONAL" FontSize="10" Foreground="{DynamicResource TextFaint}"/>
+                                    </StackPanel>
+                                    <TextBox Text="{Binding RemotePort, Mode=TwoWay}" PlaceholderText="22 for SSH, 2376 for TLS"
+                                             FontFamily="{StaticResource Mono}" MaxWidth="260" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                                    <Button Classes="ghost" Command="{Binding TestRemoteCommand}"
+                                            IsEnabled="{Binding !IsRemoteBusy}" Content="Test connection"/>
+                                    <Button Classes="primary" Command="{Binding AddRemoteCommand}"
+                                            IsEnabled="{Binding CanAddRemote}" Content="Add engine"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="{Binding RemoteError}" FontSize="12.5" TextWrapping="Wrap"
+                                       HorizontalAlignment="Left" MaxWidth="620"
+                                       IsVisible="{Binding RemoteError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       Foreground="{DynamicResource Danger}"/>
+                            <TextBlock Text="{Binding RemoteNotice}" FontSize="12.5"
+                                       IsVisible="{Binding RemoteNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       Foreground="{DynamicResource Success}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Classes="card" Padding="0" IsVisible="{Binding RemoteEngines.Count}">
+                        <ItemsControl ItemsSource="{Binding RemoteEngines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RemoteEngineRow">
+                                    <Grid Margin="18,14" ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Text}"/>
+                                                <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="7,1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding TransportLabel}" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
+                                                </Border>
+                                                <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="7,1"
+                                                        VerticalAlignment="Center" IsVisible="{Binding IsInsecure}">
+                                                    <TextBlock Text="no TLS" FontSize="10.5" Foreground="{DynamicResource Danger}"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <TextBlock Text="{Binding Endpoint}" FontSize="12" FontFamily="{StaticResource Mono}"
+                                                           Foreground="{DynamicResource TextDim}"/>
+                                                <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
+                                                <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Classes="ghost" VerticalAlignment="Center" Content="Remove"
+                                                Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveRemoteCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
                 </StackPanel>
 
                 <!-- Updates (KON-110) -->

@@ -1,6 +1,7 @@
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.Adapters.Podman;
+using Kontena.Core.Models;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
 
@@ -38,13 +39,26 @@ public static class BackendCatalog
     /// Build the provider list. Real backends always come first so the switcher lists them above the
     /// demo entries.
     /// </summary>
-    public static List<IBackendProvider> Build(bool includeDemo)
+    /// <param name="remotes">
+    /// Engines on other hosts, from settings (KON-46). Listed after the local ones: the switcher reads
+    /// top-down and what is on this machine is what someone is usually looking for.
+    /// </param>
+    public static List<IBackendProvider> Build(
+        bool includeDemo, IReadOnlyList<RemoteEngine>? remotes = null)
     {
         var providers = new List<IBackendProvider>
         {
             new DockerEngineProvider(),
             new PodmanEngineProvider(),
         };
+
+        // A misconfigured remote is skipped rather than added as an entry that cannot connect: the
+        // Settings page is where its problem is explained, and the switcher is not the place to argue.
+        foreach (var remote in remotes ?? [])
+        {
+            if (remote.Problem is null)
+                providers.Add(new RemoteDockerEngineProvider(remote));
+        }
 
         // One cluster backend per kube-context. Yields nothing when there is no kubeconfig, so a
         // machine that only runs containers simply shows no Clusters group.

@@ -31,7 +31,8 @@ public partial class App : Application
             // Provider-based: the registry discovers backends (and, later, plugins). BackendCatalog
             // owns the composition so the runtime demo toggle (KON-96) builds the same list.
             var registry = new BackendRegistry(
-                BackendCatalog.Build(BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends)));
+                BackendCatalog.Build(
+                    BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends), settings.RemoteEngines));
 
             desktop.MainWindow = new MainWindow
             {
