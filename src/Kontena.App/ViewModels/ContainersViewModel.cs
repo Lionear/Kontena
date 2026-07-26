@@ -385,6 +385,27 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Ask before removing a container (KON-126). The removal is forced, so a running container is
+    /// killed rather than refused — the message has to say that, because the button does not.
+    /// </summary>
+    public void ConfirmRemove(ContainerRowViewModel row)
+    {
+        Confirm(
+            "Remove container",
+            ContainerRemovalMessage(row.Name, row.IsRunning),
+            "Remove",
+            () => RemoveAsync(row.Id));
+    }
+
+    /// <summary>
+    /// Shared with the detail page, which removes the same container from its own header — one wording
+    /// for one action, wherever it is triggered.
+    /// </summary>
+    public static string ContainerRemovalMessage(string name, bool isRunning)
+        => $"Remove container \"{name}\"?{(isRunning ? " It is running and will be killed first." : "")}"
+        + " Anything written inside it that is not on a volume is lost; volumes and the image stay.";
+
     public async Task RemoveAsync(string id)
     {
         await _engine.RemoveContainerAsync(id, force: true);

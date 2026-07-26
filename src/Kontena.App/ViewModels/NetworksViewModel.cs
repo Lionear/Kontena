@@ -45,6 +45,24 @@ public sealed partial class NetworksViewModel : ViewModelBase, IListPage
         ApplyFilter();
     }
 
+    /// <summary>
+    /// Ask before deleting a network (KON-126). Nothing is lost that cannot be recreated, but attached
+    /// containers lose the network they talk over — which is what the message leads with.
+    /// </summary>
+    public void ConfirmDelete(NetworkRowViewModel row)
+    {
+        var attached = row.AttachedCount > 0
+            ? $" {row.AttachedCount} container{(row.AttachedCount == 1 ? "" : "s")} attached to it lose" +
+              " this network, and the engine may refuse while they are running."
+            : string.Empty;
+
+        Confirm(
+            "Delete network",
+            $"Delete network \"{row.Name}\"? It can be created again, with a new subnet.{attached}",
+            "Delete",
+            () => DeleteAsync(row.Id));
+    }
+
     public async Task DeleteAsync(string id)
     {
         try { await _engine.RemoveNetworkAsync(id); }

@@ -123,6 +123,22 @@ public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
     /// then best-effort remove its Compose networks (<c>&lt;project&gt;_*</c>). Built from the
     /// container primitives, so it works on every backend without the Compose CLI.
     /// </summary>
+    /// <summary>
+    /// Ask before taking a project down (KON-126). This is the widest removal in the app — every
+    /// container of the project at once — so the message counts them and says what survives.
+    /// </summary>
+    public void ConfirmDown(ComposeProjectViewModel project)
+    {
+        var count = project.TotalCount;
+        Confirm(
+            "Take project down",
+            $"Take \"{project.Name}\" down? Its {count} container{(count == 1 ? "" : "s")} are stopped and" +
+            " removed, along with the networks Compose created for it. Volumes and images stay, and" +
+            " bringing it up again recreates the containers from the same file.",
+            "Take down",
+            () => DownProjectAsync(project.Name, project.ContainerIds));
+    }
+
     public async Task DownProjectAsync(string project, IReadOnlyList<string> ids)
     {
         foreach (var id in ids)
@@ -221,8 +237,11 @@ public sealed partial class ComposeProjectViewModel : ObservableObject
     [RelayCommand]
     private Task Stop() => _parent.StopProjectAsync(_ids);
 
+    /// <summary>The project's container ids, for the actions the page runs on its behalf.</summary>
+    public IReadOnlyList<string> ContainerIds => _ids;
+
     [RelayCommand]
-    private Task Down() => _parent.DownProjectAsync(Name, _ids);
+    private void Down() => _parent.ConfirmDown(this);
 
     [RelayCommand]
     private void Logs() => _parent.OpenLogs(this);

@@ -354,7 +354,18 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
         await RefreshSelfAsync();
     }
 
+    /// <summary>
+    /// Removing the container you are looking at also closes the page, so it goes through the same
+    /// confirmation and the same wording as the list (KON-126).
+    /// </summary>
     [RelayCommand]
+    private void Remove()
+        => Confirm(
+            "Remove container",
+            ContainersViewModel.ContainerRemovalMessage(Name, IsRunning),
+            "Remove",
+            RemoveAsync);
+
     private async Task RemoveAsync()
     {
         await _engine.RemoveContainerAsync(_c.Id, force: true);

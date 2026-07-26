@@ -41,7 +41,10 @@ namespace Kontena.Screenshots;
 //         reached by really switching backend and back, so it exercises the save/restore path),
 //         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
-//         that deliberately does not take the demo-engine shortcut).
+//         that deliberately does not take the demo-engine shortcut),
+//         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
+//         confirmation and the deliberately non-destructive one, both reached by running the
+//         row's own command so the shot cannot show a dialog the button does not raise).
 internal static class Program
 {
     [STAThread]
@@ -94,7 +97,7 @@ internal static class Program
                 // An added kubeconfig, so the row that can be removed is in frame (KON-122). The file
                 // need not exist: the point of the shot is the management row, and a config on a
                 // disconnected drive is a state the list has to survive anyway.
-                KubeconfigPaths = opts.Scene == "settings-engines-kubeconfigs"
+                KubeconfigPaths = opts.Scene is "settings-engines-kubeconfigs" or "confirm-remove-kubeconfig"
                     ? ["/srv/kubeconfigs/acme.yaml"]
                     : [],
 
@@ -275,6 +278,40 @@ internal static class Program
             case "networks":
             case "projects":
                 vm.NavigateCommand.Execute(scene);
+                break;
+
+            // The two ends of KON-126: a delete that destroys data, and one that only stops reading a
+            // file. Both are raised by executing the row's own command, so a dialog that the button
+            // does not actually open cannot be photographed here.
+            case "confirm-delete-volume":
+                vm.NavigateCommand.Execute("volumes");
+                Settle(rounds: 20);
+                if (vm.CurrentPage is Kontena.App.ViewModels.VolumesViewModel volumes
+                    && volumes.Items.Count > 0)
+                {
+                    // A mounted one, so the shot includes the sentence naming what loses it.
+                    var row = volumes.Items.FirstOrDefault(v => v.MountedBy.Count > 0) ?? volumes.Items[0];
+                    row.DeleteCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+
+                break;
+
+            case "confirm-remove-kubeconfig":
+                vm.ShowSettingsCommand.Execute(null);
+                Settle(rounds: 20);
+                if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel kubePage)
+                {
+                    kubePage.SelectCategoryCommand.Execute("engines");
+                    Settle(rounds: 20);
+
+                    var source = kubePage.Kubeconfigs.FirstOrDefault(k => k.CanRemove);
+                    if (source is not null)
+                        kubePage.RemoveKubeconfigCommand.Execute(source);
+
+                    Settle(rounds: 20);
+                }
+
                 break;
 
             case "settings":
