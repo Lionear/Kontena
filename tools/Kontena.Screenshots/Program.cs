@@ -97,6 +97,12 @@ internal static class Program
                 KubeconfigPaths = opts.Scene == "settings-engines-kubeconfigs"
                     ? ["/srv/kubeconfigs/acme.yaml"]
                     : [],
+
+                // A stored remote, so the list has a row to edit (KON-125).
+                RemoteEngines = opts.Scene == "settings-engines-edit"
+                    ? [new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh,
+                        "build-01.example.com", User: "deploy")]
+                    : [],
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
@@ -276,6 +282,7 @@ internal static class Program
             case "settings-registries":
             case "settings-engines":
             case "settings-engines-tcp":
+            case "settings-engines-edit":
             case "settings-engines-named":
             case "settings-engines-clusters":
             case "settings-engines-kubeconfigs":
@@ -293,6 +300,11 @@ internal static class Program
                     // The TCP form is where the security decision lives, so it gets its own shot.
                     if (scene == "settings-engines-tcp")
                         s.SetRemoteTransportCommand.Execute("tcp");
+
+                    // Editing is driven through the row's own command (KON-125): the shot has to show
+                    // the stored values really loaded, not a form someone filled in to look like it.
+                    if (scene == "settings-engines-edit" && s.RemoteEngines.Count > 0)
+                        s.EditRemoteCommand.Execute(s.RemoteEngines[0]);
 
                     // Renaming (KON-119) is typed into the row, not poked into settings — the claim worth
                     // checking is that the switcher pill and the list follow, and only the real path does
