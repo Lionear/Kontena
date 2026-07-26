@@ -49,7 +49,8 @@
                         <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Info}"
                               Data="{StaticResource IconInfo}" VerticalAlignment="Top" Margin="0,2,0,0"/>
                         <TextBlock Text="{Binding UnsupportedReason}" FontSize="12.5" TextWrapping="Wrap"
-                                   LineHeight="19" Foreground="{DynamicResource TextDim}" MaxWidth="410"/>
+                                   LineHeight="19" Foreground="{DynamicResource TextDim}" MaxWidth="410"
+                                   HorizontalAlignment="Left"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
