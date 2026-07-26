@@ -305,6 +305,13 @@ internal static class Program
                 break;
             }
 
+            case "new-volume":
+                vm.NavigateCommand.Execute("volumes");
+                Settle(rounds: 20);
+                vm.Volumes!.CreateVolumeCommand.Execute(null);
+                Settle(rounds: 10);
+                break;
+
             case "new-network":
                 vm.NavigateCommand.Execute("networks");
                 Settle(rounds: 20);

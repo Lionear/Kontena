@@ -458,7 +458,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             RequestPullImage = ShowPullDialog,
             RequestBuildImage = ShowBuildDialog,
         };
-        Volumes = new VolumesViewModel(_engine);
+        Volumes = new VolumesViewModel(_engine)
+        {
+            RequestCreateVolume = ShowCreateVolumeDialog,
+        };
         Networks = new NetworksViewModel(_engine)
         {
             RequestCreateNetwork = ShowCreateNetworkDialog,
@@ -897,6 +900,20 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (Networks is not null)
                 await Networks.LoadAsync();
+            await UpdateNavCountsAsync();
+        });
+    }
+
+    [RelayCommand]
+    private void ShowCreateVolumeDialog()
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new CreateVolumeViewModel(_engine, CloseDialog, onCreated: async () =>
+        {
+            if (Volumes is not null)
+                await Volumes.LoadAsync();
             await UpdateNavCountsAsync();
         });
     }

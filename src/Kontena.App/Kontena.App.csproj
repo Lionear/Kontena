@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The autostart rules (which path, what to write) are implementation details, not API — but they
+         are the part that fails silently, so the tests reach them here rather than by widening them. -->
+    <InternalsVisibleTo Include="Kontena.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>

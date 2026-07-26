@@ -143,14 +143,16 @@
                       </StackPanel>
                     </Border>
 
-                    <!-- Hidden until it does something — see CanLaunchAtLogin (KON-103). -->
+                    <!-- Hidden where autostart cannot work — see CanLaunchAtLogin (KON-103). -->
                     <TextBlock Classes="gh" Text="STARTUP" IsVisible="{Binding CanLaunchAtLogin}"/>
                     <Border Classes="card" Padding="0" IsVisible="{Binding CanLaunchAtLogin}">
                         <StackPanel>
                             <Grid Margin="18,15" ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
                                     <TextBlock Text="Launch Kontena at login" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                    <TextBlock Text="Start Kontena when you sign in." FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                                    <TextBlock Text="Start Kontena when you sign in. You can also turn this off in your desktop's own startup settings."
+                                               FontSize="12" TextWrapping="Wrap" MaxWidth="470"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"/>
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" VerticalAlignment="Center"/>
                             </Grid>
