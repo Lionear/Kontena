@@ -256,12 +256,18 @@ internal static class Program
 
             case "settings":
             case "settings-about":
+            case "settings-registries":
             case "settings-engines":
                 vm.ShowSettingsCommand.Execute(null);
-                if (scene is "settings-engines" or "settings-about"
+                if (scene is "settings-engines" or "settings-about" or "settings-registries"
                     && vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
                 {
-                    s.SelectCategoryCommand.Execute(scene == "settings-about" ? "about" : "engines");
+                    s.SelectCategoryCommand.Execute(scene switch
+                    {
+                        "settings-about" => "about",
+                        "settings-registries" => "registries",
+                        _ => "engines",
+                    });
                     Settle(rounds: 20);
                 }
 

@@ -18,6 +18,7 @@ namespace Kontena.App.ViewModels;
 public partial class RunContainerViewModel : ViewModelBase, IDisposable
 {
     private readonly IContainerEngine _engine;
+    private readonly RegistryCredentials? _credentials;
     private readonly Action _onClose;
     private readonly Func<Task> _onCreated;
     private readonly HashSet<string> _localImages;
@@ -30,8 +31,10 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         IReadOnlySet<string> localImages,
         Action onClose,
         Func<Task> onCreated,
-        string? initialImage = null)
+        string? initialImage = null,
+        RegistryCredentials? credentials = null)
     {
+        _credentials = credentials;
         _engine = engine;
         _onClose = onClose;
         _onCreated = onCreated;
@@ -141,7 +144,11 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         PullStatus = "Preparing…";
         try
         {
-            await foreach (var progress in _engine.PullImageAsync(reference))
+            var credential = _credentials is null
+                ? null
+                : await _credentials.ForAsync(reference).ConfigureAwait(true);
+
+            await foreach (var progress in _engine.PullImageAsync(reference, credential))
                 PullStatus = FormatPull(progress);
 
             _localImages.Add(reference);

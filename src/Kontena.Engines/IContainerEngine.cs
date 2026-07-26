@@ -66,8 +66,24 @@ public interface IContainerEngine : IBackend
     ValueTask<IReadOnlyList<ImageSummary>> ListImagesAsync(CancellationToken ct = default);
 
     /// <summary>Pull an image, streaming progress until complete.</summary>
+    /// <param name="credential">
+    /// Login for the registry the reference points at, or null to pull anonymously. Resolved by the
+    /// caller: matching an image to a stored login needs the keychain and the user's settings, which are
+    /// not the adapter's business (KON-114).
+    /// </param>
     IAsyncEnumerable<PullProgress> PullImageAsync(
-        string reference, CancellationToken ct = default);
+        string reference, RegistryCredential? credential = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Checks a registry login against the registry itself, without storing anything. Throws when the
+    /// credential is refused.
+    /// <para>
+    /// Storing a login that does not work is the same class of lie as a switch that does nothing: it
+    /// looks configured and fails later, at a pull, with an error that points at the image instead of the
+    /// account (KON-114).
+    /// </para>
+    /// </summary>
+    ValueTask VerifyRegistryLoginAsync(RegistryCredential credential, CancellationToken ct = default);
 
     /// <summary>Build an image from a Dockerfile, streaming builder output until it completes.</summary>
     /// <remarks>Requires <see cref="EngineCapabilities.SupportsBuild"/>.</remarks>

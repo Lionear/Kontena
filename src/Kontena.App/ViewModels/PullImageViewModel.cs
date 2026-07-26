@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Services;
 using Kontena.Core.Models;
 using Kontena.Engines;
 
@@ -14,12 +15,16 @@ public partial class PullImageViewModel : ViewModelBase
     private readonly IContainerEngine _engine;
     private readonly Action _onClose;
     private readonly Func<Task> _onPulled;
+    private readonly RegistryCredentials? _credentials;
 
-    public PullImageViewModel(IContainerEngine engine, Action onClose, Func<Task> onPulled)
+    /// <param name="credentials">Resolves a registry login for the reference; null in tests.</param>
+    public PullImageViewModel(
+        IContainerEngine engine, Action onClose, Func<Task> onPulled, RegistryCredentials? credentials = null)
     {
         _engine = engine;
         _onClose = onClose;
         _onPulled = onPulled;
+        _credentials = credentials;
     }
 
     [ObservableProperty] private string _reference = string.Empty;
@@ -52,7 +57,12 @@ public partial class PullImageViewModel : ViewModelBase
         Status = "Preparing…";
         try
         {
-            await foreach (var progress in _engine.PullImageAsync(reference))
+            // Null for a public image, which is the common case and not a failure (KON-114).
+            var credential = _credentials is null
+                ? null
+                : await _credentials.ForAsync(reference).ConfigureAwait(true);
+
+            await foreach (var progress in _engine.PullImageAsync(reference, credential))
                 Status = FormatPull(progress);
 
             Status = "Pull complete";

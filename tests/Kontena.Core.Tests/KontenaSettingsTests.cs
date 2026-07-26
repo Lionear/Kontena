@@ -56,6 +56,11 @@ public class KontenaSettingsTests
             UpdateChannel = UpdateChannel.Nightly,
             AutoDownloadUpdates = false,
             DismissedUpdateVersion = "0.3.0",
+            Registries =
+            [
+                new RegistryLogin("ghcr.io", "rick", RegistryCredentialSource.Kontena),
+                new RegistryLogin("registry.local:5000", "ci", RegistryCredentialSource.Kontena),
+            ],
             TerminalLigatures = true,
             RecentBuildContexts = ["/home/rick/dev/app", "/home/rick/dev/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
@@ -76,11 +81,20 @@ public class KontenaSettingsTests
         // their contents), so verify them by sequence, then compare the scalar members with both
         // aligned.
         Assert.Equal(original.RecentBuildContexts, restored!.RecentBuildContexts);
+
+        // Hosts and usernames survive; the secrets were never in here to begin with — they live in the
+        // keychain, which is the point of storing only this much.
+        Assert.Equal(original.Registries, restored.Registries);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
         Assert.Equal(
-            original with { RecentBuildContexts = restored.RecentBuildContexts, PortForwards = restored.PortForwards },
+            original with
+            {
+                RecentBuildContexts = restored.RecentBuildContexts,
+                PortForwards = restored.PortForwards,
+                Registries = restored.Registries,
+            },
             restored);
     }
 
