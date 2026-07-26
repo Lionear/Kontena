@@ -26,7 +26,10 @@ on:
         required: false
         default: ""
       publish_release:
-        description: "Also refresh the preview release"
+        # This gates the release job for *every* channel, not just preview: a manual run publishes
+        # nothing without it. Named for what it does, after a nightly dispatch built all three
+        # platforms and then published none of them.
+        description: "Publish the release for this channel (a manual run builds only, without it)"
         type: boolean
         required: false
         default: false
@@ -331,7 +334,8 @@ jobs:
 
           These builds are unsigned / not notarized.
           Linux: the .AppImage is self-contained — chmod +x and run it.
-          macOS: unzip, then clear quarantine before first launch: xattr -cr Kontena.app.
+          macOS: run the Setup .pkg, or unzip the portable build — then clear quarantine before first
+          launch: xattr -cr Kontena.app.
           Windows: run the Setup .exe, or unzip the portable build; SmartScreen may warn on first launch.
 
           Installed copies update themselves from here — see Settings → Updates.
