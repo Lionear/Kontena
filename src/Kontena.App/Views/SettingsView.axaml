@@ -369,6 +369,16 @@
                                        Text="A cross-platform desktop app to manage containers through one UI, regardless of the underlying runtime engine — Docker, Podman, and (later) Apple container."/>
                             <TextBlock FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"
                                        Text="github.com/Lionear/Kontena  ·  kontena.app"/>
+                            <Border Height="1" Background="{DynamicResource Border}"/>
+
+                            <!-- Says whether the guarantee in CONTRIBUTING actually holds here (KON-52). -->
+                            <StackPanel Orientation="Horizontal" Spacing="11">
+                                <Path Classes="icon" Width="15" Height="15" VerticalAlignment="Top" Margin="0,2,0,0"
+                                      Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}"/>
+                                <TextBlock Text="{Binding KeychainStatus}" FontSize="12.5" TextWrapping="Wrap"
+                                           LineHeight="19" HorizontalAlignment="Left" MaxWidth="620"
+                                           Foreground="{DynamicResource TextFaint}"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
