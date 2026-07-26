@@ -305,6 +305,26 @@ internal static class Program
                 break;
             }
 
+            case "volume-browse":
+            case "volume-browse-nested":
+                vm.NavigateCommand.Execute("volumes");
+                SettleUntil(() => vm.Volumes is { HasLoaded: true }, maxRounds: 80);
+                vm.Volumes!.Items.First(v => v.Name == "pgdata").BrowseCommand.Execute(null);
+                SettleUntil(() => vm.Dialog is Kontena.App.ViewModels.BrowseVolumeViewModel { IsLoading: false },
+                    maxRounds: 120);
+
+                if (scene == "volume-browse-nested")
+                {
+                    // Open a directory the way a user does, so the shot proves navigation and not just
+                    // the first listing.
+                    var browser = (Kontena.App.ViewModels.BrowseVolumeViewModel)vm.Dialog!;
+                    browser.OpenCommand.Execute(browser.Entries.First(e => e.Name == "logs"));
+                    SettleUntil(() => !browser.IsLoading && browser.Path == "/logs", maxRounds: 120);
+                }
+
+                Settle(rounds: 10);
+                break;
+
             case "new-volume":
                 vm.NavigateCommand.Execute("volumes");
                 Settle(rounds: 20);

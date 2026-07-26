@@ -35,6 +35,7 @@ public sealed class FakeEngine : IContainerEngine
         SupportsCompose = true,
         SupportsExec = true,
         SupportsPrune = true,
+        SupportsVolumeBrowse = true,
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = true,
@@ -306,6 +307,41 @@ public sealed class FakeEngine : IContainerEngine
         };
         _volumes[request.Name] = volume;
         return ValueTask.FromResult(volume);
+    }
+
+    /// <summary>
+    /// A small, fixed tree per volume — enough to drive the browser UI without an engine. Unknown
+    /// directories come back empty rather than throwing: an empty directory is an ordinary thing to
+    /// open, and the seed does not pretend to model a filesystem.
+    /// </summary>
+    public ValueTask<VolumeListing> BrowseVolumeAsync(
+        string name, string path = "/", CancellationToken ct = default)
+    {
+        var normalized = "/" + (path ?? "/").Trim('/');
+        IReadOnlyList<VolumeEntry> entries = normalized switch
+        {
+            "/" =>
+            [
+                new VolumeEntry("data", true, 0, DateTimeOffset.UtcNow.AddDays(-3)),
+                new VolumeEntry("logs", true, 0, DateTimeOffset.UtcNow.AddHours(-2)),
+                new VolumeEntry("postgresql.conf", false, 28_431, DateTimeOffset.UtcNow.AddDays(-3)),
+                new VolumeEntry("PG_VERSION", false, 3, DateTimeOffset.UtcNow.AddDays(-30)),
+            ],
+            "/data" =>
+            [
+                new VolumeEntry("base", true, 0, DateTimeOffset.UtcNow.AddDays(-3)),
+                new VolumeEntry("global", true, 0, DateTimeOffset.UtcNow.AddDays(-3)),
+                new VolumeEntry("pg_wal", true, 0, DateTimeOffset.UtcNow.AddMinutes(-4)),
+            ],
+            "/logs" =>
+            [
+                new VolumeEntry("postgresql-2026-07-26.log", false, 1_284_112, DateTimeOffset.UtcNow.AddMinutes(-1)),
+                new VolumeEntry("postgresql-2026-07-25.log", false, 8_912_004, DateTimeOffset.UtcNow.AddDays(-1)),
+            ],
+            _ => [],
+        };
+
+        return ValueTask.FromResult(new VolumeListing(normalized, entries, Truncated: false));
     }
 
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default)

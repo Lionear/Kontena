@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:conv="using:Kontena.App.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="520"
+             x:Class="Kontena.App.Views.BrowseVolumeView"
+             x:DataType="vm:BrowseVolumeViewModel">
+    <Border Width="640" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+
+            <!-- Header: which volume, and where in it -->
+            <Grid Margin="24,20,20,14" ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Spacing="5">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
+                              Data="{StaticResource IconDatabase}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding VolumeName}" FontSize="15" FontWeight="SemiBold"
+                                   FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"
+                                   VerticalAlignment="Center"/>
+                        <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="8,2" VerticalAlignment="Center">
+                            <TextBlock Text="read-only" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Path}" FontSize="12.5" FontFamily="{StaticResource Mono}"
+                               Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+                    <Button Classes="qa" Width="30" Height="30" Command="{Binding GoUpCommand}"
+                            IsEnabled="{Binding CanGoUp}" ToolTip.Tip="Up one level">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconArrowLeft}"/>
+                    </Button>
+                    <Button Classes="qa" Width="30" Height="30" Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconRefresh}"/>
+                    </Button>
+                    <Button Classes="qa" Width="30" Height="30" Command="{Binding CloseCommand}" ToolTip.Tip="Close">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconClose}"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+
+            <Panel Height="330">
+                <!-- Contents -->
+                <ScrollViewer IsVisible="{Binding !IsLoading}">
+                    <ItemsControl ItemsSource="{Binding Entries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:VolumeEntryViewModel">
+                                <Button Classes="row" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                        Background="Transparent" BorderThickness="0" Padding="24,9"
+                                        Command="{Binding $parent[ItemsControl].((vm:BrowseVolumeViewModel)DataContext).OpenCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                        <Path Grid.Column="0" Classes="icon" Width="15" Height="15" VerticalAlignment="Center"
+                                              Stroke="{DynamicResource TextFaint}"
+                                              Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="12,0,0,0" FontSize="13"
+                                                   FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" Width="110" FontSize="12"
+                                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding SizeText}" Width="80" FontSize="12"
+                                                   TextAlignment="Right" FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Loading -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="14" IsVisible="{Binding IsLoading}">
+                    <ProgressBar IsIndeterminate="True" Width="200" Height="4"
+                                 Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
+                    <TextBlock Text="Reading the volume…" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Empty -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" IsVisible="{Binding IsEmpty}">
+                    <TextBlock Text="Nothing here" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="This directory is empty." FontSize="12.5" Foreground="{DynamicResource TextFaint}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Failed -->
+                <StackPanel VerticalAlignment="Center" Margin="32,0" Spacing="10"
+                            IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Danger}"
+                              Data="{StaticResource IconWarning}" VerticalAlignment="Center"/>
+                        <TextBlock Text="Could not read this volume" FontSize="13.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                               HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="480"
+                               Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+            </Panel>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+            <Grid Margin="24,14" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" IsVisible="{Binding IsTruncated}" FontSize="12" TextWrapping="Wrap"
+                           MaxWidth="420" HorizontalAlignment="Left" Foreground="{DynamicResource Warn}"
+                           Text="This directory holds more than Kontena lists at once — only the first entries are shown."/>
+                <Button Grid.Column="1" Classes="ghost" Command="{Binding CloseCommand}">Close</Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

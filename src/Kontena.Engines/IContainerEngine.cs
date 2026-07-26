@@ -95,6 +95,19 @@ public interface IContainerEngine : IBackend
         CreateVolumeRequest request, CancellationToken ct = default);
     ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default);
 
+    /// <summary>
+    /// Lists what is inside a volume at <paramref name="path"/> (<c>/</c> for its root).
+    /// <para>
+    /// No engine offers this directly — a volume is only readable through a container — so an adapter
+    /// mounts it into a throwaway container to answer. That means it can fail for reasons that have
+    /// nothing to do with the volume, and it is gated behind
+    /// <see cref="EngineCapabilities.SupportsVolumeBrowse"/>.
+    /// </para>
+    /// </summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsVolumeBrowse"/>.</remarks>
+    ValueTask<VolumeListing> BrowseVolumeAsync(
+        string name, string path = "/", CancellationToken ct = default);
+
     /// <summary>Remove all volumes not used by any container.</summary>
     ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default);
 

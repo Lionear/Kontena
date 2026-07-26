@@ -31,7 +31,7 @@ public class AutostartTargetTests
     public void Quotes_the_run_value()
     {
         // C:\Program Files\… is the normal case, and unquoted it reads as a command plus arguments.
-        var value = RegistryAutostart.RunValue(@"C:\Program Files\Kontena\current\Kontena.App.exe");
+        var value = RunEntry.Value(@"C:\Program Files\Kontena\current\Kontena.App.exe");
 
         Assert.Equal(@"""C:\Program Files\Kontena\current\Kontena.App.exe""", value);
     }
