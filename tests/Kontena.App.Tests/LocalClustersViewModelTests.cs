@@ -22,7 +22,7 @@ public class LocalClustersViewModelTests
         Func<Task>? changed = null,
         Func<string, Task<bool>>? use = null,
         string? active = null)
-        => new([provisioner], new FakeToolRunner(), store: EmptyStore())
+        => new([provisioner], new FakeToolRunner(), store: EmptyStore(), releases: new FakeToolReleaseSource())
         {
             RequestShowCluster = show,
             RequestClustersChanged = changed,
@@ -176,7 +176,7 @@ public class LocalClustersViewModelTests
     public async Task Delete_without_a_confirm_handler_does_nothing_at_all()
     {
         var provisioner = new FakeClusterProvisioner().WithCluster("dev");
-        var page = new LocalClustersViewModel([provisioner], new FakeToolRunner(), store: EmptyStore());
+        var page = new LocalClustersViewModel([provisioner], new FakeToolRunner(), store: EmptyStore(), releases: new FakeToolReleaseSource());
         await page.LoadAsync();
 
         await page.Clusters[0].DeleteCommand.ExecuteAsync(null);
@@ -290,7 +290,7 @@ public class LocalClustersViewModelTests
         ConfirmRequest? asked = null;
         var provisioner = new FakeClusterProvisioner().WithCluster("dev", LocalClusterState.Running);
 
-        var page = new LocalClustersViewModel([provisioner], new FakeToolRunner(), store: EmptyStore())
+        var page = new LocalClustersViewModel([provisioner], new FakeToolRunner(), store: EmptyStore(), releases: new FakeToolReleaseSource())
         {
             RequestConfirm = request => { asked = request; _ = request.OnConfirm(); },
         };
@@ -314,7 +314,8 @@ public class LocalClustersViewModelTests
             .WithCluster("two");
 
         var page = new LocalClustersViewModel(
-            [kindLike, otherLike], new FakeToolRunner(), store: EmptyStore());
+            [kindLike, otherLike], new FakeToolRunner(), store: EmptyStore(),
+            releases: new FakeToolReleaseSource());
 
         await page.LoadAsync();
 

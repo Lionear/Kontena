@@ -36,6 +36,11 @@
                                     <TextBlock Text="{Binding Detail}" FontSize="12.5" TextWrapping="Wrap"
                                                Foreground="{DynamicResource TextFaint}"/>
 
+                                    <!-- A newer release: a line, never a colour. It works; it is just not the newest. -->
+                                    <TextBlock Text="{Binding UpdateText}" FontSize="12.5" TextWrapping="Wrap"
+                                               IsVisible="{Binding HasUpdate}"
+                                               Foreground="{DynamicResource TextDim}"/>
+
                                     <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
                                             BorderThickness="1" CornerRadius="8" Padding="11,9" Margin="0,7,0,0"
                                             IsVisible="{Binding IsOutdated}" MaxWidth="520" HorizontalAlignment="Left">
@@ -63,6 +68,12 @@
                                     <Button Classes="ghost" Content="Download" Command="{Binding DownloadCommand}"
                                             IsVisible="{Binding CanDownload}"
                                             ToolTip.Tip="Fetch the official release into Kontena's own folder"/>
+                                    <Button Classes="ghost" Content="Let Kontena manage it"
+                                            Command="{Binding HandOverCommand}" IsVisible="{Binding CanHandOver}"
+                                            ToolTip.Tip="Fetch the official release and run that one instead of the install on your PATH"/>
+                                    <Button Classes="ghost" Content="Use the system install"
+                                            Command="{Binding UseSystemCommand}" IsVisible="{Binding CanUseSystemAgain}"
+                                            ToolTip.Tip="Go back to whatever is on your PATH. Kontena's copy stays where it is."/>
                                     <Button Classes="ghost" Content="Remove" Command="{Binding RemoveCommand}"
                                             IsVisible="{Binding CanRemove}"/>
                                     <Button Classes="ghost" Content="Docs" Command="{Binding DocumentationCommand}"

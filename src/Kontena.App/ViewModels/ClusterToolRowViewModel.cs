@@ -10,6 +10,7 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
 {
     private readonly ClusterToolingViewModel _parent;
     private ToolReadiness _readiness;
+    private ToolUpdate? _update;
 
     public ClusterToolRowViewModel(ToolReadiness readiness, ClusterToolingViewModel parent, string purpose)
     {
@@ -24,6 +25,9 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
     public ExternalTool Tool => _readiness.Tool;
     public string Name => _readiness.Tool.Name;
 
+    /// <summary>What the installed copy answered when asked, for comparing against a release.</summary>
+    public string? Version => _readiness.Version;
+
     /// <summary>Replace the readiness after a re-check, keeping the row in place.</summary>
     public void Update(ToolReadiness readiness)
     {
@@ -33,7 +37,9 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
                      nameof(StateText), nameof(StateBrush), nameof(Detail), nameof(IsMissing),
                      nameof(IsReady), nameof(IsOutdated), nameof(IsUnusable), nameof(CanInstall),
                      nameof(CanDownload), nameof(CanRemove), nameof(HintCommand), nameof(HasHint),
-                     nameof(DocumentationUrl), nameof(HasDocumentation),
+                     nameof(DocumentationUrl), nameof(HasDocumentation), nameof(Version),
+                     nameof(IsKontenaManaged), nameof(CanHandOver), nameof(CanUseSystemAgain),
+                     nameof(HasUpdate), nameof(UpdateText),
                  })
         {
             OnPropertyChanged(property);
@@ -43,6 +49,43 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
         // row that just gained (or lost) a managed copy keeps the previous button state.
         RemoveCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>
+    /// What the publisher's newest release is (KON-153). Separate from <see cref="Update(ToolReadiness)"/>
+    /// because it arrives later and over the network: the row is drawn from what is on disk, and this
+    /// fills in behind it or never arrives at all.
+    /// </summary>
+    public void SetUpdate(ToolUpdate? update)
+    {
+        _update = update;
+        OnPropertyChanged(nameof(HasUpdate));
+        OnPropertyChanged(nameof(UpdateText));
+        OnPropertyChanged(nameof(CanHandOver));
+    }
+
+    /// <summary>
+    /// A newer release exists. Only ever a line of text — never a colour, never a badge. A tool one
+    /// release behind does its job, and dressing that up as a problem trains people to ignore the
+    /// states that are one.
+    /// </summary>
+    public bool HasUpdate => _update is { IsNewer: true };
+
+    public string UpdateText => _update is { IsNewer: true } update
+        ? $"{Shorten(update.Latest)} is available"
+        : string.Empty;
+
+    /// <summary>True when this tool was handed to Kontena and its copy wins over a system install.</summary>
+    public bool IsKontenaManaged => _readiness.Preferred;
+
+    /// <summary>
+    /// Whether handing this one over is worth offering: there is an install Kontena is not in charge
+    /// of, and a publisher it can fetch from. Not offered for a tool that is simply missing — that is
+    /// what Install and Download are for, and a third verb for the same act is three ways to be unsure.
+    /// </summary>
+    public bool CanHandOver =>
+        !_readiness.Preferred && !_readiness.Managed && _readiness.Usable && _readiness.CanBeDownloaded;
+
+    public bool CanUseSystemAgain => _readiness.Preferred;
 
     public bool IsMissing => _readiness.State == ToolState.Missing;
     public bool IsReady => _readiness.State == ToolState.Ready;
@@ -72,6 +115,7 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
     public string Detail => _readiness.State switch
     {
         ToolState.Missing => Purpose,
+        _ when _readiness.Preferred => $"Kontena's copy, chosen over the system install · {_readiness.Path}",
         _ when _readiness.Managed => $"Kontena's own copy · {_readiness.Path}",
         _ => _readiness.Path ?? Purpose,
     };
@@ -113,6 +157,14 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
 
     [RelayCommand]
     private void Documentation() => _parent.OpenDocumentation(DocumentationUrl);
+
+    /// <summary>Hand this tool to Kontena: fetch a copy if there is none, then let it win over PATH.</summary>
+    [RelayCommand]
+    private Task HandOver() => _parent.PreferManagedAsync(this);
+
+    /// <summary>Give it back. The copy stays where it is; it simply stops being the one that runs.</summary>
+    [RelayCommand]
+    private Task UseSystem() => _parent.PreferSystemAsync(this);
 
     /// <summary>
     /// Tools answer with a paragraph — <c>kind v0.31.0 go1.25.5 linux/amd64</c>. The first word that
