@@ -144,7 +144,7 @@ public sealed partial class ComposeGroupRowViewModel : ContainerListRowViewModel
     private Task Restart() => _parent.RestartProjectAsync(ContainerIds);
 
     [RelayCommand]
-    private void Down() => _parent.ConfirmDown(this);
+    private Task Down() => _parent.ConfirmDownAsync(this);
 
     [RelayCommand]
     private void OpenProject() => _parent.OpenProject(Name);

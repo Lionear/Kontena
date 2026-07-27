@@ -14,12 +14,14 @@ public partial class ConfirmViewModel : ViewModelBase
     private readonly Action _onClose;
 
     public ConfirmViewModel(
-        string title, string message, string confirmLabel, Func<Task> onConfirm, Action onClose, bool destructive = false)
+        string title, string message, string confirmLabel, Func<Task> onConfirm, Action onClose,
+        bool destructive = false, IReadOnlyList<ConfirmDetail>? details = null)
     {
         Title = title;
         Message = message;
         ConfirmLabel = confirmLabel;
         Destructive = destructive;
+        Details = details ?? [];
         _onConfirm = onConfirm;
         _onClose = onClose;
     }
@@ -28,8 +30,13 @@ public partial class ConfirmViewModel : ViewModelBase
     public string Message { get; }
     public string ConfirmLabel { get; }
 
-    /// <summary>Whether the confirm button uses the danger styling.</summary>
+    /// <summary>Whether the confirm button uses the danger styling, and shows the warning mark.</summary>
     public bool Destructive { get; }
+
+    /// <summary>What goes away, itemised. Empty for the many actions a sentence already covers.</summary>
+    public IReadOnlyList<ConfirmDetail> Details { get; }
+
+    public bool HasDetails => Details.Count > 0;
 
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _error;

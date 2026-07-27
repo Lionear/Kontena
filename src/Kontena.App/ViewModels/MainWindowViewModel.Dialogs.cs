@@ -24,7 +24,8 @@ public partial class MainWindowViewModel
                 CloseDialog();
             },
             onClose: CloseDialog,
-            destructive: request.Destructive);
+            destructive: request.Destructive,
+            details: request.Details);
     private void ShowNetworkAttachmentsDialog(NetworkSummary network)
     {
         if (_engine is null)
