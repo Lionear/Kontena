@@ -109,15 +109,53 @@ public sealed class ManagedToolStore
         }
     }
 
+    /// <summary>
+    /// Whether Kontena's copy should be used even though a system install exists (KON-153).
+    /// <para>
+    /// False by default, and that default is deliberate: someone who installed kind themselves expects
+    /// Kontena to run theirs. This is the switch that lets them hand that over — never something
+    /// Kontena decides, because quietly running a different binary than the one on PATH is the kind of
+    /// surprise that is only ever discovered while debugging something else.
+    /// </para>
+    /// </summary>
+    public bool IsPreferred(ExternalTool tool) => File.Exists(PreferencePath(tool));
+
+    /// <summary>
+    /// Say which copy wins for this tool. Kept as a marker file beside the copy rather than in
+    /// <c>KontenaSettings</c>, so the code that resolves a tool reads it from the store it already has
+    /// and nothing has to carry the preference through a view model to get there.
+    /// </summary>
+    public void SetPreferred(ExternalTool tool, bool preferred)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+
+        var marker = PreferencePath(tool);
+
+        if (!preferred)
+        {
+            if (File.Exists(marker))
+                File.Delete(marker);
+
+            return;
+        }
+
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(marker, string.Empty);
+    }
+
     /// <summary>Remove a managed copy and its record. Nothing else in the directory is touched.</summary>
     public void Remove(ExternalTool tool)
     {
-        foreach (var path in new[] { PathFor(tool), ManifestPath(tool) })
+        // The preference goes with it: a marker pointing at a copy that is no longer there would make
+        // the next resolve prefer nothing at all.
+        foreach (var path in new[] { PathFor(tool), ManifestPath(tool), PreferencePath(tool) })
             if (File.Exists(path))
                 File.Delete(path);
     }
 
     private string ManifestPath(ExternalTool tool) => PathFor(tool) + ".sha256";
+
+    private string PreferencePath(ExternalTool tool) => PathFor(tool) + ".preferred";
 
     private static async ValueTask<string> Sha256Async(string path, CancellationToken ct)
     {

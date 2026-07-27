@@ -19,6 +19,7 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
     private readonly ToolReadinessCheck _check;
     private readonly ToolInstaller _installer;
     private readonly ManagedToolStore _store;
+    private readonly ToolUpdateCheck _updates;
 
     private CancellationTokenSource? _running;
 
@@ -31,7 +32,14 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
         _store = store ?? new ManagedToolStore();
         _check = new ToolReadinessCheck(toolRunner, _store);
         _installer = new ToolInstaller(toolRunner, releases, _store);
+        _updates = new ToolUpdateCheck(releases ?? new GitHubToolReleaseSource(), _store);
     }
+
+    /// <summary>
+    /// The clock the update cache is aged against. Injectable so a test can move a day forward without
+    /// waiting one — see <see cref="ToolUpdateCheck"/>.
+    /// </summary>
+    public Func<DateTimeOffset> Now { get; init; } = () => DateTimeOffset.UtcNow;
 
     /// <summary>Opens a documentation link in the browser; the shell owns that.</summary>
     public Action<string>? RequestOpenUrl { get; set; }
@@ -109,6 +117,29 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
         {
             IsChecking = false;
         }
+
+        // Deliberately after the page is drawn and deliberately not awaited: this is the one thing here
+        // that needs the network, and a page that waits for it would take as long as the slowest lookup
+        // to show what is already known from disk (KON-153).
+        _ = RefreshUpdatesAsync();
+    }
+
+    /// <summary>
+    /// Fill in which tools have a newer release. Answers are cached for a day, so this is usually free;
+    /// the first run of the day costs one lookup per tool. Offline it quietly finds nothing, which is
+    /// the same as having nothing to say.
+    /// </summary>
+    public async Task RefreshUpdatesAsync(CancellationToken ct = default)
+    {
+        var now = Now();
+
+        foreach (var row in Tools.ToList())
+        {
+            if (ct.IsCancellationRequested)
+                return;
+
+            row.SetUpdate(await _updates.CheckAsync(row.Tool, row.Version, now, ct));
+        }
     }
 
     /// <summary>Run the machine's package manager, with its own output in view.</summary>
@@ -165,6 +196,45 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
                 _store.Remove(row.Tool);
                 await LoadAsync();
             });
+    }
+
+    /// <summary>
+    /// Hand a tool to Kontena (KON-153): fetch a copy if there is not one yet, then mark it as the one
+    /// that wins over whatever is on PATH.
+    /// <para>
+    /// Two steps rather than one button that only downloads, because a downloaded copy that never runs
+    /// is the trap this whole thing exists to close — a system install wins by default, so fetching a
+    /// newer kind without saying which one to use changes nothing at all.
+    /// </para>
+    /// </summary>
+    public async Task PreferManagedAsync(ClusterToolRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        if (_store.Record(row.Tool) is null)
+        {
+            await DownloadAsync(row);
+
+            // The download reports its own failure. Preferring a copy that is not there would leave the
+            // row claiming Kontena is in charge of something it does not have.
+            if (_store.Record(row.Tool) is null)
+                return;
+        }
+
+        _store.SetPreferred(row.Tool, true);
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// Give a tool back to the system install. The copy stays where it is — this is about which one
+    /// runs, not about deleting anything; removing it is its own, confirmed act.
+    /// </summary>
+    public async Task PreferSystemAsync(ClusterToolRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        _store.SetPreferred(row.Tool, false);
+        await LoadAsync();
     }
 
     public void OpenDocumentation(string url) => RequestOpenUrl?.Invoke(url);

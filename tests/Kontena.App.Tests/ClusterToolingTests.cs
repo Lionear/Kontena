@@ -15,8 +15,12 @@ public sealed class ClusterToolingTests : IDisposable
             Directory.Delete(_root, recursive: true);
     }
 
-    private ClusterToolingViewModel Subject(FakeToolRunner runner)
-        => new(runner, releases: null, store: new ManagedToolStore(_root));
+    /// <summary>
+    /// A fake release source, never null: the update check runs in the background on every load, and a
+    /// null source would fall back to the real one and put a network call in every one of these tests.
+    /// </summary>
+    private ClusterToolingViewModel Subject(FakeToolRunner runner, FakeToolReleaseSource? releases = null)
+        => new(runner, releases ?? new FakeToolReleaseSource(), new ManagedToolStore(_root));
 
     [Fact]
     public async Task Shows_every_tool_with_its_state()

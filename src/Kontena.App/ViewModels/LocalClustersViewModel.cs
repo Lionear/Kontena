@@ -54,7 +54,8 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
         IReadOnlyList<IClusterProvisioner>? provisioners = null,
         IToolRunner? runner = null,
         ClusterToolingViewModel? tooling = null,
-        ManagedToolStore? store = null)
+        ManagedToolStore? store = null,
+        IToolReleaseSource? releases = null)
     {
         var toolRunner = runner ?? new ToolRunner();
         var toolStore = store ?? new ManagedToolStore();
@@ -66,7 +67,7 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
         ];
 
         _check = new ToolReadinessCheck(toolRunner, toolStore);
-        Tooling = tooling ?? new ClusterToolingViewModel(toolRunner, store: toolStore);
+        Tooling = tooling ?? new ClusterToolingViewModel(toolRunner, releases, toolStore);
     }
 
     /// <summary>The KON-109 page, kept whole. Shown in full behind "Manage tooling".</summary>
