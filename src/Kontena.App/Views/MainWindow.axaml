@@ -260,6 +260,14 @@
                             <TextBlock Grid.Column="1" Text="Settings" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
+                    <!-- About is its own screen, not a Settings category (KON-135). -->
+                    <Button Classes="nav" Classes.selected="{Binding IsAboutSelected}" Command="{Binding ShowAboutCommand}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
+                            <TextBlock Grid.Column="1" Text="About" Margin="11,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Button>
                 </StackPanel>
 
                 <!-- Nothing to navigate to while no backend is open; a dead nav is worse than none. -->

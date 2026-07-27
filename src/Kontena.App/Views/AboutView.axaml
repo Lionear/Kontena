@@ -1,0 +1,134 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.AboutView"
+             x:DataType="vm:AboutViewModel">
+
+    <Design.DataContext>
+        <vm:AboutViewModel/>
+    </Design.DataContext>
+
+    <UserControl.Styles>
+        <!-- One row in the Quick actions panel -->
+        <Style Selector="Button.qarow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="12,11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Button.qarow:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <Grid Margin="24" ColumnDefinitions="*,320" RowDefinitions="Auto,Auto" ColumnSpacing="24">
+
+            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,22">
+                <TextBlock Text="About" FontSize="28" FontWeight="SemiBold" LetterSpacing="-0.56"
+                           Foreground="{DynamicResource Text}"/>
+                <TextBlock Text="One UI. Any engine. Zero friction." FontSize="14" Margin="0,6,0,0"
+                           Foreground="{DynamicResource TextDim}"/>
+            </StackPanel>
+
+            <!-- Identity -->
+            <Border Grid.Row="1" Grid.Column="0" Classes="card" Padding="22" VerticalAlignment="Top">
+                <StackPanel>
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Image Grid.Column="0" Source="{StaticResource KontenaLogo}" Width="76" Height="76"
+                               VerticalAlignment="Top"/>
+                        <StackPanel Grid.Column="1" Margin="22,0,0,0">
+                            <TextBlock Text="Kontena" FontSize="26" FontWeight="SemiBold" LetterSpacing="-0.52"
+                                       Foreground="{DynamicResource Text}"/>
+                            <TextBlock FontSize="13" Margin="0,6,0,0" Foreground="{DynamicResource TextDim}">
+                                <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
+                                <Run Text="  ·  source-available"/>
+                            </TextBlock>
+                            <TextBlock FontSize="13" Margin="0,14,0,0" TextWrapping="Wrap" LineHeight="20"
+                                       Foreground="{DynamicResource TextDim}"
+                                       Text="A cross-platform desktop app to manage containers through one UI, regardless of the underlying runtime engine — Docker, Podman, and (later) Apple container."/>
+                            <Button Classes="link" Margin="0,14,0,0" HorizontalAlignment="Left"
+                                    Command="{Binding OpenRepositoryCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="9">
+                                    <TextBlock Text="{Binding RepositoryLabel}" FontSize="13" VerticalAlignment="Center"
+                                               TextDecorations="Underline" Foreground="{DynamicResource Info}"/>
+                                    <Path Classes="icon" Width="14" Height="14" VerticalAlignment="Center"
+                                          Stroke="{DynamicResource Info}" Data="{StaticResource IconExternalLink}"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Height="1" Background="{DynamicResource Border}" Margin="0,20"/>
+
+                    <!-- Says whether the guarantee in CONTRIBUTING actually holds here (KON-52). -->
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Path Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                              Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}"/>
+                        <TextBlock Text="{Binding KeychainStatus}" FontSize="12.5" TextWrapping="Wrap"
+                                   LineHeight="19" MaxWidth="620" Foreground="{DynamicResource TextFaint}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Quick actions. Only what actually exists: there is no CLI guide, no log file on disk
+                 and no community to join, and a row that leads nowhere is worse than a missing
+                 one (KON-117). -->
+            <Border Grid.Row="1" Grid.Column="1" Classes="card" Padding="12,14" VerticalAlignment="Top">
+                <StackPanel>
+                    <TextBlock Text="Quick actions" FontSize="14" FontWeight="SemiBold" Margin="10,0,0,10"
+                               Foreground="{DynamicResource Text}"/>
+
+                    <Button Classes="qarow" IsVisible="{Binding HasActivity}" Command="{Binding ShowActivityCommand}">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconActivity}"/>
+                            <TextBlock Grid.Column="1" Text="Open the activity log" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            <Path Grid.Column="2" Classes="icon" Width="14" Height="14"
+                                  Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconChevronRight}"/>
+                        </Grid>
+                    </Button>
+                    <Button Classes="qarow" Command="{Binding OpenReleasesCommand}">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconDownload}"/>
+                            <TextBlock Grid.Column="1" Text="Releases and notes" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            <Path Grid.Column="2" Classes="icon" Width="14" Height="14"
+                                  Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconExternalLink}"/>
+                        </Grid>
+                    </Button>
+
+                    <Border Height="1" Background="{DynamicResource Border}" Margin="10,4"/>
+
+                    <Button Classes="qarow" Command="{Binding OpenWebsiteCommand}">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconGlobe}"/>
+                            <TextBlock Grid.Column="1" Text="kontena.app" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            <Path Grid.Column="2" Classes="icon" Width="14" Height="14"
+                                  Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconExternalLink}"/>
+                        </Grid>
+                    </Button>
+                    <Button Classes="qarow" Command="{Binding OpenIssuesCommand}">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconBug}"/>
+                            <TextBlock Grid.Column="1" Text="Report an issue" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            <Path Grid.Column="2" Classes="icon" Width="14" Height="14"
+                                  Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconExternalLink}"/>
+                        </Grid>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>
