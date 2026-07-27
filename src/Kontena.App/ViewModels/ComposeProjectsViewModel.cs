@@ -266,7 +266,7 @@ public sealed partial class ComposeServiceViewModel : ObservableObject
 
     public string PortsText => _c.Ports.Count == 0
         ? "—"
-        : string.Join("  ", _c.Ports.Select(p => $":{p.HostPort}→{p.ContainerPort}"));
+        : string.Join("  ", _c.Ports.Select(p => $"{p.HostPort}→{p.ContainerPort}"));
 
     public bool IsRunning => _c.State == ContainerState.Running;
     public bool IsNotRunning => !IsRunning;

@@ -59,7 +59,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
 
     public string PortsText => _c.Ports.Count == 0
         ? "—"
-        : string.Join("  ", _c.Ports.Select(p => $":{p.HostPort}→{p.ContainerPort}/{p.Protocol}"));
+        : string.Join("  ", _c.Ports.Select(p => $"{p.HostPort}→{p.ContainerPort}/{p.Protocol}"));
 
     public bool IsRunning => _c.State == ContainerState.Running;
     public bool IsNotRunning => !IsRunning;
@@ -452,9 +452,9 @@ public sealed partial class PortItem
 
     public PortItem(PortBinding binding) => _p = binding;
 
-    /// <summary>Display text, e.g. <c>:8080 → 80/tcp</c> or <c>80/tcp</c> when unpublished.</summary>
+    /// <summary>Display text, e.g. <c>8080 → 80/tcp</c> or <c>80/tcp</c> when unpublished.</summary>
     public string Text => _p.HostPort is { } host
-        ? $":{host} → {_p.ContainerPort}/{_p.Protocol}"
+        ? $"{host} → {_p.ContainerPort}/{_p.Protocol}"
         : $"{_p.ContainerPort}/{_p.Protocol} (not published)";
 
     /// <summary>Only published TCP ports can be opened in a browser.</summary>
