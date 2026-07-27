@@ -1,4 +1,5 @@
 using k8s.Models;
+using Kontena.Core.Models;
 using Kontena.Core.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
@@ -318,7 +319,8 @@ internal static class K8sMap
         InvolvedObject = ToRef(e.InvolvedObject),
         Source = e.Source?.Component ?? e.ReportingComponent ?? string.Empty,
         Count = e.Count ?? 1,
-        LastSeen = e.LastTimestamp ?? e.EventTime ?? e.FirstTimestamp ?? DateTime.UtcNow,
+        LastSeen = EngineTimestamp.From(
+            e.LastTimestamp ?? e.EventTime ?? e.FirstTimestamp ?? DateTime.UtcNow),
     };
 
     private static ResourceRef ToRef(V1ObjectReference? o)
@@ -349,7 +351,7 @@ internal static class K8sMap
         Namespace = m.Metadata?.NamespaceProperty ?? "default",
         CpuMillicores = m.Containers?.Sum(c => Millicores(c.Usage, "cpu")) ?? 0,
         MemoryBytes = m.Containers?.Sum(c => Bytes(c.Usage, "memory")) ?? 0,
-        Timestamp = m.Timestamp ?? DateTime.UtcNow,
+        Timestamp = EngineTimestamp.From(m.Timestamp ?? DateTime.UtcNow),
     };
 
     // ── Quantities & ages ────────────────────────────────────────────────────

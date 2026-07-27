@@ -248,7 +248,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                         Repository = repo,
                         Tag = tag,
                         SizeBytes = img.Size,
-                        CreatedAt = img.Created,
+                        CreatedAt = EngineTimestamp.From(img.Created),
                         InUse = img.Containers > 0,
                     });
                 }
@@ -971,7 +971,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Labels = c.Labels is { Count: > 0 }
             ? new Dictionary<string, string>(c.Labels)
             : new Dictionary<string, string>(),
-        CreatedAt = c.Created,
+        CreatedAt = EngineTimestamp.From(c.Created),
         Backend = Backend,
     };
 
@@ -1133,7 +1133,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             ImageId = r.Image ?? string.Empty,
             State = MapState(r.State?.Status),
             Status = r.State?.Status ?? string.Empty,
-            CreatedAt = r.Created,
+            CreatedAt = EngineTimestamp.From(r.Created),
             StartedAt = ParseDockerDate(r.State?.StartedAt),
             FinishedAt = ParseDockerDate(r.State?.FinishedAt),
             ExitCode = (int)(r.State?.ExitCode ?? 0),
