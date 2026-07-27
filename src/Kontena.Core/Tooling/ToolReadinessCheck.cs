@@ -10,38 +10,20 @@ public sealed partial class ToolReadinessCheck(IToolRunner runner, ManagedToolSt
     private readonly ManagedToolStore _store = store ?? new ManagedToolStore();
 
     /// <summary>
-    /// A system install wins over a managed copy, unless this tool was explicitly handed to Kontena
-    /// (KON-153). Someone who installed kind themselves expects Kontena to use that one — and if both
-    /// exist and nobody said otherwise, ours is the stale one nobody is watching.
-    /// <para>
-    /// Deliberately the same precedence <see cref="ManagedTools.ResolveAsync"/> applies, so what the
-    /// settings page reports is what actually runs.
-    /// </para>
+    /// A system install wins over a managed copy. Someone who installed kind themselves expects
+    /// Kontena to use that one — and if both exist, ours is the stale one nobody is watching.
     /// </summary>
     public async ValueTask<ToolReadiness> CheckAsync(ExternalTool tool, CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(tool);
-
-        var preferred = _store.IsPreferred(tool);
-
-        if (!preferred)
-        {
-            var system = await runner.FindAsync(tool, ct);
-            if (system.Found)
-                return Describe(tool, system.Path, system.Version, managed: false);
-        }
+        var system = await runner.FindAsync(tool, ct);
+        if (system.Found)
+            return Describe(tool, system.Path, system.Version, managed: false);
 
         if (await _store.VerifiedPathAsync(tool, ct) is { } managed)
         {
             var record = _store.Record(tool);
-            return Describe(tool, managed, record?.Version, managed: true) with { Preferred = preferred };
+            return Describe(tool, managed, record?.Version, managed: true);
         }
-
-        // Preferred, but the copy is gone or no longer hashes to what was recorded. Fall back to the
-        // system install rather than reporting nothing: the preference is about which one wins when
-        // there is a choice, not a promise to refuse the other one.
-        if (preferred && await runner.FindAsync(tool, ct) is { Found: true } fallback)
-            return Describe(tool, fallback.Path, fallback.Version, managed: false);
 
         return new ToolReadiness(tool, ToolState.Missing, null, null, false, PackageManagers.Best(tool));
     }

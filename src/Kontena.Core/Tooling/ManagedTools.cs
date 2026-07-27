@@ -34,22 +34,13 @@ public static class ManagedTools
         ArgumentNullException.ThrowIfNull(tool);
         ArgumentNullException.ThrowIfNull(runner);
 
-        var tools = store ?? new ManagedToolStore();
-        var preferred = tools.IsPreferred(tool);
-
-        // Unless this tool was handed over to Kontena, a system install wins (KON-153). Asked before
-        // the PATH lookup rather than after, because "prefer ours" has to beat something that is there.
-        if (!preferred && (await runner.FindAsync(tool, ct)).Found)
+        if ((await runner.FindAsync(tool, ct)).Found)
             return tool;
 
-        var managed = await tools.VerifiedPathAsync(tool, ct);
+        var managed = await (store ?? new ManagedToolStore()).VerifiedPathAsync(tool, ct);
         if (managed is null || Path.GetDirectoryName(managed) is not { Length: > 0 } directory)
             return tool;
 
-        // An extra search path cannot beat PATH — ToolLocator searches PATH first, on purpose. So a
-        // preferred copy is named outright: an absolute executable is an answer rather than a search.
-        return preferred
-            ? tool with { Executable = managed }
-            : tool with { ExtraSearchPaths = [.. tool.ExtraSearchPaths, directory] };
+        return tool with { ExtraSearchPaths = [.. tool.ExtraSearchPaths, directory] };
     }
 }
