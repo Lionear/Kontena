@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -25,7 +26,10 @@ namespace Kontena.Screenshots;
 // (the same seed the app ships for dev/demo), so every pixel comes from the real views and styles.
 //
 // Usage:
-//   dotnet run --project tools/Kontena.Screenshots -- --scene containers --theme dark --out shots/containers.png [--size 1180x760]
+//   dotnet run --project tools/Kontena.Screenshots -- --scene containers --theme dark --out shots/containers.png [--size 1180x760] [--scale 2]
+//
+// --size is the window in layout pixels; --scale (1-4, default 1) is the device pixel ratio on top of
+// it, so --scale 2 writes a 2x PNG of the same composition rather than a bigger window.
 //
 // Scenes: containers (list, hero), detail (container logs), inspect (container inspect tab),
 //         images, volumes, networks, projects, run (Run-container modal), settings,
@@ -156,6 +160,12 @@ internal static class Program
                 Width = opts.Width,
                 Height = opts.Height,
             };
+
+            // --size stays in layout pixels so a scene keeps its composition; --scale only raises the
+            // device pixel ratio, the way a HiDPI display would. A 2x capture is what the website wants:
+            // its prose column is narrower than the window, so a 1x shot is downscaled and the app's
+            // text turns to mush.
+            window.SetRenderScaling(opts.Scale);
             window.Show();
 
             // Let the fire-and-forget InitAsync → ConnectPreferred → ActivateAsync settle so the
@@ -850,12 +860,13 @@ internal static class Program
         Dispatcher.UIThread.RunJobs();
     }
 
-    private sealed record Options(string Scene, string Theme, string Out, int Width, int Height)
+    private sealed record Options(string Scene, string Theme, string Out, int Width, int Height, double Scale)
     {
         public static Options Parse(string[] args)
         {
             string scene = "containers", theme = "dark", @out = "screenshot.png";
             int width = 1180, height = 760;
+            var scale = 1.0;
 
             for (var i = 0; i < args.Length - 1; i++)
             {
@@ -872,10 +883,17 @@ internal static class Program
                             height = h;
                         }
                         break;
+                    case "--scale":
+                        if (double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out var s)
+                            && s is > 0 and <= 4)
+                        {
+                            scale = s;
+                        }
+                        break;
                 }
             }
 
-            return new Options(scene, theme, @out, width, height);
+            return new Options(scene, theme, @out, width, height, scale);
         }
     }
 }
