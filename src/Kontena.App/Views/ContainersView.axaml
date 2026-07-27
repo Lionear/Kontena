@@ -246,8 +246,16 @@
                                         <Button Grid.Column="3" Classes="link" Command="{Binding OpenProjectCommand}"
                                                 VerticalAlignment="Center"
                                                 ToolTip.Tip="Open this project on the Projects page, where it is operated as a whole">
-                                            <TextBlock Text="Open in Projects" FontSize="12"
-                                                       Foreground="{DynamicResource TextFaint}"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <!-- The arrow says this leaves the list, which is the
+                                                     whole point: the other half of Compose lives on
+                                                     another page rather than in this row. -->
+                                                <Path Classes="icon" Width="12" Height="12" VerticalAlignment="Center"
+                                                      Stroke="{DynamicResource TextFaint}"
+                                                      Data="{StaticResource IconExternalLink}"/>
+                                                <TextBlock Text="Open in Projects" FontSize="12" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
                                         </Button>
 
                                         <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4"
