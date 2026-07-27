@@ -137,7 +137,14 @@ public sealed partial class LocalClustersViewModel
 
         Form = null;
         Stage = LocalClustersStage.List;
-        Created = row;
+
+        // Go straight to it. You did not make a cluster to look at a list — and the alternative is
+        // landing back in Settings, which is where the create started, not where it ended.
+        var switched = RequestUseBackend is not null && await RequestUseBackend(BackendFor(row.Cluster));
+
+        // Only when the switch did not happen is there something left to offer: the control plane can
+        // still be settling, and then the banner is the way back to it.
+        Created = switched ? null : row;
     }
 
     [RelayCommand]

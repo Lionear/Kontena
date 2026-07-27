@@ -107,6 +107,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private NetworksViewModel? _networks;
     [ObservableProperty] private ComposeProjectsViewModel? _composeProjects;
     [ObservableProperty] private SettingsViewModel? _settingsPage;
+
+    /// <summary>
+    /// The local-clusters page (KON-76). Held here rather than on the settings page because a create
+    /// rebuilds that page — see <c>BuildLocalClustersPage</c>.
+    /// </summary>
+    private LocalClustersViewModel? _localClusters;
     [ObservableProperty] private ActivityViewModel? _activity;
 
     /// <summary>The About page (KON-135). Never null — it needs no backend to say what it says.</summary>

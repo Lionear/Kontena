@@ -20,14 +20,14 @@ public class LocalClustersViewModelTests
         FakeClusterProvisioner provisioner,
         Action<string>? show = null,
         Func<Task>? changed = null,
-        Func<string, Task>? use = null,
+        Func<string, Task<bool>>? use = null,
         string? active = null)
         => new(provisioner, new FakeToolRunner(), store: EmptyStore())
         {
             RequestShowCluster = show,
             RequestClustersChanged = changed,
             RequestUseBackend = use,
-            ActiveBackend = active,
+            ActiveBackendNow = () => active,
             RequestConfirm = request => _ = request.OnConfirm(),
         };
 
@@ -106,6 +106,7 @@ public class LocalClustersViewModelTests
         Assert.True(page.IsList);
         Assert.NotEmpty(page.Output);
         Assert.Single(page.Clusters);
+        // With no switch wired, the banner is what is left to offer.
         Assert.True(page.HasCreated);
         Assert.Equal("dev", page.Created!.Name);
 
@@ -186,12 +187,51 @@ public class LocalClustersViewModelTests
     }
 
     [Fact]
+    public async Task A_finished_create_goes_straight_to_the_new_cluster()
+    {
+        var switched = new List<string>();
+        var page = Page(
+            new FakeClusterProvisioner(),
+            changed: () => Task.CompletedTask,
+            use: id => { switched.Add(id); return Task.FromResult(true); });
+
+        await page.LoadAsync();
+        page.NewClusterCommand.Execute(null);
+        page.Form!.Name = "dev";
+
+        await page.CreateCommand.ExecuteAsync(null);
+
+        Assert.Equal(["kubernetes:fake-dev"], switched);
+
+        // Nothing left to offer: the app is already there, and a banner saying "switch to it" next to
+        // the cluster you are looking at is the kind of leftover that teaches people to ignore banners.
+        Assert.False(page.HasCreated);
+    }
+
+    [Fact]
+    public async Task A_cluster_that_is_not_reachable_yet_keeps_the_way_back_to_it()
+    {
+        var page = Page(
+            new FakeClusterProvisioner(),
+            use: _ => Task.FromResult(false));
+
+        await page.LoadAsync();
+        page.NewClusterCommand.Execute(null);
+        page.Form!.Name = "dev";
+
+        await page.CreateCommand.ExecuteAsync(null);
+
+        Assert.True(page.HasCreated);
+        Assert.Equal("dev", page.Created!.Name);
+    }
+
+    [Fact]
     public async Task Switching_to_a_cluster_asks_the_shell_for_its_backend_id()
     {
         var switched = new List<string>();
         var page = Page(
             new FakeClusterProvisioner().WithCluster("dev"),
-            use: id => { switched.Add(id); return Task.CompletedTask; });
+            use: id => { switched.Add(id); return Task.FromResult(true); });
 
         await page.LoadAsync();
         await page.Clusters[0].UseCommand.ExecuteAsync(null);

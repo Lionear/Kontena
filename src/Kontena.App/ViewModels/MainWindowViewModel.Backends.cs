@@ -377,6 +377,11 @@ public partial class MainWindowViewModel
         // (KON-137).
         var wasShowing = SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
 
+        // …and the category with it. A rebuild happens for reasons that have nothing to do with where
+        // the user is standing — the demo toggle, a kubeconfig, a cluster being created — and dropping
+        // them back on General each time is the shell losing their place.
+        var category = SettingsPage?.Category;
+
         var all = _probes.Select(p => new EngineListItem(
             p.Provider.Backend, NameOf(p.Provider), p.Provider.Chip,
             p.Detail ?? string.Empty, p.Connected,
@@ -406,38 +411,55 @@ public partial class MainWindowViewModel
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
             kubeconfigs: Kubeconfigs())
         {
-            // Local clusters (KON-109 + KON-76). Built here so it lives as long as the settings page
-            // and gets disposed with it — an install or a create left running against a page nobody is
-            // on would finish out of sight.
-            LocalClusters = new LocalClustersViewModel(
-                tooling: new ClusterToolingViewModel
-                {
-                    RequestOpenUrl = Browser.OpenUrl,
-                    RequestConfirm = ShowConfirm,
-                })
-            {
-                RequestConfirm = ShowConfirm,
-                ActiveBackend = _activeBackend,
-
-                // The provisioner never touches the registry (KON-78): it makes a cluster, kind writes
-                // the kubeconfig context, and this rebuild is what notices.
-                RequestClustersChanged = () =>
-                    ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
-
-                // KON-120 says clusters appear on choice — with one deliberate exception, this one.
-                // Having to tick a box for the cluster you just made here is the dead-button mistake
-                // (KON-117) wearing a different hat.
-                RequestShowCluster = id => _settings = _store.Update(s => s.WithCluster(id, shown: true)),
-
-                RequestUseBackend = SwitchEngineAsync,
-            },
+            // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
+            LocalClusters = _localClusters ??= BuildLocalClustersPage(),
         };
 
         SettingsPage.RequestConfirm = ShowConfirm;
 
+        if (category is not null)
+            SettingsPage.Category = category;
+
         if (wasShowing)
             CurrentPage = SettingsPage;
     }
+
+    /// <summary>
+    /// The local-clusters page (KON-76), built once and kept across settings rebuilds.
+    /// <para>
+    /// Kept, because creating a cluster <i>causes</i> a rebuild: the new kubeconfig context has to
+    /// reach the switcher. Handing the user a fresh page halfway through would throw away the console
+    /// they are reading and leave the running create writing into a view model nobody can see.
+    /// </para>
+    /// </summary>
+    private LocalClustersViewModel BuildLocalClustersPage() => new(
+        tooling: new ClusterToolingViewModel
+        {
+            RequestOpenUrl = Browser.OpenUrl,
+            RequestConfirm = ShowConfirm,
+        })
+    {
+        RequestConfirm = ShowConfirm,
+
+        // The provisioner never touches the registry (KON-78): it makes a cluster, kind writes the
+        // kubeconfig context, and this rebuild is what notices.
+        RequestClustersChanged = () =>
+            ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+
+        // KON-120 says clusters appear on choice — with one deliberate exception, this one. Having to
+        // tick a box for the cluster you just made here is the dead-button mistake (KON-117) in a hat.
+        RequestShowCluster = id => _settings = _store.Update(s => s.WithCluster(id, shown: true)),
+
+        // Reports back whether the switch actually happened: a cluster whose control plane is still
+        // settling will not be connected yet, and the page needs to know that to keep offering it.
+        RequestUseBackend = async id =>
+        {
+            await SwitchEngineAsync(id);
+            return _activeBackend == id;
+        },
+
+        ActiveBackendNow = () => _activeBackend,
+    };
 
     /// <summary>
     /// Rebuild the backend set after the demo toggle changed (KON-96), re-probe, and refresh the

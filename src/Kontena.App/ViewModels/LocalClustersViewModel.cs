@@ -56,11 +56,17 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
     /// <summary>The KON-109 page, kept whole. Shown in full behind "Manage tooling".</summary>
     public ClusterToolingViewModel Tooling { get; }
 
-    /// <summary>The backend Kontena is talking to now, so the list can mark it. Set by the shell.</summary>
-    public string? ActiveBackend { get; init; }
+    /// <summary>
+    /// What the shell is talking to right now, asked each time rather than handed over once: this page
+    /// outlives several switches, and a value copied at construction would mark the wrong row.
+    /// </summary>
+    public Func<string?>? ActiveBackendNow { get; init; }
 
-    /// <summary>Switches to a cluster; the shell owns the backend list.</summary>
-    public Func<string, Task>? RequestUseBackend { get; init; }
+    /// <summary>
+    /// Switches to a cluster; the shell owns the backend list. Answers whether it happened — a cluster
+    /// whose control plane is still settling is not connected yet, and the page keeps offering it.
+    /// </summary>
+    public Func<string, Task<bool>>? RequestUseBackend { get; init; }
 
     /// <summary>
     /// A cluster appeared or disappeared. The shell re-reads the kubeconfigs and rebuilds the
@@ -190,6 +196,9 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
         if (RequestUseBackend is not null)
             await RequestUseBackend(BackendFor(row.Cluster));
     }
+
+    /// <summary>Which backend is active right now, for marking the row that is already open.</summary>
+    private string? ActiveBackend => ActiveBackendNow?.Invoke();
 
     /// <summary>
     /// Delete, confirmed as the data loss it is (KON-126). The message says what goes with it, because
