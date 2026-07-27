@@ -75,6 +75,17 @@
 
     <StreamGeometry x:Key="IconClose">M18 6L6 18 M6 6l12 12</StreamGeometry>
 
+    <!-- Caption-button glyphs (KON-138). Deliberately plainer than Lucide's `minus`/`square`/`copy`:
+         a title bar's buttons are read at a glance, not looked at.
+
+         The minimise glyph is the one exception to the 24-box rule at the top of this file — it is
+         authored for a 14×14 render box and must be drawn with Stretch="None". A flat line has no
+         height, so the shared Path.icon style's Uniform stretch has nothing to scale it against and
+         collapses it to a dot. -->
+    <StreamGeometry x:Key="IconWindowMinimize">M1 7h12</StreamGeometry>
+    <StreamGeometry x:Key="IconWindowMaximize">M5 5h14v14H5Z</StreamGeometry>
+    <StreamGeometry x:Key="IconWindowRestore">M8 8V6a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-2 M6 8h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z</StreamGeometry>
+
     <StreamGeometry x:Key="IconPlus">M5 12h14 M12 5v14</StreamGeometry>
 
     <StreamGeometry x:Key="IconSun">M16 12A4 4 0 1 1 8 12A4 4 0 1 1 16 12Z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4</StreamGeometry>

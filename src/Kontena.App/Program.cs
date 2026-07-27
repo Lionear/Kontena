@@ -66,6 +66,18 @@ sealed class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            // Without this, ExtendClientAreaToDecorationsHint is ignored on X11 and the window
+            // manager keeps drawing its own title bar — so Kontena's ends up as a second one
+            // underneath it (KON-138). Windows and macOS extend the client area server-side and
+            // need no equivalent.
+            //
+            // Avalonia marks this option experimental and reserves the right to remove it. The
+            // suppression is deliberate and scoped to this one line: on Linux the alternative is
+            // either two title bars or no branded one at all. If it disappears in a later Avalonia,
+            // this is the line that breaks, and the fallback is to stop extending on X11.
+#pragma warning disable AVALONIA_X11_CSD
+            .With(new X11PlatformOptions { EnableDrawnDecorations = true })
+#pragma warning restore AVALONIA_X11_CSD
 #if DEBUG
             .WithDeveloperTools()
 #endif

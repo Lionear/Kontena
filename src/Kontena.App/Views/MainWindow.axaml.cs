@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Kontena.App.Services;
 
@@ -25,6 +25,13 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => CaptureNormal();
         PositionChanged += (_, _) => CaptureNormal();
         Closing += OnClosing;
+
+        SyncMaximiseButton();
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == WindowStateProperty)
+                SyncMaximiseButton();
+        };
     }
 
     private void RestorePlacement()
@@ -62,22 +69,24 @@ public partial class MainWindow : Window
         _normalY = Position.Y;
     }
 
-    // Our own title bar has to do the two things the system's used to do for free (KON-134): drag
-    // the window, and toggle maximize on a double click. The caption buttons are still the system's
-    // and sit above this in the window template, so they take their own clicks first.
-    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    // Caption buttons (KON-138). Dragging and double-click are the platform's, through the title
+    // bar's ElementRole; these three are ours because handing them to the platform is what makes
+    // the same window behave differently on each one.
+    private void OnMinimiseClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnMaximiseClick(object? sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Keeps the maximise button saying what it will do rather than what the window is.</summary>
+    private void SyncMaximiseButton()
     {
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            return;
+        var maximised = WindowState == WindowState.Maximized;
 
-        if (e.ClickCount == 2)
-        {
-            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-            e.Handled = true;
-            return;
-        }
-
-        BeginMoveDrag(e);
+        MaximiseGlyph.Data = (Geometry?)this.FindResource(
+            maximised ? "IconWindowRestore" : "IconWindowMaximize");
+        ToolTip.SetTip(MaximiseButton, maximised ? "Restore" : "Maximise");
     }
 
     // Picking a backend (or the "add…" row) should dismiss the switcher flyout — a Button click
