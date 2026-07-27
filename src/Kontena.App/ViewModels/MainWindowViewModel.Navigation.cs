@@ -256,7 +256,7 @@ public partial class MainWindowViewModel
             return;
 
         var ci = CultureInfo.InvariantCulture;
-        NavItems[0].Count = Containers.Items.Count.ToString(ci);
+        NavItems[0].Count = Containers.ContainerCount.ToString(ci);
         NavItems[1].Count = (await _engine.ListImagesAsync()).Count.ToString(ci);
         NavItems[2].Count = (await _engine.ListVolumesAsync()).Count.ToString(ci);
         NavItems[3].Count = (await _engine.ListNetworksAsync()).Count.ToString(ci);

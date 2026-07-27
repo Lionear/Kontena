@@ -35,9 +35,26 @@ public class ComposeGroupingTests
         page.Items.OfType<ComposeGroupRowViewModel>().First(g => g.Name == name);
 
     [Fact]
-    public async Task A_project_becomes_one_row_with_its_containers_under_it()
+    public async Task A_project_arrives_as_one_shut_row()
+    {
+        // Shut to begin with: the point of grouping is that a stack takes one line instead of four.
+        // Twelve containers, eight rows.
+        var page = await PageAsync();
+
+        Assert.Equal(
+            [
+                "api-gateway", "[ashenmoon-stack]", "migrate-db", "[monitoring]",
+                "postgres-main", "redis-cache", "sqlx-postgres-dev", "worker-jobs",
+            ],
+            Names(page));
+    }
+
+    [Fact]
+    public async Task Opening_a_project_puts_its_containers_under_it()
     {
         var page = await PageAsync();
+
+        Group(page, "ashenmoon-stack").ToggleCommand.Execute(null);
 
         Assert.Equal(
             [
@@ -45,9 +62,7 @@ public class ComposeGroupingTests
                 "[ashenmoon-stack]",
                 "ashenmoon-stack-api-1", "ashenmoon-stack-db-1", "ashenmoon-stack-gateway-1",
                 "ashenmoon-stack-redis-1",
-                "migrate-db",
-                "[monitoring]",
-                "monitoring-grafana-1", "monitoring-prometheus-1",
+                "migrate-db", "[monitoring]",
                 "postgres-main", "redis-cache", "sqlx-postgres-dev", "worker-jobs",
             ],
             Names(page));
@@ -78,16 +93,15 @@ public class ComposeGroupingTests
     }
 
     [Fact]
-    public async Task Collapsing_hides_that_project_and_nothing_else()
+    public async Task Opening_one_project_leaves_the_others_shut()
     {
         var page = await PageAsync();
 
         Group(page, "monitoring").ToggleCommand.Execute(null);
 
         var rows = Names(page);
-        Assert.Contains("[monitoring]", rows);
-        Assert.DoesNotContain("monitoring-grafana-1", rows);
-        Assert.Contains("ashenmoon-stack-api-1", rows);
+        Assert.Contains("monitoring-grafana-1", rows);
+        Assert.DoesNotContain("ashenmoon-stack-api-1", rows);
     }
 
     [Fact]
@@ -100,8 +114,8 @@ public class ComposeGroupingTests
 
         await page.LoadAsync();
 
-        Assert.DoesNotContain("monitoring-grafana-1", Names(page));
-        Assert.False(Group(page, "monitoring").IsOpen);
+        Assert.Contains("monitoring-grafana-1", Names(page));
+        Assert.True(Group(page, "monitoring").IsOpen);
     }
 
     [Fact]
@@ -109,7 +123,6 @@ public class ComposeGroupingTests
     {
         // Point 1, the one that matters most: a hit inside a collapsed group is a hit nobody sees.
         var page = await PageAsync();
-        Group(page, "monitoring").ToggleCommand.Execute(null);
 
         page.SearchText = "grafana";
 
@@ -122,7 +135,6 @@ public class ComposeGroupingTests
         // Forced open by a search is not the same as opened by the user, and the difference has to
         // survive the search being cleared.
         var page = await PageAsync();
-        Group(page, "monitoring").ToggleCommand.Execute(null);
 
         page.SearchText = "grafana";
         page.SearchText = string.Empty;
@@ -224,9 +236,27 @@ public class ComposeGroupingTests
     }
 
     [Fact]
+    public async Task The_sidebar_counts_containers_and_not_rows()
+    {
+        // Grouping changes how many rows there are. A nav count that moved when you folded a project
+        // would be counting the wrong noun — and twelve containers must read as twelve either way.
+        var page = await PageAsync();
+
+        Assert.Equal(12, page.ContainerCount);
+        Assert.Equal(8, page.Items.Count);
+
+        page.ToggleGroupingCommand.Execute(null);
+
+        Assert.Equal(12, page.ContainerCount);
+        Assert.Equal(12, page.Items.Count);
+    }
+
+    [Fact]
     public async Task Only_a_child_carries_its_service_name()
     {
         var page = await PageAsync();
+
+        Group(page, "monitoring").ToggleCommand.Execute(null);
 
         var child = page.Items.OfType<ContainerRowViewModel>().First(c => c.Name == "monitoring-grafana-1");
         var loose = page.Items.OfType<ContainerRowViewModel>().First(c => c.Name == "api-gateway");

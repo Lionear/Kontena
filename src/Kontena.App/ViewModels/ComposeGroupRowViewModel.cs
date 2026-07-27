@@ -85,8 +85,13 @@ public sealed partial class ComposeGroupRowViewModel : ContainerListRowViewModel
     /// <summary>
     /// What the user set. Survives a reload because the row instance does — and a reload happens after
     /// every action, so a group that collapsed on each start would make the whole mode unusable.
+    /// <para>
+    /// Shut to begin with: the point of grouping is that a stack takes one line instead of four, and
+    /// starting every project open is the flat list again with extra rows in it. Opening one is a
+    /// question someone asks about that project.
+    /// </para>
     /// </summary>
-    [ObservableProperty] private bool _isExpanded = true;
+    [ObservableProperty] private bool _isExpanded;
 
     /// <summary>
     /// Open because a search matched inside it, which is not the same as the user opening it. Kept

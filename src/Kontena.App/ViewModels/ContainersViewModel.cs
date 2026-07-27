@@ -224,6 +224,13 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
             _groups.Remove(gone);
     }
 
+    /// <summary>
+    /// How many containers there are, whatever the list is doing with them. The sidebar counts these
+    /// and not <see cref="Items"/>: grouping changes how many <i>rows</i> there are, and a nav count
+    /// that moved when you folded a project would be counting the wrong noun (KON-159).
+    /// </summary>
+    public int ContainerCount => _all.Count;
+
     /// <summary>True once loaded and at least one container exists (drives stat cards + table).</summary>
     public bool HasAnyContainers => HasLoaded && _all.Count > 0;
 
