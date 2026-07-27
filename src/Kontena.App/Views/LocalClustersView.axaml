@@ -149,11 +149,13 @@
         </Border>
 
         <!-- ══ 2 · The form ══════════════════════════════════════════════════════ -->
-        <StackPanel Spacing="0" IsVisible="{Binding IsForm}">
-            <TextBlock Text="New cluster" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-            <TextBlock Text="Everything here has a default that builds a working single-node cluster. The only thing you have to decide is the name."
-                       FontSize="13.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" MaxWidth="620"
-                       HorizontalAlignment="Left" Margin="0,4,0,22"/>
+        <StackPanel Spacing="16" IsVisible="{Binding IsForm}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="New cluster" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock Text="Everything here has a default that builds a working single-node cluster. The only thing you have to decide is the name."
+                           FontSize="13.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" MaxWidth="620"
+                           HorizontalAlignment="Left" Margin="0,0,0,6"/>
+            </StackPanel>
 
             <!-- The provisioner. One choice today; minikube is drawn so the shape is right before it
                  arrives, and it is visibly unavailable rather than a button that does nothing. -->
@@ -333,7 +335,7 @@
                 </StackPanel>
             </Border>
 
-            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
                 <Button Grid.Column="0" Classes="ghost" Content="Cancel" Command="{Binding CancelFormCommand}"/>
                 <Button Grid.Column="2" Classes="primary" Content="Create cluster"
                         Command="{Binding CreateCommand}" IsEnabled="{Binding Form.CanCreate}"/>
