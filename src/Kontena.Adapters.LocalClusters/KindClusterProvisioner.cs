@@ -42,10 +42,20 @@ public sealed class KindClusterProvisioner(IToolRunner runner, ManagedToolStore?
         // No resources: the nodes are containers and take what the host has.
         Resources = false,
         StartStop = false,
+
+        // The one tool that needs the escape hatch: its version list cannot be complete (KON-144).
+        NodeImage = true,
     };
 
     /// <summary>The kubeconfig context kind writes for a cluster of this name.</summary>
     public static string ContextFor(string name) => $"kind-{name}";
+
+    /// <summary>
+    /// A maintained list — see <see cref="KindVersions"/> for why kind is the one provisioner that
+    /// cannot be asked. Not async in any real sense, but the contract is: the other one does I/O.
+    /// </summary>
+    public ValueTask<ClusterVersionOptions> VersionsAsync(CancellationToken ct = default)
+        => ValueTask.FromResult(KindVersions.Options);
 
     public ValueTask<ToolReadiness> CheckAsync(CancellationToken ct = default)
         => new ToolReadinessCheck(runner, _store).CheckAsync(KnownTools.Kind, ct);

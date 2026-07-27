@@ -182,7 +182,15 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
         {
             var readiness = await provisioner.CheckAsync();
             var purpose = Purposes.TryGetValue(provisioner.Provisioner, out var text) ? text : string.Empty;
-            var choice = new ProvisionerChoiceViewModel(provisioner, readiness, purpose);
+
+            // Only worth asking a tool that is actually here, and only where a version is a choice at
+            // all. An absent tool answers None by itself, but running it to hear that is a wasted
+            // process per page load (KON-144).
+            var versions = readiness.Usable && provisioner.Capabilities.KubernetesVersion
+                ? await provisioner.VersionsAsync()
+                : ClusterVersionOptions.None;
+
+            var choice = new ProvisionerChoiceViewModel(provisioner, readiness, purpose, versions);
 
             Provisioners.Add(choice);
             summaries.Add($"{choice.Name} {choice.State}");

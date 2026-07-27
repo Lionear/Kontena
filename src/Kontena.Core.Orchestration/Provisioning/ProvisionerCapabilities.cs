@@ -23,6 +23,13 @@ public sealed record ProvisionerCapabilities
     public bool KubernetesVersion { get; init; }
 
     /// <summary>
+    /// A node image can be named outright. Only where the version list cannot be complete: kind boots
+    /// a prebuilt image and there is no way to enumerate what exists, so the field is the way to ask
+    /// for anything the offered list does not cover (KON-144). minikube takes a version, not an image.
+    /// </summary>
+    public bool NodeImage { get; init; }
+
+    /// <summary>
     /// Which runtimes or drivers this provisioner can host nodes on, or empty when it takes whatever
     /// the tool picks. A list rather than a flag: kind runs on Docker or Podman, minikube adds its own
     /// drivers, and the form should offer exactly what the chosen tool accepts.

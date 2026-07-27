@@ -244,6 +244,15 @@
                         </StackPanel>
                     </Grid>
 
+                    <StackPanel Spacing="6" IsVisible="{Binding ShowNodeImage}">
+                        <TextBlock Text="Node image (optional)" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <TextBox Text="{Binding NodeImage, Mode=TwoWay}" FontFamily="{StaticResource Mono}"
+                                 PlaceholderText="kindest/node:v1.36.1"/>
+                        <TextBlock Text="For a version that is not in the list. kind boots a prebuilt image, and which ones exist is not something it can be asked — so this is the way to name one yourself. Overrides the version above."
+                                   FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
                         <StackPanel Grid.Column="0" Spacing="6" IsVisible="{Binding ShowHighAvailability}">
                             <TextBlock Text="Control-plane nodes" FontSize="12.5" FontWeight="SemiBold"

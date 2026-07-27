@@ -37,6 +37,9 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
         StartStop = true,
     };
 
+    /// <summary>What <see cref="VersionsAsync"/> answers. Empty by default: most tests are not about it.</summary>
+    public ClusterVersionOptions Versions { get; init; } = ClusterVersionOptions.None;
+
     /// <summary>What <see cref="CheckAsync"/> answers. Set it to a missing tool to build the empty state.</summary>
     public ToolReadiness Readiness { get; init; } =
         new(FakeTool, ToolState.Ready, "/fake/bin/fake-cluster-tool", "v1.0.0", false, null);
@@ -71,6 +74,9 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
 
     public ValueTask<IReadOnlyList<LocalCluster>> ListAsync(CancellationToken ct = default)
         => ValueTask.FromResult<IReadOnlyList<LocalCluster>>([.. _clusters]);
+
+    public ValueTask<ClusterVersionOptions> VersionsAsync(CancellationToken ct = default)
+        => ValueTask.FromResult(Versions);
 
     public async IAsyncEnumerable<ToolLine> CreateAsync(
         LocalClusterSpec spec,
