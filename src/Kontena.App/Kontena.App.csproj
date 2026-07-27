@@ -17,6 +17,10 @@
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
+    <!-- icon.svg is the design source for icon.png/.ico and the KontenaLogo drawing in
+         Icons.axaml — nothing loads it at runtime, so keep it out of the resource blob. -->
+    <AvaloniaResource Remove="Assets\icon.svg" />
+    <None Include="Assets\icon.svg" />
   </ItemGroup>
 
   <ItemGroup>
