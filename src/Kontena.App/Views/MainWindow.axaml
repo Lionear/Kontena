@@ -144,10 +144,15 @@
         <Border Grid.Column="0" Background="{DynamicResource SidebarBg}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,16">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,4,0,14">
-                    <Image Source="{StaticResource KontenaLogo}" Width="26" Height="26"/>
-                    <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                <!-- Brand lockup (KON-133). At 26px next to a 17px wordmark the mark read as one
+                     more nav glyph; at 34/20 it reads as the brand. The rule below stops it from
+                     forming one block with the backend switcher. -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12" Margin="6,4,0,16">
+                    <Image Source="{StaticResource KontenaLogo}" Width="34" Height="34"/>
+                    <TextBlock Text="Kontena" FontSize="20" FontWeight="SemiBold" LetterSpacing="-0.4"
+                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
+                <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Border}" Margin="4,0,4,14"/>
 
                 <!-- Backend switcher — engines &amp; clusters, grouped -->
                 <Button x:Name="BackendPill" DockPanel.Dock="Top" Classes="bkpill" Margin="2,0,2,16">
