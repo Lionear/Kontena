@@ -46,8 +46,9 @@ namespace Kontena.Screenshots;
 //         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
-//         settings-clusters (KON-109 — the local-cluster tooling page; reads this machine, so the
-//         shot differs per box by design),
+//         settings-clusters (KON-109/KON-76 — the local-cluster page; reads this machine, so the
+//         shot differs per box by design), settings-clusters-new (the create form, reached by running
+//         the page's own command),
 //         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
 //         confirmation and the deliberately non-destructive one, both reached by running the
 //         row's own command so the shot cannot show a dialog the button does not raise).
@@ -335,6 +336,7 @@ internal static class Program
             case "settings-engines-named":
             case "settings-engines-clusters":
             case "settings-clusters":
+            case "settings-clusters-new":
             case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
@@ -344,7 +346,7 @@ internal static class Program
                         "settings-about" => "about",
                         "settings-registries" => "registries",
                         "settings" => "general",
-                        "settings-clusters" => "clusters",
+                        "settings-clusters" or "settings-clusters-new" => "clusters",
                         _ => "engines",
                     });
 
@@ -352,10 +354,27 @@ internal static class Program
                     // is actually installed here rather than a posed list — which is the point: a
                     // scene that faked "kind detected" would render identically whether or not the
                     // detection works.
-                    if (scene == "settings-clusters" && s.ClusterTooling is { } tooling)
+                    if (scene is "settings-clusters" or "settings-clusters-new" && s.LocalClusters is { } clusters)
                     {
-                        SettleUntil(() => tooling.HasLoaded, maxRounds: 200);
+                        SettleUntil(() => clusters.HasLoaded, maxRounds: 200);
                         Settle(rounds: 20);
+
+                        // The form is reached by running the page's own command, so the shot cannot show
+                        // a screen the button does not open (the lesson from KON-117).
+                        if (scene == "settings-clusters-new")
+                        {
+                            clusters.NewClusterCommand.Execute(null);
+                            if (clusters.Form is { } form)
+                            {
+                                form.Name = "dev";
+                                form.WorkerNodes = "2";
+                                form.IngressReady = true;
+                                form.Ports[0].HostPort = "8080";
+                                form.Ports[0].NodePort = "80";
+                            }
+
+                            Settle(rounds: 20);
+                        }
                     }
 
                     // The TCP form is where the security decision lives, so it gets its own shot.

@@ -266,8 +266,8 @@ public partial class SettingsViewModel : ViewModelBase
         // Re-check on entry rather than on build: tooling can be installed in a terminal while the
         // page is open, and a stale "not installed" is the kind of wrong that makes people click
         // Install twice.
-        if (Category == "clusters" && ClusterTooling is { } tooling)
-            _ = tooling.LoadAsync();
+        if (Category == "clusters" && LocalClusters is { } clusters)
+            _ = clusters.LoadAsync();
 
         // Read fresh on entry: a login can have been added by docker login, or revoked in the keychain,
         // since the page was built.
@@ -282,10 +282,10 @@ public partial class SettingsViewModel : ViewModelBase
     public bool IsUpdates => Category == "updates";
 
     /// <summary>
-    /// Local clusters (KON-109). An init property rather than a thirteenth constructor parameter —
-    /// this page owns its own state and needs nothing from settings.
+    /// Local clusters (KON-109, KON-76). An init property rather than a thirteenth constructor
+    /// parameter — this page owns its own state and needs nothing from settings.
     /// </summary>
-    public ClusterToolingViewModel? ClusterTooling { get; init; }
+    public LocalClustersViewModel? LocalClusters { get; init; }
 
     [RelayCommand]
     private void SelectCategory(string category) => Category = category;

@@ -406,13 +406,30 @@ public partial class MainWindowViewModel
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
             kubeconfigs: Kubeconfigs())
         {
-            // Local clusters (KON-109). Built here so it lives as long as the settings page and gets
-            // disposed with it — an install left running against a page nobody is on would finish out
-            // of sight.
-            ClusterTooling = new ClusterToolingViewModel
+            // Local clusters (KON-109 + KON-76). Built here so it lives as long as the settings page
+            // and gets disposed with it — an install or a create left running against a page nobody is
+            // on would finish out of sight.
+            LocalClusters = new LocalClustersViewModel(
+                tooling: new ClusterToolingViewModel
+                {
+                    RequestOpenUrl = Browser.OpenUrl,
+                    RequestConfirm = ShowConfirm,
+                })
             {
-                RequestOpenUrl = Browser.OpenUrl,
                 RequestConfirm = ShowConfirm,
+                ActiveBackend = _activeBackend,
+
+                // The provisioner never touches the registry (KON-78): it makes a cluster, kind writes
+                // the kubeconfig context, and this rebuild is what notices.
+                RequestClustersChanged = () =>
+                    ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+
+                // KON-120 says clusters appear on choice — with one deliberate exception, this one.
+                // Having to tick a box for the cluster you just made here is the dead-button mistake
+                // (KON-117) wearing a different hat.
+                RequestShowCluster = id => _settings = _store.Update(s => s.WithCluster(id, shown: true)),
+
+                RequestUseBackend = SwitchEngineAsync,
             },
         };
 

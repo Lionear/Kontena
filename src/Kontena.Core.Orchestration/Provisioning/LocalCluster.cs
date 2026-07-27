@@ -11,4 +11,15 @@ namespace Kontena.Core.Orchestration.Provisioning;
 /// (<c>kubernetes:kind-dev</c>) that discovery already produces, so a page can tell which switcher
 /// entry belongs to which local cluster without asking the tool again.
 /// </param>
-public sealed record LocalCluster(string Name, string Provisioner, string Context);
+public sealed record LocalCluster(string Name, string Provisioner, string Context)
+{
+    /// <summary>
+    /// The cluster's nodes, as the provisioner names them. Empty when they were not asked for.
+    /// <para>
+    /// Node <i>names</i> rather than roles: kind calls them <c>dev-control-plane</c> and
+    /// <c>dev-worker2</c>, but that is a naming habit, not a contract — reading a role out of a string
+    /// would invent a fact. The count is what can be shown truthfully.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> Nodes { get; init; } = [];
+}

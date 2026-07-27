@@ -64,16 +64,40 @@ public sealed class KindClusterProvisioner(IToolRunner runner, ManagedToolStore?
         if (!result.Ok)
             return [];
 
-        return
-        [
-            .. result.StandardOutput
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                // kind says "No kind clusters found." when there are none. It goes to stderr on the
-                // versions we drive, but it has moved between streams before, and treating it as a
-                // cluster name would put a sentence in the switcher.
-                .Where(line => !line.StartsWith("No kind clusters", StringComparison.Ordinal))
-                .Select(name => new LocalCluster(name, Id, ContextFor(name))),
-        ];
+        var names = result.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            // kind says "No kind clusters found." when there are none. It goes to stderr on the
+            // versions we drive, but it has moved between streams before, and treating it as a
+            // cluster name would put a sentence in the switcher.
+            .Where(line => !line.StartsWith("No kind clusters", StringComparison.Ordinal));
+
+        var clusters = new List<LocalCluster>();
+        foreach (var name in names)
+            clusters.Add(new LocalCluster(name, Id, ContextFor(name)) { Nodes = await NodesAsync(name, ct) });
+
+        return clusters;
+    }
+
+    /// <summary>
+    /// One cluster's node containers. A failure yields nothing rather than throwing: the cluster is
+    /// listed either way, and losing the whole list over a count would be the wrong trade.
+    /// </summary>
+    private async ValueTask<IReadOnlyList<string>> NodesAsync(string name, CancellationToken ct)
+    {
+        try
+        {
+            var tool = await ManagedTools.ResolveAsync(KnownTools.Kind, runner, _store, ct);
+            var result = await runner.RunAsync(new ToolInvocation(tool, KindArguments.Nodes(name)), ct);
+
+            return result.Ok
+                ? result.StandardOutput.Split(
+                    '\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                : [];
+        }
+        catch (ToolNotFoundException)
+        {
+            return [];
+        }
     }
 
     public async IAsyncEnumerable<ToolLine> CreateAsync(
