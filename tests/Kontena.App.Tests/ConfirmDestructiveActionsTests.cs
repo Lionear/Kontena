@@ -88,7 +88,8 @@ public sealed class ConfirmDestructiveActionsTests
         var page = new ContainersViewModel(engine) { RequestConfirm = asked.Handle };
         await page.LoadAsync();
 
-        var row = page.Items[0];
+        // The list holds Compose headings too now (KON-159); this test is about a container.
+        var row = page.Items.OfType<ContainerRowViewModel>().First();
         row.RemoveCommand.Execute(null);
 
         Assert.NotNull(asked.Request);
@@ -109,7 +110,7 @@ public sealed class ConfirmDestructiveActionsTests
         var page = new ContainersViewModel(engine) { RequestConfirm = asked.Handle };
         await page.LoadAsync();
 
-        page.Items.First(c => c.IsRunning).RemoveCommand.Execute(null);
+        page.Items.OfType<ContainerRowViewModel>().First(c => c.IsRunning).RemoveCommand.Execute(null);
 
         Assert.NotNull(asked.Request);
         Assert.Contains("killed", asked.Request.Message, StringComparison.OrdinalIgnoreCase);

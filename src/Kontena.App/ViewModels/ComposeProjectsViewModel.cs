@@ -129,15 +129,21 @@ public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
     /// </summary>
     public void ConfirmDown(ComposeProjectViewModel project)
     {
-        var count = project.TotalCount;
         Confirm(
             "Take project down",
-            $"Take \"{project.Name}\" down? Its {count} container{(count == 1 ? "" : "s")} are stopped and" +
-            " removed, along with the networks Compose created for it. Volumes and images stay, and" +
-            " bringing it up again recreates the containers from the same file.",
+            ProjectDownMessage(project.Name, project.TotalCount),
             "Take down",
             () => DownProjectAsync(project.Name, project.ContainerIds));
     }
+
+    /// <summary>
+    /// Shared with the group row in the Containers list (KON-159), which takes the same project down
+    /// from a different page — one wording for one action, wherever it is triggered.
+    /// </summary>
+    public static string ProjectDownMessage(string project, int count)
+        => $"Take \"{project}\" down? Its {count} container{(count == 1 ? "" : "s")} are stopped and" +
+           " removed, along with the networks Compose created for it. Volumes and images stay, and" +
+           " bringing it up again recreates the containers from the same file.";
 
     public async Task DownProjectAsync(string project, IReadOnlyList<string> ids)
     {

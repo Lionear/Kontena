@@ -14,6 +14,20 @@ namespace Kontena.App.ViewModels;
 /// </summary>
 public partial class MainWindowViewModel
 {
+    /// <summary>
+    /// Open the Projects page at one project (KON-159). The Containers grid shows a stack; this is
+    /// where it is operated as a whole, and the group row is the way across rather than a second copy
+    /// of the same controls.
+    /// </summary>
+    private void ShowProject(string project)
+    {
+        if (ComposeProjects is null)
+            return;
+
+        Navigate("projects");
+        ComposeProjects.SearchText = project;
+    }
+
     [RelayCommand]
     private void Navigate(string key)
     {
@@ -242,7 +256,7 @@ public partial class MainWindowViewModel
             return;
 
         var ci = CultureInfo.InvariantCulture;
-        NavItems[0].Count = Containers.Items.Count.ToString(ci);
+        NavItems[0].Count = Containers.ContainerCount.ToString(ci);
         NavItems[1].Count = (await _engine.ListImagesAsync()).Count.ToString(ci);
         NavItems[2].Count = (await _engine.ListVolumesAsync()).Count.ToString(ci);
         NavItems[3].Count = (await _engine.ListNetworksAsync()).Count.ToString(ci);

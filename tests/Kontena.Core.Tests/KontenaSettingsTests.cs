@@ -113,6 +113,11 @@ public class KontenaSettingsTests
                 ["kubernetes:kind-kind"] = false,
             },
             TerminalLigatures = true,
+            ContainerGrouping = new Dictionary<string, bool>
+            {
+                ["docker"] = false,
+                ["docker-remote:r1"] = true,
+            },
             RecentBuildContexts = ["/srv/build/app", "/srv/build/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
             {
@@ -145,6 +150,9 @@ public class KontenaSettingsTests
 
         // Declined clusters survive as false, which is what stops them being offered again.
         Assert.Equal(original.KnownClusters, restored.KnownClusters);
+
+        // Grouping turned off survives as false — absent means on, so the two must stay tellable apart.
+        Assert.Equal(original.ContainerGrouping, restored.ContainerGrouping);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -158,6 +166,7 @@ public class KontenaSettingsTests
                 KubeconfigPaths = restored.KubeconfigPaths,
                 BackendNames = restored.BackendNames,
                 KnownClusters = restored.KnownClusters,
+                ContainerGrouping = restored.ContainerGrouping,
             },
             restored);
     }

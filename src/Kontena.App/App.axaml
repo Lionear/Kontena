@@ -28,6 +28,7 @@
                     <SolidColorBrush x:Key="PrimaryInk" Color="#08201A"/>
                     <SolidColorBrush x:Key="PrimaryDim" Color="#0F9E7E"/>
                     <SolidColorBrush x:Key="Accent" Color="#7C6BF5"/>
+                    <SolidColorBrush x:Key="AccentSoft" Color="#7C6BF5" Opacity="0.12"/>
                     <SolidColorBrush x:Key="Success" Color="#34D399"/>
                     <SolidColorBrush x:Key="Info" Color="#5AB8FF"/>
                     <SolidColorBrush x:Key="Warn" Color="#F5B14C"/>
@@ -62,6 +63,7 @@
                     <SolidColorBrush x:Key="PrimaryInk" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="PrimaryDim" Color="#0B7D63"/>
                     <SolidColorBrush x:Key="Accent" Color="#6D5CE0"/>
+                    <SolidColorBrush x:Key="AccentSoft" Color="#6D5CE0" Opacity="0.11"/>
                     <SolidColorBrush x:Key="Success" Color="#0E9F6E"/>
                     <SolidColorBrush x:Key="Info" Color="#2F7FE0"/>
                     <SolidColorBrush x:Key="Warn" Color="#956314"/>
@@ -178,6 +180,30 @@
         </Style>
         <Style Selector="Button.qa.danger:pointerover /template/ ContentPresenter">
             <Setter Property="TextElement.Foreground" Value="{DynamicResource Danger}"/>
+        </Style>
+        <!-- A quick action that is a toggle has to look switched on, or it reads as a button that did
+             nothing (KON-117). Border and fill together, never colour alone. -->
+        <Style Selector="Button.qa.on">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Button.qa.on /template/ ContentPresenter">
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Primary}"/>
+        </Style>
+        <!-- A quick action that is only a chevron: no plate, no border. In a list row the box reads
+             as a control in its own right, when all it does is fold the row below it. Hover still
+             lightens the icon, so it is not a dead glyph. -->
+        <Style Selector="Button.qa.bare">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <!-- An icon whose Stroke is set inline keeps that value, so a toggle that wants to change
+             colour leaves the stroke to these two rules instead. -->
+        <Style Selector="Button.qa Path.icon">
+            <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="Button.qa.on Path.icon">
+            <Setter Property="Stroke" Value="{DynamicResource Primary}"/>
         </Style>
 
         <!-- Status dots and the icon glyphs inside buttons are decoration: every one of them sits

@@ -833,8 +833,10 @@ internal static class Program
     // then select the requested tab.
     private static void OpenDetail(MainWindowViewModel vm, string tab)
     {
-        var row = vm.Containers?.Items.FirstOrDefault(c => c.IsRunning)
-                  ?? vm.Containers?.Items.FirstOrDefault();
+        // Containers only — the list holds Compose headings too since KON-159, and a heading has no
+        // detail page to open.
+        var rows = vm.Containers?.Items.OfType<ContainerRowViewModel>().ToList() ?? [];
+        var row = rows.FirstOrDefault(c => c.IsRunning) ?? rows.FirstOrDefault();
         row?.OpenCommand.Execute(null);
         Settle(rounds: 30); // let inspect/logs load
 
