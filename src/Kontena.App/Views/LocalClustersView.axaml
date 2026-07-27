@@ -18,7 +18,7 @@
                        IsVisible="{Binding IsRunning}">
                 <Run Text="Creating"/><Run Text=" "/><Run Text="{Binding CreatingName}" FontFamily="{StaticResource Mono}"/>
             </TextBlock>
-            <TextBlock Text="Kontena drives kind to build a Kubernetes cluster on this machine. A cluster you create here writes its own kubeconfig context, so it turns up in the backend switcher by itself."
+            <TextBlock Text="Kontena drives kind or minikube to build a Kubernetes cluster on this machine. A cluster you create here writes its own kubeconfig context, so it turns up in the backend switcher by itself."
                        FontSize="13.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" MaxWidth="620"
                        HorizontalAlignment="Left" Margin="0,4,0,26"/>
         </StackPanel>
@@ -100,12 +100,28 @@
                                                        Foreground="{DynamicResource Primary}"/>
                                         </Border>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding Facts}" FontSize="12.5"
-                                               Foreground="{DynamicResource TextFaint}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="9">
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    IsVisible="{Binding HasState}" VerticalAlignment="Center">
+                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource Success}" IsVisible="{Binding IsRunning}"/>
+                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource TextFaint}" IsVisible="{Binding !IsRunning}"/>
+                                            <TextBlock Text="{Binding StateText}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextDim}"/>
+                                            <TextBlock Text="·" FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Facts}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextFaint}"/>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
                                             VerticalAlignment="Center" Margin="16,0,0,0">
+                                    <Button Classes="primary" Content="Start" Command="{Binding StartCommand}"
+                                            IsVisible="{Binding CanStart}"/>
+                                    <Button Classes="ghost" Content="Stop" Command="{Binding StopCommand}"
+                                            IsVisible="{Binding CanStop}"/>
                                     <Button Classes="ghost" Content="Use" Command="{Binding UseCommand}"
                                             IsVisible="{Binding CanUse}"/>
                                     <Button Classes="ghost" Content="Delete" Command="{Binding DeleteCommand}"/>
@@ -131,7 +147,7 @@
                 <Border Background="{DynamicResource InfoSoft}" BorderBrush="{DynamicResource Border}"
                         BorderThickness="1" CornerRadius="10" Padding="13,11" IsVisible="{Binding NeedsTooling}">
                     <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"
-                               Text="Kontena needs kind to build a cluster here. Open Manage tooling above to install it, or fetch the official release."/>
+                               Text="Kontena needs kind or minikube to build a cluster here. Open Manage tooling above to install one, or fetch the official release."/>
                 </Border>
 
                 <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerSoftBorder}"
@@ -144,7 +160,7 @@
                 <TextBlock Margin="0,14,0,0" FontSize="12" TextWrapping="Wrap" MaxWidth="560"
                            HorizontalAlignment="Left" Foreground="{DynamicResource TextFaint}"
                            IsVisible="{Binding HasClusters}"
-                           Text="These are the clusters kind owns on this machine. Clusters from anywhere else — a kubeconfig you added, a remote cluster — live under Engines › Clusters."/>
+                           Text="These are the clusters kind and minikube own on this machine. Clusters from anywhere else — a kubeconfig you added, a remote cluster — live under Engines › Clusters."/>
             </StackPanel>
         </Border>
 
@@ -157,34 +173,43 @@
                            HorizontalAlignment="Left" Margin="0,0,0,6"/>
             </StackPanel>
 
-            <!-- The provisioner. One choice today; minikube is drawn so the shape is right before it
-                 arrives, and it is visibly unavailable rather than a button that does nothing. -->
-            <Border Classes="card">
+            <!-- The provisioner. A tool that is not on this machine is visibly unavailable rather
+                 than a tile that does nothing when you press it. -->
+            <Border Classes="card" DataContext="{Binding Form}" x:DataType="vm:NewClusterViewModel"
+                    IsVisible="{Binding ShowProvisioners}">
                 <StackPanel Spacing="12">
                     <TextBlock Text="PROVISIONER" FontSize="11.5" FontWeight="Bold"
                                Foreground="{DynamicResource TextFaint}"/>
 
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-                        <Border Grid.Column="0" CornerRadius="10" Padding="15" BorderThickness="1"
-                                Background="{DynamicResource PrimarySoft}" BorderBrush="{DynamicResource Primary}">
-                            <StackPanel Spacing="5">
-                                <TextBlock Text="kind" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                <TextBlock Text="Each node is a container on the engine you already have. Fastest to create and throw away."
-                                           FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="1" CornerRadius="10" Padding="15" BorderThickness="1"
-                                Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}"
-                                Opacity="0.55" IsHitTestVisible="False">
-                            <StackPanel Spacing="5">
-                                <TextBlock Text="minikube — not available yet" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Text}"/>
-                                <TextBlock Text="A VM or container per cluster, with more drivers and more knobs. Kontena drives kind for now."
-                                           FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Provisioners}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="2"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProvisionerChoiceViewModel">
+                                <Button Classes="pick" Margin="0,0,10,0" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Classes.on="{Binding IsSelected}"
+                                        IsEnabled="{Binding IsUsable}"
+                                        Command="{Binding $parent[ItemsControl].((vm:NewClusterViewModel)DataContext).SelectProvisionerCommand}"
+                                        CommandParameter="{Binding}">
+                                    <StackPanel Spacing="5">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Text}"/>
+                                            <TextBlock Text="{Binding State}" FontSize="12"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFaint}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Purpose}" FontSize="12.5" TextWrapping="Wrap"
+                                                   MaxWidth="280" Foreground="{DynamicResource TextDim}"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
 
@@ -209,18 +234,18 @@
                             </TextBlock>
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Spacing="6">
+                        <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowVersion}">
                             <TextBlock Text="Kubernetes version" FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextDim}"/>
                             <ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding Version, Mode=TwoWay}"
                                       HorizontalAlignment="Stretch"/>
-                            <TextBlock Text="The default is the version this kind release was tested against."
+                            <TextBlock Text="The default is the version this release of the tool was tested against."
                                        FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Grid>
 
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
-                        <StackPanel Grid.Column="0" Spacing="6">
+                        <StackPanel Grid.Column="0" Spacing="6" IsVisible="{Binding ShowHighAvailability}">
                             <TextBlock Text="Control-plane nodes" FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextDim}"/>
                             <ComboBox ItemsSource="{Binding ControlPlaneChoices}" HorizontalAlignment="Stretch"
@@ -229,7 +254,7 @@
                                        FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Spacing="6">
+                        <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowMultiNode}">
                             <TextBlock Text="Worker nodes" FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextDim}"/>
                             <TextBox Text="{Binding WorkerNodes, Mode=TwoWay}"/>
@@ -238,20 +263,54 @@
                         </StackPanel>
                     </Grid>
 
-                    <StackPanel Spacing="6" IsVisible="{Binding PodmanAvailable}">
-                        <TextBlock Text="Container runtime" FontSize="12.5" FontWeight="SemiBold"
+                    <StackPanel Spacing="6" IsVisible="{Binding ShowRuntimes}">
+                        <TextBlock Text="Driver" FontSize="12.5" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextDim}"/>
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <RadioButton GroupName="runtime" Content="Docker" IsChecked="{Binding !UsePodman}"/>
-                            <RadioButton GroupName="runtime" Content="Podman" IsChecked="{Binding UsePodman, Mode=TwoWay}"/>
+                            <RadioButton GroupName="runtime" Content="Automatic"
+                                         IsChecked="{Binding IsDefaultRuntime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Default"/>
+                            <RadioButton GroupName="runtime" Content="Docker" IsVisible="{Binding HasDocker}"
+                                         IsChecked="{Binding IsDockerRuntime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Docker"/>
+                            <RadioButton GroupName="runtime" Content="Podman" IsVisible="{Binding HasPodman}"
+                                         IsChecked="{Binding IsPodmanRuntime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Podman"/>
+                            <RadioButton GroupName="runtime" Content="KVM" IsVisible="{Binding HasKvm2}"
+                                         IsChecked="{Binding IsKvm2Runtime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Kvm2"/>
                         </StackPanel>
-                        <TextBlock Text="Which runtime hosts the nodes. Kontena sets kind's own variable for you."
+                        <TextBlock Text="What hosts the nodes. Automatic lets the tool pick what it prefers on this machine, which is usually right."
                                    FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
                     </StackPanel>
+
+                    <!-- Resources: only meaningful where the nodes are a VM with a fixed size. -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="14" IsVisible="{Binding ShowResources}">
+                        <StackPanel Grid.Column="0" Spacing="6">
+                            <TextBlock Text="CPUs" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <TextBox Text="{Binding Cpus, Mode=TwoWay}" PlaceholderText="the tool's default"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <TextBlock Text="Memory (MB)" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <TextBox Text="{Binding MemoryMb, Mode=TwoWay}" PlaceholderText="the tool's default"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="Leave both empty to let the tool decide. It sizes a cluster it can actually start on this machine, which a number typed once does not."
+                               FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
+                               MaxWidth="560" HorizontalAlignment="Left" IsVisible="{Binding ShowResources}"/>
+
+                    <TextBlock Text="Give CPUs and memory as whole numbers, or leave them empty." FontSize="12"
+                               Foreground="{DynamicResource Danger}" TextWrapping="Wrap"
+                               IsVisible="{Binding HasResourceProblem}"/>
                 </StackPanel>
             </Border>
 
-            <Border Classes="card" DataContext="{Binding Form}" x:DataType="vm:NewClusterViewModel">
+            <Border Classes="card" DataContext="{Binding Form}" x:DataType="vm:NewClusterViewModel"
+                    IsVisible="{Binding ShowPorts}">
                 <StackPanel Spacing="14">
                     <TextBlock Text="PORTS AND INGRESS" FontSize="11.5" FontWeight="Bold"
                                Foreground="{DynamicResource TextFaint}"/>
@@ -295,10 +354,11 @@
                                    Text="Only now. The nodes are containers, and a container's published ports are fixed when it starts — adding one later means building the cluster again."/>
                     </Border>
 
-                    <CheckBox IsChecked="{Binding IngressReady, Mode=TwoWay}"
+                    <CheckBox IsChecked="{Binding IngressReady, Mode=TwoWay}" IsVisible="{Binding ShowIngress}"
                               Content="Prepare the first node for an ingress controller"/>
                     <TextBlock FontSize="12" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left"
                                Margin="0,-8,0,0" Foreground="{DynamicResource TextFaint}"
+                               IsVisible="{Binding ShowIngress}"
                                Text="Adds the ingress-ready=true label that ingress manifests select on. Kontena does not install a controller — that is a workload, and you pick which one."/>
 
                     <CheckBox IsChecked="{Binding WaitForReady, Mode=TwoWay}"

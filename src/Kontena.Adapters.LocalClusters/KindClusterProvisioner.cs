@@ -26,8 +26,9 @@ public sealed class KindClusterProvisioner(IToolRunner runner, ManagedToolStore?
     public string DisplayName => "kind";
 
     /// <summary>
-    /// No pause/resume: kind has no such command, and stopping the node containers behind its back is
-    /// not the same thing — the cluster comes back with a control plane that thinks no time passed.
+    /// No start/stop and no resources: kind has no such command, and its nodes are containers that take
+    /// what the host has. Stopping them behind its back is not the same thing — the cluster comes back
+    /// with a control plane that believes no time passed.
     /// </summary>
     public ProvisionerCapabilities Capabilities { get; } = new()
     {
@@ -36,8 +37,11 @@ public sealed class KindClusterProvisioner(IToolRunner runner, ManagedToolStore?
         PortMappings = true,
         IngressReady = true,
         KubernetesVersion = true,
-        ChooseRuntime = true,
-        PauseResume = false,
+        Runtimes = [LocalClusterRuntime.Docker, LocalClusterRuntime.Podman],
+
+        // No resources: the nodes are containers and take what the host has.
+        Resources = false,
+        StartStop = false,
     };
 
     /// <summary>The kubeconfig context kind writes for a cluster of this name.</summary>
@@ -141,6 +145,18 @@ public sealed class KindClusterProvisioner(IToolRunner runner, ManagedToolStore?
         if (!result.Ok)
             throw new ToolFailedException(invocation.CommandLine, result.ExitCode, result.Complaint);
     }
+
+    /// <summary>
+    /// kind has no stopped state. Its clusters are containers that the tool expects to be running, and
+    /// stopping them behind its back leaves a control plane that comes back believing no time passed —
+    /// so this refuses rather than pretending, and <see cref="Capabilities"/> keeps the UI from asking.
+    /// </summary>
+    public IAsyncEnumerable<ToolLine> StartAsync(string name, CancellationToken ct = default)
+        => throw new NotSupportedException("kind cannot stop or start a cluster; delete and create it again.");
+
+    /// <inheritdoc cref="StartAsync"/>
+    public ValueTask StopAsync(string name, CancellationToken ct = default)
+        => throw new NotSupportedException("kind cannot stop or start a cluster; delete and create it again.");
 
     /// <summary>
     /// How kind is told which runtime to use. Podman is opt-in through kind's own variable; Docker

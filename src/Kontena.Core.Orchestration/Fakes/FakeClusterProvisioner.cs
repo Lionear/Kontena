@@ -18,9 +18,13 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
 
     private readonly List<LocalCluster> _clusters = [];
 
-    public string Provisioner => "fake";
+    /// <summary>
+    /// The id this fake answers to. Settable so a test can stand up two provisioners that are actually
+    /// distinct — a merged list built from one object twice proves nothing about merging.
+    /// </summary>
+    public string Provisioner { get; init; } = "fake";
 
-    public string DisplayName => "Fake";
+    public string DisplayName { get; init; } = "Fake";
 
     public ProvisionerCapabilities Capabilities { get; init; } = new()
     {
@@ -28,6 +32,9 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
         PortMappings = true,
         IngressReady = true,
         KubernetesVersion = true,
+        Runtimes = [LocalClusterRuntime.Docker, LocalClusterRuntime.Podman],
+        Resources = true,
+        StartStop = true,
     };
 
     /// <summary>What <see cref="CheckAsync"/> answers. Set it to a missing tool to build the empty state.</summary>
@@ -40,6 +47,11 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
     /// <summary>Every name that was deleted, in order.</summary>
     public List<string> Deleted { get; } = [];
 
+    /// <summary>Every name that was started, and every one that was stopped, in order.</summary>
+    public List<string> Started { get; } = [];
+
+    public List<string> Stopped { get; } = [];
+
     /// <summary>Lines <see cref="CreateAsync"/> streams. Replace them to rehearse a specific console.</summary>
     public IReadOnlyList<string> CreateOutput { get; init; } =
         ["Ensuring node image", "Preparing nodes", "Starting control-plane", "Ready"];
@@ -48,9 +60,9 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
     public int CreateExitCode { get; init; }
 
     /// <summary>Seed clusters that already exist.</summary>
-    public FakeClusterProvisioner WithCluster(string name)
+    public FakeClusterProvisioner WithCluster(string name, LocalClusterState state = LocalClusterState.Unknown)
     {
-        _clusters.Add(new LocalCluster(name, Provisioner, $"fake-{name}"));
+        _clusters.Add(new LocalCluster(name, Provisioner, $"{Provisioner}-{name}") { State = state });
         return this;
     }
 
@@ -80,7 +92,7 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
         if (CreateExitCode != 0)
             throw new ToolFailedException($"fake create cluster {spec.Name}", CreateExitCode, "fake failure");
 
-        _clusters.Add(new LocalCluster(spec.Name, Provisioner, $"fake-{spec.Name}"));
+        _clusters.Add(new LocalCluster(spec.Name, Provisioner, $"{Provisioner}-{spec.Name}"));
     }
 
     public ValueTask DeleteAsync(string name, CancellationToken ct = default)
@@ -88,5 +100,35 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
         Deleted.Add(name);
         _clusters.RemoveAll(c => string.Equals(c.Name, name, StringComparison.Ordinal));
         return ValueTask.CompletedTask;
+    }
+
+    public async IAsyncEnumerable<ToolLine> StartAsync(
+        string name,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        Started.Add(name);
+
+        foreach (var line in CreateOutput)
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return new ToolLine(ToolOutputKind.Out, line);
+        }
+
+        await Task.CompletedTask;
+        Replace(name, LocalClusterState.Running);
+    }
+
+    public ValueTask StopAsync(string name, CancellationToken ct = default)
+    {
+        Stopped.Add(name);
+        Replace(name, LocalClusterState.Stopped);
+        return ValueTask.CompletedTask;
+    }
+
+    private void Replace(string name, LocalClusterState state)
+    {
+        var index = _clusters.FindIndex(c => string.Equals(c.Name, name, StringComparison.Ordinal));
+        if (index >= 0)
+            _clusters[index] = _clusters[index] with { State = state };
     }
 }

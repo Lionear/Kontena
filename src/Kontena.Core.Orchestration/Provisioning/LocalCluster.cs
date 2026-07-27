@@ -22,4 +22,14 @@ public sealed record LocalCluster(string Name, string Provisioner, string Contex
     /// </para>
     /// </summary>
     public IReadOnlyList<string> Nodes { get; init; } = [];
+
+    /// <summary>
+    /// Whether it is running, as far as the provisioner will say. <see cref="LocalClusterState.Unknown"/>
+    /// is the honest answer for a tool that does not report it — kind has no notion of a stopped
+    /// cluster, so claiming "running" for one of its clusters would be inventing a fact.
+    /// </summary>
+    public LocalClusterState State { get; init; } = LocalClusterState.Unknown;
+
+    /// <summary>What the nodes run on, in the tool's own word ("docker", "kvm2"), or null.</summary>
+    public string? Driver { get; init; }
 }

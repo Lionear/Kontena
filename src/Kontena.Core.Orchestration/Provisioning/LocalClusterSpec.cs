@@ -43,6 +43,15 @@ public sealed record LocalClusterSpec(string Name)
     public LocalClusterRuntime Runtime { get; init; } = LocalClusterRuntime.Default;
 
     /// <summary>
+    /// CPUs for the cluster, or null for the tool's default. Only meaningful where the nodes are a VM
+    /// with a fixed size — a container takes what the host has.
+    /// </summary>
+    public int? Cpus { get; init; }
+
+    /// <summary>Memory in megabytes, or null for the tool's default. Same reasoning as <see cref="Cpus"/>.</summary>
+    public int? MemoryMb { get; init; }
+
+    /// <summary>
     /// How long to wait for the control plane to report ready before giving up. Null asks the tool not
     /// to wait at all, which is its own default: it returns as soon as the nodes are up, and the
     /// cluster becomes usable a moment later.

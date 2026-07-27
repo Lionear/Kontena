@@ -13,4 +13,10 @@ public enum LocalClusterRuntime
 
     /// <summary>Podman.</summary>
     Podman,
+
+    /// <summary>
+    /// A KVM virtual machine (minikube's <c>kvm2</c> driver). Linux only, and a real VM rather than
+    /// containers — which is the reason to pick it: it isolates the cluster from the host kernel.
+    /// </summary>
+    Kvm2,
 }

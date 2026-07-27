@@ -1,13 +1,39 @@
 using Kontena.App.ViewModels;
+using Kontena.Core.Orchestration.Fakes;
 using Kontena.Core.Orchestration.Provisioning;
+using Kontena.Core.Tooling;
 using Xunit;
 
 namespace Kontena.App.Tests;
 
 public class NewClusterViewModelTests
 {
-    private static NewClusterViewModel Form(bool podman = true) =>
-        new(new ProvisionerCapabilities { MultiNode = true, PortMappings = true }, podman);
+    /// <summary>A form over one fake provisioner that can do everything kind can.</summary>
+    private static NewClusterViewModel Form(ProvisionerCapabilities? capabilities = null)
+    {
+        var provisioner = new FakeClusterProvisioner
+        {
+            Capabilities = capabilities ?? new ProvisionerCapabilities
+            {
+                MultiNode = true,
+                HighAvailability = true,
+                PortMappings = true,
+                IngressReady = true,
+                KubernetesVersion = true,
+                Runtimes = [LocalClusterRuntime.Docker, LocalClusterRuntime.Podman],
+            },
+        };
+
+        var choice = new ProvisionerChoiceViewModel(
+            provisioner,
+            new ToolReadiness(
+                new ExternalTool("fake", "fake", ["version"], []),
+                ToolState.Ready, "/fake/bin/fake", "v1.0.0", false, null),
+            "A fake, for testing forms without a cluster tool.");
+
+        return new NewClusterViewModel(
+            [choice], [LocalClusterRuntime.Docker, LocalClusterRuntime.Podman, LocalClusterRuntime.Kvm2]);
+    }
 
     [Fact]
     public void An_empty_form_cannot_be_submitted_and_says_nothing_yet()
@@ -150,7 +176,7 @@ public class NewClusterViewModelTests
     {
         var form = Form();
         form.Name = "dev";
-        form.UsePodman = true;
+        form.SelectRuntimeCommand.Execute("Podman");
 
         Assert.Equal(LocalClusterRuntime.Podman, form.Build()!.Runtime);
     }
