@@ -48,6 +48,9 @@ public static class KindArguments
     /// <summary>The arguments that list what kind owns.</summary>
     public static IReadOnlyList<string> List() => ["get", "clusters"];
 
+    /// <summary>The arguments that list one cluster's node containers.</summary>
+    public static IReadOnlyList<string> Nodes(string name) => ["get", "nodes", "--name", name];
+
     /// <summary>
     /// Which node image to ask for, or null to let kind use the one its release was built against.
     /// </summary>

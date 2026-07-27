@@ -1,0 +1,259 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Kontena.Adapters.Kubernetes;
+using Kontena.Adapters.LocalClusters;
+using Kontena.Core.Orchestration.Provisioning;
+using Kontena.Core.Tooling;
+
+namespace Kontena.App.ViewModels;
+
+/// <summary>Which part of the page is on screen (KON-76).</summary>
+public enum LocalClustersStage
+{
+    /// <summary>The clusters that exist, and the way to make another.</summary>
+    List,
+
+    /// <summary>The create form.</summary>
+    Form,
+
+    /// <summary>A create is running, with the tool's own output on screen.</summary>
+    Running,
+
+    /// <summary>It failed, and the output is still there to read.</summary>
+    Failed,
+}
+
+/// <summary>
+/// Settings › Local clusters — the clusters kind owns on this machine, and making another (KON-76).
+/// <para>
+/// The tooling page from KON-109 lives on inside this one as <see cref="Tooling"/>: once a tool is
+/// present it folds down to a line, because "which binaries are installed" stops being the subject
+/// the moment it is settled. Creating a cluster is what the page is for.
+/// </para>
+/// </summary>
+public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
+{
+    private readonly IClusterProvisioner _provisioner;
+    private readonly ToolReadinessCheck _check;
+
+    private CancellationTokenSource? _running;
+
+    public LocalClustersViewModel(
+        IClusterProvisioner? provisioner = null,
+        IToolRunner? runner = null,
+        ClusterToolingViewModel? tooling = null,
+        ManagedToolStore? store = null)
+    {
+        var toolRunner = runner ?? new ToolRunner();
+        var toolStore = store ?? new ManagedToolStore();
+
+        _provisioner = provisioner ?? new KindClusterProvisioner(toolRunner, toolStore);
+        _check = new ToolReadinessCheck(toolRunner, toolStore);
+        Tooling = tooling ?? new ClusterToolingViewModel(toolRunner, store: toolStore);
+    }
+
+    /// <summary>The KON-109 page, kept whole. Shown in full behind "Manage tooling".</summary>
+    public ClusterToolingViewModel Tooling { get; }
+
+    /// <summary>
+    /// What the shell is talking to right now, asked each time rather than handed over once: this page
+    /// outlives several switches, and a value copied at construction would mark the wrong row.
+    /// </summary>
+    public Func<string?>? ActiveBackendNow { get; init; }
+
+    /// <summary>
+    /// Switches to a cluster; the shell owns the backend list. Answers whether it happened — a cluster
+    /// whose control plane is still settling is not connected yet, and the page keeps offering it.
+    /// </summary>
+    public Func<string, Task<bool>>? RequestUseBackend { get; init; }
+
+    /// <summary>
+    /// A cluster appeared or disappeared. The shell re-reads the kubeconfigs and rebuilds the
+    /// switcher — the provisioner never touches the registry itself.
+    /// </summary>
+    public Func<Task>? RequestClustersChanged { get; init; }
+
+    /// <summary>
+    /// Makes a just-created cluster visible in the switcher (KON-120's one deliberate exception).
+    /// Having to tick a box for a cluster you made here would be the dead-button mistake again.
+    /// </summary>
+    public Action<string>? RequestShowCluster { get; init; }
+
+    public ObservableCollection<LocalClusterRowViewModel> Clusters { get; } = [];
+
+    [ObservableProperty] private LocalClustersStage _stage = LocalClustersStage.List;
+    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] private bool _hasLoaded;
+    [ObservableProperty] private bool _isToolingShown;
+    [ObservableProperty] private string? _error;
+
+    /// <summary>Whether the provisioner's tool is here at all. Decides between "make one" and "get kind".</summary>
+    [ObservableProperty] private bool _canProvision;
+
+    [ObservableProperty] private string _toolSummary = string.Empty;
+
+    private bool _podmanAvailable;
+
+    public bool IsList => Stage == LocalClustersStage.List;
+    public bool IsForm => Stage == LocalClustersStage.Form;
+    public bool IsRunning => Stage == LocalClustersStage.Running;
+    public bool IsFailed => Stage == LocalClustersStage.Failed;
+
+    public bool HasClusters => Clusters.Count > 0;
+    public bool IsEmpty => HasLoaded && !HasClusters && CanProvision;
+
+    /// <summary>Nothing can be made and nothing exists — the page is about getting a tool first.</summary>
+    public bool NeedsTooling => HasLoaded && !CanProvision;
+
+    partial void OnStageChanged(LocalClustersStage value)
+    {
+        OnPropertyChanged(nameof(IsList));
+        OnPropertyChanged(nameof(IsForm));
+        OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(IsFailed));
+    }
+
+    partial void OnCanProvisionChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(NeedsTooling));
+    }
+
+    partial void OnHasLoadedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(NeedsTooling));
+    }
+
+    [RelayCommand]
+    private void ToggleTooling() => IsToolingShown = !IsToolingShown;
+
+    /// <summary>
+    /// Re-read the machine: which tools are here, and which clusters exist. Clears the error, because
+    /// this is a fresh attempt and the previous failure stops being news.
+    /// </summary>
+    [RelayCommand]
+    public async Task LoadAsync()
+    {
+        if (IsLoading || IsRunning)
+            return;
+
+        Error = null;
+        IsLoading = true;
+
+        try
+        {
+            await Tooling.LoadAsync();
+            await RefreshToolStateAsync();
+            await RefreshClustersAsync();
+            HasLoaded = true;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task RefreshToolStateAsync()
+    {
+        var readiness = await _provisioner.CheckAsync();
+        CanProvision = readiness.Usable;
+
+        // The number, not the whole answer: kind replies "kind v0.31.0 go1.25.5 linux/amd64", and the
+        // build details belong on the tooling page, not in a one-line summary.
+        var version = ToolReadinessCheck.Number(readiness.Version) is { } number ? $"v{number}" : readiness.Version;
+
+        ToolSummary = readiness.State switch
+        {
+            ToolState.Ready => $"{_provisioner.DisplayName} {version}",
+            ToolState.Outdated => $"{_provisioner.DisplayName} {version} — older than we test against",
+            ToolState.Unusable => $"{_provisioner.DisplayName} is installed but will not run",
+            _ => $"{_provisioner.DisplayName} is not installed",
+        };
+
+        // Only offer the runtime choice when there is one to make.
+        _podmanAvailable = (await _check.CheckAsync(KnownTools.Podman)).Usable;
+    }
+
+    private async Task RefreshClustersAsync()
+    {
+        var clusters = await _provisioner.ListAsync();
+
+        Clusters.Clear();
+        foreach (var cluster in clusters)
+        {
+            Clusters.Add(new LocalClusterRowViewModel(
+                cluster, BackendFor(cluster) == ActiveBackend, UseAsync, DeleteAsync));
+        }
+
+        OnPropertyChanged(nameof(HasClusters));
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    private async Task UseAsync(LocalClusterRowViewModel row)
+    {
+        if (RequestUseBackend is not null)
+            await RequestUseBackend(BackendFor(row.Cluster));
+    }
+
+    /// <summary>Which backend is active right now, for marking the row that is already open.</summary>
+    private string? ActiveBackend => ActiveBackendNow?.Invoke();
+
+    /// <summary>
+    /// Delete, confirmed as the data loss it is (KON-126). The message says what goes with it, because
+    /// "are you sure" tells nobody what they are about to lose.
+    /// </summary>
+    private Task DeleteAsync(LocalClusterRowViewModel row)
+    {
+        var nodes = row.Cluster.Nodes.Count;
+        var detail = nodes > 0
+            ? $"Its {nodes} node containers are stopped and removed, "
+            : "Its node containers are stopped and removed, ";
+
+        Confirm(
+            $"Delete cluster \"{row.Name}\"?",
+            $"Everything running in it goes with it and cannot be brought back. {detail}" +
+            $"and the kubeconfig context \"{row.Context}\" is removed.",
+            "Delete cluster",
+            () => DeleteCoreAsync(row));
+
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteCoreAsync(LocalClusterRowViewModel row)
+    {
+        Error = null;
+
+        try
+        {
+            await _provisioner.DeleteAsync(row.Name);
+        }
+        catch (Exception ex) when (ex is ToolFailedException or ToolNotFoundException)
+        {
+            Error = ex.Message;
+            return;
+        }
+
+        Clusters.Remove(row);
+        OnPropertyChanged(nameof(HasClusters));
+        OnPropertyChanged(nameof(IsEmpty));
+
+        if (RequestClustersChanged is not null)
+            await RequestClustersChanged();
+
+        await RefreshClustersAsync();
+    }
+
+    /// <summary>The backend id discovery gives this cluster's context, so a row can find its switcher entry.</summary>
+    private static string BackendFor(LocalCluster cluster)
+        => $"{KubernetesAdapterModule.BackendId}:{cluster.Context}";
+
+    public void Dispose()
+    {
+        _running?.Cancel();
+        _running?.Dispose();
+        _running = null;
+        Tooling.Dispose();
+    }
+}

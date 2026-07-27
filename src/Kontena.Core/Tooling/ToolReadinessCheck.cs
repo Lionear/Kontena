@@ -85,6 +85,23 @@ public sealed partial class ToolReadinessCheck(IToolRunner runner, ManagedToolSt
         return false;
     }
 
+    /// <summary>
+    /// Just the version number out of whatever the tool answered — <c>kind v0.31.0 go1.25.5
+    /// linux/amd64</c> becomes <c>0.31.0</c>. Null when there is no number in there at all.
+    /// <para>
+    /// For showing, not for comparing: the full line is the honest answer to "what is installed", but
+    /// it is too long to sit in a summary next to three other tools.
+    /// </para>
+    /// </summary>
+    public static string? Number(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var match = VersionPattern().Match(text);
+        return match.Success ? match.Value : null;
+    }
+
     private static int[] Numbers(string text)
     {
         var match = VersionPattern().Match(text);
