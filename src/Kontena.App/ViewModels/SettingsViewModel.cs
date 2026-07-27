@@ -146,9 +146,9 @@ public partial class ClusterChoiceRow : ViewModelBase
 }
 
 /// <summary>
-/// The Settings page: General (appearance + startup), Engines (auto-detect,
-/// default engine, engine list) and About. Every change persists immediately via
-/// the <see cref="SettingsStore"/>; theme changes apply live.
+/// The Settings page: General (appearance + startup), Engines (auto-detect, default engine, engine
+/// list), Registries, Updates and Local clusters. Every change persists immediately via the
+/// <see cref="SettingsStore"/>; theme changes apply live.
 /// </summary>
 public partial class SettingsViewModel : ViewModelBase
 {
@@ -267,7 +267,6 @@ public partial class SettingsViewModel : ViewModelBase
         // since the page was built.
         if (Category == "registries")
             RefreshRegistries();
-        OnPropertyChanged(nameof(IsAbout));
     }
 
     public bool IsRegistries => Category == "registries";
@@ -275,7 +274,6 @@ public partial class SettingsViewModel : ViewModelBase
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
     public bool IsUpdates => Category == "updates";
-    public bool IsAbout => Category == "about";
 
     /// <summary>
     /// Local clusters (KON-109). An init property rather than a thirteenth constructor parameter —
@@ -507,10 +505,6 @@ public partial class SettingsViewModel : ViewModelBase
     /// find out except by trying.
     /// </summary>
     public bool HasKeychain => _secrets.IsAvailable;
-
-    public string KeychainStatus => _secrets.IsAvailable
-        ? "Credentials are stored in your system keychain, never in Kontena's own files. You can inspect and revoke them there."
-        : "No system keychain is reachable on this session, so Kontena cannot store credentials. It will not write them anywhere else instead.";
 
     // ── Registries (KON-114) ────────────────────────────────────────────────
 

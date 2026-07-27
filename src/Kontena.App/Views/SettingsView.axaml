@@ -97,12 +97,6 @@
                         <TextBlock Grid.Column="1" Text="Local clusters" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
-                <Button Classes="snav" Classes.on="{Binding IsAbout}" Command="{Binding SelectCategoryCommand}" CommandParameter="about">
-                    <Grid ColumnDefinitions="Auto,*">
-                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
-                        <TextBlock Grid.Column="1" Text="About" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                    </Grid>
-                </Button>
             </StackPanel>
         </Border>
 
@@ -670,42 +664,6 @@
 
                 <!-- Local clusters (KON-109) — its own view, so this file does not grow a sixth page. -->
                 <views:ClusterToolingView DataContext="{Binding ClusterTooling}" IsVisible="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).IsClusters}"/>
-
-                <!-- About -->
-                <StackPanel IsVisible="{Binding IsAbout}" Spacing="0">
-                    <TextBlock Text="About" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                    <TextBlock Text="One UI. Any engine. Zero friction." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
-
-                    <Border Classes="card">
-                        <StackPanel Spacing="16">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <Image Source="{StaticResource KontenaLogo}" Width="36" Height="36" VerticalAlignment="Center"/>
-                                <StackPanel VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock Text="Kontena" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                    <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}">
-                                        <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
-                                        <Run Text="  ·  source-available"/>
-                                    </TextBlock>
-                                </StackPanel>
-                            </StackPanel>
-                            <Border Height="1" Background="{DynamicResource Border}"/>
-                            <TextBlock FontSize="12.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
-                                       Text="A cross-platform desktop app to manage containers through one UI, regardless of the underlying runtime engine — Docker, Podman, and (later) Apple container."/>
-                            <TextBlock FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"
-                                       Text="github.com/Lionear/Kontena  ·  kontena.app"/>
-                            <Border Height="1" Background="{DynamicResource Border}"/>
-
-                            <!-- Says whether the guarantee in CONTRIBUTING actually holds here (KON-52). -->
-                            <StackPanel Orientation="Horizontal" Spacing="11">
-                                <Path Classes="icon" Width="15" Height="15" VerticalAlignment="Top" Margin="0,2,0,0"
-                                      Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}"/>
-                                <TextBlock Text="{Binding KeychainStatus}" FontSize="12.5" TextWrapping="Wrap"
-                                           LineHeight="19" HorizontalAlignment="Left" MaxWidth="620"
-                                           Foreground="{DynamicResource TextFaint}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
 
             </StackPanel>
         </ScrollViewer>

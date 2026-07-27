@@ -80,6 +80,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         // holds no secret of its own.
         _registryCredentials = new RegistryCredentials(_secrets, store.Load);
 
+        // Built here rather than with the other pages (KON-135): About says nothing about a backend,
+        // so it has to stay reachable when there is no working one to say it about.
+        About = new AboutViewModel(_secrets, ShowActivity);
+
         SyncThemeToggleIcon();
         _ = InitAsync();
     }
@@ -100,16 +104,21 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private SettingsViewModel? _settingsPage;
     [ObservableProperty] private ActivityViewModel? _activity;
 
+    /// <summary>The About page (KON-135). Never null — it needs no backend to say what it says.</summary>
+    public AboutViewModel About { get; }
+
     /// <summary>The page shown in the content area.</summary>
     [ObservableProperty] private object? _currentPage;
 
     public bool IsActivitySelected => Activity is not null && ReferenceEquals(CurrentPage, Activity);
     public bool IsSettingsSelected => SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
+    public bool IsAboutSelected => ReferenceEquals(CurrentPage, About);
 
     partial void OnCurrentPageChanged(object? value)
     {
         OnPropertyChanged(nameof(IsActivitySelected));
         OnPropertyChanged(nameof(IsSettingsSelected));
+        OnPropertyChanged(nameof(IsAboutSelected));
     }
 
     /// <summary>The active modal dialog (e.g. Run container), or null when none.</summary>
@@ -1064,6 +1073,17 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             return;
 
         CurrentPage = SettingsPage;
+        SearchText = string.Empty;
+        foreach (var item in NavItems)
+            item.IsSelected = false;
+    }
+
+    [RelayCommand]
+    private void ShowAbout()
+    {
+        DisposeDetail();
+        CloseDialog();
+        CurrentPage = About;
         SearchText = string.Empty;
         foreach (var item in NavItems)
             item.IsSelected = false;
