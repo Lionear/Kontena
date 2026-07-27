@@ -59,7 +59,7 @@ public partial class ContainerRowViewModel : ObservableObject
 
     public string PortsText => _c.Ports.Count == 0
         ? "—"
-        : string.Join("  ", _c.Ports.Select(p => $":{p.HostPort}→{p.ContainerPort}"));
+        : string.Join("  ", _c.Ports.Select(p => $"{p.HostPort}→{p.ContainerPort}"));
 
     /// <summary>Status dot color, derived from the normalized state.</summary>
     public IBrush StatusBrush => new SolidColorBrush(Color.Parse(_c.State switch
