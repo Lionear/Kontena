@@ -190,6 +190,13 @@
         <Style Selector="Button.qa.on /template/ ContentPresenter">
             <Setter Property="TextElement.Foreground" Value="{DynamicResource Primary}"/>
         </Style>
+        <!-- A quick action that is only a chevron: no plate, no border. In a list row the box reads
+             as a control in its own right, when all it does is fold the row below it. Hover still
+             lightens the icon, so it is not a dead glyph. -->
+        <Style Selector="Button.qa.bare">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
         <!-- An icon whose Stroke is set inline keeps that value, so a toggle that wants to change
              colour leaves the stroke to these two rules instead. -->
         <Style Selector="Button.qa Path.icon">

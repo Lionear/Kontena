@@ -209,7 +209,7 @@
                                     <Grid Margin="{DynamicResource RowMargin}" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158" VerticalAlignment="Center">
                                         <!-- Sized to the 24px status column rather than the default 30, so it
                                              cannot lean into the name beside it. -->
-                                        <Button Grid.Column="0" Classes="qa" Command="{Binding ToggleCommand}"
+                                        <Button Grid.Column="0" Classes="qa bare" Command="{Binding ToggleCommand}"
                                                 Width="22" Height="22" Margin="-2,0,0,0"
                                                 HorizontalAlignment="Left" VerticalAlignment="Center"
                                                 IsVisible="{Binding !IsOpen}"
@@ -217,7 +217,7 @@
                                             <Path Classes="icon" Width="13" Height="13"
                                                   Data="{StaticResource IconChevronRight}"/>
                                         </Button>
-                                        <Button Grid.Column="0" Classes="qa" Command="{Binding ToggleCommand}"
+                                        <Button Grid.Column="0" Classes="qa bare" Command="{Binding ToggleCommand}"
                                                 Width="22" Height="22" Margin="-2,0,0,0"
                                                 HorizontalAlignment="Left" VerticalAlignment="Center"
                                                 IsVisible="{Binding IsOpen}"
