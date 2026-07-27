@@ -12,7 +12,7 @@
     <Grid RowDefinitions="Auto,*">
 
         <!-- Header -->
-        <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16">
+        <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16,24,0">
             <StackPanel Spacing="14">
                 <Grid ColumnDefinitions="*,Auto">
                   <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
@@ -83,11 +83,36 @@
 
                 <!-- Tabs -->
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                    <Button Classes="tab" Classes.on="{Binding IsOverviewSelected}" Command="{Binding SelectTabCommand}" CommandParameter="overview">Overview</Button>
-                    <Button Classes="tab" Classes.on="{Binding IsLogsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="logs">Logs</Button>
-                    <Button Classes="tab" Classes.on="{Binding IsShellSelected}" Command="{Binding SelectTabCommand}" CommandParameter="shell">Shell</Button>
-                    <Button Classes="tab" Classes.on="{Binding IsEventsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="events">Events</Button>
-                    <Button Classes="tab" Classes.on="{Binding IsYamlSelected}" Command="{Binding SelectTabCommand}" CommandParameter="yaml">YAML</Button>
+                    <Button Classes="tab" Classes.on="{Binding IsOverviewSelected}" Command="{Binding SelectTabCommand}" CommandParameter="overview">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
+                            <TextBlock Text="Overview" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsLogsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="logs">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconLogs}"/>
+                            <TextBlock Text="Logs" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsShellSelected}" Command="{Binding SelectTabCommand}" CommandParameter="shell">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconTerminal}"/>
+                            <TextBlock Text="Shell" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsEventsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="events">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconActivity}"/>
+                            <TextBlock Text="Events" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsYamlSelected}" Command="{Binding SelectTabCommand}" CommandParameter="yaml">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconLayers}"/>
+                            <TextBlock Text="YAML" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </StackPanel>
         </Border>
