@@ -4,9 +4,10 @@ using Xunit;
 namespace Kontena.Adapters.LocalClusters.Tests;
 
 /// <summary>
-/// Reading <c>minikube profile list -o json</c>. The samples here are the shape minikube documents;
-/// the point of most of these tests is what happens when it is <i>not</i> that shape, because that is
-/// the case a version bump produces and an empty cluster list is an expensive way to find out.
+/// Reading <c>minikube profile list -o json</c>. The samples here are minikube's own output, taken
+/// from the tool rather than from its documentation (KON-142); the point of most of these tests is
+/// what happens when it is <i>not</i> that shape, because that is the case a version bump produces
+/// and an empty cluster list is an expensive way to find out.
 /// </summary>
 public class MinikubeProfilesTests
 {
@@ -16,7 +17,7 @@ public class MinikubeProfilesTests
           "valid": [
             {
               "Name": "dev",
-              "Status": "Running",
+              "Status": "OK",
               "Config": {
                 "Name": "dev",
                 "Driver": "docker",
@@ -63,6 +64,49 @@ public class MinikubeProfilesTests
     {
         // minikube leaves the first node's name empty in its own output.
         Assert.All(MinikubeProfiles.Parse(Sample, "minikube")[0].Nodes, n => Assert.NotEmpty(n));
+    }
+
+    [Fact]
+    public void A_running_profile_says_OK_rather_than_Running()
+    {
+        // Verbatim from minikube v1.38.1, trimmed to the fields that are read. "OK" is the rollup over
+        // the profile's components; "Running" only appears in the per-node output, which this command
+        // does not print. Reading "OK" as unknown cost every running cluster its Stop button (KON-142).
+        const string json = """
+            {
+              "invalid": [],
+              "valid": [
+                {
+                  "Name": "test",
+                  "Status": "OK",
+                  "Config": {
+                    "Name": "test",
+                    "Driver": "docker",
+                    "KubernetesConfig": { "KubernetesVersion": "v1.35.1", "ClusterName": "test" },
+                    "Nodes": [ { "Name": "", "IP": "192.168.49.2", "ControlPlane": true } ]
+                  },
+                  "Active": false,
+                  "ActiveKubeContext": true
+                }
+              ]
+            }
+            """;
+
+        var cluster = Assert.Single(MinikubeProfiles.Parse(json, "minikube"));
+
+        Assert.Equal(LocalClusterState.Running, cluster.State);
+        Assert.Equal("docker", cluster.Driver);
+        Assert.Single(cluster.Nodes);
+    }
+
+    [Fact]
+    public void Running_is_taken_as_running_too()
+    {
+        // Kept alongside "OK": which word a version prints is not something we control, and the cost of
+        // accepting both is nothing.
+        const string json = """{"valid":[{"Name":"dev","Status":"Running","Config":{"Name":"dev"}}]}""";
+
+        Assert.Equal(LocalClusterState.Running, MinikubeProfiles.Parse(json, "minikube")[0].State);
     }
 
     [Fact]

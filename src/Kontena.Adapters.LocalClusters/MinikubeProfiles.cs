@@ -74,10 +74,16 @@ public static class MinikubeProfiles
     /// minikube's status words, mapped onto the three states Kontena has. Anything it invents later
     /// lands on Unknown rather than being guessed into Running — an unknown state costs a greyed-out
     /// button; a wrong one costs a Start that does nothing.
+    /// <para>
+    /// <c>OK</c> is what a healthy profile actually reports here (measured against minikube v1.38.1):
+    /// this field is the rollup over the profile's components, not a machine state, and it only reads
+    /// <c>Running</c> in the per-node output. Reading it as unknown left every running cluster without
+    /// its Stop button (KON-142).
+    /// </para>
     /// </summary>
     private static LocalClusterState StateOf(string? status) => status switch
     {
-        "Running" => LocalClusterState.Running,
+        "OK" or "Running" => LocalClusterState.Running,
         "Stopped" or "Paused" => LocalClusterState.Stopped,
         _ => LocalClusterState.Unknown,
     };
