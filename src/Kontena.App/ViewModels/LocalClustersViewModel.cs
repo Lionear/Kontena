@@ -17,7 +17,7 @@ public enum LocalClustersStage
     /// <summary>The create form.</summary>
     Form,
 
-    /// <summary>A create is running, with the tool's own output on screen.</summary>
+    /// <summary>Something is running — a create or a start — with the tool's own output on screen.</summary>
     Running,
 
     /// <summary>It failed, and the output is still there to read.</summary>
@@ -25,7 +25,8 @@ public enum LocalClustersStage
 }
 
 /// <summary>
-/// Settings › Local clusters — the clusters kind owns on this machine, and making another (KON-76).
+/// Settings › Local clusters — the clusters kind and minikube own on this machine, and making another
+/// (KON-76, KON-77).
 /// <para>
 /// The tooling page from KON-109 lives on inside this one as <see cref="Tooling"/>: once a tool is
 /// present it folds down to a line, because "which binaries are installed" stops being the subject
@@ -34,13 +35,23 @@ public enum LocalClustersStage
 /// </summary>
 public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
 {
-    private readonly IClusterProvisioner _provisioner;
+    private readonly IReadOnlyList<IClusterProvisioner> _provisioners;
     private readonly ToolReadinessCheck _check;
 
+    /// <summary>What each provisioner is for, in the one line the form shows under its name.</summary>
+    private static readonly Dictionary<string, string> Purposes = new(StringComparer.Ordinal)
+    {
+        [KindClusterProvisioner.Id] =
+            "Each node is a container on the engine you already have. Fastest to create and throw away.",
+        [MinikubeClusterProvisioner.Id] =
+            "A VM or container per cluster, with drivers and resource limits — and it can be stopped and started again.",
+    };
+
     private CancellationTokenSource? _running;
+    private IReadOnlyList<LocalClusterRuntime> _availableRuntimes = [LocalClusterRuntime.Docker];
 
     public LocalClustersViewModel(
-        IClusterProvisioner? provisioner = null,
+        IReadOnlyList<IClusterProvisioner>? provisioners = null,
         IToolRunner? runner = null,
         ClusterToolingViewModel? tooling = null,
         ManagedToolStore? store = null)
@@ -48,7 +59,12 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
         var toolRunner = runner ?? new ToolRunner();
         var toolStore = store ?? new ManagedToolStore();
 
-        _provisioner = provisioner ?? new KindClusterProvisioner(toolRunner, toolStore);
+        _provisioners = provisioners ??
+        [
+            new KindClusterProvisioner(toolRunner, toolStore),
+            new MinikubeClusterProvisioner(toolRunner, toolStore),
+        ];
+
         _check = new ToolReadinessCheck(toolRunner, toolStore);
         Tooling = tooling ?? new ClusterToolingViewModel(toolRunner, store: toolStore);
     }
@@ -82,18 +98,19 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<LocalClusterRowViewModel> Clusters { get; } = [];
 
+    /// <summary>Every provisioner Kontena knows, with the state of its tool on this machine.</summary>
+    public ObservableCollection<ProvisionerChoiceViewModel> Provisioners { get; } = [];
+
     [ObservableProperty] private LocalClustersStage _stage = LocalClustersStage.List;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private bool _isToolingShown;
     [ObservableProperty] private string? _error;
 
-    /// <summary>Whether the provisioner's tool is here at all. Decides between "make one" and "get kind".</summary>
+    /// <summary>Whether anything here can build a cluster. Decides between "make one" and "get a tool".</summary>
     [ObservableProperty] private bool _canProvision;
 
     [ObservableProperty] private string _toolSummary = string.Empty;
-
-    private bool _podmanAvailable;
 
     public bool IsList => Stage == LocalClustersStage.List;
     public bool IsForm => Stage == LocalClustersStage.Form;
@@ -157,39 +174,85 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
 
     private async Task RefreshToolStateAsync()
     {
-        var readiness = await _provisioner.CheckAsync();
-        CanProvision = readiness.Usable;
+        Provisioners.Clear();
 
-        // The number, not the whole answer: kind replies "kind v0.31.0 go1.25.5 linux/amd64", and the
-        // build details belong on the tooling page, not in a one-line summary.
-        var version = ToolReadinessCheck.Number(readiness.Version) is { } number ? $"v{number}" : readiness.Version;
+        var summaries = new List<string>();
 
-        ToolSummary = readiness.State switch
+        foreach (var provisioner in _provisioners)
         {
-            ToolState.Ready => $"{_provisioner.DisplayName} {version}",
-            ToolState.Outdated => $"{_provisioner.DisplayName} {version} — older than we test against",
-            ToolState.Unusable => $"{_provisioner.DisplayName} is installed but will not run",
-            _ => $"{_provisioner.DisplayName} is not installed",
-        };
+            var readiness = await provisioner.CheckAsync();
+            var purpose = Purposes.TryGetValue(provisioner.Provisioner, out var text) ? text : string.Empty;
+            var choice = new ProvisionerChoiceViewModel(provisioner, readiness, purpose);
 
-        // Only offer the runtime choice when there is one to make.
-        _podmanAvailable = (await _check.CheckAsync(KnownTools.Podman)).Usable;
+            Provisioners.Add(choice);
+            summaries.Add($"{choice.Name} {choice.State}");
+        }
+
+        CanProvision = Provisioners.Any(p => p.IsUsable);
+        ToolSummary = string.Join("   ·   ", summaries);
+
+        _availableRuntimes = await AvailableRuntimesAsync();
+    }
+
+    /// <summary>
+    /// Which runtimes this machine could actually host nodes on. Docker is assumed present — Kontena is
+    /// a container app, and where it is not there the tool says so in its own words. Podman is checked
+    /// through the tool seam, and kvm2 is Linux-only by construction.
+    /// </summary>
+    private async Task<IReadOnlyList<LocalClusterRuntime>> AvailableRuntimesAsync()
+    {
+        var runtimes = new List<LocalClusterRuntime> { LocalClusterRuntime.Docker };
+
+        if ((await _check.CheckAsync(KnownTools.Podman)).Usable)
+            runtimes.Add(LocalClusterRuntime.Podman);
+
+        if (OperatingSystem.IsLinux())
+            runtimes.Add(LocalClusterRuntime.Kvm2);
+
+        return runtimes;
     }
 
     private async Task RefreshClustersAsync()
     {
-        var clusters = await _provisioner.ListAsync();
+        var found = new List<LocalCluster>();
+
+        foreach (var provisioner in _provisioners)
+        {
+            // One tool being absent or broken must not cost the other's clusters: an empty list from a
+            // provisioner is a normal answer, and a throw here would empty the whole page.
+            try
+            {
+                found.AddRange(await provisioner.ListAsync());
+            }
+            catch (ToolFailedException)
+            {
+            }
+        }
 
         Clusters.Clear();
-        foreach (var cluster in clusters)
+        foreach (var cluster in found)
         {
             Clusters.Add(new LocalClusterRowViewModel(
-                cluster, BackendFor(cluster) == ActiveBackend, UseAsync, DeleteAsync));
+                cluster,
+                BackendFor(cluster) == ActiveBackend,
+                CapabilitiesFor(cluster),
+                UseAsync,
+                DeleteAsync,
+                StartAsync,
+                StopAsync));
         }
 
         OnPropertyChanged(nameof(HasClusters));
         OnPropertyChanged(nameof(IsEmpty));
     }
+
+    /// <summary>The provisioner that owns this cluster, or null when it came from a tool we dropped.</summary>
+    private IClusterProvisioner? ProvisionerFor(LocalCluster cluster) =>
+        _provisioners.FirstOrDefault(p =>
+            string.Equals(p.Provisioner, cluster.Provisioner, StringComparison.Ordinal));
+
+    private ProvisionerCapabilities CapabilitiesFor(LocalCluster cluster) =>
+        ProvisionerFor(cluster)?.Capabilities ?? new ProvisionerCapabilities();
 
     private async Task UseAsync(LocalClusterRowViewModel row)
     {
@@ -225,9 +288,12 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
     {
         Error = null;
 
+        if (ProvisionerFor(row.Cluster) is not { } provisioner)
+            return;
+
         try
         {
-            await _provisioner.DeleteAsync(row.Name);
+            await provisioner.DeleteAsync(row.Name);
         }
         catch (Exception ex) when (ex is ToolFailedException or ToolNotFoundException)
         {

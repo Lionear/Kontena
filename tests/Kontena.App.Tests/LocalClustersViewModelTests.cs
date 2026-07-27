@@ -22,7 +22,7 @@ public class LocalClustersViewModelTests
         Func<Task>? changed = null,
         Func<string, Task<bool>>? use = null,
         string? active = null)
-        => new(provisioner, new FakeToolRunner(), store: EmptyStore())
+        => new([provisioner], new FakeToolRunner(), store: EmptyStore())
         {
             RequestShowCluster = show,
             RequestClustersChanged = changed,
@@ -176,7 +176,7 @@ public class LocalClustersViewModelTests
     public async Task Delete_without_a_confirm_handler_does_nothing_at_all()
     {
         var provisioner = new FakeClusterProvisioner().WithCluster("dev");
-        var page = new LocalClustersViewModel(provisioner, new FakeToolRunner(), store: EmptyStore());
+        var page = new LocalClustersViewModel([provisioner], new FakeToolRunner(), store: EmptyStore());
         await page.LoadAsync();
 
         await page.Clusters[0].DeleteCommand.ExecuteAsync(null);
@@ -223,6 +223,103 @@ public class LocalClustersViewModelTests
 
         Assert.True(page.HasCreated);
         Assert.Equal("dev", page.Created!.Name);
+    }
+
+    [Fact]
+    public async Task A_stopped_cluster_offers_a_start_and_not_a_switch()
+    {
+        var page = Page(new FakeClusterProvisioner().WithCluster("dev", LocalClusterState.Stopped));
+        await page.LoadAsync();
+
+        var row = Assert.Single(page.Clusters);
+        Assert.True(row.CanStart);
+        Assert.False(row.CanStop);
+
+        // Switching to a cluster whose apiserver is not listening would present it as a broken backend.
+        Assert.False(row.CanUse);
+        Assert.Equal("Stopped", row.StateText);
+    }
+
+    [Fact]
+    public async Task A_running_cluster_offers_a_stop()
+    {
+        var page = Page(new FakeClusterProvisioner().WithCluster("dev", LocalClusterState.Running));
+        await page.LoadAsync();
+
+        var row = Assert.Single(page.Clusters);
+        Assert.True(row.CanStop);
+        Assert.False(row.CanStart);
+        Assert.True(row.CanUse);
+    }
+
+    [Fact]
+    public async Task A_provisioner_that_cannot_stop_shows_neither_button()
+    {
+        var provisioner = new FakeClusterProvisioner
+        {
+            Capabilities = new ProvisionerCapabilities { MultiNode = true },
+        }.WithCluster("dev", LocalClusterState.Stopped);
+
+        var page = Page(provisioner);
+        await page.LoadAsync();
+
+        var row = Assert.Single(page.Clusters);
+        Assert.False(row.CanStart);
+        Assert.False(row.CanStop);
+    }
+
+    [Fact]
+    public async Task Starting_streams_the_output_and_ends_on_the_cluster()
+    {
+        var switched = new List<string>();
+        var provisioner = new FakeClusterProvisioner().WithCluster("dev", LocalClusterState.Stopped);
+        var page = Page(provisioner, use: id => { switched.Add(id); return Task.FromResult(true); });
+
+        await page.LoadAsync();
+        await page.Clusters[0].StartCommand.ExecuteAsync(null);
+
+        Assert.Equal(["dev"], provisioner.Started);
+        Assert.NotEmpty(page.Output);
+        Assert.True(page.IsList);
+        Assert.Equal(["kubernetes:fake-dev"], switched);
+    }
+
+    [Fact]
+    public async Task Stopping_asks_first_and_is_not_dressed_up_as_data_loss()
+    {
+        ConfirmRequest? asked = null;
+        var provisioner = new FakeClusterProvisioner().WithCluster("dev", LocalClusterState.Running);
+
+        var page = new LocalClustersViewModel([provisioner], new FakeToolRunner(), store: EmptyStore())
+        {
+            RequestConfirm = request => { asked = request; _ = request.OnConfirm(); },
+        };
+
+        await page.LoadAsync();
+        await page.Clusters[0].StopCommand.ExecuteAsync(null);
+
+        Assert.Equal(["dev"], provisioner.Stopped);
+
+        // KON-126: nothing is lost, so it must not be presented as loss — a dialog that cries wolf
+        // teaches people to click these away, and then the delete one stops working too.
+        Assert.NotNull(asked);
+        Assert.False(asked!.Destructive);
+    }
+
+    [Fact]
+    public async Task Clusters_from_both_provisioners_end_up_in_one_list()
+    {
+        var kindLike = new FakeClusterProvisioner().WithCluster("one");
+        var otherLike = new FakeClusterProvisioner { Provisioner = "other", DisplayName = "Other" }
+            .WithCluster("two");
+
+        var page = new LocalClustersViewModel(
+            [kindLike, otherLike], new FakeToolRunner(), store: EmptyStore());
+
+        await page.LoadAsync();
+
+        Assert.Equal(["one", "two"], page.Clusters.Select(c => c.Name));
+        Assert.Equal(2, page.Provisioners.Count);
     }
 
     [Fact]

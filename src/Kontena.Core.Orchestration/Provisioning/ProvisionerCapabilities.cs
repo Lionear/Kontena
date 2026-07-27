@@ -22,9 +22,20 @@ public sealed record ProvisionerCapabilities
     /// <summary>A specific Kubernetes version can be chosen for the nodes.</summary>
     public bool KubernetesVersion { get; init; }
 
-    /// <summary>Which container runtime hosts the nodes can be chosen, rather than taken from the tool's default.</summary>
-    public bool ChooseRuntime { get; init; }
+    /// <summary>
+    /// Which runtimes or drivers this provisioner can host nodes on, or empty when it takes whatever
+    /// the tool picks. A list rather than a flag: kind runs on Docker or Podman, minikube adds its own
+    /// drivers, and the form should offer exactly what the chosen tool accepts.
+    /// </summary>
+    public IReadOnlyList<LocalClusterRuntime> Runtimes { get; init; } = [];
 
-    /// <summary>A cluster can be paused and resumed without deleting it. minikube can; kind cannot.</summary>
-    public bool PauseResume { get; init; }
+    /// <summary>CPU and memory can be set per cluster. A VM has to be told; a container does not.</summary>
+    public bool Resources { get; init; }
+
+    /// <summary>
+    /// A cluster can be stopped and started again without deleting it. minikube can; kind cannot —
+    /// stopping its node containers behind its back is not the same thing, because the control plane
+    /// comes back believing no time passed.
+    /// </summary>
+    public bool StartStop { get; init; }
 }

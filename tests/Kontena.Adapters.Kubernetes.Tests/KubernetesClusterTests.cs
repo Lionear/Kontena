@@ -214,51 +214,98 @@ public class KubernetesClusterEngineTests
     // ── Exec and port-forward (KON-97) ───────────────────────────────────────
 
     /// <summary>
-    /// A running pod with a shell to exec into. kube-system always has one, so these tests need no
-    /// fixture of their own — and read-only commands cannot disturb it.
+    /// Any running pod in kube-system. Enough for port-forward, which needs a listening port and not a
+    /// shell; the exec test picks its own (see <see cref="RunningPodsAsync"/>).
     /// </summary>
     private static async Task<(ResourceRef Pod, string Container)> AnyRunningPodAsync(KubernetesClusterEngine engine)
     {
-        var pod = (await engine.ListPodsAsync("kube-system"))
-            .FirstOrDefault(p => p.Phase == PodPhase.Running && p.Containers.Count > 0 && p.ReadyContainers > 0);
+        var pods = await RunningPodsAsync(engine);
 
-        Skip.If(pod is null, "No running pod in kube-system to exec into.");
-        return (new ResourceRef(GroupVersionKind.Pod, pod!.Namespace, pod.Name), pod.Containers[0].Name);
+        Skip.If(pods.Count == 0, "No running pod in kube-system.");
+        return pods[0];
+    }
+
+    /// <summary>
+    /// Every running pod in kube-system, in the order the apiserver lists them.
+    /// <para>
+    /// Plural on purpose: most of these images are distroless and have no shell at all. On a fresh kind
+    /// cluster the first one is coredns, which is exactly that — so a test that took "the first running
+    /// pod" and expected to exec into it failed on the cluster rather than on the code.
+    /// </para>
+    /// </summary>
+    private static async Task<IReadOnlyList<(ResourceRef Pod, string Container)>> RunningPodsAsync(
+        KubernetesClusterEngine engine)
+    {
+        return
+        [
+            .. (await engine.ListPodsAsync("kube-system"))
+                .Where(p => p.Phase == PodPhase.Running && p.Containers.Count > 0 && p.ReadyContainers > 0)
+                .Select(p => (new ResourceRef(GroupVersionKind.Pod, p.Namespace, p.Name), p.Containers[0].Name)),
+        ];
     }
 
     [SkippableFact]
     public async Task Exec_runs_a_command_and_streams_its_output()
     {
         using var engine = await RequireClusterAsync();
-        var (pod, container) = await AnyRunningPodAsync(engine);
+        var pods = await RunningPodsAsync(engine);
+        Skip.If(pods.Count == 0, "No running pod in kube-system to exec into.");
 
-        await using var session = await engine.StartExecSessionAsync(
-            pod, container, new ExecRequest { Command = ["/bin/sh"], Tty = true });
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var output = new StringBuilder();
-        var reader = Task.Run(
-            async () =>
+        // Try them in turn rather than betting on the first: which kube-system images carry a shell
+        // differs per distribution and per version, and a pod without one answers with silence.
+        foreach (var (pod, container) in pods)
+        {
+            if (await EchoThroughShellAsync(engine, pod, container) is { } output
+                && output.Contains("KONTENA-EXEC-OK", StringComparison.Ordinal))
             {
-                try
+                return;
+            }
+        }
+
+        Skip.If(true, "No pod in kube-system has a shell to exec into.");
+    }
+
+    /// <summary>
+    /// Open a shell in one container and echo a marker through it. Returns what came back, or null when
+    /// the container has no shell — which is not a failure of the code under test.
+    /// </summary>
+    private static async Task<string?> EchoThroughShellAsync(
+        KubernetesClusterEngine engine, ResourceRef pod, string container)
+    {
+        try
+        {
+            await using var session = await engine.StartExecSessionAsync(
+                pod, container, new ExecRequest { Command = ["/bin/sh"], Tty = true });
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var output = new StringBuilder();
+            var reader = Task.Run(
+                async () =>
                 {
-                    await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+                    try
                     {
-                        output.Append(Encoding.UTF8.GetString(chunk.Span));
-                        if (output.ToString().Contains("KONTENA-EXEC-OK", StringComparison.Ordinal))
-                            return;
+                        await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+                        {
+                            output.Append(Encoding.UTF8.GetString(chunk.Span));
+                            if (output.ToString().Contains("KONTENA-EXEC-OK", StringComparison.Ordinal))
+                                return;
+                        }
                     }
-                }
-                catch (OperationCanceledException) { /* window closed; assert on what arrived */ }
-            },
-            cts.Token);
+                    catch (OperationCanceledException) { /* window closed; report what arrived */ }
+                },
+                cts.Token);
 
-        await Task.Delay(500, cts.Token);
-        await session.ResizeAsync(100, 30, cts.Token);
-        await session.WriteAsync(Encoding.UTF8.GetBytes("echo KONTENA-EXEC-OK\n"), cts.Token);
-        await Task.WhenAny(reader, Task.Delay(TimeSpan.FromSeconds(15), CancellationToken.None));
+            await Task.Delay(500, cts.Token);
+            await session.ResizeAsync(100, 30, cts.Token);
+            await session.WriteAsync(Encoding.UTF8.GetBytes("echo KONTENA-EXEC-OK\n"), cts.Token);
+            await Task.WhenAny(reader, Task.Delay(TimeSpan.FromSeconds(8), CancellationToken.None));
 
-        Assert.Contains("KONTENA-EXEC-OK", output.ToString(), StringComparison.Ordinal);
+            return output.ToString();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     [SkippableFact]

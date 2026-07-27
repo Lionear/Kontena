@@ -137,6 +137,26 @@
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
+        <!-- A tile you pick one of (KON-77). A button rather than a bordered panel with a click
+             handler, so keyboard focus, Enter and the disabled state all come for free — and a
+             provisioner whose tool is missing is disabled, not merely dimmed. -->
+        <Style Selector="Button.pick">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+        <Style Selector="Button.pick.on">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Button.pick:disabled">
+            <Setter Property="Opacity" Value="0.55"/>
+        </Style>
+
         <!-- Small icon action button -->
         <!-- An icon-only button has no text, so a screen reader announces "button" and nothing more.
              Every one of these already carries a tooltip saying what it does, so that is the name —

@@ -64,4 +64,19 @@ public interface IClusterProvisioner
     /// <exception cref="ToolNotFoundException">The tool is not installed.</exception>
     /// <exception cref="ToolFailedException">The tool ran and exited non-zero.</exception>
     ValueTask DeleteAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Start a stopped cluster, streaming the tool's output — this brings a control plane back up and
+    /// is not instant. Only where <see cref="ProvisionerCapabilities.StartStop"/> says so.
+    /// </summary>
+    /// <exception cref="NotSupportedException">This provisioner cannot stop a cluster, so it has none
+    /// to start. Guard with the capability rather than catching this.</exception>
+    IAsyncEnumerable<ToolLine> StartAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stop a running cluster, keeping it. Not destructive: the workloads come back with it, which is
+    /// the whole difference between this and <see cref="DeleteAsync"/>.
+    /// </summary>
+    /// <exception cref="NotSupportedException">This provisioner cannot stop a cluster.</exception>
+    ValueTask StopAsync(string name, CancellationToken ct = default);
 }

@@ -197,7 +197,8 @@ public class KindClusterProvisionerTests
     {
         var capabilities = Provisioner(new FakeToolRunner()).Capabilities;
 
-        Assert.False(capabilities.PauseResume);
+        Assert.False(capabilities.StartStop);
+        Assert.False(capabilities.Resources);
         Assert.True(capabilities.MultiNode);
         Assert.True(capabilities.PortMappings);
     }
