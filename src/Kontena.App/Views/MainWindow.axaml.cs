@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Kontena.App.Services;
@@ -59,6 +60,24 @@ public partial class MainWindow : Window
 
         _normalX = Position.X;
         _normalY = Position.Y;
+    }
+
+    // Our own title bar has to do the two things the system's used to do for free (KON-134): drag
+    // the window, and toggle maximize on a double click. The caption buttons are still the system's
+    // and sit above this in the window template, so they take their own clicks first.
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            return;
+
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            e.Handled = true;
+            return;
+        }
+
+        BeginMoveDrag(e);
     }
 
     // Picking a backend (or the "add…" row) should dismiss the switcher flyout — a Button click

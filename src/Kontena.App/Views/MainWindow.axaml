@@ -11,7 +11,9 @@
         Background="{DynamicResource Bg}"
         TransparencyLevelHint="None"
         Icon="/Assets/icon.ico"
-        Title="Kontena">
+        Title="Kontena"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="38">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -138,10 +140,32 @@
         </Style>
     </Window.Styles>
 
-    <Grid ColumnDefinitions="248,*">
+    <!-- OffScreenMargin is what keeps a maximized window from bleeding past the work area: with the
+         client area extended, the frame the OS used to subtract is ours to subtract (KON-134). -->
+    <Grid RowDefinitions="38,*" ColumnDefinitions="248,*"
+          Margin="{Binding $parent[Window].OffScreenMargin}">
+
+        <!--
+            Our own title bar (KON-134). Only the bar is ours: WindowDecorations stays Full, so the
+            close/minimise/maximise buttons are still drawn by the platform and land where that
+            platform puts them — left on macOS, right on Windows, wherever the WM says on Linux.
+            The brand is centred over the full width rather than inset around them: at the window's
+            900px minimum the lockup is nowhere near either edge, and an inset would have to be
+            maintained per platform for no gain.
+        -->
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Background="{DynamicResource SidebarBg}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                PointerPressed="OnTitleBarPointerPressed">
+            <StackPanel Orientation="Horizontal" Spacing="9"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Image Source="{StaticResource KontenaLogo}" Width="18" Height="18"/>
+                <TextBlock Text="Kontena" FontSize="13" FontWeight="SemiBold" LetterSpacing="-0.13"
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
 
         <!-- Sidebar -->
-        <Border Grid.Column="0" Background="{DynamicResource SidebarBg}"
+        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource SidebarBg}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,16">
                 <!-- Brand lockup (KON-133). At 26px next to a 17px wordmark the mark read as one
@@ -306,7 +330,7 @@
         </Border>
 
         <!-- Main area -->
-        <Grid Grid.Column="1" RowDefinitions="56,*">
+        <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="56,*">
 
             <!-- Command bar -->
             <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
@@ -397,14 +421,14 @@
             </Panel>
         </Grid>
 
-        <!-- Modal overlay (Run container, …) -->
-        <Panel Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
+        <!-- Modal overlay (Run container, …). Row 1 only: the title bar stays draggable behind it. -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
             <ContentControl Content="{Binding Dialog}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Margin="32"/>
         </Panel>
 
         <!-- Update toast: bottom-right, once per version, never in the way of the content (KON-110) -->
-        <Border Grid.Column="1" IsVisible="{Binding Update.IsToastVisible}" Width="360"
+        <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding Update.IsToastVisible}" Width="360"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,24"
                 Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="1" CornerRadius="12" Padding="16,14" BoxShadow="0 12 40 0 #66000000">
@@ -425,8 +449,8 @@
             </StackPanel>
         </Border>
 
-        <!-- First-run onboarding: full-window, opaque, covers the whole shell -->
-        <Panel Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsOnboarding}" Background="{DynamicResource Bg}">
+        <!-- First-run onboarding: opaque, covers the whole shell below the title bar -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsOnboarding}" Background="{DynamicResource Bg}">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <ContentControl Content="{Binding Onboarding}" HorizontalAlignment="Center"
                                 VerticalAlignment="Center" Margin="24,32"/>
