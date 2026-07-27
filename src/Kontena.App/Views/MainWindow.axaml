@@ -423,7 +423,7 @@
 
             <!-- Content: the active page, a connecting state, or the engine-down state -->
             <Panel Grid.Row="1">
-                <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsReady}"/>
+                <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsPageVisible}"/>
 
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding IsConnecting}">
                     <ProgressBar IsIndeterminate="True" Width="220" Height="4"
@@ -431,8 +431,9 @@
                     <TextBlock Text="Connecting to your container engine…" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Engine-down -->
-                <ScrollViewer IsVisible="{Binding IsBackendDown}" VerticalAlignment="Center">
+                <!-- Engine-down. Yields to Activity, Settings and About: those are the pages you
+                     want when nothing else works, so they show instead of this (KON-137). -->
+                <ScrollViewer IsVisible="{Binding IsBackendDownVisible}" VerticalAlignment="Center">
                     <Border Classes="card" MaxWidth="520" Padding="34,30" Margin="24" HorizontalAlignment="Center">
                         <StackPanel Spacing="16" HorizontalAlignment="Center">
                             <Border Width="60" Height="60" CornerRadius="15" Background="#F8717118" HorizontalAlignment="Center">

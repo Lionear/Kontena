@@ -288,8 +288,6 @@ public partial class MainWindowViewModel
             RequestProjectLogs = ShowComposeLogsDialog,
             RequestConfirm = ShowConfirm,
         };
-        Activity = new ActivityViewModel(_activityLog);
-
         SearchText = string.Empty;
         CurrentPage = Containers;
 
@@ -373,6 +371,12 @@ public partial class MainWindowViewModel
     }
     private void BuildSettingsPage()
     {
+        // Rebuilding replaces the instance, and CurrentPage holds the old one by reference. Left
+        // alone, someone standing on Settings when a rebuild happens — flipping the demo toggle
+        // does exactly that — would be looking at a page the shell no longer considers shown
+        // (KON-137).
+        var wasShowing = SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
+
         var all = _probes.Select(p => new EngineListItem(
             p.Provider.Backend, NameOf(p.Provider), p.Provider.Chip,
             p.Detail ?? string.Empty, p.Connected,
@@ -413,7 +417,11 @@ public partial class MainWindowViewModel
         };
 
         SettingsPage.RequestConfirm = ShowConfirm;
+
+        if (wasShowing)
+            CurrentPage = SettingsPage;
     }
+
     /// <summary>
     /// Rebuild the backend set after the demo toggle changed (KON-96), re-probe, and refresh the
     /// switcher. If the active backend was one of the ones that just went away, fall back to a
