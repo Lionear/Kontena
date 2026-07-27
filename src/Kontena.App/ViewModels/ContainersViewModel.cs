@@ -45,13 +45,57 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     private long _lastSignalTicks;
     private const int DebounceMs = 250;
 
-    /// <summary>Filtered view bound to the UI.</summary>
-    public ObservableCollection<ContainerRowViewModel> Items { get; } = [];
+    /// <summary>Filtered view bound to the UI — containers and Compose headings in one flat list.</summary>
+    public ObservableCollection<ContainerListRowViewModel> Items { get; } = [];
+
+    /// <summary>Group rows, kept across reloads so their expansion survives (KON-159).</summary>
+    private readonly Dictionary<string, ComposeGroupRowViewModel> _groups = new(StringComparer.Ordinal);
 
     [ObservableProperty]
     private string _searchText = string.Empty;
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
+    partial void OnSearchTextChanged(string value)
+    {
+        // A new query is a new question, so a group the user shut during the previous one is fair game
+        // to open again (KON-159).
+        foreach (var group in _groups.Values)
+            group.ForgetSearchOverride();
+
+        ApplyFilter();
+    }
+
+    /// <summary>Reads the stored choice for this backend; the shell owns settings.</summary>
+    public Func<bool>? LoadGrouping { get; init; }
+
+    /// <summary>Remembers the choice for this backend.</summary>
+    public Action<bool>? SaveGrouping { get; init; }
+
+    /// <summary>Opens the Projects page at this project — the other half of Compose (KON-159).</summary>
+    public Action<string>? RequestOpenProject { get; init; }
+
+    public void OpenProject(string project) => RequestOpenProject?.Invoke(project);
+
+    /// <summary>
+    /// Whether Compose projects collapse into one row. Default on: the flat list of a stack's
+    /// containers is exactly what the report was about.
+    /// </summary>
+    [ObservableProperty] private bool _isGrouped = true;
+
+    // Redrawing follows every assignment; persisting follows only the user's, which is why the save
+    // lives in the command rather than here. Restoring the stored value must not write it back.
+    partial void OnIsGroupedChanged(bool value) => ApplyFilter();
+
+    [RelayCommand]
+    private void ToggleGrouping()
+    {
+        IsGrouped = !IsGrouped;
+        SaveGrouping?.Invoke(IsGrouped);
+    }
+
+    private bool _groupingRestored;
+
+    /// <summary>Redraw the rows after a group opened or closed. Nothing is re-fetched.</summary>
+    public void RefreshRows() => ApplyFilter();
 
     /// <summary>
     /// Reconcile the master list against a fresh snapshot: reuse existing rows
@@ -81,8 +125,103 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
     private void ApplyFilter()
     {
-        SyncCollection(Items, _all.Where(Matches).ToList());
+        SyncCollection(Items, Rows());
         RaiseCollectionState();
+    }
+
+    /// <summary>
+    /// The rows to show, in one order (KON-159).
+    /// <para>
+    /// A group sits under its own project name, in the same sequence as the loose containers — not
+    /// "groups first, then the rest", which would rearrange the entire list the moment somebody starts
+    /// a stack.
+    /// </para>
+    /// </summary>
+    private List<ContainerListRowViewModel> Rows()
+    {
+        foreach (var row in _all)
+            row.IsChild = false;
+
+        if (!IsGrouped)
+        {
+            PruneGroups([]);
+            return [.. _all.Where(Matches)];
+        }
+
+        var projects = _all
+            .Where(r => r.Project is not null)
+            .GroupBy(r => r.Project!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ContainerRowViewModel>)[.. g], StringComparer.Ordinal);
+
+        PruneGroups(projects.Keys);
+
+        var searching = SearchText.Trim() is { Length: > 0 };
+        var query = SearchText.Trim();
+        var rows = new List<ContainerListRowViewModel>();
+
+        var ordered = projects
+            .Select(p => (Head: (ContainerListRowViewModel)GroupFor(p.Key, p.Value), p.Value))
+            .Concat(_all.Where(r => r.Project is null)
+                .Select(r => (Head: (ContainerListRowViewModel)r, Value: (IReadOnlyList<ContainerRowViewModel>)[])))
+            .OrderBy(e => e.Head.SortKey, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (head, children) in ordered)
+        {
+            if (head is not ComposeGroupRowViewModel group)
+            {
+                if (Matches((ContainerRowViewModel)head))
+                    rows.Add(head);
+
+                continue;
+            }
+
+            // A hit on the project name is a hit on the whole stack: show all of it, rather than
+            // making someone wonder which containers the name matched.
+            var wholeStack = searching && group.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
+            var visible = wholeStack ? children : [.. children.Where(Matches)];
+
+            if (searching && visible.Count == 0)
+                continue;
+
+            // A hit inside a collapsed group is a hit nobody sees. Forced open rather than expanded, so
+            // clearing the search puts the group back the way the user left it — unless they shut it
+            // themselves while this same search was running.
+            group.IsForcedOpen = searching && !group.ClosedDuringSearch;
+            rows.Add(group);
+
+            if (!group.IsOpen)
+                continue;
+
+            foreach (var child in visible)
+            {
+                child.IsChild = true;
+                rows.Add(child);
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>One group row per project, reused so expansion outlives a reload.</summary>
+    private ComposeGroupRowViewModel GroupFor(string project, IReadOnlyList<ContainerRowViewModel> children)
+    {
+        if (_groups.TryGetValue(project, out var existing))
+        {
+            existing.Update(children);
+            return existing;
+        }
+
+        var group = new ComposeGroupRowViewModel(project, children, this);
+        _groups[project] = group;
+        return group;
+    }
+
+    /// <summary>Forget groups whose project is gone, so a taken-down stack does not linger.</summary>
+    private void PruneGroups(IEnumerable<string> alive)
+    {
+        var keep = new HashSet<string>(alive, StringComparer.Ordinal);
+        foreach (var gone in _groups.Keys.Where(k => !keep.Contains(k)).ToList())
+            _groups.Remove(gone);
     }
 
     /// <summary>True once loaded and at least one container exists (drives stat cards + table).</summary>
@@ -104,7 +243,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     /// <summary>Mutate <paramref name="target"/> the minimum needed to match
     /// <paramref name="desired"/> (add/remove/move only), preserving unchanged rows.</summary>
     private static void SyncCollection(
-        ObservableCollection<ContainerRowViewModel> target, List<ContainerRowViewModel> desired)
+        ObservableCollection<ContainerListRowViewModel> target, List<ContainerListRowViewModel> desired)
     {
         for (var i = target.Count - 1; i >= 0; i--)
         {
@@ -168,6 +307,12 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     {
         if (IsBusy)
             return;
+
+        if (!_groupingRestored)
+        {
+            _groupingRestored = true;
+            IsGrouped = LoadGrouping?.Invoke() ?? true;
+        }
 
         IsBusy = true;
         try
@@ -409,6 +554,80 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     public async Task RemoveAsync(string id)
     {
         await _engine.RemoveContainerAsync(id, force: true);
+        await LoadAsync();
+    }
+
+    // ── Compose project actions, from the group row (KON-159) ─────────────────
+    //
+    // Built on the container primitives rather than the Compose CLI, exactly as the Projects page
+    // does — so they work on every backend, and one container refusing does not strand the rest.
+
+    public async Task StartProjectAsync(IReadOnlyList<string> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        foreach (var id in ids)
+            try { await _engine.StartContainerAsync(id); } catch { /* keep going */ }
+
+        await LoadAsync();
+    }
+
+    public async Task StopProjectAsync(IReadOnlyList<string> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        foreach (var id in ids)
+            try { await _engine.StopContainerAsync(id); } catch { /* keep going */ }
+
+        await LoadAsync();
+    }
+
+    public async Task RestartProjectAsync(IReadOnlyList<string> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        foreach (var id in ids)
+            try { await _engine.RestartContainerAsync(id); } catch { /* keep going */ }
+
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// Ask before taking a project down (KON-126) — the widest removal in the app, so it counts what
+    /// goes and says what survives. Same wording as the Projects page: one action, one sentence,
+    /// wherever it is triggered.
+    /// </summary>
+    public void ConfirmDown(ComposeGroupRowViewModel group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+
+        Confirm(
+            "Take project down",
+            ComposeProjectsViewModel.ProjectDownMessage(group.Name, group.TotalCount),
+            "Take down",
+            () => DownProjectAsync(group.Name, group.ContainerIds));
+    }
+
+    /// <summary>
+    /// Stop and remove the project's containers, then its Compose networks — what
+    /// <c>docker compose down</c> does. Volumes and images stay, which is why the message says so.
+    /// </summary>
+    public async Task DownProjectAsync(string project, IReadOnlyList<string> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        foreach (var id in ids)
+            try { await _engine.RemoveContainerAsync(id, force: true); } catch { /* keep going */ }
+
+        try
+        {
+            var networks = await _engine.ListNetworksAsync();
+            foreach (var network in networks.Where(n =>
+                         !n.IsBuiltIn && n.Name.StartsWith($"{project}_", StringComparison.Ordinal)))
+                try { await _engine.RemoveNetworkAsync(network.Id); } catch { /* keep going */ }
+        }
+        catch { /* network cleanup is best-effort */ }
+
         await LoadAsync();
     }
 }

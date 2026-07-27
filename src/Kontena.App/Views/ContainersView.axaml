@@ -7,6 +7,14 @@
              x:Class="Kontena.App.Views.ContainersView"
              x:DataType="vm:ContainersViewModel">
 
+    <UserControl.Styles>
+        <!-- A row inside a Compose group is indented by its name, not by its status dot: the dot stays
+             in the column it shares with every other row, so a red one is still findable down the edge. -->
+        <Style Selector="Border.row.child Button.link">
+            <Setter Property="Margin" Value="20,0,0,0"/>
+        </Style>
+    </UserControl.Styles>
+
     <ScrollViewer>
         <StackPanel Margin="24,22" Spacing="22">
 
@@ -174,22 +182,116 @@
                             <TextBlock Grid.Column="3" Text="PORTS" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="4" Text="CPU" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}" TextAlignment="Right"/>
                             <TextBlock Grid.Column="5" Text="MEM" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}" TextAlignment="Right"/>
+
+                            <!-- Grouping lives in the header of the thing it groups, and is remembered
+                                 per backend: someone working container-by-container does not want the
+                                 extra rows in the way (KON-159). -->
+                            <Button Grid.Column="6" Classes="qa" Command="{Binding ToggleGroupingCommand}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Classes.on="{Binding IsGrouped}"
+                                    ToolTip.Tip="Group containers by Compose project">
+                                <Path Classes="icon" Width="15" Height="15" Data="{StaticResource IconLayers}"/>
+                            </Button>
                         </Grid>
                     </Border>
 
                     <ItemsControl ItemsSource="{Binding Items}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ContainerRowViewModel">
-                                <Border Classes="row" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                        <ItemsControl.DataTemplates>
+
+                            <!-- ── A Compose project heading ────────────────────────────────────────
+                                 Same column widths as a container row, so the columns line up across
+                                 both. It fills three of them: name, how much of the stack is up, and
+                                 the project actions. No image, ports or numbers — a sum of four
+                                 containers' CPU is a lie, and four images have nothing to show. -->
+                            <DataTemplate DataType="vm:ComposeGroupRowViewModel" x:DataType="vm:ComposeGroupRowViewModel">
+                                <Border Classes="row" Background="{DynamicResource SurfaceRaised}"
+                                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                    <Grid Margin="{DynamicResource RowMargin}" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158" VerticalAlignment="Center">
+                                        <!-- Sized to the 24px status column rather than the default 30, so it
+                                             cannot lean into the name beside it. -->
+                                        <Button Grid.Column="0" Classes="qa" Command="{Binding ToggleCommand}"
+                                                Width="22" Height="22" Margin="-2,0,0,0"
+                                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                IsVisible="{Binding !IsOpen}"
+                                                ToolTip.Tip="Show this project's containers">
+                                            <Path Classes="icon" Width="13" Height="13"
+                                                  Data="{StaticResource IconChevronRight}"/>
+                                        </Button>
+                                        <Button Grid.Column="0" Classes="qa" Command="{Binding ToggleCommand}"
+                                                Width="22" Height="22" Margin="-2,0,0,0"
+                                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                IsVisible="{Binding IsOpen}"
+                                                ToolTip.Tip="Hide this project's containers">
+                                            <Path Classes="icon" Width="13" Height="13"
+                                                  Data="{StaticResource IconChevronDown}"/>
+                                        </Button>
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <Border Background="{DynamicResource AccentSoft}" CornerRadius="20" Padding="7,1"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="Compose" FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Accent}"/>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                            <Ellipse Width="9" Height="9" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding SummaryText}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <Button Grid.Column="3" Classes="link" Command="{Binding OpenProjectCommand}"
+                                                VerticalAlignment="Center"
+                                                ToolTip.Tip="Open this project on the Projects page, where it is operated as a whole">
+                                            <TextBlock Text="Open in Projects" FontSize="12"
+                                                       Foreground="{DynamicResource TextFaint}"/>
+                                        </Button>
+
+                                        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <Button Classes="qa" Command="{Binding RestartCommand}" IsVisible="{Binding CanStop}" ToolTip.Tip="Restart project">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconRestart}"/>
+                                            </Button>
+                                            <Button Classes="qa" Command="{Binding StartCommand}" IsVisible="{Binding CanStart}" ToolTip.Tip="Start project">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconPlay}"/>
+                                            </Button>
+                                            <Button Classes="qa" Command="{Binding StopCommand}" IsVisible="{Binding CanStop}" ToolTip.Tip="Stop project">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconStop}"/>
+                                            </Button>
+                                            <Button Classes="qa danger" Command="{Binding DownCommand}" ToolTip.Tip="Take down — remove this project's containers and networks">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Danger}" Data="{StaticResource IconTrash}"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+
+                            <DataTemplate DataType="vm:ContainerRowViewModel" x:DataType="vm:ContainerRowViewModel">
+                                <Border Classes="row" Classes.child="{Binding IsChild}"
+                                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                     <Grid Margin="{DynamicResource RowMargin}" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158" VerticalAlignment="Center">
                                         <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{Binding StatusBrush}"
                                                  HorizontalAlignment="Left" VerticalAlignment="Center"/>
                                         <Button Grid.Column="1" Classes="link" Command="{Binding OpenCommand}"
                                                 ToolTip.Tip="Open details" VerticalAlignment="Center">
                                             <StackPanel Spacing="2">
+                                                <!-- Trimmed: indenting a child eats into the column, and a
+                                                     compose name is the project plus the service plus an
+                                                     ordinal — long by construction. -->
                                                 <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}"
-                                                           FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource Text}"/>
+                                                           FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource Text}"
+                                                           TextTrimming="CharacterEllipsis"/>
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <!-- Inside a stack, the service is what people call it — "web", not
+                                                         "azuriom-web-1". Only shown where it means something. -->
+                                                    <Border Background="{DynamicResource SurfaceRaised}" CornerRadius="4" Padding="6,1"
+                                                            VerticalAlignment="Center" IsVisible="{Binding IsChild}">
+                                                        <TextBlock Text="{Binding Service}" FontFamily="{StaticResource Mono}"
+                                                                   FontSize="10" Foreground="{DynamicResource TextFaint}"/>
+                                                    </Border>
                                                     <Border Width="16" Height="16" CornerRadius="4" Background="{DynamicResource DockerChip}">
                                                         <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}"
                                                                    FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Info}"
@@ -233,7 +335,7 @@
                                     </Grid>
                                 </Border>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
+                        </ItemsControl.DataTemplates>
                     </ItemsControl>
 
                     <!-- No search matches (inside the table, below the header) -->

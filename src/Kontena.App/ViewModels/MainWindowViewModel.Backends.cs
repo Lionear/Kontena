@@ -262,6 +262,15 @@ public partial class MainWindowViewModel
             RequestRunContainer = image => _ = ShowRunDialogAsync(image),
             RequestPullImage = ShowPullDialog,
             RequestConfirm = ShowConfirm,
+
+            // Grouping is remembered per backend (KON-159); the page owns the choice, the shell owns
+            // where it is kept.
+            LoadGrouping = () => _settings.GroupsContainers(_activeBackend),
+            SaveGrouping = grouped =>
+                _settings = _store.Update(s => s.WithContainerGrouping(_activeBackend, grouped)),
+
+            // The group row links to the other half of Compose rather than duplicating it.
+            RequestOpenProject = ShowProject,
         };
         Images = new ImagesViewModel(_engine)
         {
@@ -364,7 +373,9 @@ public partial class MainWindowViewModel
         if (ev.ResourceKind != ResourceKind.Container)
             return null;
 
-        return Containers?.Items.FirstOrDefault(c =>
+        // Containers only: the list also holds Compose headings now (KON-159), and a group has no id
+        // an engine event could be about.
+        return Containers?.Items.OfType<ContainerRowViewModel>().FirstOrDefault(c =>
             c.Id == ev.ResourceId
             || c.Id.StartsWith(ev.ResourceId, StringComparison.Ordinal)
             || ev.ResourceId.StartsWith(c.Id, StringComparison.Ordinal))?.Name;

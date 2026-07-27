@@ -204,6 +204,17 @@ public sealed record KontenaSettings
     public IReadOnlyDictionary<string, bool> KnownClusters { get; init; } =
         new Dictionary<string, bool>();
 
+    /// <summary>
+    /// Whether the Containers list groups Compose projects into one row, per backend id (KON-159).
+    /// <para>
+    /// Per backend rather than global: a machine full of stacks and one with none are different rooms,
+    /// and the answer that suits a laptop running four compose files is not the one that suits a
+    /// cluster node. Absent means on — grouping is the default, and a flat list is the opt-out.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, bool> ContainerGrouping { get; init; } =
+        new Dictionary<string, bool>();
+
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";
 
