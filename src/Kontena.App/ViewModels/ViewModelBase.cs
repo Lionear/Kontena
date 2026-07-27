@@ -15,6 +15,8 @@ public abstract class ViewModelBase : ObservableObject
     /// runs at all: a page that was never wired up must not quietly turn a confirm into a delete.
     /// </summary>
     protected void Confirm(
-        string title, string message, string confirmLabel, Func<Task> onConfirm, bool destructive = true)
-        => RequestConfirm?.Invoke(new ConfirmRequest(title, message, confirmLabel, onConfirm, destructive));
+        string title, string message, string confirmLabel, Func<Task> onConfirm, bool destructive = true,
+        IReadOnlyList<ConfirmDetail>? details = null)
+        => RequestConfirm?.Invoke(
+            new ConfirmRequest(title, message, confirmLabel, onConfirm, destructive, details));
 }

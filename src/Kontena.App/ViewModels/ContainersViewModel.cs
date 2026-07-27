@@ -604,15 +604,18 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     /// goes and says what survives. Same wording as the Projects page: one action, one sentence,
     /// wherever it is triggered.
     /// </summary>
-    public void ConfirmDown(ComposeGroupRowViewModel group)
+    public async Task ConfirmDownAsync(ComposeGroupRowViewModel group)
     {
         ArgumentNullException.ThrowIfNull(group);
 
         Confirm(
-            "Take project down",
-            ComposeProjectsViewModel.ProjectDownMessage(group.Name, group.TotalCount),
+            ComposeProjectsViewModel.ProjectDownTitle(group.Name),
+            ComposeProjectsViewModel.ProjectDownMessage,
             "Take down",
-            () => DownProjectAsync(group.Name, group.ContainerIds));
+            () => DownProjectAsync(group.Name, group.ContainerIds),
+            details: ComposeProjectsViewModel.ProjectDownDetails(
+                [.. group.Children.Select(c => c.Service ?? c.Name)],
+                await ComposeProjectsViewModel.ProjectNetworkNamesAsync(_engine, group.Name)));
     }
 
     /// <summary>
@@ -629,8 +632,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
         try
         {
             var networks = await _engine.ListNetworksAsync();
-            foreach (var network in networks.Where(n =>
-                         !n.IsBuiltIn && n.Name.StartsWith($"{project}_", StringComparison.Ordinal)))
+            foreach (var network in networks.Where(n => ComposeProjectsViewModel.IsProjectNetwork(n, project)))
                 try { await _engine.RemoveNetworkAsync(network.Id); } catch { /* keep going */ }
         }
         catch { /* network cleanup is best-effort */ }

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -119,31 +120,94 @@ public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
     }
 
     /// <summary>
-    /// "Down": stop and remove the project's containers (matching <c>docker compose down</c>),
-    /// then best-effort remove its Compose networks (<c>&lt;project&gt;_*</c>). Built from the
-    /// container primitives, so it works on every backend without the Compose CLI.
+    /// Ask before taking a project down (KON-126). The widest removal in the app — every container of
+    /// the project at once — so it lists what goes and says what survives (KON-162). The networks are
+    /// looked up first: naming them afterwards would be too late to be part of the decision.
     /// </summary>
-    /// <summary>
-    /// Ask before taking a project down (KON-126). This is the widest removal in the app — every
-    /// container of the project at once — so the message counts them and says what survives.
-    /// </summary>
-    public void ConfirmDown(ComposeProjectViewModel project)
+    public async Task ConfirmDownAsync(ComposeProjectViewModel project)
     {
+        ArgumentNullException.ThrowIfNull(project);
+
         Confirm(
-            "Take project down",
-            ProjectDownMessage(project.Name, project.TotalCount),
+            ProjectDownTitle(project.Name),
+            ProjectDownMessage,
             "Take down",
-            () => DownProjectAsync(project.Name, project.ContainerIds));
+            () => DownProjectAsync(project.Name, project.ContainerIds),
+            details: ProjectDownDetails(
+                project.Services.Select(s => s.Name).ToList(),
+                await ProjectNetworkNamesAsync(_engine, project.Name)));
     }
 
+    // ── The one Down dialog, shared with the group row in the Containers list (KON-159, KON-162) ──
+    //
+    // One action, one dialog, wherever it is triggered. Split into pieces rather than one string so
+    // both callers get the same title, the same sentence and the same inventory.
+
+    public static string ProjectDownTitle(string project) => $"Take down \"{project}\"?";
+
     /// <summary>
-    /// Shared with the group row in the Containers list (KON-159), which takes the same project down
-    /// from a different page — one wording for one action, wherever it is triggered.
+    /// What survives, which is the part a sentence is good at. What goes is a list — see
+    /// <see cref="ProjectDownDetails"/>.
     /// </summary>
-    public static string ProjectDownMessage(string project, int count)
-        => $"Take \"{project}\" down? Its {count} container{(count == 1 ? "" : "s")} are stopped and" +
-           " removed, along with the networks Compose created for it. Volumes and images stay, and" +
-           " bringing it up again recreates the containers from the same file.";
+    public const string ProjectDownMessage =
+        "Everything this project owns is stopped and removed. Volumes and images stay, and bringing it" +
+        " up again recreates the containers from the same file.";
+
+    /// <summary>
+    /// What actually goes, itemised — and only that. Volumes are deliberately absent: this removes
+    /// containers and the networks Compose made, exactly as <c>docker compose down</c> does. Listing
+    /// them would promise a deletion that does not happen.
+    /// </summary>
+    public static IReadOnlyList<ConfirmDetail> ProjectDownDetails(
+        IReadOnlyList<string> services, IReadOnlyList<string> networks)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(networks);
+
+        var details = new List<ConfirmDetail>
+        {
+            new("IconContainer", Count(services.Count, "container"), string.Join(", ", services)),
+        };
+
+        // No line at all when there are none: "0 networks" is noise in a list meant to be counted.
+        if (networks.Count > 0)
+            details.Add(new ConfirmDetail("IconNetwork", Count(networks.Count, "network"), string.Join(", ", networks)));
+
+        return details;
+    }
+
+    private static string Count(int n, string noun) =>
+        string.Create(CultureInfo.InvariantCulture, $"{n} {noun}{(n == 1 ? "" : "s")}");
+
+    /// <summary>
+    /// The networks a Down would remove, asked <em>before</em> confirming so the dialog can name them.
+    /// Same predicate the removal uses, so the list and the act cannot drift apart.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> ProjectNetworkNamesAsync(
+        IContainerEngine engine, string project)
+    {
+        ArgumentNullException.ThrowIfNull(engine);
+
+        try
+        {
+            return [.. (await engine.ListNetworksAsync())
+                .Where(n => IsProjectNetwork(n, project))
+                .Select(n => n.Name)];
+        }
+        catch
+        {
+            // The dialog is worth showing without this line; failing the whole confirm over a network
+            // list would be the wrong trade.
+            return [];
+        }
+    }
+
+    public static bool IsProjectNetwork(NetworkSummary network, string project)
+    {
+        ArgumentNullException.ThrowIfNull(network);
+
+        return !network.IsBuiltIn && network.Name.StartsWith($"{project}_", StringComparison.Ordinal);
+    }
 
     public async Task DownProjectAsync(string project, IReadOnlyList<string> ids)
     {
@@ -247,7 +311,7 @@ public sealed partial class ComposeProjectViewModel : ObservableObject
     public IReadOnlyList<string> ContainerIds => _ids;
 
     [RelayCommand]
-    private void Down() => _parent.ConfirmDown(this);
+    private Task Down() => _parent.ConfirmDownAsync(this);
 
     [RelayCommand]
     private void Logs() => _parent.OpenLogs(this);

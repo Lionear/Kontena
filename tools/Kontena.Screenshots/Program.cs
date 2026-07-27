@@ -310,6 +310,18 @@ internal static class Program
 
                 break;
 
+            // The widest delete in the app, and the one the itemised inventory was built for (KON-162).
+            case "confirm-project-down":
+                Settle(rounds: 20);
+                if (vm.Containers?.Items.OfType<Kontena.App.ViewModels.ComposeGroupRowViewModel>()
+                        .FirstOrDefault() is { } project)
+                {
+                    project.DownCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+
+                break;
+
             case "confirm-remove-kubeconfig":
                 vm.ShowSettingsCommand.Execute(null);
                 Settle(rounds: 20);

@@ -277,6 +277,30 @@ public class ComposeGroupingTests
     }
 
     [Fact]
+    public void The_down_inventory_names_the_networks_and_leaves_volumes_out()
+    {
+        // The mockup listed volumes among what disappears. DownProjectAsync does not remove them —
+        // containers and the project's Compose networks go, volumes and images stay, exactly like
+        // `docker compose down`. A dialog that promises a deletion that never happens is worse than
+        // one that says less.
+        var details = ComposeProjectsViewModel.ProjectDownDetails(
+            ["web", "db"], ["azuriom_default"]);
+
+        Assert.Collection(details,
+            d => Assert.Equal(("2 containers", "web, db"), (d.Headline, d.Detail)),
+            d => Assert.Equal(("1 network", "azuriom_default"), (d.Headline, d.Detail)));
+    }
+
+    [Fact]
+    public void A_project_with_no_networks_gets_no_network_line()
+    {
+        // "0 networks" is noise in a list whose whole job is to be counted.
+        var only = Assert.Single(ComposeProjectsViewModel.ProjectDownDetails(["web"], []));
+
+        Assert.Equal("1 container", only.Headline);
+    }
+
+    [Fact]
     public async Task Taking_a_project_down_asks_first_and_says_what_survives()
     {
         // Point 5: the widest removal in the app goes through the same confirm as everything else,
@@ -290,13 +314,20 @@ public class ComposeGroupingTests
         };
         await page.LoadAsync();
 
-        Group(page, "monitoring").DownCommand.Execute(null);
+        await page.ConfirmDownAsync(Group(page, "monitoring"));
 
         Assert.NotNull(asked);
         Assert.True(asked!.Destructive);
-        Assert.Contains("monitoring", asked.Message, StringComparison.Ordinal);
-        Assert.Contains("2 containers", asked.Message, StringComparison.Ordinal);
+        Assert.Contains("monitoring", asked.Title, StringComparison.Ordinal);
         Assert.Contains("Volumes and images stay", asked.Message, StringComparison.Ordinal);
+
+        // What goes is counted, and named by service rather than by container name (KON-162).
+        var containers = Assert.Single(asked.Details!, d => d.Headline == "2 containers");
+        Assert.Equal("grafana, prometheus", containers.Detail);
+
+        // Volumes are deliberately absent: Down does not remove them, and a line here would promise
+        // a deletion that never happens.
+        Assert.DoesNotContain(asked.Details!, d => d.Headline.Contains("volume", StringComparison.Ordinal));
 
         // Nothing goes until it is confirmed.
         Assert.Equal(12, (await engine.ListContainersAsync()).Count);

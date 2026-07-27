@@ -11,9 +11,15 @@ namespace Kontena.App.ViewModels;
 /// <param name="OnConfirm">Runs only after the user confirms.</param>
 /// <param name="Destructive">Whether the confirm button uses the danger styling. Not everything worth
 /// confirming destroys data — signing out of a registry does not — so this is not implied.</param>
+/// <param name="Details">
+/// What goes away, itemised (KON-162). Optional, and empty for most actions: removing one container
+/// is fully said in a sentence. It earns its place where the count is the decision — taking a Compose
+/// project down reaches several containers and networks at once.
+/// </param>
 public sealed record ConfirmRequest(
     string Title,
     string Message,
     string ConfirmLabel,
     Func<Task> OnConfirm,
-    bool Destructive = true);
+    bool Destructive = true,
+    IReadOnlyList<ConfirmDetail>? Details = null);

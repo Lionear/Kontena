@@ -162,10 +162,14 @@ public sealed class ConfirmDestructiveActionsTests
 
         Assert.NotEmpty(page.Items);
         var project = page.Items[0];
-        project.DownCommand.Execute(null);
+        await page.ConfirmDownAsync(project);
 
         Assert.NotNull(asked.Request);
-        Assert.Contains(project.Name, asked.Request.Message, StringComparison.Ordinal);
+
+        // The name is in the title and the inventory is a list, not a sentence (KON-162).
+        Assert.Contains(project.Name, asked.Request.Title, StringComparison.Ordinal);
+        Assert.Contains("Volumes and images stay", asked.Request.Message, StringComparison.Ordinal);
+        Assert.Contains(asked.Request.Details!, d => d.Headline.EndsWith("containers", StringComparison.Ordinal));
 
         var before = await engine.ListContainersAsync();
         Assert.Contains(before, c => c.Id == project.ContainerIds[0]);
