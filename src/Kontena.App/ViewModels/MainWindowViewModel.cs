@@ -81,9 +81,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         // holds no secret of its own.
         _registryCredentials = new RegistryCredentials(_secrets, store.Load);
 
-        // Built here rather than with the other pages (KON-135): About says nothing about a backend,
-        // so it has to stay reachable when there is no working one to say it about.
+        // Built here rather than with the other pages (KON-135, KON-137): these say nothing about a
+        // backend, so they have to stay reachable when there is no working one to say it about.
+        // Activity used to be rebuilt on every connect, which also meant every reconnect left the
+        // previous one subscribed to the same log. One instance over the log's lifetime, which is
+        // this class's lifetime.
         About = new AboutViewModel(_secrets, ShowActivity);
+        Activity = new ActivityViewModel(_activityLog);
 
         SyncThemeToggleIcon();
         _ = InitAsync();
@@ -115,11 +119,37 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     public bool IsSettingsSelected => SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
     public bool IsAboutSelected => ReferenceEquals(CurrentPage, About);
 
+    /// <summary>
+    /// Whether the page on screen says nothing about a backend (KON-137).
+    /// <para>
+    /// These three are the ones you want most when nothing works: Settings is where the engine list,
+    /// a remote or a kubeconfig gets fixed, Activity is where you see what happened just before it
+    /// broke, and About has the version and the link you need to report it. So they show over the
+    /// engine-down card rather than behind it.
+    /// </para>
+    /// </summary>
+    public bool IsBackendIndependentPage => IsActivitySelected || IsSettingsSelected || IsAboutSelected;
+
+    /// <summary>Whether the content area shows <see cref="CurrentPage"/> at all.</summary>
+    public bool IsPageVisible => IsReady || IsBackendIndependentPage;
+
+    /// <summary>Whether the engine-down card has the content area. It yields to the three pages above.</summary>
+    public bool IsBackendDownVisible => IsBackendDown && !IsBackendIndependentPage;
+
     partial void OnCurrentPageChanged(object? value)
     {
         OnPropertyChanged(nameof(IsActivitySelected));
         OnPropertyChanged(nameof(IsSettingsSelected));
         OnPropertyChanged(nameof(IsAboutSelected));
+        RefreshContentVisibility();
+    }
+
+    private void RefreshContentVisibility()
+    {
+        OnPropertyChanged(nameof(IsBackendIndependentPage));
+        OnPropertyChanged(nameof(IsPageVisible));
+        OnPropertyChanged(nameof(IsBackendDownVisible));
+        OnPropertyChanged(nameof(IsConnecting));
     }
 
     /// <summary>The active modal dialog (e.g. Run container), or null when none.</summary>
@@ -180,12 +210,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>The first-run wizard view model, or null when not onboarding.</summary>
     [ObservableProperty] private OnboardingViewModel? _onboarding;
 
-    /// <summary>The connecting state shows only while neither ready, down, nor onboarding.</summary>
-    public bool IsConnecting => !IsReady && !IsBackendDown && !IsOnboarding;
+    /// <summary>
+    /// The connecting state shows only while neither ready, down, nor onboarding — and not over a
+    /// page that does not need the connection it is waiting for (KON-137).
+    /// </summary>
+    public bool IsConnecting => !IsReady && !IsBackendDown && !IsOnboarding && !IsBackendIndependentPage;
 
-    partial void OnIsReadyChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
-    partial void OnIsBackendDownChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
-    partial void OnIsOnboardingChanged(bool value) => OnPropertyChanged(nameof(IsConnecting));
+    partial void OnIsReadyChanged(bool value) => RefreshContentVisibility();
+    partial void OnIsBackendDownChanged(bool value) => RefreshContentVisibility();
+    partial void OnIsOnboardingChanged(bool value) => RefreshContentVisibility();
 
     private const string FakeBackend = "fake";
 
