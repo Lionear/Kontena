@@ -66,6 +66,26 @@ public sealed class MinikubeClusterProvisioner(IToolRunner runner, ManagedToolSt
         return MinikubeProfiles.Parse(result.StandardOutput, Id);
     }
 
+    /// <summary>
+    /// minikube's own answer to what it supports, narrowed by <see cref="MinikubeVersions"/>. Local and
+    /// quick — it reads a table compiled into the binary, so this is not a network call — and it stays
+    /// right across tool updates, which a list of ours would not (KON-144).
+    /// </summary>
+    public async ValueTask<ClusterVersionOptions> VersionsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var tool = await ManagedTools.ResolveAsync(KnownTools.Minikube, runner, _store, ct);
+            var result = await runner.RunAsync(new ToolInvocation(tool, MinikubeArguments.Versions()), ct);
+
+            return MinikubeVersions.Parse(result.StandardOutput);
+        }
+        catch (ToolNotFoundException)
+        {
+            return ClusterVersionOptions.None;
+        }
+    }
+
     public async IAsyncEnumerable<ToolLine> CreateAsync(
         LocalClusterSpec spec,
         [EnumeratorCancellation] CancellationToken ct = default)

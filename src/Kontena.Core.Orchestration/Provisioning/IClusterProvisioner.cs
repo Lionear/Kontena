@@ -45,6 +45,17 @@ public interface IClusterProvisioner
     ValueTask<IReadOnlyList<LocalCluster>> ListAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Which Kubernetes versions to offer for a new cluster (KON-144). Asked per provisioner, because
+    /// the tools genuinely disagree: at the time of writing kind can boot v1.36.1 and minikube has
+    /// never heard of it, so one shared list is wrong for one of them by construction.
+    /// <para>
+    /// Ask the tool where the tool can be asked. Never throws for an absent or unreadable tool — the
+    /// form falls back to offering the tool's own default, which always works.
+    /// </para>
+    /// </summary>
+    ValueTask<ClusterVersionOptions> VersionsAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Create a cluster, streaming the tool's own output line by line.
     /// <para>
     /// Streamed rather than awaited because this takes minutes — it pulls a node image and waits for

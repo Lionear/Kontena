@@ -11,9 +11,17 @@ namespace Kontena.App.ViewModels;
 public sealed partial class ProvisionerChoiceViewModel(
     IClusterProvisioner provisioner,
     ToolReadiness readiness,
-    string purpose) : ObservableObject
+    string purpose,
+    ClusterVersionOptions? versions = null) : ObservableObject
 {
     public IClusterProvisioner Provisioner => provisioner;
+
+    /// <summary>
+    /// The versions this tool offers, read once when the page loaded (KON-144). Fetched there rather
+    /// than here because asking minikube means running it, and a form that has to await something
+    /// before it can draw a dropdown is a form that flickers.
+    /// </summary>
+    public ClusterVersionOptions Versions => versions ?? ClusterVersionOptions.None;
 
     public string Id => provisioner.Provisioner;
 

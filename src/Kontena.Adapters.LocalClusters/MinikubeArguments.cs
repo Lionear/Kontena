@@ -75,6 +75,9 @@ public static class MinikubeArguments
     /// <summary>List profiles as JSON — the only form of this output that is worth parsing.</summary>
     public static IReadOnlyList<string> List() => ["profile", "list", "--output", "json"];
 
+    /// <summary>Ask which Kubernetes versions this minikube knows about (KON-144).</summary>
+    public static IReadOnlyList<string> Versions() => ["config", "defaults", "kubernetes-version"];
+
     /// <summary>minikube's own name for a runtime, or null to let it choose.</summary>
     public static string? Driver(LocalClusterRuntime runtime) => runtime switch
     {

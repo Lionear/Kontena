@@ -25,11 +25,10 @@ namespace Kontena.App.ViewModels;
 public sealed partial class NewClusterViewModel : ObservableObject
 {
     /// <summary>
-    /// Offered versions. Deliberately short and led by "whatever the tool ships with": a list we
-    /// maintain goes stale, and the tool's own default is the version its release was tested against.
+    /// The first entry when the tool will not say which version it would pick. kind is that tool: its
+    /// default lives in the node image its release was built against and is not printed before a create.
     /// </summary>
-    public static readonly IReadOnlyList<string> OfferedVersions =
-        ["Default for this release", "v1.34.0", "v1.33.4", "v1.32.5", "v1.31.0"];
+    public const string UnnamedDefault = "Default for this release";
 
     private readonly IReadOnlyList<LocalClusterRuntime> _available;
 
@@ -71,7 +70,7 @@ public sealed partial class NewClusterViewModel : ObservableObject
         [.. Capabilities.Runtimes.Where(_available.Contains)];
 
     [ObservableProperty] private string _name = string.Empty;
-    [ObservableProperty] private string _version = OfferedVersions[0];
+    [ObservableProperty] private string _version = UnnamedDefault;
     [ObservableProperty] private string _nodeImage = string.Empty;
     [ObservableProperty] private int _controlPlaneNodes = 1;
     [ObservableProperty] private string _workerNodes = "0";
@@ -81,7 +80,25 @@ public sealed partial class NewClusterViewModel : ObservableObject
     [ObservableProperty] private LocalClusterRuntime _runtime = LocalClusterRuntime.Default;
     [ObservableProperty] private bool _waitForReady = true;
 
-    public IReadOnlyList<string> Versions { get; } = OfferedVersions;
+    /// <summary>
+    /// What the chosen tool offers, led by its default (KON-144). Per provisioner, because the tools
+    /// disagree about what exists — kind boots v1.36.1 today and minikube has never heard of it — and
+    /// one shared list would be wrong for one of them no matter what is in it.
+    /// </summary>
+    public IReadOnlyList<string> Versions => [DefaultVersion, .. Selected?.Versions.Offered ?? []];
+
+    /// <summary>
+    /// The first entry: named where the tool told us which version it would pick, and honest about not
+    /// knowing where it did not. A label that names the wrong version is worse than one that names none.
+    /// </summary>
+    public string DefaultVersion =>
+        Selected?.Versions.Default is { } named ? $"Default ({named})" : UnnamedDefault;
+
+    /// <summary>
+    /// A node image outright, for the versions no list can cover. Only kind: its images are published
+    /// per release and cannot be enumerated, so without this the offered list would be a ceiling.
+    /// </summary>
+    public bool ShowNodeImage => Capabilities.NodeImage;
 
     /// <summary>One or three: two control-plane nodes is a quorum of two, which is worse than one.</summary>
     public IReadOnlyList<int> ControlPlaneChoices { get; } = [1, 3];
@@ -198,8 +215,8 @@ public sealed partial class NewClusterViewModel : ObservableObject
 
         return new LocalClusterSpec(Name)
         {
-            KubernetesVersion = !ShowVersion || Version == OfferedVersions[0] ? null : Version,
-            NodeImage = string.IsNullOrWhiteSpace(NodeImage) ? null : NodeImage.Trim(),
+            KubernetesVersion = !ShowVersion || Version == DefaultVersion ? null : Version,
+            NodeImage = ShowNodeImage && !string.IsNullOrWhiteSpace(NodeImage) ? NodeImage.Trim() : null,
             ControlPlaneNodes = ShowHighAvailability ? ControlPlaneNodes : 1,
             WorkerNodes = ShowMultiNode ? workers : 0,
             PortMappings = ShowPorts ? [.. Ports.Select(p => p.Mapping).OfType<ClusterPortMapping>()] : [],
@@ -268,10 +285,17 @@ public sealed partial class NewClusterViewModel : ObservableObject
                      nameof(ShowPorts), nameof(ShowIngress), nameof(ShowVersion), nameof(ShowResources),
                      nameof(ShowRuntimes), nameof(Runtimes), nameof(ContextPreview),
                      nameof(HasContextPreview), nameof(HasDocker), nameof(HasPodman), nameof(HasKvm2),
+                     nameof(Versions), nameof(DefaultVersion), nameof(ShowNodeImage),
                  })
         {
             OnPropertyChanged(name);
         }
+
+        // The version that was picked usually does not exist for the other tool — the lists differ by
+        // more than their order. Falling back to its default beats a dropdown showing a version this
+        // one cannot boot, or nothing at all.
+        if (!Versions.Contains(Version, StringComparer.Ordinal))
+            Version = DefaultVersion;
 
         Recompute();
     }
