@@ -58,6 +58,11 @@ jobs:
       - name: Test (Adapters.Kubernetes)
         run: dotnet test tests/Kontena.Adapters.Kubernetes.Tests/Kontena.Adapters.Kubernetes.Tests.csproj -c Release
 
+      # The kind provisioner is driven through the tool seam's fake, so the unit tests need no cluster
+      # tooling; the two read-only tests against a real kind skip cleanly when the runner has none.
+      - name: Test (Adapters.LocalClusters)
+        run: dotnet test tests/Kontena.Adapters.LocalClusters.Tests/Kontena.Adapters.LocalClusters.Tests.csproj -c Release
+
       # Keep THIRD-PARTY-NOTICES.md in sync with the dependency closure.
       - name: Check third-party notices
         run: |

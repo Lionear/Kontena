@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Kontena.Adapters.Docker/Kontena.Adapters.Docker.csproj" />
     <Project Path="src/Kontena.Adapters.Kubernetes/Kontena.Adapters.Kubernetes.csproj" />
+    <Project Path="src/Kontena.Adapters.LocalClusters/Kontena.Adapters.LocalClusters.csproj" />
     <Project Path="src/Kontena.Adapters.Podman/Kontena.Adapters.Podman.csproj" />
     <Project Path="src/Kontena.App/Kontena.App.csproj" />
     <Project Path="src/Kontena.Core/Kontena.Core.csproj" />
@@ -12,6 +13,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj" />
     <Project Path="tests/Kontena.Adapters.Kubernetes.Tests/Kontena.Adapters.Kubernetes.Tests.csproj" />
+    <Project Path="tests/Kontena.Adapters.LocalClusters.Tests/Kontena.Adapters.LocalClusters.Tests.csproj" />
     <Project Path="tests/Kontena.App.Tests/Kontena.App.Tests.csproj" />
     <Project Path="tests/Kontena.Core.Tests/Kontena.Core.Tests.csproj" />
     <Project Path="tests/Kontena.Core.Orchestration.Tests/Kontena.Core.Orchestration.Tests.csproj" />
