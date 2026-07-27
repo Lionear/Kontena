@@ -106,12 +106,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Honest note -->
-            <Border Background="{DynamicResource PrimarySoft}" CornerRadius="10" Padding="14,11">
-                <TextBlock Text="Full resource browsers — nodes, namespaces, workloads, pods, services, plus the YAML apply/dry-run flow — land in KON-73. This overview and the grouped switcher ship now."
-                           Foreground="{DynamicResource TextDim}" FontSize="12.5" TextWrapping="Wrap"/>
-            </Border>
-
         </StackPanel>
     </ScrollViewer>
 </UserControl>

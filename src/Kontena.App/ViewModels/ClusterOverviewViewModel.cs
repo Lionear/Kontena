@@ -7,8 +7,8 @@ namespace Kontena.App.ViewModels;
 
 /// <summary>
 /// The cluster landing page: identity + resource counts + a compact node table, read from an
-/// <see cref="IClusterEngine"/>. A first, real OAL view; the full per-resource browsers
-/// (nodes, pods, workloads, apply/dry-run) land in KON-73.
+/// <see cref="IClusterEngine"/>. Where a cluster is summarised; the per-resource browsers it links
+/// on to (nodes, pods, workloads, apply/dry-run) are their own pages, built in KON-73.
 /// </summary>
 public partial class ClusterOverviewViewModel : ViewModelBase
 {
