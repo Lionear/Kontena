@@ -1,0 +1,66 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="500"
+             x:Class="Kontena.App.Views.RelatedPodsView"
+             x:DataType="vm:ClusterObjectDetailViewModel">
+
+    <!-- The pods belonging to a workload or a service. One view for both, because both detail pages
+         exist to answer the same question and were told not to answer it differently (KON-166/167). -->
+    <ScrollViewer>
+        <StackPanel Spacing="12">
+
+            <TextBlock Text="{Binding PodsSummary}" IsVisible="{Binding HasPods}"
+                       FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="10" ClipToBounds="True" IsVisible="{Binding HasPods}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="2*,0.7*,1.6*,0.8*,1.4*,0.7*">
+                            <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
+                            <TextBlock Grid.Column="1" Text="READY" Classes="colhead"/>
+                            <TextBlock Grid.Column="2" Text="STATUS" Classes="colhead"/>
+                            <TextBlock Grid.Column="3" Text="RESTARTS" Classes="colhead"/>
+                            <TextBlock Grid.Column="4" Text="NODE" Classes="colhead"/>
+                            <TextBlock Grid.Column="5" Text="AGE" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Pods}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PodRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                    <Grid ColumnDefinitions="2*,0.7*,1.6*,0.8*,1.4*,0.7*">
+                                        <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
+                                        <TextBlock Grid.Column="1" Text="{Binding Ready}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <Grid Grid.Column="2" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                                            <Ellipse Grid.Column="0" Width="7" Height="7" Margin="0,0,7,0" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Phase}" Foreground="{DynamicResource TextDim}"
+                                                       Margin="0,0,10,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Phase}"/>
+                                        </Grid>
+                                        <TextBlock Grid.Column="3" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding Node}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- An empty list on its own reads as "nothing is running". It is often something else —
+                 scaled to zero, a selector that matches nothing, or a kind that never owns pods — and
+                 which one it is decides what you do next. -->
+            <Border IsVisible="{Binding PodsEmptyReason, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="10" Padding="18,16">
+                <TextBlock Text="{Binding PodsEmptyReason}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

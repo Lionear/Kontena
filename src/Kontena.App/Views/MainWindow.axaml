@@ -350,25 +350,43 @@
                 </StackPanel>
 
                 <!-- Nothing to navigate to while no backend is open; a dead nav is worse than none. -->
-                <ItemsControl ItemsSource="{Binding NavItems}" DockPanel.Dock="Top"
+                <!-- Scrolls because the nav is no longer a fixed height: expanding Workloads adds up to
+                     five entries (KON-169), and without this they slide behind the Activity/Settings
+                     block pinned to the bottom. -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               IsVisible="{Binding !IsBackendDown}">
+                <ItemsControl ItemsSource="{Binding NavItems}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:NavItem">
+                            <!-- Sub-entries are the same button, indented (KON-169). A tree would need a
+                                 second template, a second selection rule and a second home for the count
+                                 badge, all for one level of depth. -->
                             <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
                                     Command="{Binding Command}" CommandParameter="{Binding Key}">
-                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                                    <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                                    <Border Grid.Column="0" Width="14" IsVisible="{Binding IsChild}"/>
+                                    <Path Grid.Column="1" Classes="icon" Width="17" Height="17"
                                           Stroke="{Binding $parent[Button].Foreground}"
+                                          IsVisible="{Binding !IsChild}"
                                           Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
+
+                                    <!-- An indicator, not a button. The row itself opens the group, so a
+                                         second hit target inside it would be a control that duplicates
+                                         its own parent — and it looked like one. -->
+                                    <Path Grid.Column="3" Classes="icon" Width="12" Height="12" Margin="0,0,8,0"
+                                          VerticalAlignment="Center"
+                                          IsVisible="{Binding HasChildren}"
+                                          Stroke="{DynamicResource TextFaint}"
+                                          Data="{Binding IsExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}"/>
 
                                     <!-- Something on this page fell over; separate from the count, which
                                          says how many are working (KON-107). -->
-                                    <Ellipse Grid.Column="2" Width="7" Height="7" Margin="0,0,7,0"
+                                    <Ellipse Grid.Column="4" Width="7" Height="7" Margin="0,0,7,0"
                                              VerticalAlignment="Center" Fill="{DynamicResource Warn}"
                                              IsVisible="{Binding NeedsAttention}"
                                              ToolTip.Tip="{Binding AttentionTip}"/>
-                                    <Border Grid.Column="3" Background="{DynamicResource Surface2}" CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
+                                    <Border Grid.Column="5" Background="{DynamicResource Surface2}" CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>
                                 </Grid>
@@ -376,6 +394,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                </ScrollViewer>
             </DockPanel>
         </Border>
 

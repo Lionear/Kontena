@@ -56,29 +56,46 @@ public sealed class FakeClusterEngine : IClusterEngine
             Ns("default"), Ns("kube-system"), Ns("ingress-nginx"), Ns("monitoring"), Ns("app"),
         ];
 
+        // Labels and selectors are seeded so the detail pages have something true to show: without
+        // them a workload detail lists no pods and a service detail cannot answer "what does this
+        // selector reach", which is the one question it exists for (KON-166/167).
         _workloads =
         [
-            new Workload { Name = "api", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["ghcr.io/lionear/api:1.8"], RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromHours(30) },
-            new Workload { Name = "web", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 2, Desired = 3, UpToDate = 2, Available = 2, Images = ["nginx:1.27-alpine"], RolloutStatus = RolloutStatus.Progressing, Age = TimeSpan.FromHours(30) },
-            new Workload { Name = "redis", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 0, Desired = 1, UpToDate = 1, Available = 0, Images = ["redis:7-alpine"], RolloutStatus = RolloutStatus.Degraded, Age = TimeSpan.FromHours(6) },
-            new Workload { Name = "postgres", Namespace = "app", Kind = WorkloadKind.StatefulSet, Ready = 1, Desired = 1, UpToDate = 1, Available = 1, Images = ["postgres:16"], RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromDays(9) },
-            new Workload { Name = "node-exporter", Namespace = "monitoring", Kind = WorkloadKind.DaemonSet, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["prom/node-exporter:v1.8"], RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromDays(9) },
-            new Workload { Name = "backup", Namespace = "app", Kind = WorkloadKind.CronJob, Ready = 0, Desired = 0, Images = ["ghcr.io/lionear/backup:2"], Schedule = "0 3 * * *", RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromDays(9) },
+            // Replica counts agree with the seeded pods on purpose. The workload detail shows the
+            // breakdown and the matching pods on the same page (KON-166), so a header claiming three
+            // above a list of two reads as a bug in Kontena rather than a shortcut in the fake.
+            // Deliberately not "all ready everywhere": web is mid-rollout and redis is down, because a
+            // healthy-only seed hides the states these pages exist to explain.
+            new Workload { Name = "api", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["ghcr.io/lionear/api:1.8"], RolloutStatus = RolloutStatus.Complete, Labels = App("api"), Selector = App("api"), Strategy = "RollingUpdate (max surge 25%, max unavailable 25%)", Age = TimeSpan.FromHours(30) },
+            new Workload { Name = "web", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 2, Desired = 3, UpToDate = 2, Available = 2, Images = ["nginx:1.27-alpine"], RolloutStatus = RolloutStatus.Progressing, Labels = App("web"), Selector = App("web"), Strategy = "RollingUpdate (max surge 25%, max unavailable 25%)", Age = TimeSpan.FromHours(30) },
+            new Workload { Name = "redis", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 0, Desired = 1, UpToDate = 1, Available = 0, Images = ["redis:7-alpine"], RolloutStatus = RolloutStatus.Degraded, Labels = App("redis"), Selector = App("redis"), Strategy = "RollingUpdate (max surge 25%, max unavailable 25%)", Age = TimeSpan.FromHours(6) },
+            new Workload { Name = "postgres", Namespace = "app", Kind = WorkloadKind.StatefulSet, Ready = 1, Desired = 1, UpToDate = 1, Available = 1, Images = ["postgres:16"], RolloutStatus = RolloutStatus.Complete, Labels = App("postgres"), Selector = App("postgres"), Strategy = "RollingUpdate", Age = TimeSpan.FromDays(9) },
+            new Workload { Name = "node-exporter", Namespace = "monitoring", Kind = WorkloadKind.DaemonSet, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["prom/node-exporter:v1.8"], RolloutStatus = RolloutStatus.Complete, Labels = App("node-exporter"), Selector = App("node-exporter"), Strategy = "RollingUpdate", Age = TimeSpan.FromDays(9) },
+            // The owner of the wedged migrate pod. Without it that pod is controlled by something that
+            // does not appear in the workloads list, and the trail from pod to owner dead-ends.
+            new Workload { Name = "migrate", Namespace = "app", Kind = WorkloadKind.Job, Ready = 0, Desired = 1, UpToDate = 0, Available = 0, Images = ["ghcr.io/lionear/migrate:2.1"], RolloutStatus = RolloutStatus.Degraded, Labels = App("migrate"), Selector = App("migrate"), Age = TimeSpan.FromMinutes(6) },
+            // No selector: a CronJob owns Jobs, not pods. The detail page says so rather than showing
+            // an empty pod list that reads as "none running".
+            new Workload { Name = "backup", Namespace = "app", Kind = WorkloadKind.CronJob, Ready = 0, Desired = 0, Images = ["ghcr.io/lionear/backup:2"], Schedule = "0 3 * * *", RolloutStatus = RolloutStatus.Complete, Labels = App("backup"), Age = TimeSpan.FromDays(9) },
         ];
 
         _pods =
         [
             Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8"),
             Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8"),
+            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8"),
             Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine"),
-            new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
+            // web is mid-rollout at 2/3, so two pods and not three — the counts and the list have to
+            // tell the same story now that the detail page shows them together.
+            Pod1("web-5f2b", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine"),
+            new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Labels = App("redis"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
             // A pod wedged on its init container, which is the case the whole of KON-168 is about: the
             // container holding the answer is the one that used to be unreachable. Phase alone reports
             // "Pending" here, indistinguishable from a pod that is merely starting.
             new Pod
             {
                 Name = "migrate-9b4f", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-1",
-                Restarts = 4, ControlledBy = "Job/migrate", Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(6),
+                Restarts = 4, ControlledBy = "Job/migrate", Labels = App("migrate"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(6),
                 InitContainers =
                 [
                     new ContainerStatus { Name = "wait-for-db", Image = "busybox:1.36", Kind = ContainerKind.Init, Ready = true, RunState = ContainerRunState.Terminated, Reason = "Completed", ExitCode = 0 },
@@ -87,6 +104,11 @@ public sealed class FakeClusterEngine : IClusterEngine
                 Containers = [new ContainerStatus { Name = "app", Image = "ghcr.io/lionear/api:1.8", Ports = [new ContainerPort("http", 8080, "TCP")], RunState = ContainerRunState.Waiting, Reason = "PodInitializing" }],
             },
             Pod1("postgres-0", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "StatefulSet/postgres", "postgres:16"),
+            // One per node, as a DaemonSet gives you — and in the monitoring namespace, so the
+            // namespace picker has something to do and the DaemonSet's own detail is not empty.
+            Pod1("node-exporter-a1b2", "monitoring", PodPhase.Running, 1, 0, "gke-prod-worker-1", "DaemonSet/node-exporter", "prom/node-exporter:v1.8"),
+            Pod1("node-exporter-c3d4", "monitoring", PodPhase.Running, 1, 0, "gke-prod-worker-2", "DaemonSet/node-exporter", "prom/node-exporter:v1.8"),
+            Pod1("node-exporter-e5f6", "monitoring", PodPhase.Running, 1, 0, "gke-prod-control", "DaemonSet/node-exporter", "prom/node-exporter:v1.8"),
         ];
 
         _services =
@@ -701,8 +723,15 @@ public sealed class FakeClusterEngine : IClusterEngine
         _ => [new ContainerPort("http", 8080, "TCP"), new ContainerPort("metrics", 9090, "TCP")],
     };
 
+    /// <summary>The one-label convention the seeded workloads and services agree on: <c>app=&lt;name&gt;</c>.</summary>
+    private static Dictionary<string, string> App(string name) =>
+        new(StringComparer.Ordinal) { ["app"] = name };
+
     private static Pod Pod1(string name, string ns, PodPhase phase, int containers, int restarts, string node, string owner, string image) => new()
     {
+        // Pods carry the label their owner selects on, so ownership and selector matching agree —
+        // which is what makes the two detail pages tell the same story about the same pod.
+        Labels = App(owner.Contains('/', StringComparison.Ordinal) ? owner.Split('/')[1] : owner),
         Name = name,
         Namespace = ns,
         Phase = phase,
