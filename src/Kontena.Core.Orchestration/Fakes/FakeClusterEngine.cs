@@ -71,7 +71,21 @@ public sealed class FakeClusterEngine : IClusterEngine
             Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8"),
             Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8"),
             Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine"),
-            new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, State = "Waiting: CrashLoopBackOff" }] },
+            new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
+            // A pod wedged on its init container, which is the case the whole of KON-168 is about: the
+            // container holding the answer is the one that used to be unreachable. Phase alone reports
+            // "Pending" here, indistinguishable from a pod that is merely starting.
+            new Pod
+            {
+                Name = "migrate-9b4f", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-1",
+                Restarts = 4, ControlledBy = "Job/migrate", Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(6),
+                InitContainers =
+                [
+                    new ContainerStatus { Name = "wait-for-db", Image = "busybox:1.36", Kind = ContainerKind.Init, Ready = true, RunState = ContainerRunState.Terminated, Reason = "Completed", ExitCode = 0 },
+                    new ContainerStatus { Name = "run-migrations", Image = "ghcr.io/lionear/migrate:2.1", Kind = ContainerKind.Init, Restarts = 4, RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" },
+                ],
+                Containers = [new ContainerStatus { Name = "app", Image = "ghcr.io/lionear/api:1.8", Ports = [new ContainerPort("http", 8080, "TCP")], RunState = ContainerRunState.Waiting, Reason = "PodInitializing" }],
+            },
             Pod1("postgres-0", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "StatefulSet/postgres", "postgres:16"),
         ];
 
@@ -477,7 +491,7 @@ public sealed class FakeClusterEngine : IClusterEngine
             {
                 var i = _pods.FindIndex(p => p.Name == doc.Name && p.Namespace == ns);
                 var containers = doc.Containers
-                    .Select(c => new ContainerStatus { Name = c.Name, Image = c.Image, Ready = true, State = "Running" })
+                    .Select(c => new ContainerStatus { Name = c.Name, Image = c.Image, Ready = true, RunState = ContainerRunState.Running })
                     .ToList();
                 var pod = i >= 0
                     ? _pods[i] with { Node = doc.NodeName ?? _pods[i].Node, Containers = containers.Count > 0 ? containers : _pods[i].Containers }
@@ -674,6 +688,19 @@ public sealed class FakeClusterEngine : IClusterEngine
         Age = TimeSpan.FromDays(9),
     };
 
+    /// <summary>
+    /// The port a fake container declares. Real workloads declare one and the port-forward dialog reads
+    /// them (KON-170); a fake that declares none would show an empty picker and quietly suggest that
+    /// pods do not have ports.
+    /// </summary>
+    private static IReadOnlyList<ContainerPort> PortsFor(string image) => image switch
+    {
+        var i when i.Contains("nginx", StringComparison.Ordinal) => [new ContainerPort("http", 80, "TCP")],
+        var i when i.Contains("postgres", StringComparison.Ordinal) => [new ContainerPort("pg", 5432, "TCP")],
+        var i when i.Contains("redis", StringComparison.Ordinal) => [new ContainerPort("redis", 6379, "TCP")],
+        _ => [new ContainerPort("http", 8080, "TCP"), new ContainerPort("metrics", 9090, "TCP")],
+    };
+
     private static Pod Pod1(string name, string ns, PodPhase phase, int containers, int restarts, string node, string owner, string image) => new()
     {
         Name = name,
@@ -686,8 +713,32 @@ public sealed class FakeClusterEngine : IClusterEngine
         Qos = QosClass.Burstable,
         Age = TimeSpan.FromHours(30),
         Containers = Enumerable.Range(0, containers)
-            .Select(i => new ContainerStatus { Name = containers == 1 ? name.Split('-')[0] : $"c{i}", Image = image, Ready = phase == PodPhase.Running, Restarts = restarts, State = phase == PodPhase.Running ? "Running" : phase.ToString() })
+            .Select(i => new ContainerStatus
+            {
+                Name = containers == 1 ? name.Split('-')[0] : $"c{i}",
+                Image = image,
+                Ready = phase == PodPhase.Running,
+                Restarts = restarts,
+                Ports = PortsFor(image),
+                RunState = phase == PodPhase.Running ? ContainerRunState.Running : ContainerRunState.Waiting,
+                Reason = phase == PodPhase.Running ? string.Empty : phase.ToString(),
+            })
             .ToList(),
+        // Every one of these pods ran an init container to get here, and a fake that leaves them out
+        // makes the container picker look like a list of one thing (KON-168).
+        InitContainers =
+        [
+            new ContainerStatus
+            {
+                Name = "wait-for-db",
+                Image = "busybox:1.36",
+                Kind = ContainerKind.Init,
+                Ready = true,
+                RunState = ContainerRunState.Terminated,
+                Reason = "Completed",
+                ExitCode = 0,
+            },
+        ],
     };
 }
 

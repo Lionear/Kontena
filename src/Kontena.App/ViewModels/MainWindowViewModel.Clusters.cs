@@ -75,19 +75,42 @@ public partial class MainWindowViewModel
             return;
 
         var reference = new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name);
-        var ports = service.Ports.Select(p => p.Port).ToList();
+        var ports = service.Ports
+            .Select(p => new PortChoice(p.Port, p.Name.Length > 0 ? $"{p.Port} · {p.Name}" : p.Port.ToString(CultureInfo.InvariantCulture)))
+            .ToList();
         Dialog = new PortForwardViewModel(
             _portForwards, _cluster, reference, $"{service.Name} · {service.Namespace}", ports, CloseDialog,
             UpdatePortForwardCount);
     }
+
+    /// <summary>
+    /// A pod's ports come from the containers that declare them, so the label names the container as
+    /// well: two containers publishing 8080 are otherwise two identical rows (KON-170). Before this the
+    /// list was passed in empty and the dialog fell back to 80 for every pod in the cluster.
+    /// </summary>
     private void ShowPodPortForward(Pod pod)
     {
         if (_cluster is null)
             return;
 
         var reference = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
+        var containers = pod.AllContainers;
+        var multiple = containers.Count(c => c.Ports.Count > 0) > 1;
+
+        var ports = containers
+            .SelectMany(c => c.Ports.Select(p => new PortChoice(
+                p.Number,
+                (p.Name.Length, multiple) switch
+                {
+                    ( > 0, true) => $"{p.Number} · {p.Name} ({c.Name})",
+                    ( > 0, false) => $"{p.Number} · {p.Name}",
+                    (_, true) => $"{p.Number} ({c.Name})",
+                    _ => p.Number.ToString(CultureInfo.InvariantCulture),
+                })))
+            .ToList();
+
         Dialog = new PortForwardViewModel(
-            _portForwards, _cluster, reference, $"{pod.Name} · {pod.Namespace}", [], CloseDialog,
+            _portForwards, _cluster, reference, $"{pod.Name} · {pod.Namespace}", ports, CloseDialog,
             UpdatePortForwardCount);
     }
     /// <summary>
