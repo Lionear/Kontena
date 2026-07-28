@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:behaviors="using:Kontena.App.Behaviors"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -78,7 +79,7 @@
 
             <!-- Log stream -->
             <Border Grid.Row="2" Background="{DynamicResource Console}">
-                <ListBox x:Name="LogList" ItemsSource="{Binding Lines}" Background="Transparent" Padding="16,12"
+                <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="16,12"
                          SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                     <ListBox.Styles>
                         <Style Selector="ListBoxItem">
