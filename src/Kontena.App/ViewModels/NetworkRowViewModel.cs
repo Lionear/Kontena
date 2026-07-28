@@ -42,7 +42,7 @@ public sealed partial class NetworkRowViewModel : ObservableObject
     {
         "bridge" => "#5AB8FF",
         "host" => "#F5B14C",
-        "overlay" => "#7C6BF5",
+        "overlay" => "#A273F2",
         _ => "#5C6675",
     }));
 

@@ -55,10 +55,14 @@ public sealed class PaletteContrastTests
         // TextFaint in both themes and Warn in light used to be on this list too. They were not
         // judgement calls — TextFaint carried body text at 2.7:1 in 159 places, and light's Warn
         // cleared no threshold at all — so they were corrected instead of excused (KON-56).
-        ["Light/Primary"] = "status label, 3.04:1 — above the 3:1 large-text floor",
+        //
+        // Light/Primary left the same way under KON-130. Calling it a status label was only ever half
+        // true: it also filled the primary button, where the white PrimaryInk label sat on it at
+        // 3.38:1. #007A5E clears AA everywhere, so the entry is gone rather than reworded.
+        // Light/Danger went the same way, and for the same reason: it filled the destructive button
+        // under a white label at 3.91:1. Deepening it to #D61E24 cleared both roles at once.
         ["Light/Success"] = "status label, 3.04:1 — above the 3:1 large-text floor",
         ["Light/Info"] = "status label, 3.60:1 — above the 3:1 large-text floor",
-        ["Light/Danger"] = "status label, 3.51:1 — above the 3:1 large-text floor",
     };
 
     [Fact]
@@ -109,6 +113,33 @@ public sealed class PaletteContrastTests
         }
 
         Assert.True(sunk.Count == 0, string.Join(Environment.NewLine, sunk));
+    }
+
+    /// <summary>
+    /// Ink tokens paired with the fill they sit on. Filled buttons are not covered by the surface
+    /// sweep above, which is how light's white-on-#0F9E7E label sat at 3.38:1 while the palette was
+    /// nominally clean — Primary was excused as a status colour, and on the button it was not one.
+    /// </summary>
+    private static readonly (string Ink, string Fill)[] InkOnFill =
+        [("PrimaryInk", "Primary"), ("DangerInk", "Danger")];
+
+    [Fact]
+    public void Label_ink_meets_AA_against_the_fill_it_sits_on()
+    {
+        var failures = new List<string>();
+
+        foreach (var (theme, palette) in Palettes())
+        {
+            foreach (var (ink, fill) in InkOnFill.Where(p => palette.ContainsKey(p.Ink) && palette.ContainsKey(p.Fill)))
+            {
+                var ratio = Contrast(palette[ink], palette[fill]);
+                if (ratio < AA)
+                    failures.Add($"{theme}: {ink} ({palette[ink]}) on {fill} ({palette[fill]}) = {ratio:0.00}:1");
+            }
+        }
+
+        Assert.True(failures.Count == 0,
+            "Button labels below AA against their own fill:" + Environment.NewLine + string.Join(Environment.NewLine, failures));
     }
 
     [Fact]

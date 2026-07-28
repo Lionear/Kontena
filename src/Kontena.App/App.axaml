@@ -16,19 +16,31 @@
             <!-- Kontena palette — light + dark variants, resolved via DynamicResource -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="Bg" Color="#0E1116"/>
-                    <SolidColorBrush x:Key="Surface" Color="#171B22"/>
-                    <SolidColorBrush x:Key="Surface2" Color="#1E232C"/>
-                    <SolidColorBrush x:Key="SidebarBg" Color="#10141A"/>
-                    <SolidColorBrush x:Key="Border" Color="#272E39"/>
+                    <!-- The dark surfaces are one ladder on hue 229, derived from Bg rather than picked
+                         (KON-130). Saturation falls as they lighten — held constant, the panels read as
+                         outright blue instead of a dark ground with a cool cast. The three below Surface
+                         were solved for the luminance they had on the old neutral-grey ladder, so their
+                         order and spacing are unchanged and no screen shifts in perceived depth. -->
+                    <SolidColorBrush x:Key="Bg" Color="#0B1026"/>
+                    <SolidColorBrush x:Key="Surface" Color="#15192E"/>
+                    <SolidColorBrush x:Key="Surface2" Color="#1C2136"/>
+                    <SolidColorBrush x:Key="SidebarBg" Color="#0D122A"/>
+                    <!-- Deliberately lighter than the old #272E39. A hairline at the old luminance
+                         disappears against a bluer, darker Bg; WCAG sets no bar for purely decorative
+                         dividers, so this is a legibility call rather than a contrast one. -->
+                    <SolidColorBrush x:Key="Border" Color="#2D334D"/>
                     <SolidColorBrush x:Key="Text" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="TextDim" Color="#9AA4B2"/>
                     <SolidColorBrush x:Key="TextFaint" Color="#808B9B"/>
-                    <SolidColorBrush x:Key="Primary" Color="#22D3AA"/>
+                    <SolidColorBrush x:Key="Primary" Color="#00D4A3"/>
                     <SolidColorBrush x:Key="PrimaryInk" Color="#08201A"/>
-                    <SolidColorBrush x:Key="PrimaryDim" Color="#0F9E7E"/>
-                    <SolidColorBrush x:Key="Accent" Color="#7C6BF5"/>
-                    <SolidColorBrush x:Key="AccentSoft" Color="#7C6BF5" Opacity="0.12"/>
+                    <SolidColorBrush x:Key="PrimaryDim" Color="#00A37D"/>
+                    <!-- Accent is a pair, like Podman's chip. The brand violet #7C3AED is the light
+                         value; on dark it drops to 2.79:1 against Surface2, missing even the 3:1 bar
+                         for UI parts — and a raised panel is exactly where an accent tends to land.
+                         #A273F2 is the same hue and saturation, lifted until it clears AA there. -->
+                    <SolidColorBrush x:Key="Accent" Color="#A273F2"/>
+                    <SolidColorBrush x:Key="AccentSoft" Color="#A273F2" Opacity="0.12"/>
                     <SolidColorBrush x:Key="Success" Color="#34D399"/>
                     <SolidColorBrush x:Key="Info" Color="#5AB8FF"/>
                     <SolidColorBrush x:Key="Warn" Color="#F5B14C"/>
@@ -36,10 +48,13 @@
                     <!-- Ink for text sitting on Danger. Dark's red is the light one, so the label has
                          to go dark here and white in the light theme — the mirror of PrimaryInk. -->
                     <SolidColorBrush x:Key="DangerInk" Color="#2A0A0A"/>
-                    <SolidColorBrush x:Key="PrimarySoft" Color="#22D3AA" Opacity="0.10"/>
+                    <SolidColorBrush x:Key="PrimarySoft" Color="#00D4A3" Opacity="0.10"/>
                     <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
-                    <SolidColorBrush x:Key="Console" Color="#0A0D12"/>
-                    <SolidColorBrush x:Key="SurfaceRaised" Color="#141821"/>
+                    <SolidColorBrush x:Key="Console" Color="#070B1F"/>
+                    <SolidColorBrush x:Key="SurfaceRaised" Color="#11172E"/>
+                    <!-- The warn and danger washes stay warm against the navy ground on purpose. They
+                         are alert blocks, not neutral surfaces; tinting them to hue 229 would make them
+                         agree with the page and stop reading as an interruption. -->
                     <SolidColorBrush x:Key="WarnSoft" Color="#1C1810"/>
                     <SolidColorBrush x:Key="WarnSoftBorder" Color="#3A3320"/>
                     <SolidColorBrush x:Key="WarnText" Color="#E8CF9A"/>
@@ -59,19 +74,29 @@
                     <SolidColorBrush x:Key="Text" Color="#1B2430"/>
                     <SolidColorBrush x:Key="TextDim" Color="#55606E"/>
                     <SolidColorBrush x:Key="TextFaint" Color="#65707F"/>
-                    <SolidColorBrush x:Key="Primary" Color="#0F9E7E"/>
+                    <!-- Emerald is unusable on white (1.92:1), so light carries a deeper one on the same
+                         hue. It replaces #0F9E7E, which missed AA at 3.38:1 and was excused as a status
+                         colour — including under the white button label, where it was never a status
+                         colour at all. That exception is gone rather than restated. -->
+                    <SolidColorBrush x:Key="Primary" Color="#007A5E"/>
                     <SolidColorBrush x:Key="PrimaryInk" Color="#FFFFFF"/>
-                    <SolidColorBrush x:Key="PrimaryDim" Color="#0B7D63"/>
-                    <SolidColorBrush x:Key="Accent" Color="#6D5CE0"/>
-                    <SolidColorBrush x:Key="AccentSoft" Color="#6D5CE0" Opacity="0.11"/>
+                    <SolidColorBrush x:Key="PrimaryDim" Color="#00654E"/>
+                    <SolidColorBrush x:Key="Accent" Color="#7C3AED"/>
+                    <SolidColorBrush x:Key="AccentSoft" Color="#7C3AED" Opacity="0.11"/>
                     <SolidColorBrush x:Key="Success" Color="#0E9F6E"/>
                     <SolidColorBrush x:Key="Info" Color="#2F7FE0"/>
                     <SolidColorBrush x:Key="Warn" Color="#956314"/>
-                    <SolidColorBrush x:Key="Danger" Color="#E5484D"/>
+                    <!-- Deepened from #E5484D, which carried its own white button label at 3.91:1 —
+                         every destructive button in the light theme. Same hue and saturation, eleven
+                         points darker: the label now clears AA at 5.16:1, and the colour clears it as
+                         text too, so light's Danger leaves the exception list along with it. -->
+                    <SolidColorBrush x:Key="Danger" Color="#D61E24"/>
                     <SolidColorBrush x:Key="DangerInk" Color="#FFFFFF"/>
-                    <SolidColorBrush x:Key="PrimarySoft" Color="#0F9E7E" Opacity="0.10"/>
+                    <SolidColorBrush x:Key="PrimarySoft" Color="#007A5E" Opacity="0.10"/>
                     <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
-                    <SolidColorBrush x:Key="Console" Color="#0F141B"/>
+                    <!-- The console stays dark in both themes; moved onto hue 229 so a light-theme
+                         terminal does not read as a panel borrowed from another product. -->
+                    <SolidColorBrush x:Key="Console" Color="#0C122B"/>
                     <SolidColorBrush x:Key="SurfaceRaised" Color="#F0F3F6"/>
                     <SolidColorBrush x:Key="WarnSoft" Color="#FBF2DD"/>
                     <SolidColorBrush x:Key="WarnSoftBorder" Color="#ECD9A8"/>

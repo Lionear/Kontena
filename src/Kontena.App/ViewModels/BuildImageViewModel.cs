@@ -386,7 +386,7 @@ public partial class BuildStepViewModel(string number, string instruction) : Obs
     {
         "done" => "#34D399",
         "cached" => "#5C6675",
-        "running" => "#22D3AA",
+        "running" => "#00D4A3",
         "failed" => "#F87171",
         _ => "#3A424E",
     }));
