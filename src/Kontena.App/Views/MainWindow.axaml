@@ -404,14 +404,21 @@
             <!-- Command bar -->
             <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                 <Grid Margin="20,0" ColumnDefinitions="*,Auto">
+                    <!-- Dimmed where the page has nothing to search, so "you cannot type here" is
+                         visible before you try rather than after. -->
                     <Border Grid.Column="0" Width="420" Height="34" Background="{DynamicResource Bg}"
                             BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            Opacity="{Binding IsSearchEnabled, Converter={x:Static conv:BoolToSearchOpacityConverter.Instance}}"
                             CornerRadius="8" Padding="12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <DockPanel LastChildFill="True">
                             <Path DockPanel.Dock="Left" Classes="icon" Width="15" Height="15"
                                   Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconSearch}" VerticalAlignment="Center"/>
+                            <!-- Placeholder and enabled state follow the page (KON-164). The fixed
+                                 string used to name containers, images and volumes on a Kubernetes
+                                 cluster, where none of the three exist. -->
                             <TextBox Classes="bare" Margin="9,0,0,0"
-                                     PlaceholderText="Search containers, images, volumes…"
+                                     PlaceholderText="{Binding SearchPlaceholder}"
+                                     IsEnabled="{Binding IsSearchEnabled}"
                                      Text="{Binding SearchText, Mode=TwoWay}"/>
                         </DockPanel>
                     </Border>

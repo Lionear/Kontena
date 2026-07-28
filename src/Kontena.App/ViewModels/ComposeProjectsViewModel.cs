@@ -15,6 +15,8 @@ namespace Kontena.App.ViewModels;
 /// </summary>
 public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
 {
+    public string SearchPlaceholder => "Search projects…";
+
     public const string ProjectLabel = "com.docker.compose.project";
     public const string ServiceLabel = "com.docker.compose.service";
     public const string ConfigLabel = "com.docker.compose.project.config_files";

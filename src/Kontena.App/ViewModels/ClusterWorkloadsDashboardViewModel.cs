@@ -43,8 +43,14 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
 
     public bool HasLoaded { get; private set; }
 
-    /// <summary>Search is not wired here yet — the page is cards, not a list (KON-164 covers this).</summary>
+    /// <summary>
+    /// Carried to satisfy <see cref="IListPage"/> so Refresh works; never read. The page is cards, not
+    /// a list, which is exactly what <see cref="SupportsSearch"/> says out loud so the box is disabled
+    /// rather than silently ignoring what you type (KON-164).
+    /// </summary>
     public string SearchText { get; set; } = string.Empty;
+
+    public bool SupportsSearch => false;
 
     // ── Banner ────────────────────────────────────────────────────────────────
 

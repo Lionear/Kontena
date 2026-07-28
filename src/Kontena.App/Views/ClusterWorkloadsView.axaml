@@ -10,7 +10,7 @@
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True"
-                    IsVisible="{Binding !IsEmpty}">
+                    IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
                         <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,168">
@@ -28,7 +28,7 @@
                             <TextBlock Grid.Column="7" Text="" Classes="colhead" MinWidth="150"/>
                         </Grid>
                     </Border>
-                    <ItemsControl ItemsSource="{Binding Workloads}">
+                    <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:WorkloadRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
@@ -68,6 +68,13 @@
             <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="10" Padding="18,16">
                 <TextBlock Text="{Binding EmptyText}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+
+            <!-- Typing something with no hits leaves an empty page, which reads as a page that failed
+                 to load rather than a search that found nothing (KON-164). -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                <TextBlock Text="No workloads match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
         </StackPanel>
     </ScrollViewer>

@@ -12,7 +12,7 @@ namespace Kontena.App.ViewModels;
 // apply flow are their own tickets (KON-69/70/71).
 
 /// <summary>Nodes view — a card per node with CPU/memory gauges (see k8s-nodes mockup).</summary>
-public partial class ClusterNodesViewModel : ViewModelBase
+public partial class ClusterNodesViewModel : ClusterListViewModel<NodeCardRow>
 {
     private readonly IClusterEngine _cluster;
 
@@ -30,7 +30,7 @@ public partial class ClusterNodesViewModel : ViewModelBase
         _ = LoadAsync();
     }
 
-    public ObservableCollection<NodeCardRow> Nodes { get; } = [];
+    public override string SearchPlaceholder => "Search nodes…";
 
     /// <summary>Whether to explain the missing CPU/memory gauges.</summary>
     public bool ShowMetricsNotice { get; }
@@ -46,20 +46,22 @@ public partial class ClusterNodesViewModel : ViewModelBase
         "Install metrics-server in the cluster to enable them. Node status, conditions and pod counts" +
         " do not need a metrics source and are unaffected.";
 
-    private async Task LoadAsync()
+    protected override async Task<IReadOnlyList<NodeCardRow>> LoadRowsAsync()
     {
-        Nodes.Clear();
-
         // The apiserver version is what a kubelet version means anything against (KON-95): a node is
         // only "behind" relative to its own control plane.
         var apiServerVersion = (await _cluster.GetInfoAsync()).Version;
-        foreach (var n in await _cluster.ListNodesAsync())
-            Nodes.Add(new NodeCardRow(n, apiServerVersion));
+        return [.. (await _cluster.ListNodesAsync()).Select(n => new NodeCardRow(n, apiServerVersion))];
     }
+
+    // Roles and status as well as the name: "worker" and "NotReady" are how you actually go looking
+    // through a node list.
+    protected override bool Matches(NodeCardRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Roles, term) || Contains(row.Status, term);
 }
 
 /// <summary>Namespaces view.</summary>
-public partial class ClusterNamespacesViewModel : ViewModelBase
+public partial class ClusterNamespacesViewModel : ClusterListViewModel<NamespaceRow>
 {
     private readonly IClusterEngine _cluster;
 
@@ -69,18 +71,16 @@ public partial class ClusterNamespacesViewModel : ViewModelBase
         _ = LoadAsync();
     }
 
-    public ObservableCollection<NamespaceRow> Namespaces { get; } = [];
+    public override string SearchPlaceholder => "Search namespaces…";
 
-    private async Task LoadAsync()
-    {
-        Namespaces.Clear();
-        foreach (var ns in await _cluster.ListNamespacesAsync())
-            Namespaces.Add(new NamespaceRow(ns.Name, ns.Phase, Format.Duration(ns.Age)));
-    }
+    protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListNamespacesAsync()).Select(ns => new NamespaceRow(ns.Name, ns.Phase, Format.Duration(ns.Age)))];
+
+    protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
 }
 
 /// <summary>Workloads view — the controllers (Deployment/StatefulSet/DaemonSet/Job/CronJob).</summary>
-public partial class ClusterWorkloadsViewModel : ViewModelBase
+public partial class ClusterWorkloadsViewModel : ClusterListViewModel<WorkloadRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -108,7 +108,7 @@ public partial class ClusterWorkloadsViewModel : ViewModelBase
 
     private readonly WorkloadKind? _kind;
 
-    public ObservableCollection<WorkloadRow> Workloads { get; } = [];
+    public override string SearchPlaceholder => _kind is { } k ? $"Search {k.ToString().ToLowerInvariant()}s…" : "Search workloads…";
 
     /// <summary>"Workloads", or "Deployments" when the page shows a single kind.</summary>
     public string Title => _kind is { } k ? k + "s" : "Workloads";
@@ -140,20 +140,16 @@ public partial class ClusterWorkloadsViewModel : ViewModelBase
         ? $"No {k}s in this namespace."
         : "No workloads in this namespace.";
 
-    public bool IsEmpty => Workloads.Count == 0;
+    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace))
+            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail))];
 
-    private async Task LoadAsync()
-    {
-        Workloads.Clear();
-        foreach (var w in await _cluster.ListWorkloadsAsync(_kind, _namespace))
-            Workloads.Add(new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail));
-
-        OnPropertyChanged(nameof(IsEmpty));
-    }
+    protected override bool Matches(WorkloadRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Kind, term) || Contains(row.Namespace, term);
 }
 
 /// <summary>Pods view.</summary>
-public partial class ClusterPodsViewModel : ViewModelBase
+public partial class ClusterPodsViewModel : ClusterListViewModel<PodRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -174,18 +170,20 @@ public partial class ClusterPodsViewModel : ViewModelBase
         _ = LoadAsync();
     }
 
-    public ObservableCollection<PodRow> Pods { get; } = [];
+    public override string SearchPlaceholder => "Search pods…";
 
-    private async Task LoadAsync()
-    {
-        Pods.Clear();
-        foreach (var p in await _cluster.ListPodsAsync(_namespace))
-            Pods.Add(new PodRow(p, _onOpenDetail, _onDelete));
-    }
+    protected override async Task<IReadOnlyList<PodRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListPodsAsync(_namespace)).Select(p => new PodRow(p, _onOpenDetail, _onDelete))];
+
+    // Node and status too: "which pods are on worker-2" and "what is CrashLooping" are the two
+    // questions a pod list gets asked.
+    protected override bool Matches(PodRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Namespace, term)
+        || Contains(row.Node, term) || Contains(row.Phase, term);
 }
 
 /// <summary>Services view.</summary>
-public partial class ClusterServicesViewModel : ViewModelBase
+public partial class ClusterServicesViewModel : ClusterListViewModel<ServiceRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -204,14 +202,14 @@ public partial class ClusterServicesViewModel : ViewModelBase
         _ = LoadAsync();
     }
 
-    public ObservableCollection<ServiceRow> Services { get; } = [];
+    public override string SearchPlaceholder => "Search services…";
 
-    private async Task LoadAsync()
-    {
-        Services.Clear();
-        foreach (var s in await _cluster.ListServicesAsync(_namespace))
-            Services.Add(new ServiceRow(s, _onForward, _onOpenDetail));
-    }
+    protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListServicesAsync(_namespace)).Select(s => new ServiceRow(s, _onForward, _onOpenDetail))];
+
+    protected override bool Matches(ServiceRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Namespace, term)
+        || Contains(row.Type, term) || Contains(row.Ports, term);
 }
 
 // ── Row view-models ─────────────────────────────────────────────────────────

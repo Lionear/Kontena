@@ -147,8 +147,22 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsActivitySelected));
         OnPropertyChanged(nameof(IsSettingsSelected));
         OnPropertyChanged(nameof(IsAboutSelected));
+        OnPropertyChanged(nameof(IsSearchEnabled));
+        OnPropertyChanged(nameof(SearchPlaceholder));
         RefreshContentVisibility();
     }
+
+    /// <summary>
+    /// Whether the command-bar search does anything here. Off on pages that are not lists — Overview,
+    /// Apply manifest, the Workloads dashboard — because a box that takes text and ignores it reads as
+    /// "searched, found nothing" (KON-164).
+    /// </summary>
+    public bool IsSearchEnabled => CurrentPage is IListPage { SupportsSearch: true };
+
+    /// <summary>The active page's own placeholder, or a neutral one where search is off.</summary>
+    public string SearchPlaceholder => CurrentPage is IListPage { SupportsSearch: true } page
+        ? page.SearchPlaceholder
+        : "Search…";
 
     private void RefreshContentVisibility()
     {

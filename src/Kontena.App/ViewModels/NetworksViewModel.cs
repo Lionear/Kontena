@@ -8,6 +8,8 @@ namespace Kontena.App.ViewModels;
 
 public sealed partial class NetworksViewModel : ViewModelBase, IListPage
 {
+    public string SearchPlaceholder => "Search networks…";
+
     private readonly IContainerEngine _engine;
     private readonly List<NetworkRowViewModel> _all = [];
 

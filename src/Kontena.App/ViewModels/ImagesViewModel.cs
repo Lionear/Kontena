@@ -8,6 +8,8 @@ namespace Kontena.App.ViewModels;
 
 public sealed partial class ImagesViewModel : ViewModelBase, IListPage
 {
+    public string SearchPlaceholder => "Search images…";
+
     private readonly IContainerEngine _engine;
     private readonly List<ImageRowViewModel> _all = [];
 

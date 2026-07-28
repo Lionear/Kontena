@@ -8,6 +8,8 @@ namespace Kontena.App.ViewModels;
 
 public sealed partial class VolumesViewModel : ViewModelBase, IListPage
 {
+    public string SearchPlaceholder => "Search volumes…";
+
     private readonly IContainerEngine _engine;
     private readonly List<VolumeRowViewModel> _all = [];
 

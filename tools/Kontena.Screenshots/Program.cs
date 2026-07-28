@@ -620,7 +620,7 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodsViewModel pods)
                 {
-                    pods.Pods.FirstOrDefault()?.OpenCommand.Execute(null);
+                    pods.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                     Settle(rounds: 30);
                 }
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
@@ -678,14 +678,14 @@ internal static class Program
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel workloads)
                 {
                     var row = scene == "workload-cronjob"
-                        ? workloads.Workloads.FirstOrDefault(w => w.Kind == "CronJob")
-                        : workloads.Workloads.FirstOrDefault();
+                        ? workloads.Items.FirstOrDefault(w => w.Kind == "CronJob")
+                        : workloads.Items.FirstOrDefault();
                     row?.OpenCommand.Execute(null);
                     Settle(rounds: 30);
                 }
                 else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterServicesViewModel services)
                 {
-                    services.Services.FirstOrDefault()?.OpenCommand.Execute(null);
+                    services.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                     Settle(rounds: 30);
                 }
 
@@ -724,7 +724,7 @@ internal static class Program
                         Settle(rounds: 60);
                         if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodsViewModel livePods)
                         {
-                            livePods.Pods.FirstOrDefault()?.OpenCommand.Execute(null);
+                            livePods.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                             Settle(rounds: 60);
                         }
 
@@ -842,7 +842,7 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel wl)
                 {
-                    wl.Workloads.FirstOrDefault(w => w.CanScale)?.ScaleCommand.Execute(null);
+                    wl.Items.FirstOrDefault(w => w.CanScale)?.ScaleCommand.Execute(null);
                     Settle(rounds: 20);
                 }
                 break;
@@ -854,7 +854,7 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel wlr)
                 {
-                    wlr.Workloads.FirstOrDefault(w => w.CanRestart)?.RestartCommand.Execute(null);
+                    wlr.Items.FirstOrDefault(w => w.CanRestart)?.RestartCommand.Execute(null);
                     Settle(rounds: 20);
                 }
                 break;
@@ -867,7 +867,7 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterServicesViewModel svc)
                 {
-                    svc.Services.FirstOrDefault(s => s.CanForward)?.ForwardCommand.Execute(null);
+                    svc.Items.FirstOrDefault(s => s.CanForward)?.ForwardCommand.Execute(null);
                     Settle(rounds: 20);
                 }
                 if (scene == "portforward-active" && vm.Dialog is Kontena.App.ViewModels.PortForwardViewModel pf)
