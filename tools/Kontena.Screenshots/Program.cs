@@ -345,6 +345,7 @@ internal static class Program
             case "settings-registries":
             case "settings-engines":
             case "settings-engines-tcp":
+            case "settings-engines-badhost":
             case "settings-engines-edit":
             case "settings-engines-named":
             case "settings-engines-clusters":
@@ -406,6 +407,15 @@ internal static class Program
                     // The TCP form is where the security decision lives, so it gets its own shot.
                     if (scene == "settings-engines-tcp")
                         s.SetRemoteTransportCommand.Execute("tcp");
+
+                    // A host ssh would read as one of its own options (KON-181). Typed into the form,
+                    // because the claim worth checking is that the disabled submit button explains
+                    // itself rather than just going grey.
+                    if (scene == "settings-engines-badhost")
+                    {
+                        s.RemoteName = "Build server";
+                        s.RemoteHost = "-oProxyCommand=touch /tmp/pwned";
+                    }
 
                     // Editing is driven through the row's own command (KON-125): the shot has to show
                     // the stored values really loaded, not a form someone filled in to look like it.

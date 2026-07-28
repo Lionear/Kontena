@@ -150,11 +150,29 @@ public partial class SettingsViewModel
         OnRemoteFieldChanged();
     }
 
+    /// <summary>
+    /// A value that <c>ssh</c> would read as one of its own options, or null (KON-181). Shown as it is
+    /// typed rather than on submit, so the disabled Add button says why it is disabled instead of
+    /// simply being grey (the KON-117 lesson).
+    /// <para>
+    /// Only this rule: TCP without certificates has its own warning above, with the acknowledgement
+    /// checkbox that goes with it, and saying it twice in two tones is worse than saying it once.
+    /// </para>
+    /// </summary>
+    public string? RemoteProblem =>
+        RemoteEngine.ArgumentProblem(RemoteHost.Trim(), RemoteUser.Trim(), RemoteSocketPath.Trim());
+
     partial void OnRemoteNameChanged(string value) => OnRemoteFieldChanged();
     partial void OnRemoteHostChanged(string value) => OnRemoteFieldChanged();
     partial void OnRemotePortChanged(string value) => OnRemoteFieldChanged();
     partial void OnRemoteAllowInsecureChanged(bool value) => OnRemoteFieldChanged();
     partial void OnIsRemoteBusyChanged(bool value) => OnPropertyChanged(nameof(CanAddRemote));
+
+    // These two had no handler at all, so the submit button did not re-evaluate while they were being
+    // typed — invisible while the only rule was about certificates, and wrong the moment the user and
+    // the socket path carry a rule of their own.
+    partial void OnRemoteUserChanged(string value) => OnRemoteFieldChanged();
+    partial void OnRemoteSocketPathChanged(string value) => OnRemoteFieldChanged();
 
     partial void OnRemoteCertificateDirectoryChanged(string value)
     {
@@ -165,6 +183,7 @@ public partial class SettingsViewModel
     private void OnRemoteFieldChanged()
     {
         OnPropertyChanged(nameof(CanAddRemote));
+        OnPropertyChanged(nameof(RemoteProblem));
         RemoteError = null;
         RemoteNotice = null;
     }

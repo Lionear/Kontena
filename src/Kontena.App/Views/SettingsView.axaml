@@ -527,6 +527,12 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- Live, as it is typed: the submit button is disabled by this, so it has
+                                 to say so rather than just go grey (KON-181). -->
+                            <TextBlock Text="{Binding RemoteProblem}" FontSize="12.5" TextWrapping="Wrap"
+                                       HorizontalAlignment="Left" MaxWidth="620"
+                                       IsVisible="{Binding RemoteProblem, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       Foreground="{DynamicResource Danger}"/>
                             <TextBlock Text="{Binding RemoteError}" FontSize="12.5" TextWrapping="Wrap"
                                        HorizontalAlignment="Left" MaxWidth="620"
                                        IsVisible="{Binding RemoteError, Converter={x:Static ObjectConverters.IsNotNull}}"

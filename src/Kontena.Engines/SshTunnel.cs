@@ -73,6 +73,14 @@ public sealed class SshTunnel : IAsyncDisposable
     /// </summary>
     public static IReadOnlyList<string> Arguments(RemoteEngine remote, string localSocket)
     {
+        ArgumentNullException.ThrowIfNull(remote);
+
+        // The last gate before a process starts (KON-181). The callers that reach a remote engine check
+        // Problem first, so this should never fire — which is exactly why it is here: a future caller
+        // that forgets should fail loudly rather than hand ssh an argument it reads as an option.
+        if (RemoteEngine.ArgumentProblem(remote.Host, remote.User, remote.SocketPath) is { } problem)
+            throw new ArgumentException(problem, nameof(remote));
+
         var arguments = new List<string>
         {
             // No shell, no terminal: this connection exists to carry a socket.
