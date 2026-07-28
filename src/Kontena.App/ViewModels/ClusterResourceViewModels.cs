@@ -91,26 +91,64 @@ public partial class ClusterWorkloadsViewModel : ViewModelBase
     /// <param name="onOpenDetail">Invoked when a workload row is opened; the shell wires this to the
     /// workload-detail page (KON-166). A constructor parameter rather than an init-property, so it is
     /// set before the fire-and-forget load builds the rows.</param>
+    /// <param name="kind">One kind, or null for every kind in one list (KON-169).</param>
     public ClusterWorkloadsViewModel(
         IClusterEngine cluster, string? @namespace,
         Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null)
+        Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onScale = onScale;
         _onRestart = onRestart;
         _onOpenDetail = onOpenDetail;
+        _kind = kind;
         _ = LoadAsync();
     }
 
+    private readonly WorkloadKind? _kind;
+
     public ObservableCollection<WorkloadRow> Workloads { get; } = [];
+
+    /// <summary>"Workloads", or "Deployments" when the page shows a single kind.</summary>
+    public string Title => _kind is { } k ? k + "s" : "Workloads";
+
+    /// <summary>
+    /// Whether to show the KIND column. On a single-kind page it repeats the heading on every row,
+    /// which is the space the kind-specific columns below want.
+    /// </summary>
+    public bool ShowKindColumn => _kind is null;
+
+    /// <summary>
+    /// A CronJob's schedule, in place of replica counts it does not have. This is the actual reason a
+    /// single list wrings: the shared columns are the lowest common denominator of every kind, so the
+    /// one field you opened the page for is the one that has nowhere to go.
+    /// </summary>
+    public bool ShowScheduleColumn => _kind == WorkloadKind.CronJob;
+
+    /// <summary>A DaemonSet has no replicas — its READY is per node, so the column is labelled for it.</summary>
+    public string ReadyHeader => _kind switch
+    {
+        WorkloadKind.DaemonSet => "READY / NODES",
+        WorkloadKind.CronJob => "ACTIVE",
+        WorkloadKind.Job => "COMPLETIONS",
+        _ => "READY",
+    };
+
+    /// <summary>Shown when a kind's page is empty, so it does not look like a failed load.</summary>
+    public string EmptyText => _kind is { } k
+        ? $"No {k}s in this namespace."
+        : "No workloads in this namespace.";
+
+    public bool IsEmpty => Workloads.Count == 0;
 
     private async Task LoadAsync()
     {
         Workloads.Clear();
-        foreach (var w in await _cluster.ListWorkloadsAsync(null, _namespace))
+        foreach (var w in await _cluster.ListWorkloadsAsync(_kind, _namespace))
             Workloads.Add(new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail));
+
+        OnPropertyChanged(nameof(IsEmpty));
     }
 }
 
@@ -298,7 +336,8 @@ public sealed partial class WorkloadRow
         Name = w.Name;
         Namespace = w.Namespace;
         Kind = w.Kind.ToString();
-        Ready = $"{w.Ready}/{w.Desired}";
+        Ready = w.Kind == WorkloadKind.CronJob ? "—" : $"{w.Ready}/{w.Desired}";
+        Schedule = w.Schedule.Length == 0 ? "—" : w.Schedule;
         Status = w.RolloutStatus.ToString();
         Age = Format.Duration(w.Age);
         CanScale = w.IsScalable;
@@ -316,6 +355,7 @@ public sealed partial class WorkloadRow
     public string Namespace { get; }
     public string Kind { get; }
     public string Ready { get; }
+    public string Schedule { get; }
     public string Status { get; }
     public string Age { get; }
     public bool CanScale { get; }

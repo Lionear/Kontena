@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
 using Kontena.Core.Models;
+using Kontena.Core.Orchestration.Models;
 
 namespace Kontena.App.ViewModels;
 
@@ -93,8 +94,22 @@ public partial class MainWindowViewModel
 
         DisposeDetail();
         (CurrentPage as PortForwardsViewModel)?.Dispose();
+
+        // Remembered separately from the nav items because the per-kind children are rebuilt as
+        // workloads come and go (KON-169); IsSelected on an item that gets replaced is not a record
+        // of where the user is.
+        _clusterPageKey = key;
+
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
+
+        // Opening a child keeps its parent open, otherwise the group folds up under the page you just
+        // navigated into and the trail back to its siblings disappears.
+        if (WorkloadNavGroups.KindOf(key) is not null
+            && NavItems.FirstOrDefault(i => i.Key == "workloads") is { } workloadsNav)
+        {
+            workloadsNav.IsExpanded = true;
+        }
 
         // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker.
         CurrentPage = key switch
@@ -102,6 +117,8 @@ public partial class MainWindowViewModel
             "overview" => new ClusterOverviewViewModel(_cluster),
             "nodes" => new ClusterNodesViewModel(_cluster),
             "namespaces" => new ClusterNamespacesViewModel(_cluster),
+            _ when WorkloadNavGroups.KindOf(key) is { } kind =>
+                new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind),
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail),
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, p => ShowPodDetail(p), ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
@@ -122,8 +139,7 @@ public partial class MainWindowViewModel
         if (!IsClusterMode)
             return;
 
-        var key = NavItems.FirstOrDefault(i => i.IsSelected)?.Key ?? "overview";
-        NavigateCluster(key);
+        NavigateCluster(_clusterPageKey);
         _ = UpdateClusterNavCountsAsync();
     }
     private async Task UpdateClusterNavCountsAsync()
@@ -135,11 +151,77 @@ public partial class MainWindowViewModel
         var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
         SetNavCount("nodes", (await _cluster.ListNodesAsync()).Count.ToString(ci));
         SetNavCount("namespaces", (await _cluster.ListNamespacesAsync()).Count.ToString(ci));
-        SetNavCount("workloads", (await _cluster.ListWorkloadsAsync(null, ns)).Count.ToString(ci));
+
+        // One call, grouped here, rather than one per kind: five round-trips to fill five badges is
+        // five chances for them to disagree with each other and with the list they label (KON-169).
+        var workloads = await _cluster.ListWorkloadsAsync(null, ns);
+        SetNavCount("workloads", workloads.Count.ToString(ci));
+        SyncWorkloadKindNav(workloads);
+
         SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
         SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
         UpdatePortForwardCount();
     }
+    /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
+    private string _clusterPageKey = "overview";
+
+
+    /// <summary>
+    /// Rebuild the per-kind sub-entries under Workloads (KON-169). Which entries and in what order is
+    /// <see cref="WorkloadNavGroups"/>; this only reconciles the nav collection with that answer.
+    /// </summary>
+    private void SyncWorkloadKindNav(IReadOnlyList<Workload> workloads)
+    {
+        var parentIndex = NavItems.ToList().FindIndex(i => i.Key == "workloads");
+        if (parentIndex < 0)
+            return;
+
+        var parent = NavItems[parentIndex];
+
+        // Drop the current children before rebuilding; the set changes as objects come and go.
+        for (var i = NavItems.Count - 1; i > parentIndex; i--)
+        {
+            if (NavItems[i].IsChild)
+                NavItems.RemoveAt(i);
+        }
+
+        var groups = WorkloadNavGroups.For(workloads);
+        parent.HasChildren = WorkloadNavGroups.ShouldGroup(groups);
+
+        if (!parent.HasChildren)
+        {
+            parent.IsExpanded = false;
+            return;
+        }
+
+        if (!parent.IsExpanded)
+            return;
+
+        var at = parentIndex + 1;
+        foreach (var group in groups)
+        {
+            var key = WorkloadNavGroups.KeyFor(group.Kind);
+
+            NavItems.Insert(at++, new NavItem(key, WorkloadNavGroups.LabelFor(group.Kind), "IconLayers", isChild: true)
+            {
+                Count = group.Count.ToString(CultureInfo.InvariantCulture),
+                Command = NavigateCommand,
+                IsSelected = _clusterPageKey == key,
+            });
+        }
+    }
+
+    /// <summary>Expand or collapse the Workloads sub-entries without navigating (KON-169).</summary>
+    [RelayCommand]
+    private void ToggleNavGroup(string key)
+    {
+        if (NavItems.FirstOrDefault(i => i.Key == key) is not { HasChildren: true } item)
+            return;
+
+        item.IsExpanded = !item.IsExpanded;
+        _ = UpdateClusterNavCountsAsync();
+    }
+
     // Keyed rather than indexed: the nav gained an entry in the middle once already, and an index-based
     // assignment puts the pod count on Services the day it gains another.
     private void SetNavCount(string key, string count)

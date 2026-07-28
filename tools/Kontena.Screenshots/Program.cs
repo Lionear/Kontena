@@ -641,6 +641,26 @@ internal static class Program
                 }
                 break;
 
+            // Workloads split per kind (KON-169): the nav group expanded, and one kind's page. Both
+            // reached through the nav, so a scene cannot show a page the sidebar has no way of opening.
+            case "cluster-workloads-expanded":
+            case "cluster-cronjobs":
+            case "cluster-deployments":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("workloads");
+                SettleUntil(() => vm.NavItems.Any(i => i.Key == "workloads" && i.HasChildren), maxRounds: 60);
+                vm.ToggleNavGroupCommand.Execute("workloads");
+                SettleUntil(() => vm.NavItems.Any(i => i.IsChild), maxRounds: 60);
+
+                if (scene == "cluster-cronjobs")
+                    vm.NavigateCommand.Execute("workloads:CronJob");
+                else if (scene == "cluster-deployments")
+                    vm.NavigateCommand.Execute("workloads:Deployment");
+
+                Settle(rounds: 30);
+                break;
+
             // Workload and Service detail (KON-166, KON-167). Reached the way a user reaches them —
             // by opening a row — so a scene cannot show a page the list has no way of opening.
             case "workload":
