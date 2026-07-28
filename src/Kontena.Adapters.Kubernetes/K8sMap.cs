@@ -68,6 +68,12 @@ internal static class K8sMap
     public static Pod ToPod(V1Pod p)
     {
         var statuses = p.Status?.ContainerStatuses ?? [];
+        var initStatuses = p.Status?.InitContainerStatuses ?? [];
+        var ephemeralStatuses = p.Status?.EphemeralContainerStatuses ?? [];
+
+        // Declared ports live on the spec, the rest of the story on the status, and the two are only
+        // joined by container name. Building the lookup once keeps that join in one place.
+        var ports = PortsByContainer(p.Spec);
 
         return new Pod
         {
@@ -81,8 +87,12 @@ internal static class K8sMap
                 "Failed" => PodPhase.Failed,
                 _ => PodPhase.Unknown,
             },
-            Containers = [.. statuses.Select(ToContainerStatus)],
-            Restarts = statuses.Sum(c => c.RestartCount),
+            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports))],
+            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports))],
+            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports))],
+            // Init restarts are counted too: a pod that has retried its init container seven times has
+            // restarted seven times, and reporting 0 there is the reading that hides the problem.
+            Restarts = statuses.Sum(c => c.RestartCount) + initStatuses.Sum(c => c.RestartCount),
             Node = p.Spec?.NodeName ?? string.Empty,
             Ip = p.Status?.PodIP ?? string.Empty,
             Qos = p.Status?.QosClass switch
@@ -96,27 +106,55 @@ internal static class K8sMap
         };
     }
 
-    private static Core.Orchestration.Models.ContainerStatus ToContainerStatus(V1ContainerStatus c) => new()
+    private static Core.Orchestration.Models.ContainerStatus ToContainerStatus(
+        V1ContainerStatus c, ContainerKind kind, Dictionary<string, IReadOnlyList<ContainerPort>> ports) => new()
     {
         Name = c.Name,
         Image = c.Image ?? string.Empty,
         Ready = c.Ready,
         Restarts = c.RestartCount,
-        State = DescribeState(c.State),
+        Kind = kind,
+        Ports = ports.TryGetValue(c.Name, out var declared) ? declared : [],
+        RunState = RunStateOf(c.State),
+        Reason = ReasonOf(c.State),
+        ExitCode = c.State?.Terminated?.ExitCode,
     };
 
-    /// <summary>"Running", "Waiting: CrashLoopBackOff", "Terminated: Error" — what the grid shows.</summary>
-    private static string DescribeState(V1ContainerState? s)
+    private static ContainerRunState RunStateOf(V1ContainerState? s) => s switch
     {
-        if (s?.Running is not null)
-            return "Running";
-        if (s?.Waiting is not null)
-            return string.IsNullOrEmpty(s.Waiting.Reason) ? "Waiting" : $"Waiting: {s.Waiting.Reason}";
-        if (s?.Terminated is not null)
-            return string.IsNullOrEmpty(s.Terminated.Reason) ? "Terminated" : $"Terminated: {s.Terminated.Reason}";
+        { Running: not null } => ContainerRunState.Running,
+        { Waiting: not null } => ContainerRunState.Waiting,
+        { Terminated: not null } => ContainerRunState.Terminated,
+        _ => ContainerRunState.Unknown,
+    };
 
-        return string.Empty;
+    private static string ReasonOf(V1ContainerState? s) =>
+        s?.Waiting?.Reason ?? s?.Terminated?.Reason ?? string.Empty;
+
+    /// <summary>
+    /// Declared ports per container name, across init, app and ephemeral containers alike.
+    /// <para>
+    /// A container may declare none — <c>containerPort</c> is documentation in Kubernetes, not a
+    /// binding — so a missing entry means nothing was declared rather than nothing is listening.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<ContainerPort>> PortsByContainer(V1PodSpec? spec)
+    {
+        var map = new Dictionary<string, IReadOnlyList<ContainerPort>>(StringComparer.Ordinal);
+
+        foreach (var c in (spec?.InitContainers ?? []).Concat(spec?.Containers ?? []))
+            if (c.Ports is { Count: > 0 })
+                map[c.Name] = [.. c.Ports.Select(ToContainerPort)];
+
+        foreach (var c in spec?.EphemeralContainers ?? [])
+            if (c.Ports is { Count: > 0 })
+                map[c.Name] = [.. c.Ports.Select(ToContainerPort)];
+
+        return map;
     }
+
+    private static ContainerPort ToContainerPort(V1ContainerPort p) =>
+        new(p.Name ?? string.Empty, p.ContainerPort, p.Protocol ?? "TCP");
 
     /// <summary>The controlling owner as "Kind/name" — a ReplicaSet is rolled up to its Deployment.</summary>
     private static string OwnerOf(V1ObjectMeta? meta)

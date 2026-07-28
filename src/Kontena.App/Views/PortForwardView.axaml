@@ -18,8 +18,10 @@
                 <Grid ColumnDefinitions="*,Auto,*" IsVisible="{Binding !IsActive}">
                     <StackPanel Grid.Column="0" Spacing="7">
                         <TextBlock Text="Remote port" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                        <ComboBox IsVisible="{Binding HasPresetPorts}" ItemsSource="{Binding Ports}" SelectedItem="{Binding RemotePort, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
-                        <NumericUpDown IsVisible="{Binding !HasPresetPorts}" Value="{Binding RemotePort, Mode=TwoWay}" Minimum="1" Maximum="65535" FormatString="0" Increment="1"/>
+                        <ComboBox IsVisible="{Binding HasPresetPorts}" ItemsSource="{Binding Ports}" SelectedItem="{Binding SelectedPort, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                        <!-- Starts at 0 rather than a guess: nothing is declared here, and offering 80
+                             with the same confidence as a port we know was the whole of KON-170. -->
+                        <NumericUpDown IsVisible="{Binding !HasPresetPorts}" Value="{Binding RemotePort, Mode=TwoWay}" Minimum="0" Maximum="65535" FormatString="0" Increment="1"/>
                     </StackPanel>
                     <TextBlock Grid.Column="1" Text="→" FontSize="18" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Bottom" Margin="14,0,14,6"/>
                     <StackPanel Grid.Column="2" Spacing="7">
@@ -41,6 +43,9 @@
                     <TextBlock Text="Stays open after you close this window — find it under Port forwards."
                                FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
                 </StackPanel>
+
+                <TextBlock Text="{Binding NoPortsHint}" IsVisible="{Binding NoPortsHint, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{DynamicResource TextFaint}" FontSize="12" TextWrapping="Wrap"/>
 
                 <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                            Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>

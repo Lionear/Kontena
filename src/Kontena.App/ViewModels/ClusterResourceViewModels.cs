@@ -329,7 +329,9 @@ public sealed partial class PodRow
         Name = p.Name;
         Namespace = p.Namespace;
         Ready = $"{p.ReadyContainers}/{p.Containers.Count}";
-        Phase = p.Phase.ToString();
+        // "Init:0/2" rather than a bare "Pending" while init containers run — the difference between a
+        // pod starting up and one wedged on its first init container (KON-168).
+        Phase = p.StatusText;
         Restarts = p.Restarts.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Node = string.IsNullOrEmpty(p.Node) ? "—" : p.Node;
         Age = Format.Duration(p.Age);

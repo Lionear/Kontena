@@ -174,6 +174,154 @@ public class K8sMapTests
         Assert.Equal("Waiting: CrashLoopBackOff", pod.Containers[1].State);
     }
 
+    /// <summary>
+    /// A pod part-way through its init containers: the first finished, the second is looping, and the
+    /// app container is waiting on both. This is the shape the whole of KON-168 is about.
+    /// </summary>
+    private static V1Pod InitialisingPod() => new()
+    {
+        Metadata = new V1ObjectMeta { Name = "migrate-9b4f", NamespaceProperty = "app", CreationTimestamp = DateTime.UtcNow.AddMinutes(-6) },
+        Spec = new V1PodSpec
+        {
+            NodeName = "worker-1",
+            InitContainers =
+            [
+                new V1Container { Name = "wait-for-db", Image = "busybox:1.36" },
+                new V1Container { Name = "run-migrations", Image = "migrate:2.1" },
+            ],
+            Containers =
+            [
+                new V1Container
+                {
+                    Name = "app", Image = "api:1.8",
+                    Ports =
+                    [
+                        new V1ContainerPort { ContainerPort = 8080, Name = "http", Protocol = "TCP" },
+                        new V1ContainerPort { ContainerPort = 9090, Name = "metrics", Protocol = "TCP" },
+                    ],
+                },
+            ],
+        },
+        Status = new V1PodStatus
+        {
+            Phase = "Pending",
+            InitContainerStatuses =
+            [
+                new V1ContainerStatus
+                {
+                    Name = "wait-for-db", Image = "busybox:1.36", Ready = true, RestartCount = 0,
+                    State = new V1ContainerState { Terminated = new V1ContainerStateTerminated { Reason = "Completed", ExitCode = 0 } },
+                },
+                new V1ContainerStatus
+                {
+                    Name = "run-migrations", Image = "migrate:2.1", Ready = false, RestartCount = 4,
+                    State = new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "CrashLoopBackOff" } },
+                },
+            ],
+            ContainerStatuses =
+            [
+                new V1ContainerStatus
+                {
+                    Name = "app", Image = "api:1.8", Ready = false, RestartCount = 0,
+                    State = new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "PodInitializing" } },
+                },
+            ],
+        },
+    };
+
+    [Fact]
+    public void Init_containers_are_mapped_separately_from_app_containers()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.Equal(["wait-for-db", "run-migrations"], pod.InitContainers.Select(c => c.Name));
+        Assert.Equal(["app"], pod.Containers.Select(c => c.Name));
+        Assert.All(pod.InitContainers, c => Assert.Equal(ContainerKind.Init, c.Kind));
+
+        // Containers keeps meaning "app containers" so the x/y column still counts what kubectl counts.
+        Assert.Single(pod.Containers);
+    }
+
+    [Fact]
+    public void All_containers_lists_init_first_because_that_is_the_order_they_run()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.Equal(["wait-for-db", "run-migrations", "app"], pod.AllContainers.Select(c => c.Name));
+    }
+
+    [Fact]
+    public void Init_restarts_count_towards_the_pod_total()
+    {
+        // Four attempts at an init container is four restarts. Reporting 0 is the reading that hides
+        // exactly the pod you went looking for.
+        Assert.Equal(4, K8sMap.ToPod(InitialisingPod()).Restarts);
+    }
+
+    [Fact]
+    public void A_pod_stuck_in_init_reports_the_reason_rather_than_Pending()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.True(pod.IsInitialising);
+        Assert.Equal(1, pod.CompletedInitContainers);
+        Assert.Equal("Init:CrashLoopBackOff", pod.StatusText);
+    }
+
+    [Fact]
+    public void A_pod_merely_starting_up_counts_its_init_containers()
+    {
+        // PodInitializing is the kubelet saying "not yet", which the x/y count says better. Only a
+        // reason that names a problem should replace it.
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].State =
+            new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "PodInitializing" } };
+
+        Assert.Equal("Init:1/2", K8sMap.ToPod(source).StatusText);
+    }
+
+    [Fact]
+    public void A_pod_past_its_init_containers_reports_its_phase()
+    {
+        var source = InitialisingPod();
+        source.Status.Phase = "Running";
+        source.Status.InitContainerStatuses[1].State =
+            new V1ContainerState { Terminated = new V1ContainerStateTerminated { Reason = "Completed", ExitCode = 0 } };
+
+        var pod = K8sMap.ToPod(source);
+
+        Assert.False(pod.IsInitialising);
+        Assert.Equal("Running", pod.StatusText);
+    }
+
+    [Fact]
+    public void Declared_container_ports_reach_the_model()
+    {
+        // The port-forward dialog had nothing to offer for a pod because these were never read (KON-170).
+        var app = K8sMap.ToPod(InitialisingPod()).Containers[0];
+
+        Assert.Equal([8080, 9090], app.Ports.Select(p => p.Number));
+        Assert.Equal("http", app.Ports[0].Name);
+        Assert.Equal("TCP", app.Ports[0].Protocol);
+    }
+
+    [Fact]
+    public void A_container_that_declares_no_ports_gets_an_empty_list()
+    {
+        // Empty means "declared nothing", never "listening on nothing" — containerPort is documentation
+        // in Kubernetes, so inventing a default here would be inventing a fact.
+        Assert.Empty(K8sMap.ToPod(InitialisingPod()).InitContainers[0].Ports);
+    }
+
+    [Fact]
+    public void A_finished_init_container_cannot_be_exec_into()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.True(pod.InitContainers[0].CompletedSuccessfully);
+        Assert.False(pod.InitContainers[0].CanExec);
+    }
+
     [Fact]
     public void Pod_owned_by_a_ReplicaSet_rolls_up_to_its_Deployment()
     {

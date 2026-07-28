@@ -134,27 +134,38 @@
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                         <StackPanel>
                             <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                                <Grid ColumnDefinitions="1.4*,2*,1*,0.8*,1.2*">
+                                <Grid ColumnDefinitions="1.3*,1.8*,0.9*,0.7*,1.5*,1.4*">
                                     <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
                                     <TextBlock Grid.Column="1" Text="IMAGE" Classes="colhead"/>
                                     <TextBlock Grid.Column="2" Text="READY" Classes="colhead"/>
                                     <TextBlock Grid.Column="3" Text="RESTARTS" Classes="colhead"/>
-                                    <TextBlock Grid.Column="4" Text="STATE" Classes="colhead"/>
+                                    <TextBlock Grid.Column="4" Text="PORTS" Classes="colhead"/>
+                                    <TextBlock Grid.Column="5" Text="STATE" Classes="colhead"/>
                                 </Grid>
                             </Border>
                             <ItemsControl ItemsSource="{Binding ContainerRows}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:PodContainerRow">
                                         <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                            <Grid ColumnDefinitions="1.4*,2*,1*,0.8*,1.2*">
-                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                            <Grid ColumnDefinitions="1.3*,1.8*,0.9*,0.7*,1.5*,1.4*">
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                                    <!-- An init container reads as an app container that is oddly always finished
+                                                         unless it says which it is. -->
+                                                    <Border IsVisible="{Binding HasKindLabel}" Background="{DynamicResource AccentSoft}"
+                                                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding KindLabel}" FontSize="10" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource Accent}"/>
+                                                    </Border>
+                                                </StackPanel>
                                                 <TextBlock Grid.Column="1" Text="{Binding Image}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                                     <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
                                                     <TextBlock Text="{Binding ReadyText}" Foreground="{DynamicResource TextDim}"/>
                                                 </StackPanel>
                                                 <TextBlock Grid.Column="3" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="4" Text="{Binding State}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding PortsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="5" Text="{Binding State}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -223,7 +234,12 @@
                         <Path Classes="icon" Width="24" Height="24" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconTerminal}"/>
                     </Border>
                     <TextBlock Text="Shell unavailable" FontSize="14.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                    <!-- Say what is actually in the way when we know. A finished init container is the
+                         common case here and it is not a fault — it is what success looks like for one. -->
+                    <TextBlock Text="{Binding ExecBlockedReason}" IsVisible="{Binding HasExecBlockedReason}"
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center" MaxWidth="380" TextAlignment="Center" TextWrapping="Wrap"/>
                     <TextBlock Text="An interactive shell needs a running pod with exec support and a compatible /bin/sh."
+                               IsVisible="{Binding !HasExecBlockedReason}"
                                FontSize="12.5" Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center" MaxWidth="380" TextAlignment="Center" TextWrapping="Wrap"/>
                 </StackPanel>
             </Panel>
