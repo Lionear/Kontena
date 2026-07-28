@@ -118,6 +118,10 @@ public class KontenaSettingsTests
                 ["docker"] = false,
                 ["docker-remote:r1"] = true,
             },
+            Shortcuts = new Dictionary<string, string>
+            {
+                ["page.refresh"] = "Ctrl+Shift+R",
+            },
             RecentBuildContexts = ["/srv/build/app", "/srv/build/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
             {
@@ -153,6 +157,9 @@ public class KontenaSettingsTests
 
         // Grouping turned off survives as false — absent means on, so the two must stay tellable apart.
         Assert.Equal(original.ContainerGrouping, restored.ContainerGrouping);
+
+        // Only the shortcuts that were changed are in here; the rest follow the defaults (KON-180).
+        Assert.Equal(original.Shortcuts, restored.Shortcuts);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -167,6 +174,7 @@ public class KontenaSettingsTests
                 BackendNames = restored.BackendNames,
                 KnownClusters = restored.KnownClusters,
                 ContainerGrouping = restored.ContainerGrouping,
+                Shortcuts = restored.Shortcuts,
             },
             restored);
     }

@@ -428,6 +428,10 @@ public partial class MainWindowViewModel
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
             LocalClusters = _localClusters ??= BuildLocalClustersPage(),
+
+            // A changed shortcut has to reach the window's binding collection, or it would only take
+            // effect on the next launch (KON-180).
+            RequestShortcutsChanged = ShortcutsChanged,
         };
 
         SettingsPage.RequestConfirm = ShowConfirm;

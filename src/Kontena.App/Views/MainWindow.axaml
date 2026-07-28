@@ -21,20 +21,11 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <!-- Keyboard (KON-172). Both Ctrl and Cmd are registered for the same action rather than branching
-         per platform: a macOS user reaches for Cmd, everyone else for Ctrl, and the wrong one simply
-         does nothing. Bindings live on the window, so a control that handles a key first — the
-         terminal, which must keep Ctrl-C and Ctrl-R for the process — wins over them. -->
-    <Window.KeyBindings>
-        <KeyBinding Gesture="Escape" Command="{Binding DismissCommand}"/>
-        <KeyBinding Gesture="Enter" Command="{Binding ConfirmPrimaryCommand}"/>
-        <KeyBinding Gesture="Alt+Left" Command="{Binding GoBackCommand}"/>
-        <KeyBinding Gesture="Ctrl+F" Command="{Binding FocusSearchCommand}"/>
-        <KeyBinding Gesture="Cmd+F" Command="{Binding FocusSearchCommand}"/>
-        <KeyBinding Gesture="Ctrl+R" Command="{Binding RefreshCurrentPageCommand}"/>
-        <KeyBinding Gesture="Cmd+R" Command="{Binding RefreshCurrentPageCommand}"/>
-        <KeyBinding Gesture="Cmd+Left" Command="{Binding GoBackCommand}"/>
-    </Window.KeyBindings>
+    <!-- Keyboard (KON-172, configurable since KON-180). The bindings are filled in code from
+         ShellActions plus whatever the user changed — see MainWindow.axaml.cs. They are not listed
+         here because a gesture named in XAML is one nobody can change, show or check. Bindings live
+         on the window, so a control that handles a key first — the terminal, which must keep Ctrl-C
+         and Ctrl-R for the process — still wins over them. -->
 
     <Window.Resources>
         <!-- One switcher row — shared by the Engines and Clusters groups in the popover. -->
@@ -424,7 +415,7 @@
                          history, because an always-present greyed arrow is chrome nobody reads. -->
                     <Button Grid.Column="0" Classes="qa" Width="30" Height="30" Margin="0,0,12,0"
                             IsVisible="{Binding CanGoBack}" Command="{Binding GoBackCommand}"
-                            ToolTip.Tip="{Binding BackTooltip}">
+                            ToolTip.Tip="{Binding BackTooltipWithHint}">
                         <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource TextDim}"
                               Data="{StaticResource IconArrowLeft}"/>
                     </Button>
@@ -460,7 +451,7 @@
                                           MinWidth="150" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
-                        <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="Refresh">
+                        <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="{Binding RefreshTooltip}">
                             <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconRefresh}"/>
                         </Button>
                         <Button Classes="qa" Width="34" Height="34" Command="{Binding ToggleThemeCommand}"
