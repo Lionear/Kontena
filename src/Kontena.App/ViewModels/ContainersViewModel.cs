@@ -11,6 +11,8 @@ namespace Kontena.App.ViewModels;
 /// <summary>The Containers page: lists containers from the active engine and drives actions.</summary>
 public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 {
+    public string SearchPlaceholder => "Search containers…";
+
     private readonly IContainerEngine _engine;
 
     public ContainersViewModel(IContainerEngine engine) => _engine = engine;

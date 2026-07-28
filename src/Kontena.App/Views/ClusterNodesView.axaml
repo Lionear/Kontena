@@ -30,7 +30,7 @@
                 </Grid>
             </Border>
 
-            <ItemsControl ItemsSource="{Binding Nodes}">
+            <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel Orientation="Horizontal"/>
@@ -128,6 +128,13 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Typing something with no hits leaves an empty page, which reads as a page that failed
+                 to load rather than a search that found nothing (KON-164). -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                <TextBlock Text="No nodes match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

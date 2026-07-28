@@ -148,6 +148,11 @@ public partial class MainWindowViewModel
             }, ActiveNamespace),
             _ => new ClusterOverviewViewModel(_cluster),
         };
+
+        // The search term does not survive navigating away, and that is the honest behaviour while
+        // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
+        // pages keep theirs because they are long-lived fields. Restoring a term onto a fresh page
+        // would show a filtered list with no way to tell it had been filtered (KON-164).
         SearchText = string.Empty;
     }
     /// <summary>Rebuild the currently-selected cluster page (e.g. after an action mutates it).</summary>

@@ -89,6 +89,8 @@ public sealed class ActivityEntry
 /// </summary>
 public sealed partial class ActivityViewModel : ViewModelBase, IListPage
 {
+    public string SearchPlaceholder => "Search activity…";
+
     private readonly ActivityLog _log;
 
     public ActivityViewModel(ActivityLog log)

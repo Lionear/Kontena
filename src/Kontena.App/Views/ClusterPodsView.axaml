@@ -9,7 +9,8 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="Pods" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
                         <Grid ColumnDefinitions="1.8*,1.1*,0.6*,1.6*,0.8*,1.5*,0.7*,84">
@@ -23,7 +24,7 @@
                             <TextBlock Grid.Column="7" Text="" Classes="colhead"/>
                         </Grid>
                     </Border>
-                    <ItemsControl ItemsSource="{Binding Pods}">
+                    <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PodRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
@@ -53,6 +54,13 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
+            </Border>
+
+            <!-- Typing something with no hits leaves an empty page, which reads as a page that failed
+                 to load rather than a search that found nothing (KON-164). -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                <TextBlock Text="No pods match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
         </StackPanel>
     </ScrollViewer>
