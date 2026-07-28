@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:behaviors="using:Kontena.App.Behaviors"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -192,7 +193,7 @@
                     <Button Grid.Column="4" Classes="pill" Margin="8,0,0,0" Command="{Binding ClearLogsCommand}">Clear</Button>
                 </Grid>
                 <Border Grid.Row="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
-                    <ListBox x:Name="LogList" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
+                    <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
                              SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <ListBox.Styles>
                             <Style Selector="ListBoxItem">

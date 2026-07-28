@@ -613,6 +613,7 @@ internal static class Program
 
             case "pod":
             case "pod-logs":
+            case "pod-logs-tail":
             case "pod-yaml":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -625,10 +626,26 @@ internal static class Program
                 }
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
                 {
-                    if (scene == "pod-logs")
+                    if (scene is "pod-logs" or "pod-logs-tail")
                     {
                         detailVm.SelectTabCommand.Execute("logs");
                         Settle(rounds: 30);
+
+                        // More lines than fit, so the shot says where the view actually sits (KON-165).
+                        // The fake pod produces four; four cannot show a scroll position at all, which
+                        // is how five views shipped without one.
+                        if (scene == "pod-logs-tail")
+                        {
+                            for (var i = 1; i <= 200; i++)
+                            {
+                                detailVm.Lines.Add(new Kontena.App.ViewModels.LogLineViewModel(
+                                    new Kontena.Core.Models.LogEntry(
+                                        DateTimeOffset.UnixEpoch.AddSeconds(i),
+                                        Kontena.Core.Models.LogSource.Stdout, $"line {i}")));
+                            }
+
+                            Settle(rounds: 40);
+                        }
                     }
                     else if (scene == "pod-yaml")
                     {

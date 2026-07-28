@@ -1,22 +1,14 @@
-using System.Collections.Specialized;
-using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using Avalonia.Threading;
 using Kontena.App.ViewModels;
 
 namespace Kontena.App.Views;
 
 public partial class BuildImageView : UserControl
 {
-    private INotifyCollectionChanged? _console;
-
-    public BuildImageView()
-    {
-        InitializeComponent();
-        DataContextChanged += OnDataContextChanged;
-    }
+    // Tail-following lives on the list itself — see Behaviors/AutoScroll.cs (KON-165).
+    public BuildImageView() => InitializeComponent();
 
     private async void OnBrowseDockerfileClick(object? sender, RoutedEventArgs e)
     {
@@ -61,28 +53,4 @@ public partial class BuildImageView : UserControl
             vm.ContextPath = path;
     }
 
-    private void OnDataContextChanged(object? sender, System.EventArgs e)
-    {
-        if (_console is not null)
-            _console.CollectionChanged -= OnConsoleChanged;
-
-        _console = (DataContext as BuildImageViewModel)?.Console;
-
-        if (_console is not null)
-            _console.CollectionChanged += OnConsoleChanged;
-    }
-
-    private void OnConsoleChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (e.Action != NotifyCollectionChangedAction.Add)
-            return;
-
-        if (DataContext is not BuildImageViewModel vm || vm.Console.Count == 0)
-            return;
-
-        // Tail-follow the build console after layout.
-        Dispatcher.UIThread.Post(
-            () => this.FindControl<ListBox>("ConsoleList")?.ScrollIntoView(vm.Console.Count - 1),
-            DispatcherPriority.Background);
-    }
 }

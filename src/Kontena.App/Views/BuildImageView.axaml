@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:behaviors="using:Kontena.App.Behaviors"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -210,7 +211,7 @@
                     </ScrollViewer>
 
                     <Border Grid.Column="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
-                        <ListBox x:Name="ConsoleList" ItemsSource="{Binding Console}" Background="Transparent" Padding="16,14"
+                        <ListBox x:Name="ConsoleList" behaviors:AutoScroll.Enabled="True" ItemsSource="{Binding Console}" Background="Transparent" Padding="16,14"
                                  SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                             <ListBox.Styles>
                                 <Style Selector="ListBoxItem">
