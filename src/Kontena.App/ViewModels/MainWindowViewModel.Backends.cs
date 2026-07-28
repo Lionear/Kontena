@@ -254,6 +254,9 @@ public partial class MainWindowViewModel
     {
         _engine = engine;
         IsClusterMode = false;
+        // A different backend is a different world with its own nav; carrying the stack across would
+        // offer a Back to a page this side has no menu entry for (KON-173).
+        ClearHistory();
         SetEngineNav();
 
         Containers = new ContainersViewModel(_engine)
@@ -312,6 +315,7 @@ public partial class MainWindowViewModel
     {
         _cluster = cluster;
         IsClusterMode = true;
+        ClearHistory();
         SetClusterNav();
 
         // The registry probes a throwaway instance, so this one has never been contacted. Ping it:

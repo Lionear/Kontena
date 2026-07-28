@@ -23,7 +23,6 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     private readonly IClusterEngine _cluster;
     private readonly Pod _pod;
-    private readonly Action _onBack;
     private readonly Action<Pod>? _onForward;
     private readonly ResourceRef _ref;
     private readonly List<LogLineViewModel> _all = [];
@@ -32,11 +31,10 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private CancellationTokenSource? _logCts;      // per-container log stream
 
     public ClusterPodDetailViewModel(
-        IClusterEngine cluster, Pod pod, Action onBack, TerminalFont terminalFont, Action<Pod>? onForward = null)
+        IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null)
     {
         _cluster = cluster;
         _pod = pod;
-        _onBack = onBack;
         _onForward = onForward;
         _ref = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
 
@@ -459,9 +457,6 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     [RelayCommand]
     private void PortForward() => _onForward?.Invoke(_pod);
-
-    [RelayCommand]
-    private void Back() => _onBack();
 
     public void Dispose()
     {

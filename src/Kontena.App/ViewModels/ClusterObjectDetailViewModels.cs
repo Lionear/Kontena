@@ -25,14 +25,14 @@ namespace Kontena.App.ViewModels;
 public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
 {
     private readonly IClusterEngine _cluster;
-    private readonly Action _onBack;
     private readonly Action<Pod>? _onOpenPod;
 
+    // No onBack: Back is the shell's history now, and a page that carried its own would be a second
+    // way out that has to be kept in step with the first (KON-173).
     protected ClusterObjectDetailViewModel(
-        IClusterEngine cluster, ResourceRef reference, Action onBack, Action<Pod>? onOpenPod)
+        IClusterEngine cluster, ResourceRef reference, Action<Pod>? onOpenPod)
     {
         _cluster = cluster;
-        _onBack = onBack;
         _onOpenPod = onOpenPod;
         Reference = reference;
     }
@@ -72,9 +72,6 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
 
     [RelayCommand]
     private void SelectTab(string tab) => SelectedTab = tab;
-
-    [RelayCommand]
-    private void Back() => _onBack();
 
     // ── Related pods ──────────────────────────────────────────────────────────
 
@@ -208,9 +205,9 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     private readonly Workload _workload;
 
     public ClusterWorkloadDetailViewModel(
-        IClusterEngine cluster, Workload workload, Action onBack,
+        IClusterEngine cluster, Workload workload,
         Action<Pod>? onOpenPod = null, Action<Workload>? onScale = null, Action<Workload>? onRestart = null)
-        : base(cluster, workload.Reference, onBack, onOpenPod)
+        : base(cluster, workload.Reference, onOpenPod)
     {
         _workload = workload;
         _onScale = onScale;
@@ -282,9 +279,9 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
     private readonly Action<Service>? _onForward;
 
     public ClusterServiceDetailViewModel(
-        IClusterEngine cluster, Service service, Action onBack,
+        IClusterEngine cluster, Service service,
         Action<Pod>? onOpenPod = null, Action<Service>? onForward = null)
-        : base(cluster, new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name), onBack, onOpenPod)
+        : base(cluster, new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name), onOpenPod)
     {
         _service = service;
         _onForward = onForward;

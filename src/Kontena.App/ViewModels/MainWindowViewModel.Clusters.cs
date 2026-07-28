@@ -63,6 +63,10 @@ public partial class MainWindowViewModel
             onConfirm: async () =>
             {
                 await _cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name));
+
+                // Back must not lead to the detail page of something that no longer exists — and only
+                // this moment knows the step was ever valid (KON-173).
+                ForgetSteps(pod);
                 CloseDialog();
                 ReloadCurrentClusterPage();
             },
@@ -263,22 +267,26 @@ public partial class MainWindowViewModel
     /// <summary>The switcher's "n new clusters found" row — opens the wizard where they are chosen.</summary>
     [RelayCommand]
     private void ReviewNewClusters() => ShowAddBackend(AddBackendStep.Kubernetes);
-    /// <summary>Open the pod-detail page for a pod (logs / shell / events / YAML).</summary>
-    /// <param name="onBack">Where Back returns to. Defaults to the Pods list, but a pod reached from a
-    /// workload or a service returns there instead — dropping someone on a list they never opened is
-    /// how a trail gets lost, and reaching a pod from its owner is the whole point of KON-166/167.</param>
-    private void ShowPodDetail(Pod pod, Action? onBack = null)
+    /// <summary>
+    /// Open the pod-detail page for a pod (logs / shell / events / YAML).
+    /// <para>
+    /// Back is the history's, not a fixed destination. This used to take an <c>onBack</c> that each
+    /// caller filled in so a pod opened from a workload returned to that workload — the history
+    /// replayed by hand, one route at a time (KON-173).
+    /// </para>
+    /// </summary>
+    private void ShowPodDetail(Pod pod)
     {
         if (_cluster is null)
             return;
 
+        Arrived($"pod {pod.Name}", () => ShowPodDetail(pod), pod);
         DisposeDetail();
 
         var current = _store.Load();
         var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
 
-        _podDetail = new ClusterPodDetailViewModel(
-            _cluster, pod, onBack ?? (() => NavigateCluster("pods")), font, ShowPodPortForward);
+        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, font, ShowPodPortForward);
         CurrentPage = _podDetail;
     }
 
@@ -291,12 +299,12 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
+        Arrived($"{workload.Kind} {workload.Name}", () => ShowWorkloadDetail(workload), workload);
         DisposeDetail();
 
         CurrentPage = new ClusterWorkloadDetailViewModel(
             _cluster, workload,
-            onBack: () => NavigateCluster("workloads"),
-            onOpenPod: pod => ShowPodDetail(pod, () => ShowWorkloadDetail(workload)),
+            onOpenPod: ShowPodDetail,
             onScale: ShowScaleDialog,
             onRestart: ConfirmRestartWorkload);
     }
@@ -307,12 +315,12 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
+        Arrived($"service {service.Name}", () => ShowServiceDetail(service), service);
         DisposeDetail();
 
         CurrentPage = new ClusterServiceDetailViewModel(
             _cluster, service,
-            onBack: () => NavigateCluster("services"),
-            onOpenPod: pod => ShowPodDetail(pod, () => ShowServiceDetail(service)),
+            onOpenPod: ShowPodDetail,
             onForward: ShowServicePortForward);
     }
 }

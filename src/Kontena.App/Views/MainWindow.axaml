@@ -21,6 +21,21 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
+    <!-- Keyboard (KON-172). Both Ctrl and Cmd are registered for the same action rather than branching
+         per platform: a macOS user reaches for Cmd, everyone else for Ctrl, and the wrong one simply
+         does nothing. Bindings live on the window, so a control that handles a key first — the
+         terminal, which must keep Ctrl-C and Ctrl-R for the process — wins over them. -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding DismissCommand}"/>
+        <KeyBinding Gesture="Enter" Command="{Binding ConfirmPrimaryCommand}"/>
+        <KeyBinding Gesture="Alt+Left" Command="{Binding GoBackCommand}"/>
+        <KeyBinding Gesture="Ctrl+F" Command="{Binding FocusSearchCommand}"/>
+        <KeyBinding Gesture="Cmd+F" Command="{Binding FocusSearchCommand}"/>
+        <KeyBinding Gesture="Ctrl+R" Command="{Binding RefreshCurrentPageCommand}"/>
+        <KeyBinding Gesture="Cmd+R" Command="{Binding RefreshCurrentPageCommand}"/>
+        <KeyBinding Gesture="Cmd+Left" Command="{Binding GoBackCommand}"/>
+    </Window.KeyBindings>
+
     <Window.Resources>
         <!-- One switcher row — shared by the Engines and Clusters groups in the popover. -->
         <DataTemplate x:Key="SwitcherItem" x:DataType="vm:EngineOption">
@@ -403,10 +418,20 @@
 
             <!-- Command bar -->
             <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                <Grid Margin="20,0" ColumnDefinitions="*,Auto">
+                <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto">
+                    <!-- Back, and the only one there is: Settings, Activity and About had no way back
+                         at all before this (KON-173). Hidden rather than disabled when there is no
+                         history, because an always-present greyed arrow is chrome nobody reads. -->
+                    <Button Grid.Column="0" Classes="qa" Width="30" Height="30" Margin="0,0,12,0"
+                            IsVisible="{Binding CanGoBack}" Command="{Binding GoBackCommand}"
+                            ToolTip.Tip="{Binding BackTooltip}">
+                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconArrowLeft}"/>
+                    </Button>
+
                     <!-- Dimmed where the page has nothing to search, so "you cannot type here" is
                          visible before you try rather than after. -->
-                    <Border Grid.Column="0" Width="420" Height="34" Background="{DynamicResource Bg}"
+                    <Border Grid.Column="1" Width="420" Height="34" Background="{DynamicResource Bg}"
                             BorderBrush="{DynamicResource Border}" BorderThickness="1"
                             Opacity="{Binding IsSearchEnabled, Converter={x:Static conv:BoolToSearchOpacityConverter.Instance}}"
                             CornerRadius="8" Padding="12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
@@ -416,14 +441,14 @@
                             <!-- Placeholder and enabled state follow the page (KON-164). The fixed
                                  string used to name containers, images and volumes on a Kubernetes
                                  cluster, where none of the three exist. -->
-                            <TextBox Classes="bare" Margin="9,0,0,0"
+                            <TextBox x:Name="SearchBox" Classes="bare" Margin="9,0,0,0"
                                      PlaceholderText="{Binding SearchPlaceholder}"
                                      IsEnabled="{Binding IsSearchEnabled}"
                                      Text="{Binding SearchText, Mode=TwoWay}"/>
                         </DockPanel>
                     </Border>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <!-- Namespace picker — only in cluster mode -->
                         <Border IsVisible="{Binding IsClusterMode}" Background="{DynamicResource Bg}"
                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="8"

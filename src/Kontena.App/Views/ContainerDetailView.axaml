@@ -19,9 +19,6 @@
 
                 <!-- Title row + actions -->
                 <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                    <Button Grid.Column="0" Classes="qa" Width="32" Height="32" Command="{Binding BackCommand}" ToolTip.Tip="Back">
-                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconArrowLeft}"/>
-                    </Button>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="14,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="19" FontWeight="SemiBold"
