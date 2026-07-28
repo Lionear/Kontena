@@ -371,17 +371,14 @@
                                           Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
                                     <TextBlock Grid.Column="2" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
 
-                                    <!-- Expands the group without navigating: opening Workloads and
-                                         seeing what is under it are two different intentions. -->
-                                    <Button Grid.Column="3" Classes="qa" Width="20" Height="20" Margin="0,0,4,0"
-                                            IsVisible="{Binding HasChildren}"
-                                            Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).ToggleNavGroupCommand}"
-                                            CommandParameter="{Binding Key}"
-                                            ToolTip.Tip="Show kinds">
-                                        <Path Classes="icon" Width="12" Height="12"
-                                              Stroke="{DynamicResource TextFaint}"
-                                              Data="{Binding IsExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}"/>
-                                    </Button>
+                                    <!-- An indicator, not a button. The row itself opens the group, so a
+                                         second hit target inside it would be a control that duplicates
+                                         its own parent — and it looked like one. -->
+                                    <Path Grid.Column="3" Classes="icon" Width="12" Height="12" Margin="0,0,8,0"
+                                          VerticalAlignment="Center"
+                                          IsVisible="{Binding HasChildren}"
+                                          Stroke="{DynamicResource TextFaint}"
+                                          Data="{Binding IsExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}"/>
 
                                     <!-- Something on this page fell over; separate from the count, which
                                          says how many are working (KON-107). -->

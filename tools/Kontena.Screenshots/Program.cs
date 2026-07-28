@@ -648,9 +648,10 @@ internal static class Program
             case "cluster-deployments":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
-                vm.NavigateCommand.Execute("workloads");
+                // Clicking Workloads opens the group; it does not load every kind at once (KON-169).
+                vm.NavigateCommand.Execute("overview");
                 SettleUntil(() => vm.NavItems.Any(i => i.Key == "workloads" && i.HasChildren), maxRounds: 60);
-                vm.ToggleNavGroupCommand.Execute("workloads");
+                vm.NavigateCommand.Execute("workloads");
                 SettleUntil(() => vm.NavItems.Any(i => i.IsChild), maxRounds: 60);
 
                 if (scene == "cluster-cronjobs")

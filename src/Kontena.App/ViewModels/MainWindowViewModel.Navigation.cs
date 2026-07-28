@@ -34,6 +34,16 @@ public partial class MainWindowViewModel
     {
         if (IsClusterMode)
         {
+            // A parent with children is a group header, not a page: clicking it opens the group rather
+            // than loading every kind at once (KON-169). With no children there is no group to open, so
+            // it stays an ordinary page — otherwise a cluster running one kind could not reach its list
+            // at all.
+            if (NavItems.FirstOrDefault(i => i.Key == key) is { HasChildren: true })
+            {
+                ToggleNavGroup(key);
+                return;
+            }
+
             NavigateCluster(key);
             return;
         }
@@ -104,11 +114,14 @@ public partial class MainWindowViewModel
             item.IsSelected = item.Key == key;
 
         // Opening a child keeps its parent open, otherwise the group folds up under the page you just
-        // navigated into and the trail back to its siblings disappears.
+        // navigated into and the trail back to its siblings disappears. The refresh matters as much as
+        // the flag: the children are only inserted while rebuilding, so setting IsExpanded on its own
+        // leaves an open chevron above nothing.
         if (WorkloadNavGroups.KindOf(key) is not null
-            && NavItems.FirstOrDefault(i => i.Key == "workloads") is { } workloadsNav)
+            && NavItems.FirstOrDefault(i => i.Key == "workloads") is { IsExpanded: false } workloadsNav)
         {
             workloadsNav.IsExpanded = true;
+            _ = UpdateClusterNavCountsAsync();
         }
 
         // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker.
