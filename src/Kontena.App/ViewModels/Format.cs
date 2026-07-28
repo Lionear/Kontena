@@ -24,10 +24,16 @@ internal static class Format
         return $"{value} {units[u]}";
     }
 
-    /// <summary>Human name for a <c>kontena.source</c> label value.</summary>
+    /// <summary>
+    /// Human name for a <c>kontena.source</c> label value. The fallback capitalises the raw value, which
+    /// is right for a one-word tool and wrong for anything else — hence the map. <c>sqlexplorer</c> is
+    /// DataTray's former name and must stay: a container carries the label it was created with for as
+    /// long as it lives, so renaming the product does not relabel what is already running.
+    /// </summary>
     public static string ManagedSource(string? source) => source switch
     {
         null or "" => "another tool",
+        "datatray" => "DataTray",
         "sqlexplorer" => "SQL Explorer",
         _ => char.ToUpperInvariant(source[0]) + source[1..],
     };
