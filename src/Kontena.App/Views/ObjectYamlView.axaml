@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="500"
+             x:Class="Kontena.App.Views.ObjectYamlView"
+             x:DataType="vm:ClusterObjectDetailViewModel">
+
+    <!-- Read-only on purpose. The pod detail's editable manifest carries an apply, a dirty check and a
+         revert; offering a text box here that silently does nothing on edit would be worse than not
+         offering one. Editing these kinds goes through Apply manifest. -->
+    <Border Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+        <ScrollViewer HorizontalScrollBarVisibility="Auto">
+            <SelectableTextBlock Text="{Binding YamlText}" TextWrapping="NoWrap" Padding="16,12"
+                                 FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+        </ScrollViewer>
+    </Border>
+</UserControl>

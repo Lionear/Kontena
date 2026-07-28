@@ -62,5 +62,20 @@ public sealed record Workload
     /// <summary>Whether scaling applies (false for DaemonSets/Jobs/CronJobs).</summary>
     public bool IsScalable => Kind is WorkloadKind.Deployment or WorkloadKind.StatefulSet or WorkloadKind.ReplicaSet;
 
+    /// <summary>Labels on the workload object itself (KON-166).</summary>
+    public IReadOnlyDictionary<string, string> Labels { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// The pod selector. A CronJob has none — it does not own pods directly, its Jobs do — so an
+    /// empty selector there is a fact about the kind rather than a gap in the mapping.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Selector { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>Update strategy, e.g. "RollingUpdate (max surge 25%, max unavailable 25%)".</summary>
+    public string Strategy { get; init; } = string.Empty;
+
+    /// <summary>This workload as an addressable reference — for the manifest tab and delete.</summary>
+    public ResourceRef Reference => new(GroupVersionKind.For(Kind), Namespace, Name);
+
     public TimeSpan Age { get; init; }
 }

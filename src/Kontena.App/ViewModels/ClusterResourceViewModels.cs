@@ -86,15 +86,21 @@ public partial class ClusterWorkloadsViewModel : ViewModelBase
     private readonly string? _namespace;
     private readonly Action<Workload>? _onScale;
     private readonly Action<Workload>? _onRestart;
+    private readonly Action<Workload>? _onOpenDetail;
 
+    /// <param name="onOpenDetail">Invoked when a workload row is opened; the shell wires this to the
+    /// workload-detail page (KON-166). A constructor parameter rather than an init-property, so it is
+    /// set before the fire-and-forget load builds the rows.</param>
     public ClusterWorkloadsViewModel(
         IClusterEngine cluster, string? @namespace,
-        Action<Workload>? onScale = null, Action<Workload>? onRestart = null)
+        Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
+        Action<Workload>? onOpenDetail = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onScale = onScale;
         _onRestart = onRestart;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
     }
 
@@ -104,7 +110,7 @@ public partial class ClusterWorkloadsViewModel : ViewModelBase
     {
         Workloads.Clear();
         foreach (var w in await _cluster.ListWorkloadsAsync(null, _namespace))
-            Workloads.Add(new WorkloadRow(w, _onScale, _onRestart));
+            Workloads.Add(new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail));
     }
 }
 
@@ -147,12 +153,16 @@ public partial class ClusterServicesViewModel : ViewModelBase
     private readonly string? _namespace;
 
     private readonly Action<Service>? _onForward;
+    private readonly Action<Service>? _onOpenDetail;
 
-    public ClusterServicesViewModel(IClusterEngine cluster, string? @namespace, Action<Service>? onForward = null)
+    public ClusterServicesViewModel(
+        IClusterEngine cluster, string? @namespace,
+        Action<Service>? onForward = null, Action<Service>? onOpenDetail = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onForward = onForward;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
     }
 
@@ -162,7 +172,7 @@ public partial class ClusterServicesViewModel : ViewModelBase
     {
         Services.Clear();
         foreach (var s in await _cluster.ListServicesAsync(_namespace))
-            Services.Add(new ServiceRow(s, _onForward));
+            Services.Add(new ServiceRow(s, _onForward, _onOpenDetail));
     }
 }
 
@@ -273,12 +283,17 @@ public sealed partial class WorkloadRow
     private readonly Workload _workload;
     private readonly Action<Workload>? _onScale;
     private readonly Action<Workload>? _onRestart;
+    private readonly Action<Workload>? _onOpenDetail;
 
-    public WorkloadRow(Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null)
+    public WorkloadRow(
+        Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
+        Action<Workload>? onOpenDetail = null)
     {
         _workload = w;
         _onScale = onScale;
         _onRestart = onRestart;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
 
         Name = w.Name;
         Namespace = w.Namespace;
@@ -305,7 +320,11 @@ public sealed partial class WorkloadRow
     public string Age { get; }
     public bool CanScale { get; }
     public bool CanRestart { get; }
+    public bool CanOpen { get; }
     public IBrush StatusBrush { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_workload);
 
     [RelayCommand]
     private void Scale() => _onScale?.Invoke(_workload);
@@ -368,11 +387,14 @@ public sealed partial class ServiceRow
 {
     private readonly Service _service;
     private readonly Action<Service>? _onForward;
+    private readonly Action<Service>? _onOpenDetail;
 
-    public ServiceRow(Service s, Action<Service>? onForward = null)
+    public ServiceRow(Service s, Action<Service>? onForward = null, Action<Service>? onOpenDetail = null)
     {
         _service = s;
         _onForward = onForward;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
 
         Name = s.Name;
         Namespace = s.Namespace;
@@ -392,6 +414,10 @@ public sealed partial class ServiceRow
     public string Ports { get; }
     public string Age { get; }
     public bool CanForward { get; }
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_service);
 
     [RelayCommand]
     private void Forward() => _onForward?.Invoke(_service);

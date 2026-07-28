@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="500"
+             x:Class="Kontena.App.Views.ObjectEventsView"
+             x:DataType="vm:ClusterObjectDetailViewModel">
+
+    <ScrollViewer>
+        <StackPanel Spacing="10">
+            <ItemsControl ItemsSource="{Binding Events}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PodEventRow">
+                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="14,11" Margin="0,0,0,8">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{Binding SeverityBrush}" VerticalAlignment="Top" Margin="0,5,12,0"/>
+                                <StackPanel Grid.Column="1" Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Reason}" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                        <TextBlock Text="{Binding CountText}" FontFamily="{StaticResource Mono}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Message}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Source}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding Age}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Top"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <!-- Kubernetes drops events after an hour by default, so "none" here usually means nothing
+                 has happened lately rather than nothing ever did. -->
+            <TextBlock Text="No recent events for this object." IsVisible="{Binding !HasEvents}"
+                       Foreground="{DynamicResource TextFaint}" FontSize="12.5" Margin="2,4,0,0"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

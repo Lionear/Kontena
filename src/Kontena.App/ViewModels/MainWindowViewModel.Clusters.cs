@@ -264,7 +264,10 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private void ReviewNewClusters() => ShowAddBackend(AddBackendStep.Kubernetes);
     /// <summary>Open the pod-detail page for a pod (logs / shell / events / YAML).</summary>
-    private void ShowPodDetail(Pod pod)
+    /// <param name="onBack">Where Back returns to. Defaults to the Pods list, but a pod reached from a
+    /// workload or a service returns there instead — dropping someone on a list they never opened is
+    /// how a trail gets lost, and reaching a pod from its owner is the whole point of KON-166/167.</param>
+    private void ShowPodDetail(Pod pod, Action? onBack = null)
     {
         if (_cluster is null)
             return;
@@ -274,7 +277,42 @@ public partial class MainWindowViewModel
         var current = _store.Load();
         var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
 
-        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, () => NavigateCluster("pods"), font, ShowPodPortForward);
+        _podDetail = new ClusterPodDetailViewModel(
+            _cluster, pod, onBack ?? (() => NavigateCluster("pods")), font, ShowPodPortForward);
         CurrentPage = _podDetail;
+    }
+
+    /// <summary>
+    /// Open the workload-detail page (KON-166). Until this existed a workload row was a dead end:
+    /// Scale and Restart, and no way from a Deployment to the pods it controls.
+    /// </summary>
+    private void ShowWorkloadDetail(Workload workload)
+    {
+        if (_cluster is null)
+            return;
+
+        DisposeDetail();
+
+        CurrentPage = new ClusterWorkloadDetailViewModel(
+            _cluster, workload,
+            onBack: () => NavigateCluster("workloads"),
+            onOpenPod: pod => ShowPodDetail(pod, () => ShowWorkloadDetail(workload)),
+            onScale: ShowScaleDialog,
+            onRestart: ConfirmRestartWorkload);
+    }
+
+    /// <summary>Open the service-detail page (KON-167).</summary>
+    private void ShowServiceDetail(Service service)
+    {
+        if (_cluster is null)
+            return;
+
+        DisposeDetail();
+
+        CurrentPage = new ClusterServiceDetailViewModel(
+            _cluster, service,
+            onBack: () => NavigateCluster("services"),
+            onOpenPod: pod => ShowPodDetail(pod, () => ShowServiceDetail(service)),
+            onForward: ShowServicePortForward);
     }
 }

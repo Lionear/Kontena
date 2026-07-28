@@ -381,6 +381,61 @@ public class K8sMapTests
     }
 
     [Fact]
+    public void Deployment_maps_labels_selector_and_strategy()
+    {
+        // The three fields the detail page needs to say what this workload is and what it reaches
+        // (KON-166); none of them were read before it existed.
+        var source = Deployment(3, 3, 3);
+        source.Metadata.Labels = new Dictionary<string, string> { ["app"] = "api", ["tier"] = "backend" };
+        source.Spec.Selector = new V1LabelSelector { MatchLabels = new Dictionary<string, string> { ["app"] = "api" } };
+        source.Spec.Strategy = new V1DeploymentStrategy
+        {
+            Type = "RollingUpdate",
+            RollingUpdate = new V1RollingUpdateDeployment { MaxSurge = (IntOrString)"50%", MaxUnavailable = (IntOrString)"0" },
+        };
+
+        var workload = K8sMap.ToWorkload(source);
+
+        Assert.Equal("api", workload.Labels["app"]);
+        Assert.Equal("backend", workload.Labels["tier"]);
+        Assert.Equal(new Dictionary<string, string> { ["app"] = "api" }, workload.Selector);
+
+        // The numbers are the point of showing the strategy: they decide how the rollout behaves.
+        Assert.Equal("RollingUpdate (max surge 50%, max unavailable 0)", workload.Strategy);
+    }
+
+    [Fact]
+    public void A_workload_without_labels_or_a_selector_maps_to_empty_rather_than_null()
+    {
+        var workload = K8sMap.ToWorkload(Deployment(3, 3, 3));
+
+        Assert.Empty(workload.Labels);
+        Assert.Empty(workload.Selector);
+    }
+
+    [Fact]
+    public void Every_workload_kind_addresses_its_own_group()
+    {
+        // A fallback to Deployment here would point a Job's manifest read at apps/v1 instead of
+        // batch/v1 — the wrong resource rather than a loud failure.
+        Assert.Equal("batch", GroupVersionKind.For(WorkloadKind.Job).Group);
+        Assert.Equal("batch", GroupVersionKind.For(WorkloadKind.CronJob).Group);
+        Assert.Equal("apps", GroupVersionKind.For(WorkloadKind.DaemonSet).Group);
+        Assert.Equal("DaemonSet", GroupVersionKind.For(WorkloadKind.DaemonSet).Kind);
+        Assert.Equal("StatefulSet", GroupVersionKind.For(WorkloadKind.StatefulSet).Kind);
+    }
+
+    [Fact]
+    public void Pod_labels_reach_the_model()
+    {
+        // Without these a Service detail cannot say which pods its selector reaches (KON-167).
+        var source = Pod();
+        source.Metadata.Labels = new Dictionary<string, string> { ["app"] = "web" };
+
+        Assert.Equal("web", K8sMap.ToPod(source).Labels["app"]);
+    }
+
+    [Fact]
     public void Deployment_maps_kind_counts_and_images()
     {
         var workload = K8sMap.ToWorkload(Deployment(3, 3, 3));

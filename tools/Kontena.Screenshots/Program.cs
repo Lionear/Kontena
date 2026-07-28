@@ -641,6 +641,40 @@ internal static class Program
                 }
                 break;
 
+            // Workload and Service detail (KON-166, KON-167). Reached the way a user reaches them —
+            // by opening a row — so a scene cannot show a page the list has no way of opening.
+            case "workload":
+            case "workload-pods":
+            case "workload-cronjob":
+            case "service":
+            case "service-pods":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(scene.StartsWith("service", StringComparison.Ordinal) ? "services" : "workloads");
+                Settle(rounds: 30);
+
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel workloads)
+                {
+                    var row = scene == "workload-cronjob"
+                        ? workloads.Workloads.FirstOrDefault(w => w.Kind == "CronJob")
+                        : workloads.Workloads.FirstOrDefault();
+                    row?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                }
+                else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterServicesViewModel services)
+                {
+                    services.Services.FirstOrDefault()?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                }
+
+                if (scene.EndsWith("-pods", StringComparison.Ordinal)
+                    && vm.CurrentPage is Kontena.App.ViewModels.ClusterObjectDetailViewModel objectDetail)
+                {
+                    objectDetail.SelectTabCommand.Execute("pods");
+                    SettleUntil(() => !objectDetail.PodsLoading, maxRounds: 60);
+                }
+                break;
+
             case "real-apply":
             case "real-helm":
             case "real-shell":

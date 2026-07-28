@@ -102,9 +102,9 @@ public partial class MainWindowViewModel
             "overview" => new ClusterOverviewViewModel(_cluster),
             "nodes" => new ClusterNodesViewModel(_cluster),
             "namespaces" => new ClusterNamespacesViewModel(_cluster),
-            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload),
-            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
-            "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward),
+            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail),
+            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, p => ShowPodDetail(p), ConfirmDeletePod),
+            "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
             {

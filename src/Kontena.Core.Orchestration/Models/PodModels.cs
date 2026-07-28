@@ -136,6 +136,12 @@ public sealed record Pod
     /// <summary>Owning controller, e.g. "Deployment/api" — empty for bare pods.</summary>
     public string ControlledBy { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The pod's labels. Needed to answer the question a Service detail exists for: which pods does
+    /// this selector actually reach right now (KON-167).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Labels { get; init; } = new Dictionary<string, string>();
+
     /// <summary>Ready containers / total containers (for the "2/2" column).</summary>
     public int ReadyContainers => Containers.Count(c => c.Ready);
 

@@ -20,6 +20,27 @@ public readonly record struct GroupVersionKind(string Group, string Version, str
     public static GroupVersionKind Namespace => new(string.Empty, "v1", "Namespace");
     public static GroupVersionKind Node => new(string.Empty, "v1", "Node");
     public static GroupVersionKind Deployment => new("apps", "v1", "Deployment");
+    public static GroupVersionKind StatefulSet => new("apps", "v1", "StatefulSet");
+    public static GroupVersionKind DaemonSet => new("apps", "v1", "DaemonSet");
+    public static GroupVersionKind ReplicaSet => new("apps", "v1", "ReplicaSet");
+    public static GroupVersionKind Job => new("batch", "v1", "Job");
+    public static GroupVersionKind CronJob => new("batch", "v1", "CronJob");
+
+    /// <summary>
+    /// The coordinate for a workload kind. Spelled out per kind rather than defaulted: the batch
+    /// kinds are not in the <c>apps</c> group, so a fallback to Deployment would address the wrong
+    /// resource for a Job or CronJob rather than fail loudly.
+    /// </summary>
+    public static GroupVersionKind For(WorkloadKind kind) => kind switch
+    {
+        WorkloadKind.Deployment => Deployment,
+        WorkloadKind.StatefulSet => StatefulSet,
+        WorkloadKind.DaemonSet => DaemonSet,
+        WorkloadKind.ReplicaSet => ReplicaSet,
+        WorkloadKind.Job => Job,
+        WorkloadKind.CronJob => CronJob,
+        _ => Deployment,
+    };
 }
 
 /// <summary>
