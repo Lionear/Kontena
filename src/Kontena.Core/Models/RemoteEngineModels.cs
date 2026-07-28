@@ -66,6 +66,37 @@ public sealed record RemoteEngine(
     };
 
     /// <summary>
+    /// Why these values cannot be handed to <c>ssh</c>, or null (KON-181).
+    /// <para>
+    /// A process argument list stops a shell from interpreting anything, but it does not stop
+    /// <c>ssh</c> from reading an argument as one of its own <b>options</b>. A host of
+    /// <c>-oProxyCommand=…</c> is a command <c>ssh</c> runs, under this user's account, and there is no
+    /// <c>--</c> terminator for its destination to hide behind. A socket path containing <c>:</c> is
+    /// the same shape of problem one level down: it rewrites the <c>-L</c> forward spec, so the tunnel
+    /// carries traffic somewhere other than where it says.
+    /// </para>
+    /// <para>
+    /// One rule, two callers: this gate and <c>SshTunnel.Arguments</c>. Today the user types these
+    /// values themselves, so it is self-inflicted; it stops being self-inflicted the moment a remote
+    /// arrives from somewhere else — a synced settings file, an imported Docker context, a connection
+    /// string someone was asked to paste.
+    /// </para>
+    /// </summary>
+    public static string? ArgumentProblem(string? host, string? user, string? socketPath)
+    {
+        if (host is { Length: > 0 } h && h.StartsWith('-'))
+            return "A host cannot start with \"-\". SSH would read it as one of its own options rather than a destination.";
+
+        if (user is { Length: > 0 } u && u.StartsWith('-'))
+            return "A user cannot start with \"-\". SSH would read it as one of its own options rather than a name.";
+
+        if (socketPath is { Length: > 0 } s && s.Contains(':', StringComparison.Ordinal))
+            return "A socket path cannot contain \":\". It would change which address the tunnel forwards to.";
+
+        return null;
+    }
+
+    /// <summary>
     /// Why this configuration cannot be used, or null when it can. Checked before a connection is
     /// attempted so the complaint names the field rather than surfacing as a transport error later.
     /// </summary>
@@ -75,6 +106,9 @@ public sealed record RemoteEngine(
         {
             if (string.IsNullOrWhiteSpace(Host))
                 return "A host is required.";
+
+            if (ArgumentProblem(Host, User, SocketPath) is { } unsafeValue)
+                return unsafeValue;
 
             if (Transport == RemoteEngineTransport.Tcp)
             {
