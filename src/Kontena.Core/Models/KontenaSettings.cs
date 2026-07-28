@@ -215,6 +215,18 @@ public sealed record KontenaSettings
     public IReadOnlyDictionary<string, bool> ContainerGrouping { get; init; } =
         new Dictionary<string, bool>();
 
+    /// <summary>
+    /// Keyboard shortcuts the user changed, keyed by action id (KON-180). Absent means "use the
+    /// default", following <see cref="BackendNames"/> and <see cref="ContainerGrouping"/>.
+    /// <para>
+    /// Only deviations, deliberately. Writing the full set out would freeze today's defaults into every
+    /// installation, so a shortcut improved in a later release would reach nobody who had ever opened
+    /// this page — and the defaults differ per platform, which a stored copy cannot follow.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Shortcuts { get; init; } =
+        new Dictionary<string, string>();
+
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";
 

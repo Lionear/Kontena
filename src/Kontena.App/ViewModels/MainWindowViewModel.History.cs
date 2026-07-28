@@ -1,4 +1,6 @@
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Services;
 
 namespace Kontena.App.ViewModels;
 
@@ -114,6 +116,7 @@ public partial class MainWindowViewModel
     {
         OnPropertyChanged(nameof(CanGoBack));
         OnPropertyChanged(nameof(BackTooltip));
+        OnPropertyChanged(nameof(BackTooltipWithHint));
         GoBackCommand.NotifyCanExecuteChanged();
     }
 
@@ -155,5 +158,59 @@ public partial class MainWindowViewModel
         // to do nothing (KON-164).
         if (IsSearchEnabled)
             RequestFocusSearch?.Invoke();
+    }
+
+    // ── Configurable shortcuts (KON-180) ──────────────────────────────────────
+
+    /// <summary>
+    /// What each action id in <see cref="ShellActions"/> actually runs. The window builds its key
+    /// bindings from this and the stored gestures, rather than naming commands in XAML — which is what
+    /// made them unchangeable.
+    /// </summary>
+    public IReadOnlyDictionary<string, ICommand> ShortcutCommands =>
+        _shortcutCommands ??= new Dictionary<string, ICommand>(StringComparer.Ordinal)
+        {
+            [ShellActions.GoBack] = GoBackCommand,
+            [ShellActions.FocusSearch] = FocusSearchCommand,
+            [ShellActions.RefreshPage] = RefreshCurrentPageCommand,
+            [ShellActions.Dismiss] = DismissCommand,
+            [ShellActions.ConfirmPrimary] = ConfirmPrimaryCommand,
+        };
+
+    private IReadOnlyDictionary<string, ICommand>? _shortcutCommands;
+
+    /// <summary>
+    /// Raised when the shortcuts changed and the window should rebind. Keeps "no restart" honest: the
+    /// bindings are a collection the view owns, so the shell asks rather than reaching into it.
+    /// </summary>
+    public Action? RequestRebindShortcuts { get; set; }
+
+    /// <summary>The gesture in force for an action, for the tooltip of the button that does the same.</summary>
+    public string ShortcutHint(string actionId)
+    {
+        var action = ShellActions.Find(actionId);
+        return action is null
+            ? string.Empty
+            : ShellActions.Display(ShellActions.GestureFor(action, _settings.Shortcuts));
+    }
+
+    /// <summary>Back, with the keys that also do it — the shortcut is where the button is (KON-180).</summary>
+    public string BackTooltipWithHint =>
+        ShortcutHint(ShellActions.GoBack) is { Length: > 0 } keys ? $"{BackTooltip} ({keys})" : BackTooltip;
+
+    public string RefreshTooltip =>
+        ShortcutHint(ShellActions.RefreshPage) is { Length: > 0 } keys ? $"Refresh ({keys})" : "Refresh";
+
+    /// <summary>
+    /// The Settings page changed a shortcut. Re-read what is on disk — the settings page writes through
+    /// its own copy — then rebind and redraw the tooltips that quote the keys.
+    /// </summary>
+    internal void ShortcutsChanged()
+    {
+        _settings = _store.Load();
+
+        RequestRebindShortcuts?.Invoke();
+        OnPropertyChanged(nameof(BackTooltipWithHint));
+        OnPropertyChanged(nameof(RefreshTooltip));
     }
 }

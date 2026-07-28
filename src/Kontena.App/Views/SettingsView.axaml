@@ -49,6 +49,27 @@
             <Setter Property="OffContent" Value="{x:Null}"/>
         </Style>
 
+        <!-- The gesture button (KON-180): a field that shows keys and takes keys, so it reads as
+             mono like every other literal value in the app. -->
+        <Style Selector="Button.gesture">
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="MinWidth" Value="128"/>
+            <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.gesture:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Button.gesture.recording">
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+
         <Style Selector="TextBlock.gh">
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -107,7 +128,7 @@
                 <!-- General -->
                 <StackPanel IsVisible="{Binding IsGeneral}" Spacing="0">
                     <TextBlock Text="General" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                    <TextBlock Text="Appearance and terminal." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+                    <TextBlock Text="Appearance, terminal and keyboard." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
 
                     <TextBlock Classes="gh" Text="APPEARANCE"/>
                     <Border Classes="card" Padding="0" Margin="0,0,0,30">
@@ -202,6 +223,63 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- Keyboard (KON-180). Under General because there are five of these; a list of
+                         thirty would want its own page, the way Registries and Updates have one. -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,30,0,12">
+                        <TextBlock Grid.Column="0" Classes="gh" Text="KEYBOARD" Margin="0"/>
+                        <Button Grid.Column="1" Classes="ghost" Padding="8,3" FontSize="12"
+                                IsVisible="{Binding HasCustomShortcuts}"
+                                Command="{Binding ResetAllShortcutsCommand}"
+                                Content="Restore defaults"/>
+                    </Grid>
+                    <Border Classes="card" Padding="0">
+                        <ItemsControl ItemsSource="{Binding Shortcuts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ShortcutRow">
+                                    <StackPanel>
+                                        <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="{Binding Label}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                                <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextDim}"/>
+                                                <TextBlock Text="{Binding Problem}" FontSize="12" TextWrapping="Wrap"
+                                                           IsVisible="{Binding HasProblem}"
+                                                           Foreground="{DynamicResource Danger}"/>
+                                            </StackPanel>
+                                            <!-- The reset slot is reserved rather than added: a column
+                                                 that only exists on changed rows walks the gesture
+                                                 buttons out of line down the list. -->
+                                            <Grid Grid.Column="1" ColumnDefinitions="Auto,8,30" VerticalAlignment="Center">
+                                                <!-- The gesture is pressed, not typed: KeyGesture.Parse throws on
+                                                     anything that is not one, and the keys are what people know. -->
+                                                <Button Grid.Column="0" Classes="gesture" Classes.recording="{Binding IsRecording}"
+                                                        Command="{Binding RecordCommand}"
+                                                        ToolTip.Tip="Press the keys you want. Escape cancels.">
+                                                    <Panel>
+                                                        <TextBlock Text="{Binding DisplayGesture}" IsVisible="{Binding !IsRecording}"/>
+                                                        <TextBlock Text="Press keys…" IsVisible="{Binding IsRecording}"
+                                                                   Foreground="{DynamicResource Primary}"/>
+                                                    </Panel>
+                                                </Button>
+                                                <Button Grid.Column="2" Classes="qa" Width="30" Height="30"
+                                                        IsVisible="{Binding !IsDefault}"
+                                                        Command="{Binding ResetCommand}"
+                                                        ToolTip.Tip="Restore the default">
+                                                    <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
+                                                          Data="{StaticResource IconRefresh}"/>
+                                                </Button>
+                                            </Grid>
+                                        </Grid>
+                                        <Border Height="1" Background="{DynamicResource Border}"
+                                                IsVisible="{Binding !IsLast}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="2,10,0,0" Foreground="{DynamicResource TextDim}"
+                               Text="A terminal gets the keys first, so Ctrl-C and the other shell keys keep working while one has focus."/>
                 </StackPanel>
 
                 <!-- Engines -->

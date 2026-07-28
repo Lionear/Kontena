@@ -43,8 +43,15 @@ public partial class MainWindow : Window
         DataContextChanged += (_, _) =>
         {
             if (DataContext is ViewModels.MainWindowViewModel vm)
+            {
                 vm.RequestFocusSearch = () => SearchBox.Focus();
+                vm.RequestRebindShortcuts = RebindShortcuts;
+            }
+
+            RebindShortcuts();
         };
+
+        RebindShortcuts();
 
         SizeChanged += (_, _) => CaptureNormal();
         PositionChanged += (_, _) => CaptureNormal();
@@ -56,6 +63,45 @@ public partial class MainWindow : Window
             if (e.Property == WindowStateProperty)
                 SyncMaximiseButton();
         };
+    }
+
+    /// <summary>
+    /// Fill <see cref="InputElement.KeyBindings"/> from the action registry and the gestures the user
+    /// changed (KON-180). Called again whenever Settings changes one, which is what "without a restart"
+    /// means: the collection is rebuilt rather than the window recreated.
+    /// </summary>
+    private void RebindShortcuts()
+    {
+        KeyBindings.Clear();
+
+        if (DataContext is not ViewModels.MainWindowViewModel vm)
+            return;
+
+        var configured = _store.Load().Shortcuts;
+
+        foreach (var (action, gesture) in ShellActions.Resolve(configured))
+        {
+            if (!vm.ShortcutCommands.TryGetValue(action.Id, out var command))
+                continue;
+
+            // Resolve already discards anything unparseable, so this is belt and braces against a
+            // hand-edited settings file: one bad line must not cost the other shortcuts.
+            KeyGesture parsed;
+            try
+            {
+                parsed = KeyGesture.Parse(gesture);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+            catch (FormatException)
+            {
+                continue;
+            }
+
+            KeyBindings.Add(new KeyBinding { Gesture = parsed, Command = command });
+        }
     }
 
     private void RestorePlacement()

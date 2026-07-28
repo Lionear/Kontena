@@ -221,6 +221,7 @@ public partial class SettingsViewModel : ViewModelBase
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
+        RefreshShortcuts();
 
         // One control, not two: "which backend" and "how is it chosen" were separate settings that
         // could contradict each other. The list is the answer to a single question.
@@ -467,6 +468,7 @@ public partial class SettingsViewModel : ViewModelBase
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,
             TerminalLigatures = TerminalLigatures,
+            Shortcuts = _shortcutOverrides,
         });
     }
 }

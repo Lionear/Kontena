@@ -340,6 +340,7 @@ internal static class Program
                 break;
 
             case "settings":
+            case "settings-keyboard":
             case "settings-about":
             case "settings-registries":
             case "settings-engines":
@@ -357,10 +358,23 @@ internal static class Program
                     {
                         "settings-about" => "about",
                         "settings-registries" => "registries",
-                        "settings" => "general",
+                        "settings" or "settings-keyboard" => "general",
                         "settings-clusters" or "settings-clusters-new" => "clusters",
                         _ => "engines",
                     });
+
+                    // The states of the keyboard section that only exist after someone has used it
+                    // (KON-180): a changed row with its reset button, Restore defaults, a row still
+                    // listening, and a refusal. Driven through the page's own methods, so the shot
+                    // cannot show a state the UI does not produce.
+                    if (scene == "settings-keyboard")
+                    {
+                        var rows = s.Shortcuts;
+                        rows.First(r => r.Action.Id == ShellActions.RefreshPage).Offer("Ctrl+Shift+R");
+                        rows.First(r => r.Action.Id == ShellActions.FocusSearch).RecordCommand.Execute(null);
+                        rows.First(r => r.Action.Id == ShellActions.GoBack).Offer("Ctrl+C");
+                        Settle(rounds: 10);
+                    }
 
                     // Local clusters reads the machine it runs on (KON-109), so this shot shows what
                     // is actually installed here rather than a posed list — which is the point: a
