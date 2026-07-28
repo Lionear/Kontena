@@ -114,6 +114,57 @@ public sealed class RemoteArgumentValidationTests : IDisposable
     }
 
     [Fact]
+    public void A_remote_that_never_came_from_a_form_explains_itself_in_the_list()
+    {
+        // The vector from the ticket: a settings file edited by hand, synced from another machine, or
+        // written by an older version. The switcher skips such a remote rather than offering an entry
+        // that cannot connect — so this list is the only place left that can say why, and "not
+        // reachable" would send someone looking at their network.
+        var store = new SettingsStore(_path);
+        var settings = new KontenaSettings
+        {
+            RemoteEngines =
+            [
+                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "-oProxyCommand=id"),
+            ],
+        };
+        store.Save(settings);
+
+        var vm = new SettingsViewModel(
+            store, settings, [],
+            autostart: new UnsupportedAutostart(),
+            secrets: new UnavailableSecretStore());
+
+        var row = Assert.Single(vm.RemoteEngines);
+        Assert.True(row.HasProblem);
+        Assert.Contains("option", row.Problem!, StringComparison.Ordinal);
+        Assert.NotEqual("not reachable", row.Status);
+    }
+
+    [Fact]
+    public void A_healthy_remote_says_nothing_extra()
+    {
+        var store = new SettingsStore(_path);
+        var settings = new KontenaSettings
+        {
+            RemoteEngines =
+            [
+                new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh, "build-01", User: "deploy"),
+            ],
+        };
+        store.Save(settings);
+
+        var vm = new SettingsViewModel(
+            store, settings, [],
+            autostart: new UnsupportedAutostart(),
+            secrets: new UnavailableSecretStore());
+
+        var row = Assert.Single(vm.RemoteEngines);
+        Assert.False(row.HasProblem);
+        Assert.Equal("not reachable", row.Status);
+    }
+
+    [Fact]
     public void An_empty_form_does_not_complain_about_options()
     {
         // "A host is required" is the empty-form state and belongs to the submit button being disabled,

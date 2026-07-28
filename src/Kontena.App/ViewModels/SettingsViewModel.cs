@@ -35,7 +35,23 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
         Remote.Transport == RemoteEngineTransport.Tcp
         && string.IsNullOrWhiteSpace(Remote.CertificateDirectory);
 
-    public string Status => Connected ? "connected" : "not reachable";
+    /// <summary>
+    /// Why this remote cannot be used, or null (KON-181). The switcher deliberately skips such a
+    /// remote rather than offering an entry that cannot connect, on the grounds that this page
+    /// explains it — so this page has to actually explain it.
+    /// <para>
+    /// Reachable without ever touching a form: a settings file edited by hand, synced from another
+    /// machine, or written by an older version. "Not reachable" would send someone looking at their
+    /// network for a value that was refused before anything was dialled.
+    /// </para>
+    /// </summary>
+    public string? Problem => Remote.Problem;
+
+    public bool HasProblem => Problem is not null;
+
+    public string Status => Problem is not null
+        ? "not used"
+        : Connected ? "connected" : "not reachable";
 }
 
 /// <summary>One engine as shown in the Settings › Engines list.</summary>
