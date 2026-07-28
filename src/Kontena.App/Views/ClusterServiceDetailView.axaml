@@ -15,9 +15,6 @@
             <StackPanel Spacing="14">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
-                        <Button Classes="qa" Width="34" Height="34" Command="{Binding BackCommand}" ToolTip.Tip="Back to services">
-                            <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconArrowLeft}"/>
-                        </Button>
                         <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                         <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center">
                             <TextBlock Text="{Binding TypeText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>

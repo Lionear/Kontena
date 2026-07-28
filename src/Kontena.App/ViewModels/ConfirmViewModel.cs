@@ -8,7 +8,7 @@ namespace Kontena.App.ViewModels;
 /// A small reusable confirmation modal for a (possibly destructive) action — title, message, and
 /// a confirm button. The caller supplies what to run on confirm and how to close.
 /// </summary>
-public partial class ConfirmViewModel : ViewModelBase
+public partial class ConfirmViewModel : ViewModelBase, IPrimaryAction
 {
     private readonly Func<Task> _onConfirm;
     private readonly Action _onClose;
@@ -62,4 +62,11 @@ public partial class ConfirmViewModel : ViewModelBase
 
     [RelayCommand]
     private void Cancel() => _onClose();
+
+    // Enter confirms (KON-172). Deliberately the same guard the button uses, so a busy dialog cannot
+    // be double-fired by a second Enter — and a destructive confirm answers Enter like any other,
+    // because it is the button the dialog is asking about, not a shortcut around the question.
+    public bool CanInvokePrimary => !IsBusy;
+
+    public void InvokePrimary() => ConfirmCommand.Execute(null);
 }

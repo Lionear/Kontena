@@ -20,6 +20,10 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     private const int MaxLogLines = 2000;
 
     private readonly IContainerEngine _engine;
+    /// <summary>
+    /// How this page leaves when the container it shows is gone — removed here, or removed elsewhere
+    /// and noticed on a refresh. Not a Back button: Back belongs to the shell's history now (KON-173).
+    /// </summary>
     private readonly Action _onBack;
     private ContainerSummary _c;
     private CancellationTokenSource? _cts;
@@ -329,9 +333,6 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     }
 
     // ── Header actions ────────────────────────────────────────────────────────
-
-    [RelayCommand]
-    private void Back() => _onBack();
 
     [RelayCommand]
     private async Task RestartAsync()

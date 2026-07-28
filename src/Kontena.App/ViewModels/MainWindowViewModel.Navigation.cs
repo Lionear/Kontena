@@ -32,6 +32,8 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private void Navigate(string key)
     {
+        Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => Navigate(key));
+
         if (IsClusterMode)
         {
             // A parent with children opens its group as well as its page (KON-169/KON-174): the group
@@ -137,7 +139,7 @@ public partial class MainWindowViewModel
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
                     onOpenWorkload: ShowWorkloadDetail),
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail),
-            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, p => ShowPodDetail(p), ConfirmDeletePod),
+            "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
@@ -257,6 +259,7 @@ public partial class MainWindowViewModel
         if (Activity is null)
             return;
 
+        Arrived("Activity", ShowActivity);
         DisposeDetail();
         CurrentPage = Activity;
         SearchText = Activity.SearchText;
@@ -274,13 +277,14 @@ public partial class MainWindowViewModel
         if (_engine is null)
             return;
 
+        Arrived($"container {summary.Name}", () => ShowContainerDetail(summary), summary);
         DisposeDetail();
 
         // Reload settings so a just-changed terminal font is picked up.
         var current = _store.Load();
         var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
 
-        _detail = new ContainerDetailViewModel(_engine, summary, ShowContainers, font)
+        _detail = new ContainerDetailViewModel(_engine, summary, GoBack, font)
         {
             RequestConfirm = ShowConfirm,
         };
@@ -303,6 +307,7 @@ public partial class MainWindowViewModel
         if (SettingsPage is null)
             return;
 
+        Arrived("Settings", ShowSettings);
         CurrentPage = SettingsPage;
         SearchText = string.Empty;
         foreach (var item in NavItems)
@@ -311,6 +316,7 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private void ShowAbout()
     {
+        Arrived("About", ShowAbout);
         DisposeDetail();
         CloseDialog();
         CurrentPage = About;

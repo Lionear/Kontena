@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -11,6 +12,18 @@ public partial class MainWindow : Window
 {
     private readonly SettingsStore _store = new();
 
+    private void OnPointerPressedPreview(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsXButton1Pressed)
+            return;
+
+        if (DataContext is ViewModels.MainWindowViewModel { CanGoBack: true } vm)
+        {
+            vm.GoBackCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
     // Last known "normal" (non-maximized) placement, so restoring un-maximizes to a sane size.
     private double? _normalWidth;
     private double? _normalHeight;
@@ -21,6 +34,17 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         RestorePlacement();
+
+        // The mouse back button, which every browser and file manager answers and nothing in Kontena
+        // did (KON-173). Tunnelled so a list row cannot swallow it on the way up.
+        AddHandler(PointerPressedEvent, OnPointerPressedPreview, RoutingStrategies.Tunnel);
+
+        // Focus belongs to the view, so the shell asks rather than reaching into the tree (KON-172).
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is ViewModels.MainWindowViewModel vm)
+                vm.RequestFocusSearch = () => SearchBox.Focus();
+        };
 
         SizeChanged += (_, _) => CaptureNormal();
         PositionChanged += (_, _) => CaptureNormal();
