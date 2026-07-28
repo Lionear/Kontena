@@ -245,10 +245,56 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>Shared command-bar search; forwarded to the active page.</summary>
     [ObservableProperty] private string _searchText = string.Empty;
 
+    /// <summary>
+    /// How long typing settles before the list is rebuilt. Long enough that a burst of keystrokes
+    /// costs one rebuild instead of one per letter, short enough that it still feels like typing.
+    /// </summary>
+    internal TimeSpan SearchDebounce { get; set; } = TimeSpan.FromMilliseconds(150);
+
+    private CancellationTokenSource? _searchDebounce;
+
+    /// <summary>The pending push, so a test can wait for it rather than sleep and hope.</summary>
+    internal Task SearchSettled { get; private set; } = Task.CompletedTask;
+
     partial void OnSearchTextChanged(string value)
     {
-        if (CurrentPage is IListPage page)
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
+        _searchDebounce = null;
+
+        if (CurrentPage is not IListPage { SupportsSearch: true } page)
+            return;
+
+        // Clearing is not typing. Waiting to show everything again is the one case where the delay is
+        // pure lag: there is no next keystroke coming to make it worth collapsing.
+        if (value.Length == 0 || SearchDebounce <= TimeSpan.Zero)
+        {
             page.SearchText = value;
+            SearchSettled = Task.CompletedTask;
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _searchDebounce = cts;
+        SearchSettled = PushSearchAsync(page, value, cts.Token);
+    }
+
+    private async Task PushSearchAsync(IListPage target, string value, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(SearchDebounce, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        // The page is captured, not looked up again. Navigating during the delay would otherwise land
+        // the term on whatever page arrived next — filtering something the user never searched, on a
+        // page whose box looks empty.
+        if (!ct.IsCancellationRequested && ReferenceEquals(CurrentPage, target))
+            target.SearchText = value;
     }
     private void DisposeDetail()
     {
