@@ -644,6 +644,7 @@ internal static class Program
             // Workloads split per kind (KON-169): the nav group expanded, and one kind's page. Both
             // reached through the nav, so a scene cannot show a page the sidebar has no way of opening.
             case "cluster-workloads-expanded":
+            case "cluster-workloads-dashboard":
             case "cluster-cronjobs":
             case "cluster-deployments":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
