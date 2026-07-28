@@ -108,10 +108,21 @@ internal static class Program
                     ? ["/srv/kubeconfigs/acme.yaml"]
                     : [],
 
-                // A stored remote, so the list has a row to edit (KON-125).
-                RemoteEngines = opts.Scene == "settings-engines-edit"
-                    ? [new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh,
-                        "build-01.example.com", User: "deploy")]
+                // A stored remote, so the list has a row to edit (KON-125). For the KON-181 shot a
+                // second one that never came from a form — a settings file edited by hand, or synced
+                // from another machine — because that is the row that has to explain itself.
+                RemoteEngines = opts.Scene is "settings-engines-edit" or "settings-engines-badhost"
+                    ? [
+                        new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh,
+                            "build-01.example.com", User: "deploy"),
+                        .. opts.Scene == "settings-engines-badhost"
+                            ? new[]
+                            {
+                                new RemoteEngine("r2", "Imported host", RemoteEngineTransport.Ssh,
+                                    "-oProxyCommand=touch /tmp/pwned"),
+                            }
+                            : [],
+                    ]
                     : [],
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
