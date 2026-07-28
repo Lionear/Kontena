@@ -148,6 +148,6 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         "docker" => "#2496ED",
         "podman" => "#B96FD0",
         "apple" => "#C7C7CC",
-        _ => "#22D3AA",
+        _ => "#00D4A3",
     }));
 }
