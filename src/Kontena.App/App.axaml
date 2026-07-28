@@ -184,6 +184,22 @@
             <Setter Property="Opacity" Value="0.55"/>
         </Style>
 
+        <!-- A card that is also a way in (KON-174). Same surface as a panel so it reads as content
+             rather than as a control, but it takes a hover so it does not look inert — a card you can
+             click and a card you cannot must not look identical. -->
+        <Style Selector="Button.kindcard">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="17,16"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Button.kindcard:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryDim}"/>
+        </Style>
+
         <!-- Small icon action button -->
         <!-- An icon-only button has no text, so a screen reader announces "button" and nothing more.
              Every one of these already carries a tooltip saying what it does, so that is the name —

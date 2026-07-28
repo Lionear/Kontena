@@ -1,0 +1,144 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="760"
+             x:Class="Kontena.App.Views.ClusterWorkloadsDashboardView"
+             x:DataType="vm:ClusterWorkloadsDashboardViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="18">
+
+            <StackPanel Spacing="3">
+                <TextBlock Text="Workloads" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock Text="Pick a kind, or start with what needs you" FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+            </StackPanel>
+
+            <!-- Shown only when something is wrong. There is deliberately no green counterpart: a bar
+                 that says "all good" is a line you learn to skip, and once you skip it you skip this
+                 one too. The headline counts; the table below names. -->
+            <Border IsVisible="{Binding HasTrouble}" Background="{DynamicResource DangerSoft}"
+                    BorderBrush="{DynamicResource DangerSoftBorder}" BorderThickness="1"
+                    CornerRadius="10" Padding="16,14">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Path Grid.Column="0" Classes="icon" Width="18" Height="18" Margin="0,1,13,0"
+                          VerticalAlignment="Top" Stroke="{DynamicResource Danger}" Data="{StaticResource IconWarning}"/>
+                    <StackPanel Grid.Column="1" Spacing="3">
+                        <TextBlock Text="{Binding TroubleHeadline}" FontSize="13.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding TroubleDetail}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- One card per kind, and the card is the way into that kind's page — the same place the
+                 sidebar sub-entry goes. -->
+            <ItemsControl ItemsSource="{Binding Kinds}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:KindCard">
+                        <Button Classes="kindcard" Command="{Binding OpenCommand}" Margin="0,0,14,14" Width="272">
+                            <StackPanel Spacing="11">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Border Width="30" Height="30" CornerRadius="8" Background="{DynamicResource AccentSoft}">
+                                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Accent}"
+                                              Data="{StaticResource IconLayers}"/>
+                                    </Border>
+                                    <TextBlock Text="{Binding Label}" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Bottom">
+                                    <TextBlock Text="{Binding Count}" FontSize="30" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text}" LineHeight="32"/>
+                                    <TextBlock Text="{Binding Unit}" FontSize="13" Foreground="{DynamicResource TextFaint}"
+                                               VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+                                </StackPanel>
+
+                                <!-- The number never stands alone: this bar is what the nav item's count
+                                     cannot tell you. -->
+                                <Grid Height="5" ClipToBounds="True">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding CompleteWidth}"/>
+                                        <ColumnDefinition Width="{Binding ProgressingWidth}"/>
+                                        <ColumnDefinition Width="{Binding DegradedWidth}"/>
+                                        <ColumnDefinition Width="{Binding PausedWidth}"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="{DynamicResource Success}" CornerRadius="3"/>
+                                    <Border Grid.Column="1" Background="{DynamicResource Info}" CornerRadius="3"/>
+                                    <Border Grid.Column="2" Background="{DynamicResource Danger}" CornerRadius="3"/>
+                                    <Border Grid.Column="3" Background="{DynamicResource Warn}" CornerRadius="3"/>
+                                </Grid>
+
+                                <ItemsControl ItemsSource="{Binding Legend}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LegendEntry">
+                                            <!-- Dot plus word, never the colour alone. -->
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,14,0">
+                                                <Ellipse Width="7" Height="7" Fill="{Binding Brush}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Text}" FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Spacing="11" IsVisible="{Binding HasAttention}">
+                <TextBlock Text="Needs attention" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                    <StackPanel>
+                        <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="0,0,0,1" Padding="16,10">
+                            <Grid ColumnDefinitions="1.5*,1*,0.7*,2.2*,0.7*">
+                                <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
+                                <TextBlock Grid.Column="1" Text="KIND" Classes="colhead"/>
+                                <TextBlock Grid.Column="2" Text="READY" Classes="colhead"/>
+                                <TextBlock Grid.Column="3" Text="WHY" Classes="colhead"/>
+                                <TextBlock Grid.Column="4" Text="AGE" Classes="colhead"/>
+                            </Grid>
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding Attention}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AttentionRow">
+                                    <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                        <Grid ColumnDefinitions="1.5*,1*,0.7*,2.2*,0.7*">
+                                            <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left"
+                                                    Command="{Binding OpenCommand}" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
+                                            </Button>
+                                            <TextBlock Grid.Column="1" Text="{Binding Kind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Ready}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Why}" Foreground="{DynamicResource TextDim}"
+                                                       VerticalAlignment="Center" Margin="0,0,10,0" TextWrapping="Wrap"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding AgeText}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="10" Padding="18,16">
+                <TextBlock Text="No workloads in this namespace." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

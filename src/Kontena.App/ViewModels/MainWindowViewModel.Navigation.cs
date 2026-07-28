@@ -34,15 +34,11 @@ public partial class MainWindowViewModel
     {
         if (IsClusterMode)
         {
-            // A parent with children is a group header, not a page: clicking it opens the group rather
-            // than loading every kind at once (KON-169). With no children there is no group to open, so
-            // it stays an ordinary page — otherwise a cluster running one kind could not reach its list
-            // at all.
-            if (NavItems.FirstOrDefault(i => i.Key == key) is { HasChildren: true })
-            {
+            // A parent with children opens its group as well as its page (KON-169/KON-174): the group
+            // shows the kinds, the page shows the dashboard. Not the flat list — that was the thing
+            // the split replaced.
+            if (NavItems.FirstOrDefault(i => i.Key == key) is { HasChildren: true, IsExpanded: false })
                 ToggleNavGroup(key);
-                return;
-            }
 
             NavigateCluster(key);
             return;
@@ -132,6 +128,14 @@ public partial class MainWindowViewModel
             "namespaces" => new ClusterNamespacesViewModel(_cluster),
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
                 new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind),
+            // The dashboard only where there is something to summarise. With one kind the sidebar has
+            // no submenu either, and a dashboard of a single card is a page that says less than the
+            // list it replaces — so there it stays the list (KON-174).
+            "workloads" when NavItems.Any(i => i.Key == "workloads" && i.HasChildren) =>
+                new ClusterWorkloadsDashboardViewModel(
+                    _cluster, ActiveNamespace,
+                    onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
+                    onOpenWorkload: ShowWorkloadDetail),
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail),
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, p => ShowPodDetail(p), ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
