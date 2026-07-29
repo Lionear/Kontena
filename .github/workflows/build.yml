@@ -445,14 +445,44 @@ jobs:
             else
               echo "::warning::changelog roll skipped (nothing to roll or checkout failed); verify CHANGELOG.md"
             fi
-          elif [ "$CHANNEL" = nightly ]; then
-            # The commit setup pinned, which is what was built and what the next run compares against.
-            TARGET=$(git rev-parse HEAD)
-            gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
-            gh release create "$RELEASE_TAG" assets/* \
-              --title "Nightly build (develop)" --notes "$BODY" --prerelease --target "$TARGET"
           else
+            # Rolling channels (nightly, preview): the release is replaced on every run.
+            #
+            # It used to be deleted first and rebuilt afterwards, which left the channel with no
+            # RELEASES-* asset for the three to four minutes the uploads took — every updater that
+            # checked in that window got a 404 and told its user to check their connection (KON-163).
+            # A nightly window is not an incident; it is every night.
+            #
+            # So: upload everything into a draft first, under a staging tag that no updater reads.
+            # Nothing user-visible changes while that runs. Only once every asset is in place is the
+            # old release dropped and the draft published onto the channel's tag — one API call, so
+            # the gap goes from minutes to about a second.
+            if [ "$CHANNEL" = nightly ]; then
+              # The commit setup pinned, which is what was built and what the next run compares
+              # against (gh release view nightly --json targetCommitish). Publishing the draft creates
+              # the tag at this commit, so that comparison keeps working.
+              TARGET=$(git rev-parse HEAD)
+              TITLE="Nightly build (develop)"
+            else
+              TARGET="$GITHUB_SHA"
+              TITLE="Preview build (main)"
+            fi
+
+            STAGING_TAG="$RELEASE_TAG-staging-$GITHUB_RUN_ID"
+
+            # A draft left behind by a re-run of this same run id would collide with the create below.
+            gh release delete "$STAGING_TAG" --yes || true
+
+            gh release create "$STAGING_TAG" assets/* --draft \
+              --title "$TITLE" --notes "$BODY" --prerelease --target "$TARGET"
+
+            # From here the channel is briefly without a release, so a failure must be loud: the
+            # assets exist, they are simply still in the draft, and the fix is to publish it.
             gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
-            gh release create "$RELEASE_TAG" assets/* \
-              --title "Preview build (main)" --notes "$BODY" --prerelease --target "$GITHUB_SHA"
+            if ! gh release edit "$STAGING_TAG" \
+                   --tag "$RELEASE_TAG" --target "$TARGET" --draft=false --prerelease; then
+              echo "::error::publishing $STAGING_TAG onto $RELEASE_TAG failed — the channel has no release."
+              echo "::error::The assets are in the draft: gh release edit $STAGING_TAG --tag $RELEASE_TAG --draft=false --prerelease"
+              exit 1
+            fi
           fi
