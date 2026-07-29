@@ -9,8 +9,8 @@ public sealed class EngineOption
 
     public required string Name { get; init; }
 
-    /// <summary>Single-letter chip (e.g. "D", "P").</summary>
-    public required string Chip { get; init; }
+    /// <summary>The backend's mark, or the letter to fall back to (KON-80).</summary>
+    public required BackendChipInfo Chip { get; init; }
 
     /// <summary>Secondary line — version/endpoint, or a short "not connected" reason.</summary>
     public string Detail { get; init; } = string.Empty;

@@ -49,7 +49,6 @@
                          to go dark here and white in the light theme — the mirror of PrimaryInk. -->
                     <SolidColorBrush x:Key="DangerInk" Color="#2A0A0A"/>
                     <SolidColorBrush x:Key="PrimarySoft" Color="#00D4A3" Opacity="0.10"/>
-                    <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
                     <SolidColorBrush x:Key="Console" Color="#070B1F"/>
                     <!-- A document, not a stream (KON-196). Console is a terminal and stays dark in
                          both themes; a manifest or a command preview is text you read next to the rest
@@ -98,7 +97,6 @@
                     <SolidColorBrush x:Key="Danger" Color="#D61E24"/>
                     <SolidColorBrush x:Key="DangerInk" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="PrimarySoft" Color="#007A5E" Opacity="0.10"/>
-                    <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
                     <!-- The console stays dark in both themes; moved onto hue 229 so a light-theme
                          terminal does not read as a panel borrowed from another product. -->
                     <SolidColorBrush x:Key="Console" Color="#0C122B"/>

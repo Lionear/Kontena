@@ -9,6 +9,7 @@ using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using System.Collections.Generic;
+using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.App;
 using Kontena.App.Services;
@@ -54,6 +55,11 @@ namespace Kontena.Screenshots;
 //         row's own command so the shot cannot show a dialog the button does not raise).
 internal static class Program
 {
+    // The demo backends wear the marks of what they stand in for (KON-80): a shot of "Docker" with a
+    // letter badge would show a chip the app no longer draws for a real engine.
+    private static readonly BackendChipStyle Kubernetes =
+        new(KubernetesBrand.Glyph, KubernetesBrand.Accent);
+
     [STAThread]
     public static int Main(string[] args)
     {
@@ -129,10 +135,11 @@ internal static class Program
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
             var providers = new List<IBackendProvider>
             {
-                new FakeEngineProvider("docker", "Docker", "D"),
-                new FakeClusterProvider("prod-eu-west", "GKE"),
-                new FakeClusterProvider("staging", "EKS"),
-                new FakeClusterProvider("minikube", "MK"),
+                new FakeEngineProvider("docker", "Docker", "D",
+                    new BackendChipStyle(DockerBrand.Glyph, DockerBrand.Accent)),
+                new FakeClusterProvider("prod-eu-west", "GKE", Kubernetes),
+                new FakeClusterProvider("staging", "EKS", Kubernetes),
+                new FakeClusterProvider("minikube", "MK", Kubernetes),
             };
 
             // Every other scene stays on the seeded fakes so shots are reproducible; only the

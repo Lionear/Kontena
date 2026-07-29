@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              x:Class="Kontena.App.Views.OnboardingView"
              x:DataType="vm:OnboardingViewModel"
@@ -100,12 +101,7 @@
                                     Command="{Binding #Root.((vm:OnboardingViewModel)DataContext).SelectCommand}"
                                     CommandParameter="{Binding}">
                                 <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                                    <Panel Grid.Column="0" Width="44" Height="44">
-                                        <Border Background="{Binding Accent}" Opacity="0.16" CornerRadius="10"/>
-                                        <TextBlock Text="{Binding Chip}" Foreground="{Binding Accent}"
-                                                   FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="18"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Panel>
+                                    <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="44"/>
 
                                     <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center" Spacing="3">
                                         <StackPanel Orientation="Horizontal" Spacing="10">

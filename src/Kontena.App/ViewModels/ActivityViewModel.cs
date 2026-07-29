@@ -31,7 +31,9 @@ public sealed class ActivityEntry
     public required string AccentKey { get; init; }
 
     public required string Backend { get; init; }
-    public required string Chip { get; init; }
+
+    /// <summary>The owning backend's mark, resolved from its id (KON-80).</summary>
+    public required BackendChipInfo Chip { get; init; }
 
     /// <summary>Local wall-clock time, e.g. "14:32:07".</summary>
     public required string Time { get; init; }
@@ -52,7 +54,7 @@ public sealed class ActivityEntry
             IconKey = icon,
             AccentKey = accent,
             Backend = backend,
-            Chip = backend.Length > 0 ? char.ToUpperInvariant(backend[0]).ToString() : "?",
+            Chip = BackendChips.For(backend),
             Time = ev.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture),
             Ago = RelativeAge(now - ev.Timestamp),
         };

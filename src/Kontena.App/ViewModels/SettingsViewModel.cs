@@ -60,7 +60,7 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
 /// <paramref name="Name"/> so the rename field can show the original as its placeholder.
 /// </param>
 public sealed record EngineListItem(
-    string Backend, string Name, string Chip, string Detail, bool Connected, bool IsDefault,
+    string Backend, string Name, BackendChipInfo Chip, string Detail, bool Connected, bool IsDefault,
     string SourceName = "");
 
 /// <summary>
@@ -75,7 +75,7 @@ public partial class BackendNameRow : ViewModelBase
     private readonly Action<string, string?> _rename;
     private bool _loading;
 
-    public BackendNameRow(string backend, string sourceName, string chip, string? chosen,
+    public BackendNameRow(string backend, string sourceName, BackendChipInfo chip, string? chosen,
         Action<string, string?> rename)
     {
         Backend = backend;
@@ -93,7 +93,7 @@ public partial class BackendNameRow : ViewModelBase
     /// <summary>What the source calls itself — the placeholder, and what an empty field falls back to.</summary>
     public string SourceName { get; }
 
-    public string Chip { get; }
+    public BackendChipInfo Chip { get; }
 
     [ObservableProperty] private string _name = string.Empty;
 

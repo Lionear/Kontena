@@ -183,7 +183,7 @@ public partial class MainWindowViewModel
         BackendDownDetail = detail;
         IsClusterMode = false;
         EngineName = "Not connected";
-        EngineChip = "!";
+        EngineChip = new BackendChipInfo("!");
         EngineDetail = "not connected";
         EngineEndpoint = string.Empty;
         CurrentPage = null;
@@ -212,7 +212,7 @@ public partial class MainWindowViewModel
         var backend = provider.CreateBackend();
         _activeBackend = provider.Backend;
         EngineName = NameOf(provider);
-        EngineChip = provider.Chip;
+        EngineChip = BackendChipInfo.For(provider);
 
         RebuildEngineList();
         DisposeDetail();
@@ -405,7 +405,7 @@ public partial class MainWindowViewModel
         var category = SettingsPage?.Category;
 
         var all = _probes.Select(p => new EngineListItem(
-            p.Provider.Backend, NameOf(p.Provider), p.Provider.Chip,
+            p.Provider.Backend, NameOf(p.Provider), BackendChipInfo.For(p.Provider),
             p.Detail ?? string.Empty, p.Connected,
             p.Provider.Backend == _settings.ResolvedPinnedBackend,
             p.Provider.DisplayName)).ToList();
@@ -506,6 +506,7 @@ public partial class MainWindowViewModel
         _registry.Replace(BackendCatalog.Build(
             BackendCatalog.ShouldIncludeDemo(includeDemo),
             stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
+        BackendChips.Learn(_registry.Providers);
         _probes = await _registry.ProbeAllAsync();
         RefreshNewClusters();
 
@@ -560,7 +561,7 @@ public partial class MainWindowViewModel
             {
                 Backend = probe.Provider.Backend,
                 Name = NameOf(probe.Provider),
-                Chip = probe.Provider.Chip,
+                Chip = BackendChipInfo.For(probe.Provider),
                 Detail = probe.Detail ?? string.Empty,
                 IsActive = isActive,
                 IsConnected = probe.Connected,

@@ -67,7 +67,7 @@ public partial class ContainerRowViewModel : ContainerListRowViewModel
     /// <summary>True while this row is drawn inside a group, which indents it and shows the service.</summary>
     [ObservableProperty] private bool _isChild;
     public string Backend => _c.Backend;
-    public string BackendChip => _c.Backend.Length > 0 ? _c.Backend[..1].ToUpperInvariant() : "?";
+    public BackendChipInfo BackendChip => BackendChips.For(_c.Backend);
 
     public bool IsRunning => _c.State == ContainerState.Running;
     public bool IsNotRunning => !IsRunning;

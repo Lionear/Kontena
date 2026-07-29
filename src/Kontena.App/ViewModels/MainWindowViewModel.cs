@@ -59,6 +59,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         IUpdateService? updateService = null)
     {
         _registry = registry;
+        // Rows carry a backend id, not a provider, so the logos the providers declare are remembered
+        // here and again whenever the set changes (KON-80).
+        BackendChips.Learn(registry.Providers);
         _store = store;
         _settings = settings;
         _updateService = updateService ?? new VelopackUpdateService();
@@ -211,7 +214,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private const string AllNamespaces = "All namespaces";
 
     [ObservableProperty] private string _engineName = "Connecting…";
-    [ObservableProperty] private string _engineChip = "?";
+    [ObservableProperty] private BackendChipInfo _engineChip = new("?");
 
     /// <summary>Second line of the sidebar pill — the active backend's version/kind.</summary>
     [ObservableProperty] private string _engineDetail = string.Empty;
