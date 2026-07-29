@@ -94,6 +94,11 @@
             <Setter Property="Foreground" Value="{DynamicResource Text}"/>
             <Setter Property="CaretBrush" Value="{DynamicResource Primary}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <!-- Without this the placeholder takes Fluent's own colour, which knows nothing about this
+                 palette: on light's Bg there was not enough of it left to read (KON-196). TextFaint is
+                 the token for text that is present but quiet, and it is measured against every
+                 surface in PaletteContrastTests. -->
+            <Setter Property="PlaceholderForeground" Value="{DynamicResource TextFaint}"/>
         </Style>
         <Style Selector="TextBox.bare /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>

@@ -31,6 +31,12 @@ public sealed class PaletteContrastTests
     /// <summary>
     /// Surfaces text sits on.
     /// <para>
+    /// <c>CodeSurface</c> is here because it follows the theme like any other panel (KON-196).
+    /// <c>Console</c> deliberately is not: it stays dark in both themes, so the palette's text tokens
+    /// are the wrong measure against it — in light they are dark too, and light's <c>TextDim</c> sits on
+    /// it at 2.89:1. That is a real gap and it has its own ticket; adding the surface here without the
+    /// console's own ink tokens would only report a failure this test cannot fix.
+    /// <para>
     /// The tinted washes (<c>DangerSoft</c> and friends) are deliberately absent, and that is a known
     /// gap rather than an oversight: in dark they are translucent, so a flat ratio would be a guess,
     /// and covering them in light only would report half a picture. Measured by hand meanwhile —
@@ -40,7 +46,7 @@ public sealed class PaletteContrastTests
     /// </para>
     /// </summary>
     private static readonly string[] Backgrounds =
-        ["Bg", "Surface", "Surface2", "SidebarBg", "SurfaceRaised"];
+        ["Bg", "Surface", "Surface2", "SidebarBg", "SurfaceRaised", "CodeSurface"];
 
     /// <summary>
     /// Known to fall short of AA as body text, with the reason. Anything not on this list must pass —

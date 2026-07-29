@@ -271,7 +271,7 @@
 
             <!-- YAML — a live editor: patch the resource straight from here (KON-69) -->
             <Grid IsVisible="{Binding IsYamlSelected}" RowDefinitions="*,Auto">
-                <Border Grid.Row="0" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                <Border Grid.Row="0" Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto">
                         <TextBox Text="{Binding YamlText}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
                                  Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="16,12"

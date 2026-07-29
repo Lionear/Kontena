@@ -380,10 +380,10 @@
                     <TextBlock Text="WHAT KONTENA WILL RUN" FontSize="11.5" FontWeight="Bold"
                                Foreground="{DynamicResource TextFaint}"/>
 
-                    <Border Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
+                    <Border Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}"
                             BorderThickness="1" CornerRadius="8" Padding="11,9">
                         <SelectableTextBlock Text="{Binding CommandPreview}" FontFamily="{StaticResource Mono}"
-                                             FontSize="12" Foreground="#C9D3DF" TextWrapping="Wrap"/>
+                                             FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
                     </Border>
 
                     <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding HasConfigPreview}">
@@ -393,12 +393,12 @@
                                    Text="Extra nodes, ports or the ingress label need a config file; kind cannot take those as flags."/>
                     </StackPanel>
 
-                    <Border Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
+                    <Border Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}"
                             BorderThickness="1" CornerRadius="8" Padding="11,9" MaxHeight="230"
                             IsVisible="{Binding IsConfigShown}">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <SelectableTextBlock Text="{Binding ConfigPreview}" FontFamily="{StaticResource Mono}"
-                                                 FontSize="11.5" Foreground="#C9D3DF"/>
+                                                 FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
                         </ScrollViewer>
                     </Border>
                 </StackPanel>
