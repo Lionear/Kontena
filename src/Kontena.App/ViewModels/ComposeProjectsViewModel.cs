@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -13,16 +12,15 @@ namespace Kontena.App.ViewModels;
 /// <c>com.docker.compose.project</c> labels — no compose file parsing or CLI
 /// needed — and drives combined start / stop / restart per project.
 /// </summary>
-public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
+public partial class ComposeProjectsViewModel : ListPageViewModel<ComposeProjectViewModel>
 {
-    public string SearchPlaceholder => "Search projects…";
+    public override string SearchPlaceholder => "Search projects…";
 
     public const string ProjectLabel = "com.docker.compose.project";
     public const string ServiceLabel = "com.docker.compose.service";
     public const string ConfigLabel = "com.docker.compose.project.config_files";
 
     private readonly IContainerEngine _engine;
-    private readonly List<ComposeProjectViewModel> _all = [];
 
     public ComposeProjectsViewModel(IContainerEngine engine)
     {
@@ -47,61 +45,31 @@ public partial class ComposeProjectsViewModel : ViewModelBase, IListPage
 
     public void OpenLogs(ComposeProjectViewModel project) => RequestProjectLogs?.Invoke(project);
 
-    public ObservableCollection<ComposeProjectViewModel> Items { get; } = [];
-
-    [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private string _summary = string.Empty;
-    [ObservableProperty] private bool _isEmpty;
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
-
-    [RelayCommand]
-    public async Task LoadAsync()
+    protected override async Task<IReadOnlyList<ComposeProjectViewModel>> LoadRowsAsync()
     {
         var containers = await _engine.ListContainersAsync();
 
-        _all.Clear();
-        var projects = containers
+        List<ComposeProjectViewModel> projects = [.. containers
             .Where(c => c.Labels.ContainsKey(ProjectLabel))
             .GroupBy(c => c.Labels[ProjectLabel])
-            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ComposeProjectViewModel(g.Key, [.. g], this))];
 
-        foreach (var group in projects)
-            _all.Add(new ComposeProjectViewModel(group.Key, group.ToList(), this));
-
-        HasLoaded = true;
-        IsEmpty = _all.Count == 0;
-        Summary = _all.Count switch
+        Summary = projects.Count switch
         {
             0 => "No Compose projects found — start a stack with docker compose or podman-compose.",
             1 => "1 project · grouped from container labels",
-            _ => $"{_all.Count} projects · grouped from container labels",
+            _ => $"{projects.Count} projects · grouped from container labels",
         };
 
-        ApplyFilter();
+        return projects;
     }
 
-    private void ApplyFilter()
-    {
-        var filtered = _all.Where(Matches).ToList();
-
-        Items.Clear();
-        foreach (var project in filtered)
-            Items.Add(project);
-    }
-
-    private bool Matches(ComposeProjectViewModel project)
-    {
-        if (string.IsNullOrWhiteSpace(SearchText))
-            return true;
-
-        var q = SearchText.Trim();
-        return project.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || project.Services.Any(s =>
-                s.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
-                || s.Image.Contains(q, StringComparison.OrdinalIgnoreCase));
-    }
+    protected override bool Matches(ComposeProjectViewModel project, string term) =>
+        Contains(project.Name, term)
+        || project.Services.Any(s => Contains(s.Name, term) || Contains(s.Image, term));
 
     // ── Actions shared by project/service rows ────────────────────────────────
 

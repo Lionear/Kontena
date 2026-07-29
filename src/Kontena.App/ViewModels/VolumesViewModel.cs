@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Models;
@@ -6,16 +5,13 @@ using Kontena.Engines;
 
 namespace Kontena.App.ViewModels;
 
-public sealed partial class VolumesViewModel : ViewModelBase, IListPage
+public sealed partial class VolumesViewModel : ListPageViewModel<VolumeRowViewModel>
 {
-    public string SearchPlaceholder => "Search volumes…";
+    public override string SearchPlaceholder => "Search volumes…";
 
     private readonly IContainerEngine _engine;
-    private readonly List<VolumeRowViewModel> _all = [];
 
     public VolumesViewModel(IContainerEngine engine) => _engine = engine;
-
-    public ObservableCollection<VolumeRowViewModel> Items { get; } = [];
 
     /// <summary>Whether this engine can read a volume's contents at all (KON-90).</summary>
     public bool CanBrowse => _engine.Capabilities.SupportsVolumeBrowse;
@@ -29,22 +25,14 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
     [RelayCommand]
     private void CreateVolume() => RequestCreateVolume?.Invoke();
 
-    [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private string _summary = string.Empty;
     [ObservableProperty] private bool _hasDangling;
     [ObservableProperty] private bool _pruneArmed;
     [ObservableProperty] private string _pruneSummary = string.Empty;
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
-
-    [RelayCommand]
-    public async Task LoadAsync()
+    protected override async Task<IReadOnlyList<VolumeRowViewModel>> LoadRowsAsync()
     {
         var list = await _engine.ListVolumesAsync();
-        _all.Clear();
-        foreach (var volume in list.OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase))
-            _all.Add(new VolumeRowViewModel(volume, this));
 
         var dangling = list.Where(v => v.IsDangling).ToList();
         Summary = $"{list.Count} volumes · {dangling.Count} dangling";
@@ -58,8 +46,9 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
         if (!HasDangling)
             PruneArmed = false;
 
-        HasLoaded = true;
-        ApplyFilter();
+        return [.. list
+            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(v => new VolumeRowViewModel(v, this))];
     }
 
     [RelayCommand]
@@ -103,14 +92,5 @@ public sealed partial class VolumesViewModel : ViewModelBase, IListPage
         await LoadAsync();
     }
 
-    private void ApplyFilter()
-    {
-        Items.Clear();
-        foreach (var row in _all.Where(Matches))
-            Items.Add(row);
-    }
-
-    private bool Matches(VolumeRowViewModel row)
-        => string.IsNullOrWhiteSpace(SearchText)
-        || row.Name.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase);
+    protected override bool Matches(VolumeRowViewModel row, string term) => Contains(row.Name, term);
 }
