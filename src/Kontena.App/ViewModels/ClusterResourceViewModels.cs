@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using Avalonia.Media;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Adapters.Kubernetes;
 using Kontena.Core.Orchestration;
 using Kontena.Core.Orchestration.Models;
 
@@ -33,31 +35,166 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
     public override string SearchPlaceholder => "Search nodes…";
 
     /// <summary>Whether to explain the missing CPU/memory gauges.</summary>
-    public bool ShowMetricsNotice { get; }
+    [ObservableProperty] private bool _showMetricsNotice;
 
     /// <summary>Which source was tried, when the backend can tell us.</summary>
     public string MetricsNoticeDetail { get; }
 
-    /// <summary>
-    /// What the user can do about it. Installing a metrics-server from Kontena is its own ticket
-    /// (KON-93); for now this is guidance, not an action.
-    /// </summary>
+    /// <summary>What the user can do about it — and, since KON-93, what Kontena can do for them.</summary>
     public string MetricsNoticeAction { get; } =
-        "Install metrics-server in the cluster to enable them. Node status, conditions and pod counts" +
-        " do not need a metrics source and are unaffected.";
+        "Kontena can install metrics-server for you. Node status, conditions and pod counts do not need" +
+        " a metrics source and are unaffected.";
+
+    /// <summary>
+    /// Whether the install can be offered at all: it writes to the cluster, so a backend without the
+    /// mutating half has nothing to offer (KON-86).
+    /// </summary>
+    public bool CanInstallMetrics => _cluster.Capabilities.Apply;
+
+    /// <summary>Set while the manifest is being applied and the rollout waited for.</summary>
+    [ObservableProperty] private bool _isInstallingMetrics;
+
+    /// <summary>Where the install has got to, in the words of someone watching it.</summary>
+    [ObservableProperty] private string _metricsInstallStatus = string.Empty;
+
+    /// <summary>The context the cluster reported, which is what the insecure-kubelet guess reads.</summary>
+    private string _context = string.Empty;
 
     protected override async Task<IReadOnlyList<NodeCardRow>> LoadRowsAsync()
     {
         // The apiserver version is what a kubelet version means anything against (KON-95): a node is
         // only "behind" relative to its own control plane.
-        var apiServerVersion = (await _cluster.GetInfoAsync()).Version;
-        return [.. (await _cluster.ListNodesAsync()).Select(n => new NodeCardRow(n, apiServerVersion))];
+        var info = await _cluster.GetInfoAsync();
+        _context = info is ClusterInfo { Context: { Length: > 0 } context } ? context : string.Empty;
+
+        return [.. (await _cluster.ListNodesAsync()).Select(n => new NodeCardRow(n, info.Version))];
     }
 
     // Roles and status as well as the name: "worker" and "NotReady" are how you actually go looking
     // through a node list.
     protected override bool Matches(NodeCardRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Roles, term) || Contains(row.Status, term);
+
+    // ── Installing a metrics source (KON-93) ─────────────────────────────────
+
+    /// <summary>How long to wait for the rollout before saying so, and how often to look.</summary>
+    private static readonly TimeSpan ReadyTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan ReadyPoll = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Offer the install, then do it. Confirmed first because it writes to the cluster — and the
+    /// dialog names the release, the image and every kind it creates, read off the manifest itself
+    /// rather than typed alongside it.
+    /// </summary>
+    [RelayCommand]
+    private void InstallMetrics()
+    {
+        var insecure = MetricsServerInstall.LikelyNeedsInsecureKubeletTls(_context);
+
+        var kubelet = insecure
+            ? $"This cluster looks like kind or minikube, whose kubelet serves a self-signed"
+              + " certificate, so it is installed with --kubelet-insecure-tls. Without that flag the"
+              + " pod never becomes ready and the gauges stay empty."
+            : "The kubelet's certificate is expected to be one metrics-server accepts. If the rollout"
+              + " never becomes ready, that assumption is the first thing to check.";
+
+        Confirm(
+            "Install metrics-server?",
+            $"Kontena applies the upstream metrics-server {MetricsServerInstall.Version} manifest to"
+            + $" this cluster, in kube-system. {kubelet}",
+            "Install",
+            InstallMetricsAsync,
+            destructive: false,
+            details:
+            [
+                new ConfirmDetail("IconBox", MetricsServerInstall.Image, MetricsServerInstall.SourceUrl),
+                new ConfirmDetail("IconLayers", "Creates", string.Join(", ", MetricsServerInstall.Creates())),
+            ]);
+    }
+
+    private async Task InstallMetricsAsync()
+    {
+        IsInstallingMetrics = true;
+        MetricsInstallStatus = "Applying the manifest…";
+
+        try
+        {
+            var failures = new List<string>();
+            var bundle = new ManifestBundle
+            {
+                Yaml = MetricsServerInstall.Manifest(
+                    MetricsServerInstall.LikelyNeedsInsecureKubeletTls(_context)),
+                Source = $"metrics-server {MetricsServerInstall.Version}",
+                Namespace = "kube-system",
+            };
+
+            await foreach (var step in _cluster.ApplyAsync(bundle))
+            {
+                if (step.Action == ApplyAction.Failed)
+                    failures.Add($"{step.Resource.Kind.Kind} {step.Resource.Name}: {step.Error}");
+            }
+
+            if (failures.Count > 0)
+            {
+                // Named, not counted: "3 resources failed" sends someone to the terminal to find out
+                // which, and the RBAC one is the usual answer.
+                MetricsInstallStatus = "Could not install it — " + string.Join("; ", failures);
+                return;
+            }
+
+            MetricsInstallStatus = "Applied. Waiting for metrics-server to answer…";
+            if (await WaitForMetricsAsync())
+            {
+                // The notice is the thing that was wrong; drop it and redraw the cards with gauges.
+                ShowMetricsNotice = false;
+                MetricsInstallStatus = string.Empty;
+                await LoadAsync();
+                return;
+            }
+
+            MetricsInstallStatus =
+                $"Installed, but no usage arrived within {ReadyTimeout.TotalMinutes:0} minutes. It may still"
+                + " be starting — reload this page, or check the metrics-server pod in kube-system.";
+        }
+        catch (Exception error)
+        {
+            MetricsInstallStatus = $"Could not install it — {error.Message}";
+        }
+        finally
+        {
+            IsInstallingMetrics = false;
+        }
+    }
+
+    /// <summary>
+    /// Poll until usage answers, or give up. A metrics-server takes a while to be scraped for the
+    /// first time, so "applied" is not "working" and only the second is worth saying.
+    /// </summary>
+    private async Task<bool> WaitForMetricsAsync()
+    {
+        var deadline = DateTimeOffset.UtcNow + ReadyTimeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            // Ping is what re-probes the source and recomputes the capability on the real adapter, so
+            // this asks the backend rather than deciding for it.
+            try
+            {
+                await _cluster.PingAsync();
+            }
+            catch (Exception)
+            {
+                // A blip mid-rollout is not a failure; the deadline is what decides.
+            }
+
+            if (_cluster.Capabilities.Metrics)
+                return true;
+
+            await Task.Delay(ReadyPoll);
+        }
+
+        return false;
+    }
 }
 
 /// <summary>Namespaces view.</summary>
