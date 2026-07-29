@@ -231,12 +231,30 @@ public sealed class EngineConfigCredentials
     // ── Credential helpers ───────────────────────────────────────────────────
 
     /// <summary>
+    /// Whether <paramref name="helper"/> may be pasted into an executable name (KON-183).
+    /// <para>
+    /// The name comes from <c>credsStore</c> or <c>credHelpers</c> in a config file other programs
+    /// write. <see cref="Process"/> treats a name containing a separator as a <b>path</b> rather than
+    /// a PATH lookup, so <c>x/../../something</c> starts whatever sits there, relative to the working
+    /// directory. Real helpers are plain words — <c>desktop</c>, <c>osxkeychain</c>,
+    /// <c>secretservice</c>, <c>ecr-login</c> — so accepting only those costs nothing and leaves the
+    /// answer where it already was: no credential from here.
+    /// </para>
+    /// </summary>
+    internal static bool IsUsableHelperName(string? helper) =>
+        helper is { Length: > 0 } name
+        && name.All(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_' or '-');
+
+    /// <summary>
     /// Asks <c>docker-credential-&lt;helper&gt;</c> for a server's credential. The protocol is a
     /// subcommand plus the server on stdin, answered with JSON on stdout — so the secret never appears in
     /// a command line, where another process could read it out of <c>ps</c>.
     /// </summary>
     private static RegistryCredential? FromHelper(string helper, string server)
     {
+        if (!IsUsableHelperName(helper))
+            return null;
+
         try
         {
             using var process = Process.Start(new ProcessStartInfo($"docker-credential-{helper}", "get")

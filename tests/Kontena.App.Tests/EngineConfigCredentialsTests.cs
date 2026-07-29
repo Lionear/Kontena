@@ -126,6 +126,48 @@ public class EngineConfigCredentialsTests
         }
     }
 
+    [Theory]
+    [InlineData("desktop")]
+    [InlineData("osxkeychain")]
+    [InlineData("secretservice")]
+    [InlineData("wincred")]
+    [InlineData("ecr-login")]
+    [InlineData("gcloud")]
+    public void The_helpers_people_actually_have_are_usable(string helper) =>
+        Assert.True(EngineConfigCredentials.IsUsableHelperName(helper));
+
+    [Theory]
+    [InlineData("x/../../../tmp/evil")]
+    [InlineData("x\\..\\evil")]
+    [InlineData("evil helper")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void A_helper_name_that_is_really_a_path_is_not_run(string? helper) =>
+        Assert.False(EngineConfigCredentials.IsUsableHelperName(helper));
+
+    [Fact]
+    public void A_config_naming_a_path_shaped_helper_yields_no_credential()
+    {
+        // config.json is written by other programs; a helper name with a separator would be started as
+        // a path relative to the working directory rather than looked up on PATH.
+        var path = Path.Combine(Path.GetTempPath(), "kontena-cfg-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(path, """
+            {"auths":{"ghcr.io":{}},"credHelpers":{"ghcr.io":"x/../../../tmp/evil"}}
+            """);
+
+        try
+        {
+            Assert.Null(new EngineConfigCredentials([path]).Get("ghcr.io"));
+
+            // The host is still a login — the entry is understood, only the helper is refused.
+            Assert.Contains(new EngineConfigCredentials([path]).List(), l => l.Host == "ghcr.io");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void Missing_files_are_not_an_error() =>
         Assert.Empty(new EngineConfigCredentials(["/nonexistent/config.json"]).List());
