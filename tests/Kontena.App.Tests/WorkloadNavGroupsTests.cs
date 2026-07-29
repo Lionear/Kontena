@@ -108,4 +108,25 @@ public sealed class WorkloadNavGroupsTests
         // one Enum.TryParse happened to accept.
         Assert.Null(WorkloadNavGroups.KindOf(key));
     }
+
+    [Fact]
+    public void A_kind_page_the_new_groups_do_not_have_resolves_to_workloads()
+    {
+        // Switching namespace keeps the page key, and a namespace without Jobs has no Jobs page
+        // (KON-200).
+        var groups = WorkloadNavGroups.For([Workload(WorkloadKind.DaemonSet)]);
+
+        Assert.Equal("workloads", WorkloadNavGroups.ResolveKey("workloads:Job", groups));
+    }
+
+    [Fact]
+    public void A_kind_page_that_still_exists_is_left_alone()
+    {
+        var groups = WorkloadNavGroups.For([Workload(WorkloadKind.Job), Workload(WorkloadKind.DaemonSet)]);
+
+        Assert.Equal("workloads:Job", WorkloadNavGroups.ResolveKey("workloads:Job", groups));
+
+        // And a key that was never about a kind is nobody's business here.
+        Assert.Equal("pods", WorkloadNavGroups.ResolveKey("pods", groups));
+    }
 }

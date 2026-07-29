@@ -310,8 +310,15 @@ public partial class MainWindowViewModel
 
         await UpdateNavCountsAsync();
     }
-    /// <summary>Returns false when the cluster could not be opened and the down state took over.</summary>
-    private async Task<bool> EnterClusterModeAsync(IClusterEngine cluster)
+    /// <summary>
+    /// Returns false when the cluster could not be opened and the down state took over.
+    /// <para>
+    /// Internal rather than private so the nav tests can put the shell in cluster mode without a
+    /// kubeconfig and a registry — the namespace switch is a shell behaviour and only reproduces here
+    /// (KON-200).
+    /// </para>
+    /// </summary>
+    internal async Task<bool> EnterClusterModeAsync(IClusterEngine cluster)
     {
         _cluster = cluster;
         IsClusterMode = true;

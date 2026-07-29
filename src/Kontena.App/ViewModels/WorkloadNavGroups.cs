@@ -49,6 +49,20 @@ public static class WorkloadNavGroups
     /// <summary>Plural label for the sub-entry: "Deployments", "StatefulSets", …</summary>
     public static string LabelFor(WorkloadKind kind) => kind + "s";
 
+    /// <summary>
+    /// The page key that still means something here (KON-200). A per-kind page survives a namespace
+    /// switch as a key even when the kind does not survive it as an object: standing on
+    /// <c>workloads:DaemonSet</c> and moving to a namespace with no DaemonSets would otherwise open an
+    /// empty list under a sidebar entry that is about to be removed. Falling back to Workloads is the
+    /// nearest page that is still about something.
+    /// </summary>
+    public static string ResolveKey(string key, IReadOnlyList<Group> groups)
+    {
+        ArgumentNullException.ThrowIfNull(groups);
+
+        return KindOf(key) is { } kind && !groups.Any(g => g.Kind == kind) ? "workloads" : key;
+    }
+
     /// <summary>The kind a nav key addresses, or null when the key is not a per-kind workloads page.</summary>
     public static WorkloadKind? KindOf(string key) =>
         key.StartsWith("workloads:", StringComparison.Ordinal)

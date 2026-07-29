@@ -200,10 +200,14 @@ public partial class MainWindowViewModel
         if (!IsClusterMode)
             return;
 
-        // Reload the visible namespaced grid and refresh the nav counts.
-        var key = NavItems.FirstOrDefault(i => i.IsSelected)?.Key ?? "overview";
-        NavigateCluster(key);
-        _ = UpdateClusterNavCountsAsync();
+        // Refresh the nav counts, then reload the visible namespaced grid — in that order, because
+        // the counts are what decides which Workloads page this namespace gets (KON-200).
+        //
+        // The page comes from _clusterPageKey rather than from whichever nav item carries IsSelected,
+        // for the reason NavigateCluster records: the per-kind children are rebuilt as workloads come
+        // and go, so on a per-kind page there may be no selected item at all — and this then quietly
+        // navigated to Overview instead of reloading the page you were on.
+        _ = NavigateClusterAfterCountsAsync(_clusterPageKey);
     }
     // ── New clusters (KON-120) ──────────────────────────────────────────────
 
