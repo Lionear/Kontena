@@ -1,4 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
+using System.Security.Authentication;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -45,6 +47,9 @@ public partial class UpdateViewModel : ViewModelBase
     private readonly Action _closeCard;
 
     private CancellationTokenSource? _download;
+
+    /// <summary>The channel the last check used; what a failure message names.</summary>
+    private UpdateChannel _channel;
 
     /// <param name="openCard">Shows the card in the shell's modal slot.</param>
     /// <param name="closeCard">Hides it again.</param>
@@ -198,7 +203,11 @@ public partial class UpdateViewModel : ViewModelBase
         try
         {
             var settings = _settings();
-            var found = await _service.CheckAsync(settings.ResolvedUpdateChannel(_service.BuildChannel), ct).ConfigureAwait(true);
+
+            // Remembered so a failure two steps later — the download — can still say which channel
+            // it was talking about.
+            _channel = settings.ResolvedUpdateChannel(_service.BuildChannel);
+            var found = await _service.CheckAsync(_channel, ct).ConfigureAwait(true);
 
             if (found is null)
             {
@@ -231,7 +240,7 @@ public partial class UpdateViewModel : ViewModelBase
         }
         catch (Exception error)
         {
-            Error = Describe(error);
+            Error = Describe(error, _channel);
             Stage = UpdateStage.Failed;
             if (userAsked)
                 _openCard();
@@ -286,7 +295,7 @@ public partial class UpdateViewModel : ViewModelBase
             if (!ReferenceEquals(_download, mine))
                 return;
 
-            Error = Describe(error);
+            Error = Describe(error, _channel);
             Stage = UpdateStage.Failed;
         }
         finally
@@ -397,11 +406,53 @@ public partial class UpdateViewModel : ViewModelBase
     /// An exception in the words of someone waiting for a download, not a stack trace. The detail
     /// still matters — "no space left" and "no network" need different actions from the reader —
     /// so the message is kept, only framed.
+    /// <para>
+    /// Every <see cref="HttpRequestException"/> used to read "check your connection" (KON-163). Four
+    /// different failures arrived through that one sentence and three of them sent the reader after
+    /// their own network: a rate limit is a wait, a 404 on a rolling channel is us publishing right
+    /// now, and a refused TLS handshake is whatever sits between. The status code that decides this
+    /// is on the exception — it was being thrown away. Same shape as KON-161: a category shown where
+    /// a diagnosis was available.
+    /// </para>
     /// </summary>
-    private static string Describe(Exception error) => error switch
+    internal static string Describe(Exception error, UpdateChannel channel) => error switch
     {
-        HttpRequestException => "Could not reach the update server. Check your connection and try again.",
+        HttpRequestException http => Http(http, channel),
         UnauthorizedAccessException or IOException => $"Could not write the update: {error.Message}",
         _ => error.Message,
+    };
+
+    private static string Http(HttpRequestException error, UpdateChannel channel) => error.StatusCode switch
+    {
+        HttpStatusCode.NotFound when channel is UpdateChannel.Nightly or UpdateChannel.Preview =>
+            $"The {Name(channel)} build is being replaced right now, so its files are briefly not there."
+            + " Nothing is wrong with this copy — try again in a few minutes.",
+
+        HttpStatusCode.NotFound =>
+            $"No {Name(channel)} release has been published yet, so there is nothing to update to.",
+
+        // GitHub allows 60 anonymous requests an hour per address, which a shared office or VPN
+        // address reaches without any one person noticing.
+        HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests =>
+            "The update server is refusing further requests from this network for now — its hourly"
+            + " limit is shared by everyone on the same address. Try again later.",
+
+        { } status =>
+            $"The update server answered {(int)status} ({status}). This is on our side, not yours.",
+
+        // No status at all: the request never got an answer. A TLS failure is the one worth naming,
+        // because "check your connection" sends someone to a router that is working fine.
+        _ when error.InnerException is AuthenticationException =>
+            "The secure connection to the update server was refused. A proxy or antivirus that"
+            + " inspects HTTPS is the usual cause.",
+
+        _ => "Could not reach the update server. Check your connection and try again.",
+    };
+
+    private static string Name(UpdateChannel channel) => channel switch
+    {
+        UpdateChannel.Nightly => "nightly",
+        UpdateChannel.Preview => "preview",
+        _ => "stable",
     };
 }
