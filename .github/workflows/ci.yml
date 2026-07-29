@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+# Building and testing needs nothing but the source. Without this block the job would inherit the
+# repository default for GITHUB_TOKEN, which can be write — the other workflows all say read.
+permissions:
+  contents: read
+
 jobs:
   build-test:
     name: Build & test (${{ matrix.os }})
