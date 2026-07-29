@@ -50,11 +50,11 @@
 
                                     <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0" MaxWidth="520"
                                           HorizontalAlignment="Left" IsVisible="{Binding HasHint}">
-                                        <Border Grid.Column="0" Background="{DynamicResource Console}"
+                                        <Border Grid.Column="0" Background="{DynamicResource CodeSurface}"
                                                 BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                 CornerRadius="8" Padding="11,8">
                                             <TextBlock Text="{Binding HintCommand}" FontFamily="{StaticResource Mono}"
-                                                       FontSize="12" Foreground="#C9D3DF" TextTrimming="CharacterEllipsis"/>
+                                                       FontSize="12" Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
                                         </Border>
                                         <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0" Content="Copy"
                                                 Click="OnCopyClick" Tag="{Binding HintCommand}"/>

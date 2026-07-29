@@ -51,6 +51,11 @@
                     <SolidColorBrush x:Key="PrimarySoft" Color="#00D4A3" Opacity="0.10"/>
                     <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
                     <SolidColorBrush x:Key="Console" Color="#070B1F"/>
+                    <!-- A document, not a stream (KON-196). Console is a terminal and stays dark in
+                         both themes; a manifest or a command preview is text you read next to the rest
+                         of the page, and a black plate in the middle of a white screen is what got
+                         reported. Lifted off Console in dark so the two do not read as one panel. -->
+                    <SolidColorBrush x:Key="CodeSurface" Color="#0F1428"/>
                     <SolidColorBrush x:Key="SurfaceRaised" Color="#11172E"/>
                     <!-- The warn and danger washes stay warm against the navy ground on purpose. They
                          are alert blocks, not neutral surfaces; tinting them to hue 229 would make them
@@ -97,6 +102,10 @@
                     <!-- The console stays dark in both themes; moved onto hue 229 so a light-theme
                          terminal does not read as a panel borrowed from another product. -->
                     <SolidColorBrush x:Key="Console" Color="#0C122B"/>
+                    <!-- ...and the code surface does follow, which is the whole point of splitting them
+                         (KON-196): the YAML tab and the command previews are white here, with TextDim
+                         on them like any other panel. -->
+                    <SolidColorBrush x:Key="CodeSurface" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="SurfaceRaised" Color="#F0F3F6"/>
                     <SolidColorBrush x:Key="WarnSoft" Color="#FBF2DD"/>
                     <SolidColorBrush x:Key="WarnSoftBorder" Color="#ECD9A8"/>
