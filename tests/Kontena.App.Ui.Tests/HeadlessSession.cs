@@ -1,16 +1,25 @@
 using Avalonia;
 using Avalonia.Headless;
-using Avalonia.Themes.Fluent;
 
 namespace Kontena.App.Ui.Tests;
 
-/// <summary>The least app a control can be laid out in: a theme, and nothing else.</summary>
-public sealed class HeadlessTestApp : Application
+/// <summary>
+/// Kontena's own application, headless.
+/// <para>
+/// The real one rather than a bare <see cref="Application"/> with a theme bolted on, because the
+/// window under test reaches for the app's palette and icon resources — and a stand-in that happens to
+/// have neither would pass a test about resources it never loaded. Only <c>Initialize</c> runs here;
+/// the desktop branch of <c>OnFrameworkInitializationCompleted</c> is skipped, since a headless session
+/// is not a classic desktop lifetime, so nothing touches the real settings file or a container engine.
+/// </para>
+/// </summary>
+public static class HeadlessTestApp
 {
+    // Configures Kontena's own App rather than a subclass of it: AvaloniaXamlLoader resolves App.axaml
+    // by the runtime type, so a subclass loads no resources at all — the palette silently falls back
+    // and a test can pass against a window that is not the shipped one. There is a test for that.
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<HeadlessTestApp>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
-
-    public override void Initialize() => Styles.Add(new FluentTheme());
+        AppBuilder.Configure<Kontena.App.App>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
 }
 
 /// <summary>

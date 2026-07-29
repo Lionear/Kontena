@@ -187,9 +187,15 @@
             exactly the per-platform divergence this window is trying not to have. They stay
             ordinary buttons with ordinary handlers, and the role only keeps them out of the drag
             area.
+
+            Dragging really is the platform's. Double-click is not, whatever the paragraph above
+            used to claim (KON-195): with the client area extended, the window manager never sees a
+            click on non-client area, so the maximise-on-double-click it would normally do never
+            happens. Hence a handler, for the same reason the three buttons have one.
         -->
         <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Background="{DynamicResource SidebarBg}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                DoubleTapped="OnTitleBarDoubleTapped"
                 chrome:WindowDecorationProperties.ElementRole="TitleBar">
             <Panel>
                 <StackPanel Orientation="Horizontal" Spacing="9"
@@ -199,7 +205,8 @@
                                Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                <StackPanel x:Name="CaptionButtons" Orientation="Horizontal" HorizontalAlignment="Right"
+                            VerticalAlignment="Stretch"
                             chrome:WindowDecorationProperties.ElementRole="DecorationsElement">
                     <Button Classes="caption" Click="OnMinimiseClick" ToolTip.Tip="Minimise">
                         <Path Classes="icon" Width="14" Height="14" Stretch="None"
