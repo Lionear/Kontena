@@ -426,15 +426,14 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     /// <summary>
     /// Split the RFC3339 timestamp kubelet prefixes onto each line. Everything a pod writes is one
     /// stream, so the source is always <see cref="LogSource.Stdout"/>.
+    /// <para>
+    /// The splitting itself is <see cref="LogLine.Parse"/>, shared with the Docker adapter since
+    /// KON-203 — this used to be the only place that did it, and the other one had drifted into
+    /// stamping the read time onto every line.
+    /// </para>
     /// </summary>
-    private static LogEntry ParseLogLine(string line)
-    {
-        var space = line.IndexOf(' ', StringComparison.Ordinal);
-        if (space > 0 && DateTimeOffset.TryParse(line[..space], out var stamp))
-            return new LogEntry(stamp, LogSource.Stdout, line[(space + 1)..]);
-
-        return new LogEntry(DateTimeOffset.UtcNow, LogSource.Stdout, line);
-    }
+    private static LogEntry ParseLogLine(string line) =>
+        LogLine.Parse(line, LogSource.Stdout, DateTimeOffset.UtcNow);
 
     public async IAsyncEnumerable<Core.Orchestration.Models.PodMetrics> StreamMetricsAsync(
         ResourceRef pod, [EnumeratorCancellation] CancellationToken ct = default)

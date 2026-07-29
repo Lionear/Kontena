@@ -377,6 +377,53 @@ public class DockerEngineTests
     }
 
     [SkippableFact]
+    public async Task Log_lines_carry_the_time_they_were_written_not_the_time_they_were_read()
+    {
+        // The reported bug (KON-203): the adapter asked for no timestamps and stamped every line with
+        // DateTimeOffset.UtcNow, so a whole backlog read in one go shared a single millisecond. Two
+        // lines a second apart are the smallest case that tells the two apart.
+        using var engine = await ConnectOrSkipAsync();
+
+        var id = await engine.CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "hello-world:latest",
+            Name = $"kontena-stamps-{Guid.NewGuid():N}"[..24],
+            Start = true,
+        });
+
+        try
+        {
+            // The container writes everything and exits. Waiting puts a measurable gap between when the
+            // lines were written and when they are read, which is the whole distinction under test.
+            await Task.Delay(TimeSpan.FromSeconds(3));
+
+            var read = DateTimeOffset.UtcNow;
+            var stamps = new List<DateTimeOffset>();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            await foreach (var entry in engine.StreamLogsAsync(id, follow: false, cts.Token))
+            {
+                stamps.Add(entry.Timestamp);
+
+                // And the prefix is off: the first word is the container's, not an RFC3339 stamp. It
+                // is asked for now, so leaving it in the text would be the new way to get this wrong.
+                var first = entry.Message.Split(' ')[0];
+                Assert.False(
+                    DateTimeOffset.TryParse(first, out _),
+                    $"the engine's timestamp is still in the message: {entry.Message}");
+            }
+
+            Skip.If(stamps.Count == 0, "hello-world produced no log lines on this host");
+            Assert.All(stamps, stamp => Assert.True(
+                read - stamp >= TimeSpan.FromSeconds(2),
+                $"line stamped {stamp:O} but read at {read:O} — that is the read time, not the log time"));
+        }
+        finally
+        {
+            await engine.RemoveContainerAsync(id, force: true);
+        }
+    }
+
+    [SkippableFact]
     public async Task Inspect_image_returns_config_for_present_and_null_for_missing()
     {
         using var engine = await ConnectOrSkipAsync();
