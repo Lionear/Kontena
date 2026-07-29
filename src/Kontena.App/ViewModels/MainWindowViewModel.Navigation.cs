@@ -163,8 +163,37 @@ public partial class MainWindowViewModel
         if (!IsClusterMode)
             return;
 
-        NavigateCluster(_clusterPageKey);
-        _ = UpdateClusterNavCountsAsync();
+        _ = NavigateClusterAfterCountsAsync(_clusterPageKey);
+    }
+
+    /// <summary>
+    /// Count first, then build the page (KON-200).
+    /// <para>
+    /// Which page Workloads is — the dashboard or the plain list — depends on how many kinds exist,
+    /// and that answer arrives with the counts. Navigating first meant deciding on the namespace you
+    /// had just left: one kind to several gave the list, several to one gave the dashboard. Both
+    /// directions were reported. The same order applies after an apply, which can add the first
+    /// DaemonSet or remove the last.
+    /// </para>
+    /// <para>
+    /// The counts failing must not cost the navigation — a page built from a stale count is still
+    /// better than no page at all — so the await is guarded and the key resolved either way.
+    /// </para>
+    /// </summary>
+    private async Task NavigateClusterAfterCountsAsync(string key)
+    {
+        try
+        {
+            await UpdateClusterNavCountsAsync();
+        }
+        catch (Exception)
+        {
+            // Unreachable cluster, a call that timed out: the page itself reports that far better
+            // than a nav that never happens.
+        }
+
+        if (IsClusterMode)
+            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups));
     }
     private async Task UpdateClusterNavCountsAsync()
     {
@@ -189,6 +218,9 @@ public partial class MainWindowViewModel
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
     private string _clusterPageKey = "overview";
 
+    /// <summary>The workload kinds the last count found, which is what decides the Workloads page.</summary>
+    private IReadOnlyList<WorkloadNavGroups.Group> _workloadGroups = [];
+
 
     /// <summary>
     /// Rebuild the per-kind sub-entries under Workloads (KON-169). Which entries and in what order is
@@ -210,6 +242,7 @@ public partial class MainWindowViewModel
         }
 
         var groups = WorkloadNavGroups.For(workloads);
+        _workloadGroups = groups;
         parent.HasChildren = WorkloadNavGroups.ShouldGroup(groups);
 
         if (!parent.HasChildren)
