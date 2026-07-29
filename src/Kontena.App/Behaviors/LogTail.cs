@@ -58,4 +58,21 @@ public static class LogTail
 
         return IsAtBottom(offset, extent, viewport);
     }
+
+    /// <summary>
+    /// Whether a list that has just been given room should jump to its end (KON-198).
+    /// <para>
+    /// The detail pages put their logs behind a tab, and a tab here is a panel toggled with
+    /// <c>IsVisible</c> rather than content built on demand. So the list is in the visual tree from
+    /// the start: attaching fires immediately, with no lines yet, and every line that arrives while
+    /// the tab is hidden scrolls a viewport of zero height — which does nothing. Clicking Logs then
+    /// lays the list out for the first time, at offset zero. At the top, which is what was reported.
+    /// </para>
+    /// <para>
+    /// Becoming visible is its own moment, separate from being attached, and this is the rule for it:
+    /// the first time a list actually has room, put it on its last line.
+    /// </para>
+    /// </summary>
+    public static bool ShouldTailOnAppearing(bool hadRoom, bool hasRoom, bool following, int count) =>
+        following && count > 0 && hasRoom && !hadRoom;
 }

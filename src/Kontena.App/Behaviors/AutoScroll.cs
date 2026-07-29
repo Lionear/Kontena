@@ -90,6 +90,9 @@ public static class AutoScroll
         /// </summary>
         private bool _scrolling;
 
+        /// <summary>Whether the list had a viewport to scroll in, last time it was laid out.</summary>
+        private bool _hadRoom;
+
         public Tail(ListBox listBox)
         {
             _listBox = listBox;
@@ -106,10 +109,30 @@ public static class AutoScroll
                 HookScrollViewer();
                 ScrollToEnd();
             };
+
         }
 
         private void OnListBoxPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
         {
+            // Attached is not the same moment as laid out (KON-198). Behind a tab — a panel toggled
+            // with IsVisible rather than content built on demand — this list is attached from the
+            // start and has no size until the tab is picked, which is long after the lines arrived.
+            // Its own bounds going from nothing to something is that moment; the effective viewport
+            // is not, because a hidden control still reports its parent's.
+            if (e.Property == Visual.BoundsProperty)
+            {
+                var hasRoom = _listBox.Bounds is { Width: > 0, Height: > 0 };
+
+                if (LogTail.ShouldTailOnAppearing(_hadRoom, hasRoom, GetFollow(_listBox), Count))
+                {
+                    HookScrollViewer();
+                    ScrollToEnd();
+                }
+
+                _hadRoom = hasRoom;
+                return;
+            }
+
             if (e.Property != ItemsControl.ItemsSourceProperty)
                 return;
 

@@ -80,6 +80,28 @@ public sealed class LogTailTests
     }
 
     [Fact]
+    public void A_list_that_has_just_been_given_room_jumps_to_its_end()
+    {
+        // Behind a tab, every line arrives before the list has ever been laid out (KON-198).
+        Assert.True(LogTail.ShouldTailOnAppearing(hadRoom: false, hasRoom: true, following: true, count: 200));
+    }
+
+    [Fact]
+    public void Room_it_already_had_is_not_a_moment()
+    {
+        // Otherwise every resize — a window drag, a splitter — would yank a reader back to the tail.
+        Assert.False(LogTail.ShouldTailOnAppearing(hadRoom: true, hasRoom: true, following: true, count: 200));
+        Assert.False(LogTail.ShouldTailOnAppearing(hadRoom: false, hasRoom: false, following: true, count: 200));
+    }
+
+    [Fact]
+    public void Appearing_with_follow_off_or_nothing_to_show_changes_nothing()
+    {
+        Assert.False(LogTail.ShouldTailOnAppearing(hadRoom: false, hasRoom: true, following: false, count: 200));
+        Assert.False(LogTail.ShouldTailOnAppearing(hadRoom: false, hasRoom: true, following: true, count: 0));
+    }
+
+    [Fact]
     public void A_list_shorter_than_its_viewport_is_at_the_bottom()
     {
         // Nothing to scroll, so nothing about it means "I have scrolled away".
