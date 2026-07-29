@@ -66,9 +66,13 @@ public static class ShellActions
     /// Keys the terminal must keep, because they control the <i>process</i> rather than the line.
     /// <para>
     /// The line-editing keys a shell also answers — <c>Ctrl+A</c>, <c>Ctrl+E</c>, <c>Ctrl+R</c> and the
-    /// rest — are deliberately <b>not</b> here. Bindings live on the window, so a focused terminal
-    /// handles them first and Kontena never sees them; binding one costs the terminal nothing. That is
-    /// also why <c>Ctrl+R</c> can be the default for Refresh and still mean reverse-search in a shell.
+    /// rest — are deliberately <b>not</b> here, because a shortcut only shadows a terminal while its
+    /// command can execute and these all belong to pages rather than to the terminal's own page. What
+    /// this paragraph used to claim — that a focused terminal handles a window binding first — is
+    /// simply false: a <c>TopLevel</c> matches its <c>KeyBindings</c> before the focused control sees
+    /// the key, so any command that can always execute eats its key everywhere. That is what stopped
+    /// Enter and Escape from reaching a shell at all (KON-201), and why the dialog commands are gated
+    /// on a dialog being open.
     /// Interrupting, ending and suspending are different: they are the way out of a stuck process, and
     /// a shortcut that quietly shadows them everywhere except the terminal is not worth the confusion.
     /// </para>
