@@ -177,7 +177,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool IsDialogOpen => Dialog is not null;
 
-    partial void OnDialogChanged(object? value) => OnPropertyChanged(nameof(IsDialogOpen));
+    partial void OnDialogChanged(object? value)
+    {
+        OnPropertyChanged(nameof(IsDialogOpen));
+
+        // The Escape and Enter bindings hang off these (KON-201). Without the notification they keep
+        // whatever they answered when the window was built, which is "no" — so a dialog would open and
+        // then not answer either key.
+        DismissCommand.NotifyCanExecuteChanged();
+        ConfirmPrimaryCommand.NotifyCanExecuteChanged();
+    }
 
     public ObservableCollection<NavItem> NavItems { get; }
 

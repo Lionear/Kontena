@@ -1,34 +1,11 @@
 using System.Collections.ObjectModel;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
-using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Kontena.App.Behaviors;
 
 namespace Kontena.App.Ui.Tests;
-
-/// <summary>
-/// Owns the headless session for the tests below, and — the part that matters — shuts it down again.
-/// The session runs its own dispatcher thread; left running it keeps the test host alive after the
-/// last test, which hangs the whole assembly rather than just these two.
-/// </summary>
-public sealed class HeadlessSessionFixture : IDisposable
-{
-    public HeadlessUnitTestSession Session { get; } = HeadlessUnitTestSession.StartNew(typeof(HeadlessTestApp));
-
-    public void Dispose() => Session.Dispose();
-}
-
-/// <summary>The least app a <see cref="ListBox"/> can be laid out in: a theme, and nothing else.</summary>
-public sealed class HeadlessTestApp : Application
-{
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<HeadlessTestApp>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
-
-    public override void Initialize() => Styles.Add(new FluentTheme());
-}
 
 /// <summary>
 /// Logs behind a tab open on their last line (KON-198).
@@ -44,8 +21,8 @@ public sealed class HeadlessTestApp : Application
 /// the behaviour is asked, which is the part the previous fix got wrong.
 /// </para>
 /// </summary>
+[Collection(HeadlessTests.Name)]
 public sealed class LogTailVisibilityTests(HeadlessSessionFixture headless)
-    : IClassFixture<HeadlessSessionFixture>
 {
     private HeadlessUnitTestSession Session => headless.Session;
 

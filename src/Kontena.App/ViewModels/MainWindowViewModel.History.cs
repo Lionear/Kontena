@@ -130,15 +130,28 @@ public partial class MainWindowViewModel
     /// you thought was still open.
     /// </para>
     /// </summary>
-    [RelayCommand]
-    private void Dismiss()
-    {
-        if (IsDialogOpen)
-            CloseDialog();
-    }
+    /// <para>
+    /// Guarded through <c>CanExecute</c> rather than inside the body, and that is the whole of KON-201:
+    /// Avalonia's <c>KeyBinding</c> runs the command and <i>then</i> marks the key handled, so a
+    /// command that can always execute swallows its key everywhere. Escape and Enter carry no
+    /// modifier, so "everywhere" included a focused terminal — Escape never reached vim, and Enter
+    /// never ran a command. With no dialog open the binding now does not match, and the key falls
+    /// through to whatever has focus.
+    /// </para>
+    [RelayCommand(CanExecute = nameof(IsDialogOpen))]
+    private void Dismiss() => CloseDialog();
 
-    /// <summary>Enter. Runs the open dialog's primary action, where it has one.</summary>
-    [RelayCommand]
+    /// <summary>
+    /// Enter. Runs the open dialog's primary action, where it has one.
+    /// <para>
+    /// Gated on the dialog being open rather than on the action being invokable: a dialog whose
+    /// primary button is disabled — mid-save, or with an empty required field — is still a modal, and
+    /// nothing behind it can have focus for the key to fall through to. Tracking
+    /// <c>CanInvokePrimary</c> as it changes would buy nothing and would mean watching every dialog's
+    /// property changes.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsDialogOpen))]
     private void ConfirmPrimary()
     {
         if (Dialog is IPrimaryAction { CanInvokePrimary: true } action)
