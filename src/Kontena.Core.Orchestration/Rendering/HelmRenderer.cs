@@ -61,6 +61,9 @@ public sealed class HelmRenderer : IManifestRenderer<HelmRequest>
         if (release.Length == 0)
             return RenderResult.Failed("helm template", "A release name is required — templates render it into resource names.");
 
+        if (HelmArguments.RenderProblem(chart, release, request.Version, request.Sets) is { } unsafeValue)
+            return RenderResult.Failed("helm template", unsafeValue);
+
         var missing = request.ValuesFiles.Where(f => f.Length > 0 && !File.Exists(f)).ToList();
         if (missing.Count > 0)
             return RenderResult.Failed("helm template", $"Values file not found: {string.Join(", ", missing)}");
@@ -243,6 +246,10 @@ public static class HelmRepos
     /// </summary>
     public static async ValueTask<IReadOnlyList<HelmChart>> SearchAsync(string term = "", CancellationToken ct = default)
     {
+        // The caller shows the reason; here the term is simply not passed on to helm.
+        if (HelmArguments.SearchProblem(term) is not null)
+            return [];
+
         var args = new List<string> { "search", "repo" };
         if (!string.IsNullOrWhiteSpace(term))
             args.Add(term.Trim());
@@ -277,6 +284,9 @@ public static class HelmRepos
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url))
             return "A repository needs both a name and a URL.";
 
+        if (HelmArguments.RepositoryProblem(name, url) is { } problem)
+            return problem;
+
         var result = await TryRunAsync(["repo", "add", name.Trim(), url.Trim(), "--force-update"], ct);
         return result is null ? "'helm' was not found on PATH."
             : result.Value.Ok ? null : result.Value.Complaint;
@@ -285,7 +295,10 @@ public static class HelmRepos
     /// <summary>Remove a repository. Returns null on success, or what helm complained about.</summary>
     public static async ValueTask<string?> RemoveAsync(string name, CancellationToken ct = default)
     {
-        var result = await TryRunAsync(["repo", "remove", name], ct);
+        if (HelmArguments.OptionLike("repository name", name) is { } problem)
+            return problem;
+
+        var result = await TryRunAsync(["repo", "remove", name.Trim()], ct);
         return result is null ? "'helm' was not found on PATH."
             : result.Value.Ok ? null : result.Value.Complaint;
     }
