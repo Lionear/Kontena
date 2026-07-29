@@ -10,7 +10,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -28,8 +28,15 @@ public sealed class FakeClusterEngine : IClusterEngine
     private string _activeContext;
 
     /// <param name="context">Which seeded context to start on; defaults to the first.</param>
-    public FakeClusterEngine(string? context = null)
+    /// <param name="metrics">
+    /// Whether a usage backend answers. False is the shape of a fresh kind cluster (KON-93): gauges
+    /// unavailable until something installs a metrics-server — which applying its manifest here does,
+    /// so the install flow can be driven end to end without a cluster.
+    /// </param>
+    public FakeClusterEngine(string? context = null, bool metrics = true)
     {
+        _capabilities = _capabilities with { Metrics = metrics };
+
         _contexts =
         [
             new KubeContext { Name = "prod-eu-west", Cluster = "gke_prod", User = "gke-user", Namespace = "default" },
@@ -137,10 +144,15 @@ public sealed class FakeClusterEngine : IClusterEngine
 
     public string Backend => "kubernetes";
 
-    public ClusterCapabilities Capabilities { get; } = new()
+    private ClusterCapabilities _capabilities = new()
     {
         Metrics = true, Exec = true, PortForward = true, Apply = true, Helm = true, Watch = true, Crds = true,
     };
+
+    public ClusterCapabilities Capabilities => _capabilities;
+
+    /// <summary>What answers for usage, so the UI can explain the gauges it is not drawing.</summary>
+    public IMetricsSource Metrics => _capabilities.Metrics ? FakeMetricsSource.Instance : NoMetricsSource.Instance;
 
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<BackendInfo>(new ClusterInfo
@@ -179,6 +191,15 @@ public sealed class FakeClusterEngine : IClusterEngine
             ct.ThrowIfCancellationRequested();
             await Task.Yield();
             yield return ApplyOne(desired, bundle.DryRun);
+
+            // The install this models is only real once metrics.k8s.io is registered, so that is what
+            // flips the capability — not the presence of a Deployment called metrics-server.
+            if (!bundle.DryRun
+                && desired.Kind == "APIService"
+                && desired.Name.Contains("metrics.k8s.io", StringComparison.Ordinal))
+            {
+                _capabilities = _capabilities with { Metrics = true };
+            }
         }
     }
 
@@ -799,4 +820,25 @@ public sealed class FakePortForward(int localPort, int remotePort) : IPortForwar
         IsActive = false;
         return ValueTask.CompletedTask;
     }
+}
+
+/// <summary>
+/// A usage backend that answers, for the fake cluster. Only its name matters here — the numbers the
+/// gauges draw come from <see cref="FakeClusterEngine"/>'s own node and pod listings.
+/// </summary>
+internal sealed class FakeMetricsSource : IMetricsSource
+{
+    public static readonly FakeMetricsSource Instance = new();
+
+    public string Name => "metrics-server";
+
+    public bool IsAvailable => true;
+
+    public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(true);
+
+    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(new Dictionary<string, NodeUsage>());
+
+    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PodMetrics>>([]);
 }

@@ -26,6 +26,19 @@
                                    Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding MetricsNoticeAction}" FontSize="12.5"
                                    Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+
+                        <!-- The action half of the notice (KON-93). Hidden where the backend cannot
+                             write to the cluster: an install button that cannot install is the dead
+                             button from KON-117. -->
+                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,7,0,0"
+                                    IsVisible="{Binding CanInstallMetrics}">
+                            <Button Classes="primary" Command="{Binding InstallMetricsCommand}"
+                                    IsEnabled="{Binding !IsInstallingMetrics}"
+                                    Content="Install metrics-server"/>
+                            <TextBlock Text="{Binding MetricsInstallStatus}" FontSize="12.5" MaxWidth="420"
+                                       Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>
