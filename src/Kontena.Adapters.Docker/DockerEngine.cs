@@ -705,7 +705,10 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             ShowStdout = true,
             ShowStderr = true,
             Follow = follow,
-            Timestamps = false,
+            // Asked for, and parsed off each line below (KON-203). Without them every line carried the
+            // moment Kontena read it, so a backlog of forty lines from four different days all showed
+            // the same millisecond.
+            Timestamps = true,
             Tail = follow ? "200" : "all",
         }, ct)).ConfigureAwait(false);
 
@@ -741,7 +744,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 sb.Append(Encoding.UTF8.GetString(buffer, 0, read.Count));
 
                 foreach (var line in DrainLines(sb))
-                    yield return new LogEntry(DateTimeOffset.UtcNow, source, line);
+                    yield return LogLine.Parse(line, source, DateTimeOffset.UtcNow);
             }
         }
         finally
