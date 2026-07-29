@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Kontena.App.Services;
 using Kontena.Core.Models;
 using Xunit;
@@ -21,7 +22,8 @@ public sealed class SettingsStoreTests : IDisposable
 
     private SettingsStore Store() => new(_path);
 
-    [SkippableFact]
+    // The analyzer cannot see that Skip.If already keeps this off Windows, so it is told here.
+    [SkippableFact, UnsupportedOSPlatform("windows")]
     public void A_saved_file_is_readable_only_by_its_owner()
     {
         // No secret is in here, but the hosts, usernames and kubeconfig paths are worth nothing to
@@ -33,7 +35,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(_path));
     }
 
-    [SkippableFact]
+    [SkippableFact, UnsupportedOSPlatform("windows")]
     public void A_file_left_wide_open_by_an_older_version_is_narrowed_on_the_next_save()
     {
         Skip.If(OperatingSystem.IsWindows(), "Unix file modes only.");
@@ -48,7 +50,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(_path));
     }
 
-    [SkippableFact]
+    [SkippableFact, UnsupportedOSPlatform("windows")]
     public void A_directory_this_write_did_not_create_is_left_alone()
     {
         // The path is not always the app's own config directory, and narrowing someone else's is not
