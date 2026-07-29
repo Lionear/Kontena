@@ -488,12 +488,15 @@ public sealed class PodContainerRow
         };
         HasKindLabel = KindLabel.Length > 0;
 
-        PortsText = c.Ports.Count == 0
-            ? "—"
-            : string.Join(", ", c.Ports.Select(p =>
-                p.Name.Length > 0
-                    ? $"{p.Number}/{p.Protocol} {p.Name}"
-                    : $"{p.Number}/{p.Protocol}"));
+        // The column is too narrow for four ports, so the row trims and the full list has to live
+        // somewhere. One list, two renderings: the cell joins it, the tooltip stacks it (KON-199).
+        var ports = c.Ports.Select(p =>
+            p.Name.Length > 0
+                ? $"{p.Number}/{p.Protocol} {p.Name}"
+                : $"{p.Number}/{p.Protocol}").ToList();
+        PortsText = ports.Count == 0 ? "—" : string.Join(", ", ports);
+        // Null, not empty: a tooltip on a cell that reads "—" would open to say nothing.
+        PortsTooltip = ports.Count == 0 ? null : string.Join("\n", ports);
 
         // "Ready" is the wrong word for an init container: it is supposed to finish, and a finished one
         // reading "Not ready" describes success as a fault.
@@ -512,6 +515,7 @@ public sealed class PodContainerRow
     public string Restarts { get; }
     public string State { get; }
     public string PortsText { get; }
+    public string? PortsTooltip { get; }
     public bool IsInit { get; }
     public string KindLabel { get; }
     public bool HasKindLabel { get; }

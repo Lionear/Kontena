@@ -575,9 +575,13 @@ public sealed partial class ServiceRow
         Namespace = s.Namespace;
         Type = s.Type.ToString();
         ClusterIp = string.IsNullOrEmpty(s.ClusterIp) ? "—" : s.ClusterIp;
-        Ports = s.Ports.Count == 0
-            ? "—"
-            : string.Join("  ", s.Ports.Select(p => p.NodePort is int np ? $"{p.Port}:{np}/{p.Protocol}" : $"{p.Port}/{p.Protocol}"));
+        // Same as the pod-detail containers table: one list, joined in the cell and stacked in the
+        // tooltip, because a service with several ports trims and the rest has to be reachable (KON-199).
+        var ports = s.Ports
+            .Select(p => p.NodePort is int np ? $"{p.Port}:{np}/{p.Protocol}" : $"{p.Port}/{p.Protocol}")
+            .ToList();
+        Ports = ports.Count == 0 ? "—" : string.Join("  ", ports);
+        PortsTooltip = ports.Count == 0 ? null : string.Join("\n", ports);
         Age = Format.Duration(s.Age);
         CanForward = s.Ports.Count > 0;
     }
@@ -587,6 +591,7 @@ public sealed partial class ServiceRow
     public string Type { get; }
     public string ClusterIp { get; }
     public string Ports { get; }
+    public string? PortsTooltip { get; }
     public string Age { get; }
     public bool CanForward { get; }
     public bool CanOpen { get; }
