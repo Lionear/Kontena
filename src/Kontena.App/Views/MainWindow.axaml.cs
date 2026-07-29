@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Kontena.App.Services;
 
@@ -139,9 +140,42 @@ public partial class MainWindow : Window
         _normalY = Position.Y;
     }
 
-    // Caption buttons (KON-138). Dragging and double-click are the platform's, through the title
-    // bar's ElementRole; these three are ours because handing them to the platform is what makes
-    // the same window behave differently on each one.
+    /// <summary>
+    /// Maximise or restore on a double-click, the way every other window on the system does (KON-195).
+    /// <para>
+    /// This used to be left to the platform, on the strength of the title bar's <c>ElementRole</c>.
+    /// Dragging does come from there; double-click does not, because with the client area extended the
+    /// window manager never sees a click on non-client area at all.
+    /// </para>
+    /// <para>
+    /// Deferred one dispatcher turn so a platform that <i>does</i> handle it gets to go first: see
+    /// <see cref="TitleBarDoubleTap"/> for why toggling unconditionally would be worse than not
+    /// handling it.
+    /// </para>
+    /// </summary>
+    private void OnTitleBarDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        // The caption buttons live inside the title bar, so two quick clicks on Minimise would
+        // otherwise minimise and then maximise the window on the way out.
+        if (e.Source is Visual source
+            && (ReferenceEquals(source, CaptionButtons) || source.GetVisualAncestors().Contains(CaptionButtons)))
+        {
+            return;
+        }
+
+        var atTap = WindowState;
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (TitleBarDoubleTap.Resolve(atTap, WindowState) is { } next)
+                    WindowState = next;
+            },
+            DispatcherPriority.Background);
+    }
+
+    // Caption buttons (KON-138). Dragging is the platform's, through the title bar's ElementRole;
+    // these three are ours because handing them to the platform is what makes the same window behave
+    // differently on each one.
     private void OnMinimiseClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
     private void OnMaximiseClick(object? sender, RoutedEventArgs e) =>
