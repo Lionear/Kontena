@@ -127,7 +127,10 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
     private void ApplyFilter()
     {
-        SyncCollection(Items, Rows());
+        // The same reconcile the other list pages get from ListPageViewModel (KON-189). This page
+        // cannot inherit it: with grouping on, its rows are projects and their children, not the
+        // matching subset of what it loaded.
+        ListSync.Apply(Items, Rows());
         RaiseCollectionState();
     }
 
@@ -247,35 +250,6 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
         OnPropertyChanged(nameof(HasAnyContainers));
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(HasNoMatches));
-    }
-
-    /// <summary>Mutate <paramref name="target"/> the minimum needed to match
-    /// <paramref name="desired"/> (add/remove/move only), preserving unchanged rows.</summary>
-    private static void SyncCollection(
-        ObservableCollection<ContainerListRowViewModel> target, List<ContainerListRowViewModel> desired)
-    {
-        for (var i = target.Count - 1; i >= 0; i--)
-        {
-            if (!desired.Contains(target[i]))
-                target.RemoveAt(i);
-        }
-
-        for (var i = 0; i < desired.Count; i++)
-        {
-            var want = desired[i];
-            if (i >= target.Count)
-            {
-                target.Add(want);
-            }
-            else if (!ReferenceEquals(target[i], want))
-            {
-                var at = target.IndexOf(want);
-                if (at >= 0)
-                    target.Move(at, i);
-                else
-                    target.Insert(i, want);
-            }
-        }
     }
 
     private bool Matches(ContainerRowViewModel row)

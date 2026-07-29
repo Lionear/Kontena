@@ -127,6 +127,14 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- A search with no hits is not the same nothing as a host without projects (KON-189):
+                 the empty state above invites you to start a stack, which is unhelpful advice when you
+                 have five and mistyped one. -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                <TextBlock Text="No projects match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

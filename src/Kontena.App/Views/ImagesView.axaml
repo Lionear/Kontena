@@ -52,7 +52,7 @@
                 </Grid>
             </Border>
 
-            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            <Border IsVisible="{Binding HasItems}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
@@ -97,6 +97,19 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
+            </Border>
+
+            <!-- Two different nothings (KON-189). A search with no hits used to leave the same bare page
+                 as a host with no images at all, which reads as a page that failed to load. -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                <TextBlock Text="No images match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                <TextBlock Text="No images on this engine yet. Pull one to get started."
+                           FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
         </StackPanel>
     </ScrollViewer>

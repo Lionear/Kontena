@@ -12,7 +12,7 @@ namespace Kontena.App.ViewModels;
 // apply flow are their own tickets (KON-69/70/71).
 
 /// <summary>Nodes view — a card per node with CPU/memory gauges (see k8s-nodes mockup).</summary>
-public partial class ClusterNodesViewModel : ClusterListViewModel<NodeCardRow>
+public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
 {
     private readonly IClusterEngine _cluster;
 
@@ -61,7 +61,7 @@ public partial class ClusterNodesViewModel : ClusterListViewModel<NodeCardRow>
 }
 
 /// <summary>Namespaces view.</summary>
-public partial class ClusterNamespacesViewModel : ClusterListViewModel<NamespaceRow>
+public partial class ClusterNamespacesViewModel : ListPageViewModel<NamespaceRow>
 {
     private readonly IClusterEngine _cluster;
 
@@ -80,7 +80,7 @@ public partial class ClusterNamespacesViewModel : ClusterListViewModel<Namespace
 }
 
 /// <summary>Workloads view — the controllers (Deployment/StatefulSet/DaemonSet/Job/CronJob).</summary>
-public partial class ClusterWorkloadsViewModel : ClusterListViewModel<WorkloadRow>
+public partial class ClusterWorkloadsViewModel : ListPageViewModel<WorkloadRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -149,7 +149,7 @@ public partial class ClusterWorkloadsViewModel : ClusterListViewModel<WorkloadRo
 }
 
 /// <summary>Pods view.</summary>
-public partial class ClusterPodsViewModel : ClusterListViewModel<PodRow>
+public partial class ClusterPodsViewModel : ListPageViewModel<PodRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -183,7 +183,7 @@ public partial class ClusterPodsViewModel : ClusterListViewModel<PodRow>
 }
 
 /// <summary>Services view.</summary>
-public partial class ClusterServicesViewModel : ClusterListViewModel<ServiceRow>
+public partial class ClusterServicesViewModel : ListPageViewModel<ServiceRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;

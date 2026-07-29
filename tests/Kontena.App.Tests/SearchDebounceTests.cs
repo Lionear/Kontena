@@ -7,7 +7,7 @@ namespace Kontena.App.Tests;
 /// Typing should cost one list rebuild, not one per letter (KON-164 follow-up).
 /// <para>
 /// Two separate problems live here. The debounce collapses a burst of keystrokes; the reconciliation
-/// in <see cref="ClusterListViewModel{TRow}"/> is what makes each rebuild cheap. A debounce alone
+/// in <see cref="ListPageViewModel{TRow}"/> is what makes each rebuild cheap. A debounce alone
 /// would only have delayed the same expensive rebuild.
 /// </para>
 /// </summary>
