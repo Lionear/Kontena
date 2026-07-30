@@ -17,25 +17,29 @@
             <!-- Kontena palette — light + dark variants, resolved via DynamicResource -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
-                    <!-- The dark surfaces are one ladder on hue 229, derived from Bg rather than picked
-                         (KON-130). Saturation falls as they lighten — held constant, the panels read as
-                         outright blue instead of a dark ground with a cool cast. The three below Surface
-                         were solved for the luminance they had on the old neutral-grey ladder, so their
-                         order and spacing are unchanged and no screen shifts in perceived depth. -->
-                    <SolidColorBrush x:Key="Bg" Color="#0B1026"/>
-                    <SolidColorBrush x:Key="Surface" Color="#15192E"/>
-                    <SolidColorBrush x:Key="Surface2" Color="#1C2136"/>
-                    <SolidColorBrush x:Key="SidebarBg" Color="#0D122A"/>
-                    <!-- Deliberately lighter than the old #272E39. A hairline at the old luminance
-                         disappears against a bluer, darker Bg; WCAG sets no bar for purely decorative
-                         dividers, so this is a legibility call rather than a contrast one. -->
-                    <SolidColorBrush x:Key="Border" Color="#2D334D"/>
+                    <!-- The dark surfaces are one ladder, derived rather than picked. KON-130 built it
+                         on hue 229 (navy); KON-245 takes three quarters of that saturation back out,
+                         because the result read as blue rather than as a dark ground with a cool cast.
+                         What did not change is the method, and that is the point: each token keeps its
+                         hue and its *relative luminance*, with only the saturation scaled and the
+                         lightness solved to match. So the ladder's order and spacing are identical, no
+                         screen shifts in perceived depth, and every contrast ratio in
+                         PaletteContrastTests holds by construction rather than by luck. -->
+                    <SolidColorBrush x:Key="Bg" Color="#111116"/>
+                    <SolidColorBrush x:Key="Surface" Color="#1A1A1F"/>
+                    <SolidColorBrush x:Key="Surface2" Color="#202226"/>
+                    <SolidColorBrush x:Key="SidebarBg" Color="#131318"/>
+                    <!-- Deliberately lighter than the old #272E39: a hairline at that luminance
+                         disappears against this Bg. WCAG sets no bar for purely decorative dividers, so
+                         this is a legibility call rather than a contrast one — and it survives KON-245
+                         unchanged in luminance, which is why it still reads the same. -->
+                    <SolidColorBrush x:Key="Border" Color="#33343A"/>
                     <!-- Row dividers *inside* a card, where the card's own Border is too loud: ten
-                         views asked for this and it existed nowhere, so those hairlines have been
-                         rendering as nothing at all (KON-218). The value is derived rather than
-                         picked — it sits at the same fraction between Surface and Border that the
-                         mockup's soft divider sits at on its own ladder. -->
-                    <SolidColorBrush x:Key="BorderSoft" Color="#212741"/>
+                         views asked for this and it existed nowhere, so those hairlines rendered as
+                         nothing at all (KON-218). Derived, not picked: it sits at the same fraction
+                         between Surface and Border that the mockup's soft divider sits at on its own
+                         ladder, and it was desaturated with the rest of them under KON-245. -->
+                    <SolidColorBrush x:Key="BorderSoft" Color="#27282E"/>
                     <SolidColorBrush x:Key="Text" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="TextDim" Color="#9AA4B2"/>
                     <SolidColorBrush x:Key="TextFaint" Color="#808B9B"/>
@@ -56,16 +60,18 @@
                          to go dark here and white in the light theme — the mirror of PrimaryInk. -->
                     <SolidColorBrush x:Key="DangerInk" Color="#2A0A0A"/>
                     <SolidColorBrush x:Key="PrimarySoft" Color="#00D4A3" Opacity="0.10"/>
-                    <SolidColorBrush x:Key="Console" Color="#070B1F"/>
+                    <SolidColorBrush x:Key="Console" Color="#0C0C10"/>
                     <!-- A document, not a stream (KON-196). Console is a terminal and stays dark in
                          both themes; a manifest or a command preview is text you read next to the rest
                          of the page, and a black plate in the middle of a white screen is what got
-                         reported. Lifted off Console in dark so the two do not read as one panel. -->
-                    <SolidColorBrush x:Key="CodeSurface" Color="#0F1428"/>
-                    <SolidColorBrush x:Key="SurfaceRaised" Color="#11172E"/>
-                    <!-- The warn and danger washes stay warm against the navy ground on purpose. They
-                         are alert blocks, not neutral surfaces; tinting them to hue 229 would make them
-                         agree with the page and stop reading as an interruption. -->
+                         reported. Still lifted off Console in dark so the two do not read as one panel —
+                         the gap between them is a luminance gap, so KON-245 left it intact. -->
+                    <SolidColorBrush x:Key="CodeSurface" Color="#141519"/>
+                    <SolidColorBrush x:Key="SurfaceRaised" Color="#17181D"/>
+                    <!-- The warn and danger washes stay warm against the ground on purpose. They are
+                         alert blocks, not neutral surfaces; tinting them to the ladder's hue would make
+                         them agree with the page and stop reading as an interruption. They were left
+                         out of the KON-245 desaturation for the same reason. -->
                     <SolidColorBrush x:Key="WarnSoft" Color="#1C1810"/>
                     <SolidColorBrush x:Key="WarnSoftBorder" Color="#3A3320"/>
                     <SolidColorBrush x:Key="WarnText" Color="#E8CF9A"/>
