@@ -28,6 +28,8 @@ public sealed partial class ClusterTerminalViewModel : ViewModelBase, ITerminalH
     {
         _terminal = terminal;
 
+        terminal.DetachedChanged += () => OnPropertyChanged(nameof(IsDetached));
+
         TerminalFontFamily = $"{terminalFont.Family}, monospace";
         TerminalFontSize = terminalFont.Size;
         TerminalLigatures = terminalFont.Ligatures;
@@ -37,6 +39,13 @@ public sealed partial class ClusterTerminalViewModel : ViewModelBase, ITerminalH
     /// <summary>Whether this is the tab being shown, for the strip that draws them.</summary>
     [ObservableProperty]
     private bool _isCurrent;
+
+    /// <summary>Whether this terminal is showing in a window of its own (KON-217).</summary>
+    public bool IsDetached
+    {
+        get => _terminal.IsDetached;
+        set => _terminal.IsDetached = value;
+    }
 
     /// <summary>What the tab is called.</summary>
     public string Title => _terminal.Title;

@@ -58,6 +58,18 @@ public sealed partial class ClusterTerminalsViewModel : ViewModelBase
     /// <summary>A tab strip is only worth its room once there is a second tab.</summary>
     public bool HasTabs => Terminals.Count > 1;
 
+    /// <summary>
+    /// The terminal to draw here, which is none while the selected one is in a window of its own.
+    /// <para>
+    /// Null rather than hidden: a hidden view is still a view, and it would attach to the session the
+    /// window is showing. One viewer at a time is the whole reason detaching moves rather than mirrors.
+    /// </para>
+    /// </summary>
+    public ClusterTerminalViewModel? Shown => Selected is { IsDetached: false } ? Selected : null;
+
+    /// <summary>Whether to say where the selected terminal went, in place of the terminal.</summary>
+    public bool IsSelectedDetached => Selected is { IsDetached: true };
+
     /// <summary>Open another shell on this cluster, on whatever the pickers say now.</summary>
     [RelayCommand]
     public void NewTerminal()
@@ -96,13 +108,40 @@ public sealed partial class ClusterTerminalsViewModel : ViewModelBase
     [RelayCommand]
     public void Select(ClusterTerminalViewModel page) => Selected = page;
 
+    partial void OnSelectedChanging(ClusterTerminalViewModel? value)
+    {
+        if (Selected is { } previous)
+            previous.PropertyChanged -= OnSelectedTerminalChanged;
+    }
+
     partial void OnSelectedChanged(ClusterTerminalViewModel? value)
     {
         foreach (var page in Terminals)
             page.IsCurrent = ReferenceEquals(page, value);
 
         if (value is not null)
+        {
+            value.PropertyChanged += OnSelectedTerminalChanged;
             _terminals.Select(value.Terminal);
+        }
+
+        WhereItIsShown();
+    }
+
+    /// <summary>
+    /// The window outlives this page, so closing it has to reach a page that may already be open. That
+    /// is what the terminal's own notification is for.
+    /// </summary>
+    private void OnSelectedTerminalChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ClusterTerminalViewModel.IsDetached))
+            WhereItIsShown();
+    }
+
+    private void WhereItIsShown()
+    {
+        OnPropertyChanged(nameof(Shown));
+        OnPropertyChanged(nameof(IsSelectedDetached));
     }
 
     private void Changed()

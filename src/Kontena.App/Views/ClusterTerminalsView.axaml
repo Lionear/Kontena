@@ -26,14 +26,25 @@
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
             <TextBlock Grid.Column="0" Text="Terminal" FontSize="22" FontWeight="SemiBold"
                        Foreground="{DynamicResource Text}"/>
-            <Button Grid.Column="1" Classes="ghost" Command="{Binding NewTerminalCommand}"
-                    ToolTip.Tip="Open another shell on this cluster">
-                <StackPanel Orientation="Horizontal" Spacing="7">
-                    <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
-                          Data="{StaticResource IconPlus}"/>
-                    <TextBlock Text="New terminal" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Classes="ghost" Click="OnDetachClick"
+                        IsVisible="{Binding Shown, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        ToolTip.Tip="Move this terminal into a window of its own">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
+                              Data="{StaticResource IconExternal}"/>
+                        <TextBlock Text="Open in window" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Classes="ghost" Command="{Binding NewTerminalCommand}"
+                        ToolTip.Tip="Open another shell on this cluster">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
+                              Data="{StaticResource IconPlus}"/>
+                        <TextBlock Text="New terminal" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- The strip earns its room only from the second tab on; with one terminal it would be a row of
@@ -70,6 +81,26 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <ContentControl Grid.Row="2" Margin="0,16,0,0" Content="{Binding Selected}"/>
+        <Panel Grid.Row="2" Margin="0,16,0,0">
+            <!-- Bound to Shown rather than Selected: while a terminal is in its own window this must
+                 hold nothing at all. A hidden view is still a view, and it would attach to the session
+                 the window is showing. -->
+            <ContentControl Content="{Binding Shown}"/>
+
+            <StackPanel IsVisible="{Binding IsSelectedDetached}" Spacing="16"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420">
+                <Border Width="64" Height="64" CornerRadius="16" Background="{DynamicResource Surface2}"
+                        HorizontalAlignment="Center">
+                    <Path Classes="icon" Width="28" Height="28" Stroke="{DynamicResource TextFaint}"
+                          Data="{StaticResource IconExternal}"/>
+                </Border>
+                <TextBlock Text="This terminal is in its own window" FontSize="17" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="It is still running. Closing that window puts it back here — nothing in it is lost."
+                           FontSize="13" Foreground="{DynamicResource TextDim}" TextAlignment="Center"
+                           TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                <Button Classes="ghost" Click="OnReattachClick" HorizontalAlignment="Center">Bring it back</Button>
+            </StackPanel>
+        </Panel>
     </Grid>
 </UserControl>
