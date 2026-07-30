@@ -58,6 +58,24 @@ public interface IClusterEngine : IBackend
     IAsyncEnumerable<ResourceEvent> WatchAsync(
         GroupVersionKind kind, string? ns = null, CancellationToken ct = default);
 
+    // ── Generic resources (KON-75) ───────────────────────────────────────────
+
+    /// <summary>
+    /// Every resource type the cluster serves, custom ones included. Requires
+    /// <see cref="ClusterCapabilities.Crds"/>.
+    /// </summary>
+    ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// List one kind as the server renders it: the columns are its, not ours.
+    /// <para>
+    /// The counterpart to the typed listers above, and the reason a kind nobody modelled can still be
+    /// browsed. <paramref name="ns"/> is ignored for cluster-scoped kinds.
+    /// </para>
+    /// </summary>
+    ValueTask<ResourceTable> ListTableAsync(
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default);
+
     // ── Typed listers (over the grids) ───────────────────────────────────────
 
     ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default);

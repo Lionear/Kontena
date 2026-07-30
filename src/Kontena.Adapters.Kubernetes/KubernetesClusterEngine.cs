@@ -31,6 +31,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
     private readonly KubernetesApply _apply;
+    private readonly ApiResourceResolver _resources;
     private readonly List<KubeContext> _contexts;
 
     private string _context;
@@ -49,7 +50,8 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         _metrics = new ClusterMetrics(
             new MetricsServerSource(_client),
             new KubeletSummarySource(_client, NodeNamesAsync));
-        _apply = new KubernetesApply(_client, new ApiResourceResolver(_client));
+        _resources = new ApiResourceResolver(_client);
+        _apply = new KubernetesApply(_client, _resources);
 
         // Metrics start off; PingAsync probes for a source and turns the gauges on if one answers.
         _capabilities = BaseCapabilities with { Metrics = false };
@@ -259,6 +261,26 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
             : await _client.CoreV1.ListNamespacedPodAsync(ns, cancellationToken: ct).ConfigureAwait(false);
 
         return [.. (list.Items ?? []).Select(K8sMap.ToPod)];
+    }
+
+    // ── Generic resources (KON-75) ───────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
+        new(_resources.DiscoverAllAsync(ct));
+
+    /// <inheritdoc/>
+    public async ValueTask<ResourceTable> ListTableAsync(
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+    {
+        // Discovery decides the path, because the plural is the server's to name and a cluster-scoped
+        // kind must not be asked for inside a namespace.
+        if (await _resources.ResolveAsync(kind, ct).ConfigureAwait(false) is not { } resource)
+            return ResourceTable.Empty;
+
+        return await ResourceTables
+            .ListAsync(_client.HttpClient, _client.BaseUri, resource, kind, ns, ct)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default)

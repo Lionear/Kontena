@@ -386,6 +386,80 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Pod>>(_pods.Where(p => Match(ns, p.Namespace)).ToList());
 
+    // ── Generic resources (KON-75) ───────────────────────────────────────────
+
+    /// <summary>
+    /// A handful of built-in kinds plus a custom one, because the point of the browser is the kinds
+    /// nobody modelled: a fake that only served built-ins would let a UI that cannot show a CRD pass.
+    /// </summary>
+    private static readonly ApiResource[] Resources =
+        [
+            new() { Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"] },
+            new() { Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true, Verbs = ["list", "delete"] },
+            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"] },
+            new()
+            {
+                Kind = new GroupVersionKind(string.Empty, "v1", "ConfigMap"),
+                Plural = "configmaps", Namespaced = true, Verbs = ["list", "delete"],
+            },
+            new()
+            {
+                Kind = new GroupVersionKind("networking.k8s.io", "v1", "Ingress"),
+                Plural = "ingresses", Namespaced = true, Verbs = ["list", "delete"],
+            },
+            new()
+            {
+                Kind = new GroupVersionKind("cert-manager.io", "v1", "Certificate"),
+                Plural = "certificates", Namespaced = true, Verbs = ["list", "delete"], IsCustom = true,
+            },
+        ];
+
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
+
+    /// <inheritdoc/>
+    public ValueTask<ResourceTable> ListTableAsync(
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+    {
+        // Columns per kind, the way a server renders them: a browser that drew the same three columns
+        // for everything would look right against a fake and wrong against a cluster.
+        if (kind.Kind == "Certificate")
+        {
+            return ValueTask.FromResult(new ResourceTable
+            {
+                Columns = [new("Name", 0), new("Ready", 0), new("Secret", 0), new("Age", 0)],
+                Rows =
+                [
+                    new(new ResourceRef(kind, ns ?? "default", "kontena-app-tls"),
+                        ["kontena-app-tls", "True", "kontena-app-tls", "12d"]),
+                    new(new ResourceRef(kind, ns ?? "default", "kontena-api-tls"),
+                        ["kontena-api-tls", "False", "kontena-api-tls", "3m"]),
+                ],
+            });
+        }
+
+        var names = kind.Kind switch
+        {
+            "Pod" => _pods.Where(p => Match(ns, p.Namespace)).Select(p => (p.Name, p.Namespace)).ToArray(),
+            "Service" => _services.Where(s => Match(ns, s.Namespace)).Select(s => (s.Name, s.Namespace)).ToArray(),
+            "Ingress" => _ingresses.Where(i => Match(ns, i.Namespace)).Select(i => (i.Name, i.Namespace)).ToArray(),
+            "Node" => _nodes.Select(n => (n.Name, string.Empty)).ToArray(),
+            _ => [],
+        };
+
+        return ValueTask.FromResult(new ResourceTable
+        {
+            Columns = [new("Name", 0), new("Age", 0)],
+            Rows =
+            [
+                .. names.Select(n => new ResourceRow(
+                    new ResourceRef(kind, string.IsNullOrEmpty(n.Item2) ? null : n.Item2, n.Item1),
+                    [n.Item1, "5d"])),
+            ],
+        });
+    }
+
     public ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Service>>(_services.Where(s => Match(ns, s.Namespace)).ToList());
 

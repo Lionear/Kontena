@@ -16,6 +16,12 @@
     <EmbeddedResource Include="Resources\metrics-server-v0.9.0.yaml" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The Table parser is an implementation detail and the one worth testing directly: it turns the
+         API server's answer into the grid, and a cluster is not something a test can lean on. -->
+    <InternalsVisibleTo Include="Kontena.Adapters.Kubernetes.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
