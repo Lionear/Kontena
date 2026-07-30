@@ -156,13 +156,15 @@
                                                                    Foreground="{DynamicResource Accent}"/>
                                                     </Border>
                                                 </StackPanel>
-                                                <TextBlock Grid.Column="1" Text="{Binding Image}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <!-- A trimmed cell has no whitespace left of its own, so the ellipsis lands against
+                                                     the next column unless the cell reserves the gap itself (KON-199). -->
+                                                <TextBlock Grid.Column="1" Text="{Binding Image}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding Image}"/>
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                                     <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
                                                     <TextBlock Text="{Binding ReadyText}" Foreground="{DynamicResource TextDim}"/>
                                                 </StackPanel>
                                                 <TextBlock Grid.Column="3" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="4" Text="{Binding PortsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding PortsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding PortsTooltip}"/>
                                                 <TextBlock Grid.Column="5" Text="{Binding State}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                             </Grid>
                                         </Border>
