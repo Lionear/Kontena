@@ -415,13 +415,17 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     // ── Streams ──────────────────────────────────────────────────────────────
 
     public async IAsyncEnumerable<LogEntry> StreamLogsAsync(
-        ResourceRef pod, string container, bool follow = true, [EnumeratorCancellation] CancellationToken ct = default)
+        ResourceRef pod, string container, bool follow = true, bool previous = false,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         HttpOperationResponse<Stream>? response = null;
         try
         {
             response = await _client.CoreV1.ReadNamespacedPodLogWithHttpMessagesAsync(
-                pod.Name, pod.Namespace, container: container, follow: follow,
+                pod.Name, pod.Namespace, container: container,
+                // The previous run is finished, so there is nothing left to follow: asking the API to
+                // follow it as well returns an error rather than a closed stream.
+                follow: follow && !previous, previous: previous,
                 tailLines: 500, timestamps: true, cancellationToken: ct).ConfigureAwait(false);
         }
         catch (Exception) when (!ct.IsCancellationRequested)

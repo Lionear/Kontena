@@ -296,6 +296,43 @@ public class K8sMapTests
     }
 
     [Fact]
+    public void The_previous_runs_ending_is_carried_over_because_the_current_state_cannot_hold_it()
+    {
+        // A looping container is Waiting, so how it died is nowhere in its current state. lastState is
+        // the only field that says it, and the diagnosis (KON-150) is read off exactly that.
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].LastState = new V1ContainerState
+        {
+            Terminated = new V1ContainerStateTerminated { Reason = "OOMKilled", ExitCode = 137 },
+        };
+
+        var migrations = K8sMap.ToPod(source).InitContainers[1];
+
+        Assert.Equal("OOMKilled", migrations.LastTerminationReason);
+        Assert.Equal(137, migrations.LastExitCode);
+    }
+
+    [Fact]
+    public void A_declared_memory_limit_reaches_the_container_status()
+    {
+        var source = InitialisingPod();
+        source.Spec.Containers[0].Resources = new V1ResourceRequirements
+        {
+            Limits = new Dictionary<string, ResourceQuantity> { ["memory"] = new("512Mi") },
+        };
+
+        Assert.Equal(512 * 1024 * 1024, K8sMap.ToPod(source).Containers[0].MemoryLimitBytes);
+    }
+
+    [Fact]
+    public void A_container_without_a_limit_reports_none_rather_than_zero()
+    {
+        // "No limit" and "a limit of nothing" are opposite facts, and only the first is true of a
+        // container that may use what the node has.
+        Assert.Null(K8sMap.ToPod(InitialisingPod()).Containers[0].MemoryLimitBytes);
+    }
+
+    [Fact]
     public void Declared_container_ports_reach_the_model()
     {
         // The port-forward dialog had nothing to offer for a pod because these were never read (KON-170).
