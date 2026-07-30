@@ -33,8 +33,22 @@ public interface ITerminalHost : INotifyPropertyChanged
     bool CanOpenTerminal { get; }
 
     /// <summary>
-    /// Open an attached shell session. Ownership (and disposal) passes to the caller — the
-    /// terminal view drives it and tears it down.
+    /// Open an attached shell session. The view drives it; what happens to it afterwards is decided by
+    /// <see cref="ReleaseExecSessionAsync"/>, because that differs per page.
     /// </summary>
     ValueTask<IExecSession> OpenExecSessionAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Hand the session back when the view is done with it.
+    /// <para>
+    /// A container or pod shell ends here: it belongs to the page, and the page is gone. A shell on this
+    /// machine does not — it keeps running so that leaving the page and coming back is leaving and
+    /// coming back, not starting over.
+    /// </para>
+    /// </summary>
+    /// <param name="discard">
+    /// True when the user asked for a new session (Reconnect), which ends even a kept one. False when
+    /// the view is merely going away.
+    /// </param>
+    ValueTask ReleaseExecSessionAsync(IExecSession session, bool discard);
 }

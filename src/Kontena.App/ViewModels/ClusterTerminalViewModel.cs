@@ -12,14 +12,25 @@ namespace Kontena.App.ViewModels;
 /// <see cref="IsTerminalSelected"/> is simply true. Everything below it — the exec session, the
 /// terminal control, the font settings — is the machinery the container shells already use.
 /// </para>
+/// <para>
+/// The session itself belongs to the shell rather than to this page, so navigating away and back finds
+/// the shell still running with its screen intact. That is also why the page is rebuilt freely: it holds
+/// no state a rebuild could lose.
+/// </para>
 /// </summary>
 public sealed class ClusterTerminalViewModel : ViewModelBase, ITerminalHost
 {
-    private readonly ClusterShellRequest _request;
+    private readonly Func<CancellationToken, ValueTask<IExecSession>> _open;
+    private readonly Func<IExecSession, bool, ValueTask> _release;
 
-    public ClusterTerminalViewModel(ClusterShellRequest request, TerminalFont terminalFont)
+    public ClusterTerminalViewModel(
+        ClusterShellRequest request,
+        TerminalFont terminalFont,
+        Func<CancellationToken, ValueTask<IExecSession>> open,
+        Func<IExecSession, bool, ValueTask> release)
     {
-        _request = request;
+        _open = open;
+        _release = release;
 
         TerminalFontFamily = $"{terminalFont.Family}, monospace";
         TerminalFontSize = terminalFont.Size;
@@ -28,6 +39,7 @@ public sealed class ClusterTerminalViewModel : ViewModelBase, ITerminalHost
 
         Context = request.Context;
         Namespace = request.Namespace;
+        CanOpenTerminal = !string.IsNullOrWhiteSpace(request.Context);
     }
 
     /// <summary>The context this shell starts on, for the header.</summary>
@@ -52,12 +64,15 @@ public sealed class ClusterTerminalViewModel : ViewModelBase, ITerminalHost
 
     public bool IsTerminalSelected => true;
 
-    public bool CanOpenTerminal => !string.IsNullOrWhiteSpace(_request.Context);
+    public bool CanOpenTerminal { get; }
 
     /// <summary>
-    /// Open the shell. The size is provisional — the terminal control resizes the PTY to its real grid
-    /// the moment it has one, which is the first thing <c>TerminalView</c> does after this returns.
+    /// Open the shell, or reattach to the one already running for this cluster. The size is provisional
+    /// either way — the terminal control resizes the PTY to its real grid the moment it has one, which is
+    /// the first thing <c>TerminalView</c> does after this returns.
     /// </summary>
-    public ValueTask<IExecSession> OpenExecSessionAsync(CancellationToken ct) =>
-        HostShellLauncher.OpenAsync(_request, columns: 120, rows: 30, ct);
+    public ValueTask<IExecSession> OpenExecSessionAsync(CancellationToken ct) => _open(ct);
+
+    /// <inheritdoc/>
+    public ValueTask ReleaseExecSessionAsync(IExecSession session, bool discard) => _release(session, discard);
 }

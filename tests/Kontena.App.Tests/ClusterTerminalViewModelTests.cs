@@ -10,7 +10,10 @@ public sealed class ClusterTerminalViewModelTests
     private static readonly TerminalFont Font = new("JetBrains Mono", 13, Ligatures: false);
 
     private static ClusterTerminalViewModel For(string context, string? @namespace) =>
-        new(new ClusterShellRequest(context, "kind-test", "kind-test", @namespace, ["/home/rick/.kube/config"]), Font);
+        new(new ClusterShellRequest(context, "kind-test", "kind-test", @namespace, ["/home/rick/.kube/config"]),
+            Font,
+            open: _ => throw new InvalidOperationException("These cover the header, not the session."),
+            release: (_, _) => ValueTask.CompletedTask);
 
     /// <summary>
     /// The page is the terminal, so there is no tab to wait for — unlike container and pod detail, where

@@ -341,6 +341,32 @@ public partial class MainWindowViewModel
     /// item off the engine side.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// The Terminal page, wired to the shell kept for this cluster (KON-171).
+    /// <para>
+    /// The header follows the shell that is actually running rather than the pickers: its context and
+    /// namespace were fixed when it started, and changing the namespace afterwards does not reach into a
+    /// shell that is already open. Reconnect discards it, and the next open reads the pickers again.
+    /// </para>
+    /// </summary>
+    private ClusterTerminalViewModel? CreateClusterTerminal()
+    {
+        if (BuildShellRequest() is not { } fresh || _activeBackend is not { Length: > 0 } backend)
+            return null;
+
+        return new ClusterTerminalViewModel(
+            _terminals.RequestFor(backend) ?? fresh,
+            CurrentTerminalFont(),
+            open: ct => _terminals.OpenAsync(backend, fresh, columns: 120, rows: 30, ct),
+            release: async (_, discard) =>
+            {
+                if (discard)
+                    await _terminals.DiscardAsync(backend);
+                else
+                    _terminals.Detach(backend);
+            });
+    }
+
     private ClusterShellRequest? BuildShellRequest()
     {
         if (_activeBackend is not { Length: > 0 } backend || !IsClusterMode)
