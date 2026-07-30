@@ -1,4 +1,6 @@
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
+using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

@@ -1,6 +1,6 @@
 using k8s.Models;
-using Kontena.Core.Models;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -107,7 +107,7 @@ internal static class K8sMap
         };
     }
 
-    private static Core.Orchestration.Models.ContainerStatus ToContainerStatus(
+    private static Kontena.Sdk.Orchestration.Models.ContainerStatus ToContainerStatus(
         V1ContainerStatus c, ContainerKind kind, Dictionary<string, IReadOnlyList<ContainerPort>> ports) => new()
     {
         Name = c.Name,
@@ -421,7 +421,7 @@ internal static class K8sMap
         MemoryBytes = Bytes(m.Usage, "memory"),
     };
 
-    public static Core.Orchestration.Models.PodMetrics ToPodMetrics(k8s.Models.PodMetrics m) => new()
+    public static Kontena.Sdk.Orchestration.Models.PodMetrics ToPodMetrics(k8s.Models.PodMetrics m) => new()
     {
         Pod = m.Metadata?.Name ?? "?",
         Namespace = m.Metadata?.NamespaceProperty ?? "default",

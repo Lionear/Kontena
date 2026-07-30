@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Kontena.App.Services;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Views;
 

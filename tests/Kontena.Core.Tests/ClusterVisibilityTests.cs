@@ -1,5 +1,6 @@
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 using Xunit;
+using Kontena.Core.Models;
 
 namespace Kontena.Core.Tests;
 

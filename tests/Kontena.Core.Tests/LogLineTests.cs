@@ -1,4 +1,4 @@
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 
 namespace Kontena.Core.Tests;
 

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Kontena.Core.Orchestration.Provisioning;
+using Kontena.Sdk.Orchestration.Provisioning;
 
 namespace Kontena.Adapters.LocalClusters;
 

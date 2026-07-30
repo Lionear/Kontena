@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Tooling;
 
 namespace Kontena.Core.Tests;
 

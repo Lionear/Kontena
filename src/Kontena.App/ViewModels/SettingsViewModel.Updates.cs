@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 
 namespace Kontena.App.ViewModels;
 

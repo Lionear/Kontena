@@ -2,7 +2,8 @@ using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Services;
 

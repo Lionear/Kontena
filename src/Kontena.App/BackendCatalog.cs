@@ -1,9 +1,10 @@
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.Adapters.Podman;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Engines.Fakes;
+using Kontena.Core.Models;
 
 namespace Kontena.App;
 

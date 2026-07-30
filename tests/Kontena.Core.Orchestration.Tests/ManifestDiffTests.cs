@@ -1,4 +1,4 @@
-using Kontena.Core.Orchestration;
+using Kontena.Sdk.Orchestration;
 using Xunit;
 
 namespace Kontena.Core.Orchestration.Tests;

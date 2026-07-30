@@ -1,6 +1,5 @@
-using Kontena.Core;
+using Kontena.Sdk;
 using Kontena.Core.Orchestration.Fakes;
-using Kontena.Engines;
 
 namespace Kontena.App;
 

@@ -43,12 +43,16 @@ it keeps a one-person project alive.
 3. **Build clean and green.** `dotnet build` with zero warnings, and `dotnet test` passing. Run the
    affected flow to verify behaviour (`dotnet run --project src/Kontena.App`); UI changes should be
    checked visually.
-4. **Respect the engine boundary.** A new container engine is **not** a change to the host — the
-   UI and business logic only ever talk to the Container Engine Abstraction Layer (`IContainerEngine`,
-   the CEAL). A new backend is a `src/Kontena.Adapters.*` project (or an external plugin) that
-   implements that contract and references **only** `Kontena.Sdk`, the public extension package. No UI
-   change, no `Kontena.Core` dependency: model the union of capabilities, expose the intersection
-   cleanly, degrade gracefully at the edges.
+4. **Respect the backend boundary.** A new backend is **not** a change to the host — the UI and
+   business logic only ever talk to an abstraction layer: `IContainerEngine` for container engines
+   (the CEAL) or `IClusterEngine` for orchestrators (the OAL). Both live in `Kontena.Sdk`, along with
+   the neutral models, the tool seam and `IEnginePlugin`. A new backend is a `src/Kontena.Adapters.*`
+   project (or an external plugin) that implements the contract and references **only**
+   `Kontena.Sdk` — no UI change, no `Kontena.Core` dependency: model the union of capabilities, expose
+   the intersection cleanly, degrade gracefully at the edges. `Kontena.Core` is the app's own side of
+   the line (settings, channels, update checks) and depends on the SDK, never the other way round.
+   `Kontena.Sdk.Tests` checks all of this against the project files, so the rule fails the build rather
+   than the review.
 5. **Mind the credential trust boundary.** Engine credentials and secrets are stored in the OS
    keychain and never written to disk in plaintext, logged, or transmitted anywhere other than the
    engine being connected to. Anything that would change that needs an issue first.
@@ -152,6 +156,9 @@ CI runs it).
 
 The project is source-available under a split license: `src/Kontena.Sdk` is
 [MIT](src/Kontena.Sdk/LICENSE) (the public extension contract), everything else is
-[Apache-2.0 with the Commons Clause](LICENSE). By submitting a contribution you agree that it is
+[Apache-2.0 with the Commons Clause](LICENSE). The split only means something because the SDK
+compiles against nothing but the framework: an extension author writing — and selling — a backend
+never has to build against code the Commons Clause forbids selling. `Kontena.Sdk.Tests` holds that
+line. By submitting a contribution you agree that it is
 licensed under the same terms as the part of the tree it touches. If that doesn't work for you, open
 an issue before contributing.

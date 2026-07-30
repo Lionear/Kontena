@@ -1,4 +1,4 @@
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Tooling;
 using Xunit;
 
 namespace Kontena.Adapters.LocalClusters.Tests;

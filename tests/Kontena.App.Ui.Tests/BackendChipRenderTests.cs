@@ -12,6 +12,7 @@ using Kontena.App.Controls;
 
 // Aliased: System.IO.Path is in scope here through the test project's implicit usings.
 using ShapePath = Avalonia.Controls.Shapes.Path;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Ui.Tests;
 

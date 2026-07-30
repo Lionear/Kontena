@@ -1,6 +1,6 @@
 using k8s;
-using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -55,7 +55,7 @@ internal sealed class MetricsServerSource(IKubernetes client) : IMetricsSource
         }
     }
 
-    public async ValueTask<IReadOnlyList<Core.Orchestration.Models.PodMetrics>> GetPodUsageAsync(
+    public async ValueTask<IReadOnlyList<Kontena.Sdk.Orchestration.Models.PodMetrics>> GetPodUsageAsync(
         string? ns = null, CancellationToken ct = default)
     {
         if (!IsAvailable)

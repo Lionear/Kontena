@@ -1,7 +1,7 @@
 using System.Text;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Engines.Fakes;
 using Xunit;
 

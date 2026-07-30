@@ -1,4 +1,4 @@
-using Kontena.Core.Orchestration.Provisioning;
+using Kontena.Sdk.Orchestration.Provisioning;
 using Xunit;
 
 namespace Kontena.Adapters.LocalClusters.Tests;

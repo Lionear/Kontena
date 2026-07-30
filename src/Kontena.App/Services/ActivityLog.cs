@@ -1,8 +1,9 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using Kontena.App.ViewModels;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Core.Models;
-using Kontena.Engines;
 
 namespace Kontena.App.Services;
 

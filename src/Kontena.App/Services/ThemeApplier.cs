@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Styling;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
 namespace Kontena.App.Services;

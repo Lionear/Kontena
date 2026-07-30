@@ -1,7 +1,8 @@
 using System.Diagnostics;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 using Velopack;
 using Velopack.Sources;
+using Kontena.Core.Models;
 
 namespace Kontena.App.Services;
 

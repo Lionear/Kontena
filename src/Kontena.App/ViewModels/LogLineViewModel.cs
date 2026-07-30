@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia.Media;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

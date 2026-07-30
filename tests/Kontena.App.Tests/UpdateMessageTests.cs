@@ -1,7 +1,9 @@
 using System.Net;
 using System.Security.Authentication;
 using Kontena.App.ViewModels;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Tests;
 

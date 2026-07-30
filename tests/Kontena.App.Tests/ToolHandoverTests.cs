@@ -1,6 +1,6 @@
 using Kontena.App.ViewModels;
-using Kontena.Core.Tooling;
-using Kontena.Core.Tooling.Fakes;
+using Kontena.Sdk.Tooling;
+using Kontena.Sdk.Tooling.Fakes;
 
 namespace Kontena.App.Tests;
 

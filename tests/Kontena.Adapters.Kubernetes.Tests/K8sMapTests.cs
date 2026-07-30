@@ -1,6 +1,7 @@
 using k8s.Models;
 using Kontena.Adapters.Kubernetes;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
+using Kontena.Core.Models;
 
 namespace Kontena.Adapters.Kubernetes.Tests;
 

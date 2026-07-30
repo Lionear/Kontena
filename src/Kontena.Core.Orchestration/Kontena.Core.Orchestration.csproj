@@ -7,6 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Kontena.Sdk\Kontena.Sdk.csproj" />
+    <!-- Host side: the registry remembers forwards in KontenaSettings, which is app config. -->
     <ProjectReference Include="..\Kontena.Core\Kontena.Core.csproj" />
   </ItemGroup>
 

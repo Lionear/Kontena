@@ -1,5 +1,7 @@
 using Kontena.App.Services;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Tests;
 

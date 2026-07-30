@@ -5,7 +5,9 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

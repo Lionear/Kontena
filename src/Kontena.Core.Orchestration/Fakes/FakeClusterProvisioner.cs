@@ -1,5 +1,6 @@
-using Kontena.Core.Orchestration.Provisioning;
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Orchestration.Provisioning;
+using Kontena.Sdk.Tooling;
+using Kontena.Core.Models;
 
 namespace Kontena.Core.Orchestration.Fakes;
 

@@ -2,8 +2,8 @@ using System.Net;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
-using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 

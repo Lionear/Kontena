@@ -1,10 +1,10 @@
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
-using Kontena.Core;
-using Kontena.Core.Errors;
+using Kontena.Sdk;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
 using Kontena.Core.Models;
-using Kontena.Core.Orchestration;
-using Kontena.Engines;
 
 namespace Kontena.App.ViewModels;
 

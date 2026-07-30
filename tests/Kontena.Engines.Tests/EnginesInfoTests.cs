@@ -1,5 +1,6 @@
-using Kontena.Engines;
+using Kontena.Sdk;
 using Xunit;
+using Kontena.Engines;
 
 namespace Kontena.Engines.Tests;
 

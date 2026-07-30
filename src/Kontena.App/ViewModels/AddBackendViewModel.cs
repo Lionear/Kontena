@@ -7,9 +7,9 @@ using CommunityToolkit.Mvvm.Input;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.App.Services;
-using Kontena.Core;
+using Kontena.Sdk;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
-using Kontena.Engines;
 
 namespace Kontena.App.ViewModels;
 

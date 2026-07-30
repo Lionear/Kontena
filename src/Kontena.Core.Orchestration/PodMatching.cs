@@ -1,4 +1,4 @@
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Core.Orchestration;
 

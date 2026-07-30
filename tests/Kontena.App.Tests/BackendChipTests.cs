@@ -5,9 +5,11 @@ using Kontena.Adapters.Kubernetes;
 using Kontena.Adapters.Podman;
 using Kontena.App;
 using Kontena.App.Controls;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Engines.Fakes;
+using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Tests;
 

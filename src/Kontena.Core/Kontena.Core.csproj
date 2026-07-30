@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Kontena.Sdk\Kontena.Sdk.csproj" />
+  </ItemGroup>
+
 </Project>

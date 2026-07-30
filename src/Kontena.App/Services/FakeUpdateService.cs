@@ -1,3 +1,4 @@
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
 namespace Kontena.App.Services;

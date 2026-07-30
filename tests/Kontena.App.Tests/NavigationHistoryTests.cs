@@ -1,5 +1,6 @@
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
+using Kontena.Sdk;
 using Kontena.Engines;
 
 namespace Kontena.App.Tests;

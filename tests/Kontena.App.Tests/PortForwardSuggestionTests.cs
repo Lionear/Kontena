@@ -1,4 +1,5 @@
 using Kontena.App.ViewModels;
+using Kontena.Core.Models;
 
 namespace Kontena.App.Tests;
 

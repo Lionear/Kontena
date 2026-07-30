@@ -1,6 +1,7 @@
-using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 using Xunit;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.Core.Orchestration.Tests;
 

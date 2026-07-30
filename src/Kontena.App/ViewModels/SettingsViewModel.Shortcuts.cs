@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

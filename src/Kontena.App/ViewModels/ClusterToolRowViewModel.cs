@@ -1,7 +1,8 @@
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Tooling;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

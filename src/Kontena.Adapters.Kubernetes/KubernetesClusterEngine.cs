@@ -2,14 +2,14 @@ using System.Runtime.CompilerServices;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
-using Kontena.Core;
-using Kontena.Core.Models;
-using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 
 // Both sides name their watch enum WatchEventType and both namespaces are imported, so name each.
 using K8sWatch = k8s.WatchEventType;
-using WatchEvent = Kontena.Core.Orchestration.Models.WatchEventType;
+using WatchEvent = Kontena.Sdk.Orchestration.Models.WatchEventType;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -435,7 +435,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     private static LogEntry ParseLogLine(string line) =>
         LogLine.Parse(line, LogSource.Stdout, DateTimeOffset.UtcNow);
 
-    public async IAsyncEnumerable<Core.Orchestration.Models.PodMetrics> StreamMetricsAsync(
+    public async IAsyncEnumerable<Kontena.Sdk.Orchestration.Models.PodMetrics> StreamMetricsAsync(
         ResourceRef pod, [EnumeratorCancellation] CancellationToken ct = default)
     {
         if (!_metrics.IsAvailable)

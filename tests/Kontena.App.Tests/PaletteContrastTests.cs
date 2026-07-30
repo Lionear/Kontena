@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Tests;
 

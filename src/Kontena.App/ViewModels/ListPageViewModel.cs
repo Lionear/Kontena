@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
