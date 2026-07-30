@@ -89,6 +89,26 @@ public sealed class PodDiagnosisTests
     }
 
     [Fact]
+    public void A_registry_that_answers_403_is_not_read_as_either_answer_it_withheld()
+    {
+        // Verbatim from a live round against ghcr.io — for a repository that does not exist. The
+        // registry answers 403 for that and for a private repository alike, on purpose. The invented
+        // messages this rule was first written against ("manifest unknown", "pull access denied")
+        // never showed that, and the rule would have picked one of the two answers ghcr refused to give.
+        const string real =
+            "Failed to pull image \"ghcr.io/lionear/does-not-exist:1\": failed to resolve reference: "
+            + "failed to authorize: failed to fetch anonymous token: unexpected status from GET request "
+            + "to https://ghcr.io/token?scope=repository%3Alionear%2Fdoes-not-exist%3Apull: 403 Forbidden";
+
+        var pod = Pod([Waiting("ImagePullBackOff")], phase: PodPhase.Pending);
+
+        var diagnosis = PodDiagnosis.Diagnose(pod, [Event("Failed", real)]);
+
+        Assert.Contains("without saying whether that repository exists", diagnosis!.Explanation, StringComparison.Ordinal);
+        Assert.Contains(real, diagnosis.Evidence);
+    }
+
+    [Fact]
     public void The_registry_is_named_even_when_the_image_reference_does_not_write_it_down()
     {
         var implicitHub = Pod([Waiting("ErrImagePull") with { Image = "postgres:16" }], phase: PodPhase.Pending);

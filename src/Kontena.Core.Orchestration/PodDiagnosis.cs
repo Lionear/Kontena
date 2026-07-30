@@ -48,8 +48,15 @@ public static class PodDiagnosis
 
         // Match the registry's answer, not its phrasing where we can help it: these substrings are
         // what a registry returns over the wire, not what any one kubelet build calls it.
+        //
+        // 403 is its own case and not a synonym for the first one. A live round against ghcr.io showed
+        // that a repository that simply does not exist answers "403 Forbidden" too — the registry
+        // deliberately will not say which it is. Reading that as a missing tag, or as a wrong pull
+        // secret, is picking one of two answers the registry refused to choose between.
         var cause =
-            Mentions(message, "unauthorized", "authentication required", "pull access denied", "denied:")
+            Mentions(message, "403", "forbidden")
+                ? "The registry refused the request without saying whether that repository exists — which is what it answers both for a private repository you may not read and for one that is not there. Either this pod needs an imagePullSecret it does not have, or the reference is wrong."
+            : Mentions(message, "unauthorized", "authentication required", "pull access denied", "denied:")
                 ? "The registry refused the credentials — this pod either has no imagePullSecret or the one it has cannot read that repository."
             : Mentions(message, "not found", "manifest unknown", "404")
                 ? "The registry answered, but the repository or tag does not exist there."
