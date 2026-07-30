@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Kontena.App.ViewModels"
+        xmlns:views="using:Kontena.App.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="560"
+        x:Class="Kontena.App.Views.TerminalWindow"
+        x:DataType="vm:ClusterTerminalViewModel"
+        Width="880" Height="560" MinWidth="480" MinHeight="280"
+        Background="{DynamicResource Bg}"
+        TransparencyLevelHint="None"
+        Icon="/Assets/icon.ico"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="38"
+        WindowDecorations="BorderOnly">
+
+    <Window.Styles>
+        <!-- The same caption buttons as the main window. A terminal that opened with the window
+             manager's own chrome next to an app that draws its own would read as someone else's
+             window (KON-138). -->
+        <Style Selector="Button.caption">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.caption:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Button.caption.danger:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Danger}"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="38,*">
+
+        <Border Grid.Row="0" Background="{DynamicResource SidebarBg}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="0,0,0,1" PointerPressed="OnTitleBarPressed">
+            <Panel>
+                <StackPanel Orientation="Horizontal" Spacing="9" Margin="14,0" VerticalAlignment="Center">
+                    <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
+                          Data="{StaticResource IconTerminal}"/>
+                    <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Context}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Close puts it back on the page rather than ending it: navigating away has never
+                         ended a shell, and a window button that quietly killed a running build would be
+                         the one exception nobody expects. -->
+                    <Button Classes="caption danger" Click="OnCloseClick"
+                            ToolTip.Tip="Put this terminal back on the Terminal page">
+                        <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconClose}"/>
+                    </Button>
+                </StackPanel>
+            </Panel>
+        </Border>
+
+        <views:ClusterTerminalView Grid.Row="1"/>
+    </Grid>
+</Window>
