@@ -17,7 +17,8 @@ public sealed class HostShellTests
     [InlineData("/bin/bash", ShellFamily.Bash)]
     [InlineData("/usr/bin/zsh", ShellFamily.Zsh)]
     [InlineData("/usr/local/bin/fish", ShellFamily.Fish)]
-    [InlineData("/bin/sh", ShellFamily.Bash)]
+    [InlineData("/bin/sh", ShellFamily.Sh)]
+    [InlineData("/bin/dash", ShellFamily.Sh)]
     [InlineData(@"C:\Program Files\PowerShell\7\pwsh.exe", ShellFamily.PowerShell)]
     [InlineData(@"C:\Windows\System32\cmd.exe", ShellFamily.Cmd)]
     [InlineData("/usr/bin/nushell", ShellFamily.Unknown)]
@@ -57,7 +58,9 @@ public sealed class HostShellTests
     [Fact]
     public void Fish_and_powershell_and_cmd_each_get_their_own_alias_flag()
     {
-        Assert.Contains("alias k kubectl", HostShell.Plan("/usr/bin/fish", "/tmp/s", NoEnvironment, _ => null).Arguments);
+        Assert.Contains(
+            HostShell.Plan("/usr/bin/fish", "/tmp/s", NoEnvironment, _ => null).Arguments,
+            a => a.Contains("alias k kubectl", StringComparison.Ordinal));
         Assert.Contains("Set-Alias k kubectl", HostShell.Plan("pwsh", "/tmp/s", NoEnvironment, _ => null).Arguments);
         Assert.Contains("doskey k=kubectl $*", HostShell.Plan("cmd.exe", "/tmp/s", NoEnvironment, _ => null).Arguments);
     }
@@ -94,6 +97,44 @@ public sealed class HostShellTests
             _ => null);
 
         Assert.Equal("/tmp/session/kubeconfig.yaml", plan.Environment["KUBECONFIG"]);
+    }
+
+    /// <summary>
+    /// Every POSIX shell fixes the terminal's newline handling itself, in its own startup. The PTY comes
+    /// up with output post-processing off, and setting it from outside cannot be made to stick: a shell
+    /// copies the terminal's settings while it starts and restores that copy before each command, so it
+    /// undoes anything changed behind its back. Miss this and every line of output starts where the last
+    /// one ended.
+    /// </summary>
+    [Theory]
+    [InlineData("/bin/bash", "kontena.bashrc")]
+    [InlineData("/bin/sh", "kontena.shrc")]
+    [InlineData("/usr/bin/zsh", ".zshrc")]
+    public void A_posix_shell_repairs_the_terminals_newlines_on_startup(string executable, string file)
+    {
+        var plan = HostShell.Plan(executable, "/tmp/session", NoEnvironment, _ => null);
+
+        Assert.Contains("stty opost onlcr", plan.SupportFiles[file], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Fish_repairs_the_terminals_newlines_too() =>
+        Assert.Contains(
+            HostShell.Plan("/usr/bin/fish", "/tmp/s", NoEnvironment, _ => null).Arguments,
+            a => a.Contains("stty opost onlcr", StringComparison.Ordinal));
+
+    /// <summary>
+    /// POSIX <c>sh</c> is not bash. On Debian it is dash, which has no <c>--rcfile</c> and would refuse
+    /// to start at all; an interactive one reads the file named by <c>$ENV</c> instead.
+    /// </summary>
+    [Fact]
+    public void Sh_is_configured_through_ENV_rather_than_an_rcfile_flag()
+    {
+        var plan = HostShell.Plan("/bin/sh", "/tmp/session", NoEnvironment, _ => null);
+
+        Assert.Equal(Path.Combine("/tmp/session", "kontena.shrc"), plan.Environment["ENV"]);
+        Assert.DoesNotContain("--rcfile", plan.Arguments);
+        Assert.Contains("alias k=kubectl", plan.SupportFiles["kontena.shrc"], StringComparison.Ordinal);
     }
 
     [Fact]

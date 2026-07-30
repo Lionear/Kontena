@@ -6,6 +6,9 @@ public enum ShellFamily
     /// <summary>Not one we recognise — run it, but do not try to configure it.</summary>
     Unknown,
     Bash,
+
+    /// <summary>POSIX <c>sh</c> — dash, ash, or bash pretending. Configured through <c>$ENV</c>.</summary>
+    Sh,
     Zsh,
     Fish,
     PowerShell,
@@ -30,6 +33,19 @@ public static class HostShell
     /// <summary>The alias every plan installs, spelled per shell.</summary>
     private const string Alias = "k";
     private const string AliasTarget = "kubectl";
+
+    /// <summary>
+    /// Turn line feeds into new lines, run by the shell itself as the first thing it does.
+    /// <para>
+    /// The PTY comes up with output post-processing off, so a bare line feed moves the cursor down
+    /// without returning it to the left and every line starts where the last one ended. Setting it from
+    /// outside the shell does not hold: a shell copies the terminal's settings while it starts and puts
+    /// that copy back before running each command, so it undoes anything changed behind its back. Asking
+    /// the shell to do it cannot lose that race, because it happens inside its own startup.
+    /// </para>
+    /// <para>Silenced, because a shell whose stty is missing should still open.</para>
+    /// </summary>
+    private const string FixNewlines = "stty opost onlcr 2>/dev/null";
 
     /// <summary>
     /// The shell to start: <c>$SHELL</c> on Unix, PowerShell or <c>ComSpec</c> on Windows. Falls back to
@@ -62,7 +78,10 @@ public static class HostShell
 
         return name switch
         {
-            "bash" or "sh" => ShellFamily.Bash,
+            "bash" => ShellFamily.Bash,
+            // Not bash: on Debian and friends /bin/sh is dash, which has no --rcfile and would refuse to
+            // start. POSIX sh reads the file named by $ENV instead.
+            "sh" or "dash" or "ash" => ShellFamily.Sh,
             "zsh" => ShellFamily.Zsh,
             "fish" => ShellFamily.Fish,
             "pwsh" or "powershell" => ShellFamily.PowerShell,
@@ -97,6 +116,7 @@ public static class HostShell
                 // the user's own first. -i because an rcfile is only read by an interactive shell.
                 files["kontena.bashrc"] = string.Join('\n',
                     "# Written by Kontena for this terminal session only.",
+                    FixNewlines,
                     "[ -f \"$HOME/.bashrc\" ] && . \"$HOME/.bashrc\"",
                     $"alias {Alias}={AliasTarget}",
                     "");
@@ -106,12 +126,23 @@ public static class HostShell
                     env,
                     files);
 
+            case ShellFamily.Sh:
+                // POSIX sh has no --rcfile; an interactive one reads whatever $ENV names.
+                files["kontena.shrc"] = string.Join('\n',
+                    "# Written by Kontena for this terminal session only.",
+                    FixNewlines,
+                    $"alias {Alias}={AliasTarget}",
+                    "");
+                env["ENV"] = Path.Combine(supportDirectory, "kontena.shrc");
+                return new ShellPlan(executable, ["-i"], env, files);
+
             case ShellFamily.Zsh:
                 // zsh has no --rcfile: it reads .zshrc from ZDOTDIR. Point ZDOTDIR here and hand the
                 // original along, because $HOME is not where everyone keeps it.
                 var originalZdotdir = read("ZDOTDIR") is { Length: > 0 } zdotdir ? zdotdir : "$HOME";
                 files[".zshrc"] = string.Join('\n',
                     "# Written by Kontena for this terminal session only.",
+                    FixNewlines,
                     $"[ -f \"{originalZdotdir}/.zshrc\" ] && . \"{originalZdotdir}/.zshrc\"",
                     $"alias {Alias}={AliasTarget}",
                     "");
@@ -121,7 +152,7 @@ public static class HostShell
             case ShellFamily.Fish:
                 // fish runs -C after its own config, so nothing of the user's is lost.
                 return new ShellPlan(
-                    executable, ["-C", $"alias {Alias} {AliasTarget}", "-i"], env, files);
+                    executable, ["-C", $"{FixNewlines}; alias {Alias} {AliasTarget}", "-i"], env, files);
 
             case ShellFamily.PowerShell:
                 return new ShellPlan(

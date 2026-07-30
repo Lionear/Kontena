@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Kontena.Sdk.Models;
 using Porta.Pty;
 
@@ -23,12 +24,15 @@ public sealed class PtyShellSession : IExecSession
 {
     private readonly IPtyConnection _pty;
     private readonly string? _supportDirectory;
+    private readonly SafeHandle? _terminal;
     private int _outputTaken;
+    private int _settled;
 
-    private PtyShellSession(IPtyConnection pty, string? supportDirectory)
+    private PtyShellSession(IPtyConnection pty, string? supportDirectory, SafeHandle? terminal)
     {
         _pty = pty;
         _supportDirectory = supportDirectory;
+        _terminal = terminal;
         _pty.ProcessExited += (_, e) => ExitCode = e.ExitCode;
     }
 
@@ -62,7 +66,16 @@ public sealed class PtyShellSession : IExecSession
         };
 
         var pty = await PtyProvider.SpawnAsync(options, ct).ConfigureAwait(false);
-        return new PtyShellSession(pty, supportDirectory);
+
+        // The PTY arrives with output post-processing off, which makes every line start where the last
+        // one ended. Best-effort: if the handle is not reachable the shell still runs, it just looks
+        // wrong, and that beats refusing to open one at all.
+        var terminal = pty.WriterStream is FileStream { SafeFileHandle: { IsInvalid: false } h } ? h : null;
+
+        if (terminal is not null)
+            PosixTerminalModes.EnableOutputPostProcessing(terminal);
+
+        return new PtyShellSession(pty, supportDirectory, terminal);
     }
 
     /// <inheritdoc/>
@@ -93,6 +106,16 @@ public sealed class PtyShellSession : IExecSession
 
             if (read <= 0)
                 yield break;
+
+            // Again, once, as soon as the shell has said anything at all.
+            //
+            // A shell captures the terminal's settings while it starts up and puts that copy back every
+            // time it reads a line, so a change made before it looked is a change it undoes. There is no
+            // point in the handshake we can wait for, but the first byte out is proof it is up: by then
+            // its copy is the one we set. Anything is welcome — a prompt, a banner, the echo of a
+            // keystroke — because all of it comes from a shell that has finished starting.
+            if (Interlocked.Exchange(ref _settled, 1) == 0 && _terminal is not null)
+                PosixTerminalModes.EnableOutputPostProcessing(_terminal);
 
             yield return new ReadOnlyMemory<byte>(buffer, 0, read).ToArray();
         }

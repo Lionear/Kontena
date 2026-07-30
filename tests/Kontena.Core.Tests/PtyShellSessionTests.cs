@@ -102,6 +102,105 @@ public sealed class PtyShellSessionTests
         Assert.Contains("size=42 133", output.ToString(), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The terminal maps a line feed to carriage-return + line feed, which this PTY does not do on its
+    /// own. Without it every line starts in the column where the previous one ended and the output walks
+    /// diagonally down the screen — unreadable for anything longer than one line.
+    /// <para>
+    /// Driven through <see cref="HostShellLauncher"/> rather than a hand-made plan, because the repair
+    /// lives in the startup file the launcher writes. It has to be the shell's own doing: a shell copies
+    /// the terminal's settings while it starts and restores that copy before running each command, so
+    /// setting the mode from outside is a change it undoes. The command below is sent immediately, with
+    /// no wait, which is exactly the case an outside-in fix loses.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task The_terminal_turns_a_line_feed_into_a_new_line()
+    {
+        if (Unsupported || !PathHas("stty"))
+            return;
+
+        await using var session = await HostShellLauncher.OpenAsync(
+            new ClusterShellRequest("kind-test", null, null, null, []), columns: 80, rows: 24);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var output = new StringBuilder();
+        var reader = Task.Run(async () =>
+        {
+            await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+            {
+                output.Append(Encoding.UTF8.GetString(chunk.Span));
+                if (output.ToString().Contains("modes=", StringComparison.Ordinal))
+                    return;
+            }
+        }, cts.Token);
+
+        // One flag per line, then matched whole: "onlcr" and "-onlcr" are different answers, and where
+        // stty happens to wrap its output is a function of the terminal width, not of the mode.
+        //
+        // Written mo""des so the word the reader waits for cannot appear in the echo of the command
+        // itself — a PTY echoes input, so a marker that survives the shell verbatim ends the read before
+        // the answer has been printed.
+        await session.WriteAsync(
+            Encoding.UTF8.GetBytes("echo mo\"\"des=$(stty -a | tr ' ' '\\n' | grep -cx onlcr)\n"), cts.Token);
+
+        try
+        {
+            await reader.WaitAsync(TimeSpan.FromSeconds(20), CancellationToken.None);
+        }
+        catch (TimeoutException)
+        {
+            // fall through to the assert
+        }
+
+        Assert.Contains("modes=1", output.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The session also sets the mode on the terminal directly, which is what a shell Kontena does not
+    /// recognise has to fall back on — there is no startup file to put an <c>stty</c> in.
+    /// <para>
+    /// Checked with <c>cat</c> standing in for that shell: it never touches the terminal's settings, so
+    /// what comes back is the mode we set rather than one a shell saved and restored. A line typed into
+    /// a terminal in this mode is echoed back with the carriage return the PTY does not add by itself.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task The_terminal_itself_is_set_for_a_shell_that_cannot_be_configured()
+    {
+        if (Unsupported || !File.Exists("/bin/cat"))
+            return;
+
+        var plan = new ShellPlan("/bin/cat", [], new Dictionary<string, string>(), new Dictionary<string, string>());
+        await using var session = await PtyShellSession.StartAsync(
+            plan, Path.GetTempPath(), columns: 80, rows: 24);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var output = new StringBuilder();
+        var reader = Task.Run(async () =>
+        {
+            await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+            {
+                output.Append(Encoding.UTF8.GetString(chunk.Span));
+                if (output.ToString().Contains('\r', StringComparison.Ordinal))
+                    return;
+            }
+        }, cts.Token);
+
+        await session.WriteAsync(Encoding.UTF8.GetBytes("kontena\n"), cts.Token);
+
+        try
+        {
+            await reader.WaitAsync(TimeSpan.FromSeconds(20), CancellationToken.None);
+        }
+        catch (TimeoutException)
+        {
+            // fall through to the assert
+        }
+
+        Assert.Contains("\r\n", output.ToString(), StringComparison.Ordinal);
+    }
+
     /// <summary>The session directory is the session's; nothing it wrote outlives the window.</summary>
     [Fact]
     public async Task Closing_the_session_takes_its_support_directory_with_it()
