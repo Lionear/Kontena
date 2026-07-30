@@ -279,7 +279,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
             return ResourceTable.Empty;
 
         return await ResourceTables
-            .ListAsync(_client.HttpClient, resource, kind, ns, ct)
+            .ListAsync(_client.HttpClient, _client.BaseUri, resource, kind, ns, ct)
             .ConfigureAwait(false);
     }
 

@@ -30,11 +30,10 @@ internal static class ResourceTables
     private const string TableMediaType = "application/json;as=Table;v=v1;g=meta.k8s.io";
 
     public static async Task<ResourceTable> ListAsync(
-        HttpClient http, ApiResourceInfo resource, GroupVersionKind kind, string? ns, CancellationToken ct)
+        HttpClient http, Uri baseUri, ApiResourceInfo resource, GroupVersionKind kind, string? ns,
+        CancellationToken ct)
     {
-        var path = Path(resource, ns);
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, path + "?includeObject=Metadata");
+        using var request = new HttpRequestMessage(HttpMethod.Get, RequestUri(baseUri, resource, ns));
         request.Headers.Accept.Clear();
         request.Headers.Accept.Add(MediaTypeWithQualityHeaderValue.Parse(TableMediaType));
 
@@ -51,18 +50,28 @@ internal static class ResourceTables
     }
 
     /// <summary>
-    /// <c>/api/v1/...</c> for the core group, <c>/apis/&lt;group&gt;/&lt;version&gt;/...</c> for the rest,
-    /// with the namespace segment only where the kind is namespaced.
+    /// Where to ask: <c>/api/v1/...</c> for the core group, <c>/apis/&lt;group&gt;/&lt;version&gt;/...</c>
+    /// for the rest, with the namespace segment only where the kind is namespaced.
+    /// <para>
+    /// Absolute, built against the cluster's own base address. The client's <c>HttpClient</c> carries the
+    /// credentials and the server certificate but no <c>BaseAddress</c>, so a relative path here does not
+    /// produce a wrong request — it produces no request at all.
+    /// </para>
     /// </summary>
-    private static string Path(ApiResourceInfo resource, string? ns)
+    internal static Uri RequestUri(Uri baseUri, ApiResourceInfo resource, string? ns)
     {
         var root = string.IsNullOrEmpty(resource.Group)
             ? $"api/{resource.Version}"
             : $"apis/{resource.Group}/{resource.Version}";
 
-        return resource.Namespaced && !string.IsNullOrEmpty(ns)
-            ? $"{root}/namespaces/{ns}/{resource.Plural}"
+        var path = resource.Namespaced && !string.IsNullOrEmpty(ns)
+            ? $"{root}/namespaces/{Uri.EscapeDataString(ns)}/{resource.Plural}"
             : $"{root}/{resource.Plural}";
+
+        // A base address without its trailing slash would swallow its last segment when combined.
+        var rootUri = baseUri.AbsoluteUri.EndsWith('/') ? baseUri : new Uri(baseUri.AbsoluteUri + "/");
+
+        return new Uri(rootUri, path + "?includeObject=Metadata");
     }
 
     internal static ResourceTable Read(JsonElement table, GroupVersionKind kind, string? fallbackNamespace)

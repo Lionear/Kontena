@@ -135,6 +135,47 @@ public sealed class ResourceTableTests
     }
 
     /// <summary>
+    /// Where the listing is asked for. Absolute, because the client's <c>HttpClient</c> carries the
+    /// credentials and the server certificate but no <c>BaseAddress</c> — a relative path there does not
+    /// make a wrong request, it makes no request at all.
+    /// </summary>
+    [Theory]
+    // core, cluster-scoped
+    [InlineData("", "v1", "nodes", false, null, "https://10.0.0.2:6443/api/v1/nodes?includeObject=Metadata")]
+    // core, namespaced, all namespaces
+    [InlineData("", "v1", "configmaps", true, null, "https://10.0.0.2:6443/api/v1/configmaps?includeObject=Metadata")]
+    // core, namespaced, one namespace
+    [InlineData("", "v1", "configmaps", true, "argocd", "https://10.0.0.2:6443/api/v1/namespaces/argocd/configmaps?includeObject=Metadata")]
+    // a group, namespaced
+    [InlineData("traefik.io", "v1alpha1", "ingressroutes", true, "system-ingress", "https://10.0.0.2:6443/apis/traefik.io/v1alpha1/namespaces/system-ingress/ingressroutes?includeObject=Metadata")]
+    // a namespaced kind asked for across the cluster keeps the namespace segment out
+    [InlineData("monitoring.coreos.com", "v1", "servicemonitors", true, null, "https://10.0.0.2:6443/apis/monitoring.coreos.com/v1/servicemonitors?includeObject=Metadata")]
+    public void The_listing_is_asked_for_at_an_absolute_address(
+        string group, string version, string plural, bool namespaced, string? ns, string expected)
+    {
+        var uri = ResourceTables.RequestUri(
+            new Uri("https://10.0.0.2:6443"), new ApiResourceInfo(group, version, plural, namespaced), ns);
+
+        Assert.True(uri.IsAbsoluteUri);
+        Assert.Equal(expected, uri.AbsoluteUri);
+    }
+
+    /// <summary>
+    /// A base address that already ends in a slash must not gain a second one, and one without must not
+    /// have its last segment swallowed by the combine.
+    /// </summary>
+    [Theory]
+    [InlineData("https://10.0.0.2:6443")]
+    [InlineData("https://10.0.0.2:6443/")]
+    public void A_trailing_slash_on_the_base_address_makes_no_difference(string baseUri)
+    {
+        var uri = ResourceTables.RequestUri(
+            new Uri(baseUri), new ApiResourceInfo(string.Empty, "v1", "pods", true), null);
+
+        Assert.Equal("https://10.0.0.2:6443/api/v1/pods?includeObject=Metadata", uri.AbsoluteUri);
+    }
+
+    /// <summary>
     /// Kubernetes reserves <c>k8s.io</c> for its own APIs, so the suffix is what tells "installed by an
     /// operator" from "part of Kubernetes" — which is the heading a kind is listed under.
     /// <para>
