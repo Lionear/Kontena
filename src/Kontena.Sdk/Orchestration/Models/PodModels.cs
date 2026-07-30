@@ -74,6 +74,23 @@ public sealed record ContainerStatus
     public int? ExitCode { get; init; }
 
     /// <summary>
+    /// Why the previous run of this container ended, when there was one — the kubelet's
+    /// <c>lastState.terminated.reason</c>, e.g. "OOMKilled" or "Error". A container in
+    /// CrashLoopBackOff is waiting, so its current state says nothing about how it died; this is the
+    /// only field that does.
+    /// </summary>
+    public string LastTerminationReason { get; init; } = string.Empty;
+
+    /// <summary>Exit code of the previous run, when there was one.</summary>
+    public int? LastExitCode { get; init; }
+
+    /// <summary>
+    /// Memory limit from the pod spec in bytes, when one is declared. Null means unlimited, which is
+    /// a different answer than zero and changes what an OOM kill means.
+    /// </summary>
+    public long? MemoryLimitBytes { get; init; }
+
+    /// <summary>
     /// State summary, e.g. "Running", "Waiting: CrashLoopBackOff", "Terminated: Error". Derived rather
     /// than stored so the display string and the fields it summarises cannot disagree.
     /// </summary>

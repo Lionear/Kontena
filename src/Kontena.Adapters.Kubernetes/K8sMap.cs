@@ -74,6 +74,7 @@ internal static class K8sMap
         // Declared ports live on the spec, the rest of the story on the status, and the two are only
         // joined by container name. Building the lookup once keeps that join in one place.
         var ports = PortsByContainer(p.Spec);
+        var limits = MemoryLimitsByContainer(p.Spec);
 
         return new Pod
         {
@@ -87,9 +88,9 @@ internal static class K8sMap
                 "Failed" => PodPhase.Failed,
                 _ => PodPhase.Unknown,
             },
-            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports))],
-            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports))],
-            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports))],
+            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports, limits))],
+            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports, limits))],
+            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports, limits))],
             // Init restarts are counted too: a pod that has retried its init container seven times has
             // restarted seven times, and reporting 0 there is the reading that hides the problem.
             Restarts = statuses.Sum(c => c.RestartCount) + initStatuses.Sum(c => c.RestartCount),
@@ -108,7 +109,9 @@ internal static class K8sMap
     }
 
     private static Kontena.Sdk.Orchestration.Models.ContainerStatus ToContainerStatus(
-        V1ContainerStatus c, ContainerKind kind, Dictionary<string, IReadOnlyList<ContainerPort>> ports) => new()
+        V1ContainerStatus c, ContainerKind kind,
+        Dictionary<string, IReadOnlyList<ContainerPort>> ports,
+        Dictionary<string, long> memoryLimits) => new()
     {
         Name = c.Name,
         Image = c.Image ?? string.Empty,
@@ -119,6 +122,11 @@ internal static class K8sMap
         RunState = RunStateOf(c.State),
         Reason = ReasonOf(c.State),
         ExitCode = c.State?.Terminated?.ExitCode,
+        // A looping container is *waiting*, so its current state holds nothing about how it died.
+        // lastState is the only place that says whether it was killed or exited on its own (KON-150).
+        LastTerminationReason = c.LastState?.Terminated?.Reason ?? string.Empty,
+        LastExitCode = c.LastState?.Terminated?.ExitCode,
+        MemoryLimitBytes = memoryLimits.TryGetValue(c.Name, out var limit) ? limit : null,
     };
 
     private static ContainerRunState RunStateOf(V1ContainerState? s) => s switch
@@ -150,6 +158,22 @@ internal static class K8sMap
         foreach (var c in spec?.EphemeralContainers ?? [])
             if (c.Ports is { Count: > 0 })
                 map[c.Name] = [.. c.Ports.Select(ToContainerPort)];
+
+        return map;
+    }
+
+    /// <summary>
+    /// Declared memory limits per container name. A container without one is absent from the map
+    /// rather than present with zero: "no limit" and "a limit of nothing" are different answers, and
+    /// only the first one is true of an unlimited container.
+    /// </summary>
+    private static Dictionary<string, long> MemoryLimitsByContainer(V1PodSpec? spec)
+    {
+        var map = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        foreach (var c in (spec?.InitContainers ?? []).Concat(spec?.Containers ?? []))
+            if (c.Resources?.Limits is { } limits && limits.TryGetValue("memory", out var quantity))
+                map[c.Name] = (long)quantity.ToDouble();
 
         return map;
     }

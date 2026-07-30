@@ -1,28 +1,16 @@
 using System.Globalization;
+using Kontena.Core.Models;
 
 namespace Kontena.App.ViewModels;
 
 /// <summary>Small display formatters shared by the list pages.</summary>
 internal static class Format
 {
-    public static string Size(long? bytes)
-    {
-        if (bytes is null)
-            return "—";
-
-        double b = bytes.Value;
-        string[] units = ["B", "KB", "MB", "GB", "TB"];
-        var u = 0;
-        while (b >= 1000 && u < units.Length - 1)
-        {
-            b /= 1000;
-            u++;
-        }
-
-        var value = u == 0 ? b.ToString("0", CultureInfo.InvariantCulture)
-                           : b.ToString("0.#", CultureInfo.InvariantCulture);
-        return $"{value} {units[u]}";
-    }
+    /// <summary>
+    /// The formatting itself lives in <see cref="ByteSize"/> since KON-150: the diagnosis rules quote
+    /// sizes without a UI, and two copies of this would eventually disagree about what a megabyte is.
+    /// </summary>
+    public static string Size(long? bytes) => bytes is null ? "—" : ByteSize.Format(bytes.Value);
 
     /// <summary>
     /// Human name for a <c>kontena.source</c> label value. The fallback capitalises the raw value, which

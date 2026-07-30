@@ -8,6 +8,7 @@ using Kontena.App.Services;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
+using Kontena.Core.Diagnostics;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 
@@ -104,33 +105,70 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     public bool IsRunning => _pod.Phase == PodPhase.Running;
 
-    /// <summary>CrashLoopBackOff / not-running hint shown on the header (KON-70 diagnostics).</summary>
-    public bool HasDiagnostic => _pod.AllContainers.Any(c => c.State.Contains("CrashLoop", StringComparison.OrdinalIgnoreCase))
-                                 || _pod.Phase is PodPhase.Failed or PodPhase.Pending;
+    // ── Diagnosis (KON-150) ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Names the container as well as the state. A bare "Waiting: CrashLoopBackOff" on a pod with an
-    /// init container tells you the pod is stuck without telling you which of its containers is doing
-    /// the sticking — and the answer changes which logs you go and read.
+    /// The explanation of why this pod is not running, when the rules recognise the case. Null is a
+    /// deliberate outcome and not a failure to load: an unrecognised pod gets no block at all, because
+    /// a wrong explanation sends someone looking in the wrong place.
     /// </summary>
-    public string DiagnosticText
+    [ObservableProperty] private Diagnosis? _diagnosis;
+
+    public bool HasDiagnosis => Diagnosis is not null;
+    public string DiagnosisTitle => Diagnosis?.Title ?? string.Empty;
+    public string DiagnosisExplanation => Diagnosis?.Explanation ?? string.Empty;
+    public IReadOnlyList<string> DiagnosisEvidence => Diagnosis?.Evidence ?? [];
+    public string DiagnosisSuggestion => Diagnosis?.Suggestion ?? string.Empty;
+    public bool HasDiagnosisSuggestion => Diagnosis?.Suggestion is { Length: > 0 };
+
+    /// <summary>The label of the button the suggestion leads to, when this page can carry it out.</summary>
+    public string DiagnosisActionLabel => Diagnosis?.Action switch
     {
-        get
+        DiagnosisAction.PreviousLogs => "Previous logs",
+        DiagnosisAction.Logs => "Logs",
+        DiagnosisAction.Events => "Events",
+        DiagnosisAction.Manifest => "YAML",
+        _ => string.Empty,
+    };
+
+    public bool HasDiagnosisAction => DiagnosisActionLabel.Length > 0;
+
+    partial void OnDiagnosisChanged(Diagnosis? value)
+    {
+        OnPropertyChanged(nameof(HasDiagnosis));
+        OnPropertyChanged(nameof(DiagnosisTitle));
+        OnPropertyChanged(nameof(DiagnosisExplanation));
+        OnPropertyChanged(nameof(DiagnosisEvidence));
+        OnPropertyChanged(nameof(DiagnosisSuggestion));
+        OnPropertyChanged(nameof(HasDiagnosisSuggestion));
+        OnPropertyChanged(nameof(DiagnosisActionLabel));
+        OnPropertyChanged(nameof(HasDiagnosisAction));
+    }
+
+    /// <summary>Go where the suggestion points. Every destination is a tab this page already has.</summary>
+    [RelayCommand]
+    private void FollowDiagnosis()
+    {
+        switch (Diagnosis?.Action)
         {
-            if (_pod.AllContainers.FirstOrDefault(c =>
-                    c.State.Contains("CrashLoop", StringComparison.OrdinalIgnoreCase)) is { } crashing)
-            {
-                return crashing.Kind == ContainerKind.Init
-                    ? $"Init container \"{crashing.Name}\" is in CrashLoopBackOff — the pod cannot start until it succeeds."
-                    : $"Container \"{crashing.Name}\" is in CrashLoopBackOff.";
-            }
-
-            if (_pod.IsInitialising)
-                return $"Running init containers ({_pod.CompletedInitContainers}/{_pod.InitContainers.Count} done) — the app containers have not started yet.";
-
-            return _pod.Phase == PodPhase.Pending
-                ? "Pod is pending — waiting to be scheduled or pull images."
-                : "Pod is not running.";
+            case DiagnosisAction.PreviousLogs:
+                // Select the container the diagnosis is about first: landing on the previous logs of a
+                // container that never crashed is an empty console and a wrong impression.
+                if (Diagnosis is { Code: "CrashLoopBackOff" }
+                    && _pod.AllContainers.FirstOrDefault(c => c.Reason == "CrashLoopBackOff") is { } crashing)
+                    SelectedContainer = crashing.Name;
+                ShowPreviousLogs = true;
+                SelectedTab = "logs";
+                break;
+            case DiagnosisAction.Logs:
+                SelectedTab = "logs";
+                break;
+            case DiagnosisAction.Events:
+                SelectedTab = "events";
+                break;
+            case DiagnosisAction.Manifest:
+                SelectedTab = "yaml";
+                break;
         }
     }
 
@@ -171,7 +209,14 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     partial void OnSelectedContainerChanged(string value)
     {
+        // Carrying the previous-run toggle to a container that never restarted shows an empty console,
+        // which reads as "it logged nothing" rather than "there is no earlier run to show".
+        if (!HasPreviousRun)
+            _showPreviousLogs = false;
+
         RestartLogs();
+        OnPropertyChanged(nameof(ShowPreviousLogs));
+        OnPropertyChanged(nameof(HasPreviousRun));
         OnPropertyChanged(nameof(ExecBlockedReason));
         OnPropertyChanged(nameof(HasExecBlockedReason));
         OnPropertyChanged(nameof(CanOpenTerminal));
@@ -253,6 +298,19 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
             Lines.Add(line);
     }
 
+    /// <summary>
+    /// Show the logs of the run that ended instead of the one running. Only worth offering where there
+    /// was an earlier run — on a container that never restarted the previous log is empty, and an empty
+    /// console reads as "nothing was logged" rather than "there is no previous run".
+    /// </summary>
+    [ObservableProperty] private bool _showPreviousLogs;
+
+    public bool HasPreviousRun => Selected is { } c && (c.Restarts > 0 || c.LastExitCode is not null);
+
+    partial void OnShowPreviousLogsChanged(bool value) => RestartLogs();
+
+    [RelayCommand] private void TogglePreviousLogs() => ShowPreviousLogs = !ShowPreviousLogs;
+
     [RelayCommand] private void ToggleFollow() => AutoScroll = !AutoScroll;
     [RelayCommand] private void ToggleTimestamps() => ShowTimestamps = !ShowTimestamps;
     [RelayCommand] private void ToggleWrap() => Wrap = !Wrap;
@@ -278,14 +336,21 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         try
         {
             var events = await _cluster.ListEventsAsync(_pod.Namespace);
+            var mine = events.Where(e => e.InvolvedObject.Name == _pod.Name).ToList();
+
             Events.Clear();
-            foreach (var e in events.Where(e => e.InvolvedObject.Name == _pod.Name))
+            foreach (var e in mine)
                 Events.Add(new PodEventRow(e));
             _eventsLoaded = true;
+
+            // The events are half of the diagnosis, so it is built here rather than in the constructor:
+            // the reason code says a pull failed, the event says the registry refused the credentials.
+            Diagnosis = PodDiagnosis.Diagnose(_pod, mine);
         }
         catch
         {
-            // leave empty
+            // A cluster that will not hand over its events still has a pod status worth reading.
+            Diagnosis = PodDiagnosis.Diagnose(_pod);
         }
         finally
         {
@@ -403,6 +468,11 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     {
         _cts = new CancellationTokenSource();
         RestartLogs();
+
+        // Not lazy like the tab: the diagnosis is the first thing to read on a pod that is stuck, and
+        // it needs the events. The Events tab reuses whatever this fetches.
+        _ = LoadEventsAsync();
+
         if (SupportsMetrics && IsRunning)
             _ = StreamMetricsAsync(_cts.Token);
     }
@@ -415,14 +485,14 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         _all.Clear();
         Lines.Clear();
         if (!string.IsNullOrEmpty(SelectedContainer))
-            _ = StreamLogsAsync(SelectedContainer, _logCts.Token);
+            _ = StreamLogsAsync(SelectedContainer, ShowPreviousLogs, _logCts.Token);
     }
 
-    private async Task StreamLogsAsync(string container, CancellationToken ct)
+    private async Task StreamLogsAsync(string container, bool previous, CancellationToken ct)
     {
         try
         {
-            await foreach (var entry in _cluster.StreamLogsAsync(_ref, container, follow: true, ct))
+            await foreach (var entry in _cluster.StreamLogsAsync(_ref, container, follow: !previous, previous, ct))
                 Append(new LogLineViewModel(entry));
         }
         catch (OperationCanceledException) { /* container switched or page closed */ }

@@ -1141,6 +1141,12 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             FinishedAt = ParseDockerDate(r.State?.FinishedAt),
             ExitCode = (int)(r.State?.ExitCode ?? 0),
             Pid = (int)(r.State?.Pid ?? 0),
+            OomKilled = r.State?.OOMKilled ?? false,
+            RestartCount = (int)r.RestartCount,
+            // Zero means "no limit" to the engine, and null means the same to us — reporting a limit
+            // of nothing would turn an unlimited container into one that may use no memory at all.
+            MemoryLimitBytes = r.HostConfig?.Memory is > 0 and var memory ? memory : null,
+            Error = r.State?.Error ?? string.Empty,
             RestartPolicy = MapRestart(r.HostConfig?.RestartPolicy?.Name),
             Command = string.Join(" ", command),
             WorkingDirectory = r.Config?.WorkingDir ?? string.Empty,

@@ -37,6 +37,29 @@ public sealed record ContainerInspect
     public int ExitCode { get; init; }
     public int Pid { get; init; }
 
+    /// <summary>
+    /// Whether the engine killed the container for exceeding its memory limit. Exit code 137 alone
+    /// cannot answer that — it is 128+SIGKILL, and any external <c>kill -9</c> produces the same
+    /// number — so this is what separates an OOM kill from a guess (KON-150).
+    /// </summary>
+    public bool OomKilled { get; init; }
+
+    /// <summary>How often the engine has restarted this container under its restart policy.</summary>
+    public int RestartCount { get; init; }
+
+    /// <summary>
+    /// Memory limit in bytes, or null when the container may use what the host has. Unlike the live
+    /// stats, this survives the container stopping — which is exactly when it is needed.
+    /// </summary>
+    public long? MemoryLimitBytes { get; init; }
+
+    /// <summary>
+    /// What went wrong starting the container, in the runtime's own words — empty when nothing did.
+    /// A container whose command does not exist never runs at all: it stays <c>Created</c>, so there
+    /// is no exit code and no log, and this is the only field that says why (KON-150).
+    /// </summary>
+    public string Error { get; init; } = string.Empty;
+
     public RestartPolicy RestartPolicy { get; init; }
 
     /// <summary>Entry point and command joined into a single line.</summary>

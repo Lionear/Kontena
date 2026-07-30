@@ -505,15 +505,25 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     }
 
     public async IAsyncEnumerable<LogEntry> StreamLogsAsync(
-        ResourceRef pod, string container, bool follow = true, [EnumeratorCancellation] CancellationToken ct = default)
+        ResourceRef pod, string container, bool follow = true, bool previous = false,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        string[] lines =
-        [
-            "INFO  starting {container} in {pod}",
-            "INFO  listening on :8080",
-            "INFO  ready",
-            "WARN  slow upstream response (412ms)",
-        ];
+        // The run that ended is a different story from the one running — that is the whole point of
+        // asking for it, so the fake must not answer both with the same lines.
+        string[] lines = previous
+            ?
+            [
+                "INFO  starting {container} in {pod}",
+                "ERROR could not open database: connection refused",
+                "FATAL exiting",
+            ]
+            :
+            [
+                "INFO  starting {container} in {pod}",
+                "INFO  listening on :8080",
+                "INFO  ready",
+                "WARN  slow upstream response (412ms)",
+            ];
         foreach (var line in lines)
         {
             ct.ThrowIfCancellationRequested();

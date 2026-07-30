@@ -116,9 +116,18 @@ public interface IClusterEngine : IBackend
 
     // ── Streams (reuse LogEntry; PodMetrics mirrors ContainerStats) ───────────
 
-    /// <summary>Stream a pod container's logs. <paramref name="follow"/> keeps the stream open.</summary>
+    /// <summary>
+    /// Stream a pod container's logs. <paramref name="follow"/> keeps the stream open.
+    /// <para>
+    /// <paramref name="previous"/> asks for the run that ended instead of the one that is running —
+    /// the only place a crash-looping container's reason for exiting still exists, since the live
+    /// stream belongs to the attempt that has not failed yet (KON-150). A container that has not
+    /// restarted has no previous run, and the stream is then empty rather than an error.
+    /// </para>
+    /// </summary>
     IAsyncEnumerable<LogEntry> StreamLogsAsync(
-        ResourceRef pod, string container, bool follow = true, CancellationToken ct = default);
+        ResourceRef pod, string container, bool follow = true, bool previous = false,
+        CancellationToken ct = default);
 
     /// <summary>Stream live pod metrics. Requires <see cref="ClusterCapabilities.Metrics"/>.</summary>
     IAsyncEnumerable<PodMetrics> StreamMetricsAsync(ResourceRef pod, CancellationToken ct = default);
