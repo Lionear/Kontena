@@ -32,7 +32,7 @@
                         ToolTip.Tip="Move this terminal into a window of its own">
                     <StackPanel Orientation="Horizontal" Spacing="7">
                         <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
-                              Data="{StaticResource IconExternal}"/>
+                              Data="{StaticResource IconExternalLink}"/>
                         <TextBlock Text="Open in window" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
@@ -92,7 +92,7 @@
                 <Border Width="64" Height="64" CornerRadius="16" Background="{DynamicResource Surface2}"
                         HorizontalAlignment="Center">
                     <Path Classes="icon" Width="28" Height="28" Stroke="{DynamicResource TextFaint}"
-                          Data="{StaticResource IconExternal}"/>
+                          Data="{StaticResource IconExternalLink}"/>
                 </Border>
                 <TextBlock Text="This terminal is in its own window" FontSize="17" FontWeight="SemiBold"
                            Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
