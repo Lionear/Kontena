@@ -93,6 +93,7 @@ public partial class MainWindowViewModel
         NavItems.Add(new NavItem("services", "Services", "IconNetwork"));
         NavItems.Add(new NavItem("portforwards", "Port forwards", "IconPlug"));
         NavItems.Add(new NavItem("apply", "Apply manifest", "IconPlay"));
+        NavItems.Add(new NavItem("terminal", "Terminal", "IconTerminal"));
         foreach (var item in NavItems)
             item.Command = NavigateCommand;
     }
@@ -146,6 +147,11 @@ public partial class MainWindowViewModel
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
+            // A shell on this machine, already on this cluster (KON-171). Falls back to the
+            // overview when the active backend is not a kubeconfig context, so the page can never
+            // open onto a cluster it cannot name.
+            "terminal" when BuildShellRequest() is { } shell =>
+                new ClusterTerminalViewModel(shell, CurrentTerminalFont()),
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
             {
                 // An apply can create or remove anything — refresh the counts, not the open page.
@@ -309,6 +315,16 @@ public partial class MainWindowViewModel
         if (CurrentPage is IListPage page)
             await page.LoadAsync();
     }
+    /// <summary>
+    /// The terminal font as it is right now. Read from the store rather than the cached settings so a
+    /// font changed in Settings applies to the next terminal opened, not the next restart.
+    /// </summary>
+    private TerminalFont CurrentTerminalFont()
+    {
+        var current = _store.Load();
+        return new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
+    }
+
     private void ShowContainerDetail(ContainerSummary summary)
     {
         if (_engine is null)
@@ -317,9 +333,7 @@ public partial class MainWindowViewModel
         Arrived($"container {summary.Name}", () => ShowContainerDetail(summary), summary);
         DisposeDetail();
 
-        // Reload settings so a just-changed terminal font is picked up.
-        var current = _store.Load();
-        var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
+        var font = CurrentTerminalFont();
 
         _detail = new ContainerDetailViewModel(_engine, summary, GoBack, font)
         {

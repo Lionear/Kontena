@@ -19,6 +19,13 @@ public interface ITerminalHost : INotifyPropertyChanged
     /// <summary>Whether font ligatures are enabled.</summary>
     bool TerminalLigatures { get; }
 
+    /// <summary>
+    /// What is running in the terminal, shown next to the status. A container shell is always
+    /// <c>/bin/sh</c>; a shell on this machine is whichever one the user has, so the view asks rather
+    /// than assumes.
+    /// </summary>
+    string ShellLabel { get; }
+
     /// <summary>True when the terminal/shell tab is the active one.</summary>
     bool IsTerminalSelected { get; }
 

@@ -50,6 +50,9 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     }
 
     /// <summary>Terminal font (from settings), consumed by the Terminal tab.</summary>
+    /// <summary>The shell this page execs — see the ExecRequest below.</summary>
+    public string ShellLabel => "/bin/sh";
+
     public string TerminalFontFamily { get; }
     public double TerminalFontSize { get; }
     public bool TerminalLigatures { get; }

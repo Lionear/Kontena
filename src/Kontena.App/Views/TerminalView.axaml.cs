@@ -53,6 +53,7 @@ public partial class TerminalView : UserControl
             Term.FontFamily = _vm.TerminalFontFamily;
             Term.FontSize = _vm.TerminalFontSize;
             Term.EnableLigatures = _vm.TerminalLigatures;
+            ShellLabel.Text = _vm.ShellLabel;
         }
 
         MaybeStart();

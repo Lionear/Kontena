@@ -31,7 +31,7 @@ public sealed class ExtensionBoundaryTests
         var refs = ProjectReferences(Path.Combine(SourceDirectory(), "Kontena.Sdk", "Kontena.Sdk.csproj"));
 
         Assert.True(
-            refs.Count == 0,
+            refs.Length == 0,
             $"Kontena.Sdk is the MIT extension contract and must stand on its own, but references: "
             + string.Join(", ", refs));
     }
@@ -78,7 +78,7 @@ public sealed class ExtensionBoundaryTests
         return data;
     }
 
-    private static IReadOnlyList<string> ProjectReferences(string csproj) =>
+    private static string[] ProjectReferences(string csproj) =>
         Regex.Matches(File.ReadAllText(csproj), @"<ProjectReference\s+Include=""[^""]*[\\/](?<name>[^\\/""]+)\.csproj""")
             .Select(m => m.Groups["name"].Value)
             .ToArray();
