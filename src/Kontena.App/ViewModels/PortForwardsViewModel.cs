@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
 using Kontena.Core.Orchestration;
+using Kontena.Sdk.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

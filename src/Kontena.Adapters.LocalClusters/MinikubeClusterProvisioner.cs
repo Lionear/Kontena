@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
-using Kontena.Core.Orchestration.Provisioning;
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Orchestration.Provisioning;
+using Kontena.Sdk.Tooling;
 
 namespace Kontena.Adapters.LocalClusters;
 

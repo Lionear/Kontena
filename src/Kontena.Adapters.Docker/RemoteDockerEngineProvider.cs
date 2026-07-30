@@ -1,7 +1,6 @@
-using Kontena.Core;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
 
 namespace Kontena.Adapters.Docker;
 

@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Core.Models;
 
 namespace Kontena.App.ViewModels;
 

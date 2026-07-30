@@ -1,6 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Kontena.Core.Orchestration.Provisioning;
+using Kontena.Sdk.Orchestration.Provisioning;
 
 namespace Kontena.App.ViewModels;
 

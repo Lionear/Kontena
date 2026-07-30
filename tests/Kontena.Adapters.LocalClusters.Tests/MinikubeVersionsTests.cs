@@ -1,4 +1,5 @@
 using Xunit;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.Adapters.LocalClusters.Tests;
 

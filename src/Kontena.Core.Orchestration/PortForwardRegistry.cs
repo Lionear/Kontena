@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Models;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration;
 
 namespace Kontena.Core.Orchestration;
 

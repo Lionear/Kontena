@@ -1,4 +1,4 @@
-using Kontena.Core;
+using Kontena.Sdk;
 using Xunit;
 
 namespace Kontena.Core.Tests;

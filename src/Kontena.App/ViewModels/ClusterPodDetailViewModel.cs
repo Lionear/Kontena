@@ -5,9 +5,11 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
 
 namespace Kontena.App.ViewModels;
 

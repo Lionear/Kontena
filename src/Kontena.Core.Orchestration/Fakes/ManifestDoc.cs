@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
+using Kontena.Core.Models;
 
 namespace Kontena.Core.Orchestration.Fakes;
 

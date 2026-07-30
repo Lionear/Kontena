@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
 namespace Kontena.App.ViewModels;

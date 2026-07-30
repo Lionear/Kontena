@@ -1,3 +1,4 @@
+using Kontena.Sdk.Models;
 namespace Kontena.Core.Models;
 
 /// <summary>How Kontena picks its light/dark appearance.</summary>

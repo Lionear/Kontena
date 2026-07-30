@@ -8,11 +8,11 @@ using System.Text;
 using System.Threading.Channels;
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
-using Kontena.Engines;
-using KontenaState = Kontena.Core.Models.ContainerState;
-using KontenaPort = Kontena.Core.Models.PortBinding;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using KontenaState = Kontena.Sdk.Models.ContainerState;
+using KontenaPort = Kontena.Sdk.Models.PortBinding;
 using DockerPortBinding = Docker.DotNet.Models.PortBinding;
 using DockerRestartPolicy = Docker.DotNet.Models.RestartPolicy;
 
@@ -1084,20 +1084,20 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         m.Actor?.ID ?? m.ID ?? string.Empty,
         DateTimeOffset.FromUnixTimeSeconds(m.Time));
 
-    private static RestartPolicyKind MapRestart(Core.Models.RestartPolicy policy) => policy switch
+    private static RestartPolicyKind MapRestart(Kontena.Sdk.Models.RestartPolicy policy) => policy switch
     {
-        Core.Models.RestartPolicy.Always => RestartPolicyKind.Always,
-        Core.Models.RestartPolicy.OnFailure => RestartPolicyKind.OnFailure,
-        Core.Models.RestartPolicy.UnlessStopped => RestartPolicyKind.UnlessStopped,
+        Kontena.Sdk.Models.RestartPolicy.Always => RestartPolicyKind.Always,
+        Kontena.Sdk.Models.RestartPolicy.OnFailure => RestartPolicyKind.OnFailure,
+        Kontena.Sdk.Models.RestartPolicy.UnlessStopped => RestartPolicyKind.UnlessStopped,
         _ => RestartPolicyKind.No,
     };
 
-    private static Core.Models.RestartPolicy MapRestart(RestartPolicyKind? kind) => kind switch
+    private static Kontena.Sdk.Models.RestartPolicy MapRestart(RestartPolicyKind? kind) => kind switch
     {
-        RestartPolicyKind.Always => Core.Models.RestartPolicy.Always,
-        RestartPolicyKind.OnFailure => Core.Models.RestartPolicy.OnFailure,
-        RestartPolicyKind.UnlessStopped => Core.Models.RestartPolicy.UnlessStopped,
-        _ => Core.Models.RestartPolicy.No,
+        RestartPolicyKind.Always => Kontena.Sdk.Models.RestartPolicy.Always,
+        RestartPolicyKind.OnFailure => Kontena.Sdk.Models.RestartPolicy.OnFailure,
+        RestartPolicyKind.UnlessStopped => Kontena.Sdk.Models.RestartPolicy.UnlessStopped,
+        _ => Kontena.Sdk.Models.RestartPolicy.No,
     };
 
     private static ContainerInspect MapInspect(ContainerInspectResponse r)

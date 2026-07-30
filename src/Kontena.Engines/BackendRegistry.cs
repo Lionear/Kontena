@@ -1,4 +1,4 @@
-using Kontena.Core;
+using Kontena.Sdk;
 
 namespace Kontena.Engines;
 

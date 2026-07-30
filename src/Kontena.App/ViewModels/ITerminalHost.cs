@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 
 namespace Kontena.App.ViewModels;
 

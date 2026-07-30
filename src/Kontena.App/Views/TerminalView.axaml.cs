@@ -9,8 +9,9 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Exclr8.Terminal;
 using Kontena.App.ViewModels;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Views;
 

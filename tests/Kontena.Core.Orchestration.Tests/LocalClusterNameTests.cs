@@ -1,7 +1,7 @@
 using System.Globalization;
 using Kontena.Core.Orchestration.Fakes;
-using Kontena.Core.Orchestration.Provisioning;
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Orchestration.Provisioning;
+using Kontena.Sdk.Tooling;
 using Xunit;
 
 namespace Kontena.Core.Orchestration.Tests;

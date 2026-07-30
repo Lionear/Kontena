@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using k8s;
 using k8s.Models;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 

@@ -1,4 +1,4 @@
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Tooling;
 
 namespace Kontena.Core.Tests;
 

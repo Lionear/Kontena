@@ -1,7 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
 
 namespace Kontena.App.ViewModels;
 

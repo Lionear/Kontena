@@ -1,4 +1,5 @@
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Tooling;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.Core.Orchestration.Rendering;
 
@@ -16,7 +17,7 @@ internal readonly record struct CliResult(int ExitCode, string StdOut, string St
 /// path-shaped call.
 /// </summary>
 /// <remarks>
-/// Everything below this line is <see cref="Kontena.Core.Tooling"/> (KON-129). Process handling used
+/// Everything below this line is <see cref="Kontena.Sdk.Tooling"/> (KON-129). Process handling used
 /// to live here in full, which was fine while rendering was the only thing shelling out — but cluster
 /// provisioning, the metrics install and the engine install-assist all need the same three steps, and
 /// the second copy is where they start to differ. One implementation, two shapes of call.

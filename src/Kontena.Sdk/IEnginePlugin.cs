@@ -1,4 +1,4 @@
-using Kontena.Engines;
+using Kontena.Sdk;
 
 namespace Kontena.Sdk;
 
@@ -6,7 +6,7 @@ namespace Kontena.Sdk;
 /// Entry point that an external Kontena extension implements to contribute container
 /// engine backends. A future plugin loader (KON-49) discovers assemblies exporting
 /// this type, reads their <see cref="Manifest"/>, and registers their providers with
-/// the <see cref="BackendRegistry"/>.
+/// the host's backend registry.
 /// <para>
 /// This is the whole surface an adapter author needs: reference <c>Kontena.Sdk</c>
 /// (which brings the engine-neutral models, the CEAL, and <see cref="IBackendProvider"/>),

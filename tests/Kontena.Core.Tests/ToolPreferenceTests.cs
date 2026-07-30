@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
-using Kontena.Core.Tooling;
-using Kontena.Core.Tooling.Fakes;
+using Kontena.Sdk.Tooling;
+using Kontena.Sdk.Tooling.Fakes;
 using Xunit;
 
 namespace Kontena.Core.Tests;

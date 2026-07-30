@@ -3,6 +3,7 @@ using Kontena.Adapters.Docker;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
 namespace Kontena.App.ViewModels;

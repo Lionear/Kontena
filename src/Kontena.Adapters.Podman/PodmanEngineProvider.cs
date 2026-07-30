@@ -1,6 +1,5 @@
 using Kontena.Adapters.Docker;
-using Kontena.Core;
-using Kontena.Engines;
+using Kontena.Sdk;
 
 namespace Kontena.Adapters.Podman;
 

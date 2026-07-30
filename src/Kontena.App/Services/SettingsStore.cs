@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
 namespace Kontena.App.Services;

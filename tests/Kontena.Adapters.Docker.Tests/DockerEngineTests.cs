@@ -1,11 +1,11 @@
 using System.Text;
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using ContainerState = Kontena.Core.Models.ContainerState;
+using ContainerState = Kontena.Sdk.Models.ContainerState;
 using Kontena.Adapters.Docker;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Xunit;
 
 namespace Kontena.Adapters.Docker.Tests;

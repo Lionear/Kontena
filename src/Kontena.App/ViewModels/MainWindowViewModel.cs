@@ -1,10 +1,13 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Kontena.App.Services;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk;
+using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 using Kontena.Engines;
-using Kontena.Engines.Fakes;
 
 namespace Kontena.App.ViewModels;
 

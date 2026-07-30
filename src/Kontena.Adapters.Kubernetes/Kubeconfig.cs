@@ -1,5 +1,5 @@
 using k8s;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 

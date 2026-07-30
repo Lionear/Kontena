@@ -1,8 +1,8 @@
 using Kontena.App.ViewModels;
 using Kontena.Core.Orchestration.Fakes;
-using Kontena.Core.Orchestration.Provisioning;
-using Kontena.Core.Tooling;
-using Kontena.Core.Tooling.Fakes;
+using Kontena.Sdk.Orchestration.Provisioning;
+using Kontena.Sdk.Tooling;
+using Kontena.Sdk.Tooling.Fakes;
 using Xunit;
 
 namespace Kontena.App.Tests;

@@ -3,8 +3,9 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Adapters.LocalClusters;
-using Kontena.Core.Orchestration.Provisioning;
-using Kontena.Core.Tooling;
+using Kontena.Sdk.Orchestration.Provisioning;
+using Kontena.Sdk.Tooling;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 

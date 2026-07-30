@@ -1,5 +1,7 @@
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Core.Models;
 using Kontena.Engines;
 

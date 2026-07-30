@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\Kontena.Core\Kontena.Core.csproj" />
-    <ProjectReference Include="..\Kontena.Engines\Kontena.Engines.csproj" />
-  </ItemGroup>
+  <!-- The public extension contract, MIT licensed (see LICENSE next to this file). It must keep
+       standing on its own: no ProjectReference belongs here, because anything it referenced would
+       become something an external adapter author has to compile against — under a licence that is
+       not MIT. Kontena.Sdk.Tests fails the build if one appears (KON-190). -->
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

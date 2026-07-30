@@ -19,5 +19,6 @@
     <Project Path="tests/Kontena.Core.Tests/Kontena.Core.Tests.csproj" />
     <Project Path="tests/Kontena.Core.Orchestration.Tests/Kontena.Core.Orchestration.Tests.csproj" />
     <Project Path="tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj" />
+    <Project Path="tests/Kontena.Sdk.Tests/Kontena.Sdk.Tests.csproj" />
   </Folder>
 </Solution>

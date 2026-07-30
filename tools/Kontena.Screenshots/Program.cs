@@ -15,10 +15,13 @@ using Kontena.App;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Engines.Fakes;
 using HostApp = Kontena.App.App;
+using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
+using Kontena.Engines;
 
 namespace Kontena.Screenshots;
 
@@ -604,12 +607,12 @@ internal static class Program
                 // and restores them closed, KON-105), one is reopened, and a third is dropped (KON-102).
                 {
                     var fake = new Kontena.Core.Orchestration.Fakes.FakeClusterEngine();
-                    var pod = new Kontena.Core.Orchestration.Models.ResourceRef(
-                        Kontena.Core.Orchestration.Models.GroupVersionKind.Pod, "app", "api-7d9c");
-                    var service = new Kontena.Core.Orchestration.Models.ResourceRef(
-                        Kontena.Core.Orchestration.Models.GroupVersionKind.Service, "app", "api");
-                    var postgres = new Kontena.Core.Orchestration.Models.ResourceRef(
-                        Kontena.Core.Orchestration.Models.GroupVersionKind.Service, "app", "postgres");
+                    var pod = new Kontena.Sdk.Orchestration.Models.ResourceRef(
+                        Kontena.Sdk.Orchestration.Models.GroupVersionKind.Pod, "app", "api-7d9c");
+                    var service = new Kontena.Sdk.Orchestration.Models.ResourceRef(
+                        Kontena.Sdk.Orchestration.Models.GroupVersionKind.Service, "app", "api");
+                    var postgres = new Kontena.Sdk.Orchestration.Models.ResourceRef(
+                        Kontena.Sdk.Orchestration.Models.GroupVersionKind.Service, "app", "postgres");
 
                     vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                     SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -681,9 +684,9 @@ internal static class Program
                             for (var i = 1; i <= 200; i++)
                             {
                                 detailVm.Lines.Add(new Kontena.App.ViewModels.LogLineViewModel(
-                                    new Kontena.Core.Models.LogEntry(
+                                    new Kontena.Sdk.Models.LogEntry(
                                         DateTimeOffset.UnixEpoch.AddSeconds(i),
-                                        Kontena.Core.Models.LogSource.Stdout, $"line {i}")));
+                                        Kontena.Sdk.Models.LogSource.Stdout, $"line {i}")));
                             }
 
                             Settle(rounds: 40);

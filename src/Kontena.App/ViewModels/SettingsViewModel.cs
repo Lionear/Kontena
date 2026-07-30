@@ -3,8 +3,9 @@ using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Core.Models;
-using Kontena.Engines;
 
 namespace Kontena.App.ViewModels;
 

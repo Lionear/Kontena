@@ -1,8 +1,8 @@
-using Kontena.Core;
-using Kontena.Core.Errors;
-using Kontena.Engines;
+using Kontena.Sdk;
+using Kontena.Sdk.Errors;
 using Kontena.Engines.Fakes;
 using Xunit;
+using Kontena.Engines;
 
 namespace Kontena.Engines.Tests;
 

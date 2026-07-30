@@ -1,4 +1,5 @@
 using Kontena.App.Services;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Tests;
 

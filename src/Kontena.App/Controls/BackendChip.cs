@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
+using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Controls;
 

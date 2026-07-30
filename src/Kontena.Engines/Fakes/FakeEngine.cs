@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 
 namespace Kontena.Engines.Fakes;
 

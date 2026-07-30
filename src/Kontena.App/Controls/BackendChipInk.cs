@@ -1,4 +1,6 @@
 using Avalonia.Media;
+using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Controls;
 

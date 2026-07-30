@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Core.Models;
 
 namespace Kontena.App.ViewModels;
 

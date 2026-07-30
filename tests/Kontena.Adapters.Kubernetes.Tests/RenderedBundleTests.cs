@@ -1,4 +1,4 @@
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration.Rendering;
 
 namespace Kontena.Adapters.Kubernetes.Tests;
