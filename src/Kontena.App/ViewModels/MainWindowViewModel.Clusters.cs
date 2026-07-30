@@ -7,6 +7,7 @@ using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Core.Shell;
 
 namespace Kontena.App.ViewModels;
 
@@ -289,10 +290,7 @@ public partial class MainWindowViewModel
         Arrived($"pod {pod.Name}", () => ShowPodDetail(pod), pod);
         DisposeDetail();
 
-        var current = _store.Load();
-        var font = new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
-
-        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, font, ShowPodPortForward);
+        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, CurrentTerminalFont(), ShowPodPortForward);
         CurrentPage = _podDetail;
     }
 
@@ -328,5 +326,79 @@ public partial class MainWindowViewModel
             _cluster, service,
             onOpenPod: ShowPodDetail,
             onForward: ShowServicePortForward);
+    }
+
+    /// <summary>
+    /// What a host shell needs to start on the cluster being shown (KON-171): the context, the names
+    /// its entry points at, and the kubeconfig files already in play.
+    /// <para>
+    /// The namespace comes from the picker rather than the context's own default — the terminal should
+    /// open where the rest of the window is looking. With <em>All namespaces</em> selected there is
+    /// nothing to pin, and the context's default stands.
+    /// </para>
+    /// <para>
+    /// Returns null when the active backend is not a Kubernetes context, which is what keeps the nav
+    /// item off the engine side.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// The Terminal page, wired to the shell kept for this cluster (KON-171).
+    /// <para>
+    /// The header follows the shell that is actually running rather than the pickers: its context and
+    /// namespace were fixed when it started, and changing the namespace afterwards does not reach into a
+    /// shell that is already open. Reconnect discards it, and the next open reads the pickers again.
+    /// </para>
+    /// </summary>
+    private ClusterTerminalsViewModel? CreateClusterTerminals()
+    {
+        if (BuildShellRequest() is null || _activeBackend is not { Length: > 0 } backend)
+            return null;
+
+        return new ClusterTerminalsViewModel(
+            _terminals,
+            backend,
+            // Read afresh per terminal rather than captured: a new tab opens on the namespace selected
+            // now, which is not necessarily the one the page was built with.
+            request: () => BuildShellRequest()!,
+            font: CurrentTerminalFont,
+            onCountChanged: () => UpdateTerminalCount(backend));
+    }
+
+    /// <summary>Badge the sidebar with how many shells are open, the way port forwards does.</summary>
+    private void UpdateTerminalCount(string backend)
+    {
+        var count = _terminals.CountFor(backend);
+        SetNavCount("terminal", count > 1 ? count.ToString(CultureInfo.InvariantCulture) : string.Empty);
+    }
+
+    private ClusterShellRequest? BuildShellRequest()
+    {
+        if (_activeBackend is not { Length: > 0 } backend || !IsClusterMode)
+            return null;
+
+        var context = Pretty(backend);
+        var kubeconfigPath = _probes
+            .Select(p => p.Provider)
+            .OfType<KubernetesClusterProvider>()
+            .FirstOrDefault(p => p.Backend == backend)?
+            .KubeconfigPath;
+
+        // Cluster and user are needed to pin a namespace at all: an overlay naming neither would
+        // shadow the real context instead of adding to it. They are names from the user's own file,
+        // not credentials.
+        var entry = Kubeconfig.LoadContexts(kubeconfigPath).FirstOrDefault(c => c.Name == context);
+
+        var paths = new List<string>();
+        if (kubeconfigPath is { Length: > 0 })
+            paths.Add(Kubeconfig.Expand(kubeconfigPath));
+        paths.Add(Kubeconfig.DefaultPath);
+        paths.AddRange(_settings.KubeconfigPaths.Select(Kubeconfig.Expand));
+
+        return new ClusterShellRequest(
+            context,
+            entry?.Cluster,
+            entry?.User,
+            ActiveNamespace ?? entry?.Namespace,
+            paths);
     }
 }

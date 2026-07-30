@@ -1,0 +1,106 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterTerminalsView"
+             x:DataType="vm:ClusterTerminalsViewModel">
+
+    <UserControl.Styles>
+        <!-- Sits against its tab rather than beside it, so the pair reads as one thing to click twice. -->
+        <Style Selector="Button.tabclose">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Margin" Value="-4,0,0,0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.tabclose:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="28,24" RowDefinitions="Auto,Auto,*">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Terminal" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text}"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Classes="ghost" Click="OnDetachClick"
+                        IsVisible="{Binding Shown, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        ToolTip.Tip="Move this terminal into a window of its own">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
+                              Data="{StaticResource IconExternalLink}"/>
+                        <TextBlock Text="Open in window" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Classes="ghost" Command="{Binding NewTerminalCommand}"
+                        ToolTip.Tip="Open another shell on this cluster">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
+                              Data="{StaticResource IconPlus}"/>
+                        <TextBlock Text="New terminal" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- The strip earns its room only from the second tab on; with one terminal it would be a row of
+             chrome repeating what the page title already says. Same tab style as container and pod
+             detail, so a tab is a tab everywhere in the app. -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Terminals}" IsVisible="{Binding HasTabs}"
+                      Margin="0,14,0,0">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel ItemSpacing="4" LineSpacing="4"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ClusterTerminalViewModel">
+                    <StackPanel Orientation="Horizontal">
+                        <Button Classes="tab" Classes.on="{Binding IsCurrent}"
+                                Command="{Binding $parent[ItemsControl].((vm:ClusterTerminalsViewModel)DataContext).SelectCommand}"
+                                CommandParameter="{Binding}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{Binding $parent[Button].Foreground}"
+                                      Data="{StaticResource IconTerminal}"/>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="tabclose" ToolTip.Tip="Close this terminal and end its shell"
+                                VerticalAlignment="Center"
+                                Command="{Binding $parent[ItemsControl].((vm:ClusterTerminalsViewModel)DataContext).CloseCommand}"
+                                CommandParameter="{Binding}">
+                            <Path Classes="icon" Width="10" Height="10" Stroke="{DynamicResource TextFaint}"
+                                  Data="{StaticResource IconClose}"/>
+                        </Button>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Panel Grid.Row="2" Margin="0,16,0,0">
+            <!-- Bound to Shown rather than Selected: while a terminal is in its own window this must
+                 hold nothing at all. A hidden view is still a view, and it would attach to the session
+                 the window is showing. -->
+            <ContentControl Content="{Binding Shown}"/>
+
+            <StackPanel IsVisible="{Binding IsSelectedDetached}" Spacing="16"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420">
+                <Border Width="64" Height="64" CornerRadius="16" Background="{DynamicResource Surface2}"
+                        HorizontalAlignment="Center">
+                    <Path Classes="icon" Width="28" Height="28" Stroke="{DynamicResource TextFaint}"
+                          Data="{StaticResource IconExternalLink}"/>
+                </Border>
+                <TextBlock Text="This terminal is in its own window" FontSize="17" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="It is still running. Closing that window puts it back here — nothing in it is lost."
+                           FontSize="13" Foreground="{DynamicResource TextDim}" TextAlignment="Center"
+                           TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                <Button Classes="ghost" Click="OnReattachClick" HorizontalAlignment="Center">Bring it back</Button>
+            </StackPanel>
+        </Panel>
+    </Grid>
+</UserControl>

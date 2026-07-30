@@ -7,6 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The host-side pseudo-terminal (KON-171). Exclr8.Terminal renders a terminal but ships no PTY
+         plumbing by design, and a shell behind plain pipes is not interactive: no prompt, no colour,
+         no Ctrl-C. MIT, with native shims for Linux/macOS and ConPTY on Windows. -->
+    <PackageReference Include="Porta.Pty" Version="1.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Kontena.Sdk\Kontena.Sdk.csproj" />
   </ItemGroup>
 

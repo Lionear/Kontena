@@ -26,6 +26,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
     private IReadOnlyList<BackendProbe> _probes = [];
+    private readonly ClusterTerminals _terminals = new();
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
@@ -323,6 +324,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         DisposeDetail();
         CloseDialog();
         StopPortForwardsAsync().GetAwaiter().GetResult();
+        _terminals.DisposeAsync().AsTask().GetAwaiter().GetResult();
         Containers?.Dispose();
         _activityLog.Dispose();
         (_engine as IDisposable)?.Dispose();

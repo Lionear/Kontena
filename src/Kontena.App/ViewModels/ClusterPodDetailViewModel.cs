@@ -69,6 +69,12 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     // ── Terminal font (ITerminalHost) ─────────────────────────────────────────
 
+    /// <summary>The session belongs to this page: it opened it, and it ends with it.</summary>
+    public ValueTask ReleaseExecSessionAsync(IExecSession session, bool discard) => session.DisposeAsync();
+
+    /// <summary>The shell this page execs — see the ExecRequest below.</summary>
+    public string ShellLabel => "/bin/sh";
+
     public string TerminalFontFamily { get; }
     public double TerminalFontSize { get; }
     public bool TerminalLigatures { get; }
