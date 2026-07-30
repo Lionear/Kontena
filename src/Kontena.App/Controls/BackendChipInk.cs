@@ -32,8 +32,15 @@ public static class BackendChipInk
     /// sidebar, in the popover, on a row and in a dialog, so it is measured against the least forgiving
     /// of them (Surface2 in both themes) and is then legible on all of them.
     /// </summary>
-    private static readonly Color DarkReference = Color.Parse("#1C2136");
+    private static readonly Color DarkReference = Color.Parse("#202226");
     private static readonly Color LightReference = Color.Parse("#F0F3F6");
+
+    /// <summary>
+    /// The surface a mark is judged against, exposed so a test can hold it against the palette. These
+    /// are literals because the calculation runs without a theme to ask — and a literal copy of a token
+    /// goes stale the first time the palette moves, which is what KON-245 caught it doing.
+    /// </summary>
+    public static Color ReferenceSurface(bool dark) => dark ? DarkReference : LightReference;
 
     /// <summary>
     /// The mark's colour for a theme: the accent itself when it is already legible, otherwise the same
