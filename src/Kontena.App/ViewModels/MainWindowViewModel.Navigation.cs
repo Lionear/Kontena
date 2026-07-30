@@ -72,31 +72,51 @@ public partial class MainWindowViewModel
     /// <summary>The engine (CEAL) sidebar nav — Containers/Images/Volumes/Networks/Projects.</summary>
     private void SetEngineNav()
     {
-        NavItems.Clear();
-        NavItems.Add(new NavItem("containers", "Containers", "IconContainer") { IsSelected = true });
-        NavItems.Add(new NavItem("images", "Images", "IconLayers"));
-        NavItems.Add(new NavItem("volumes", "Volumes", "IconDatabase"));
-        NavItems.Add(new NavItem("networks", "Networks", "IconNetwork"));
-        NavItems.Add(new NavItem("projects", "Projects", "IconBox"));
-        foreach (var item in NavItems)
+        // One unlabelled group: five entries do not need dividing, and a single heading over the whole
+        // list says nothing. Deliberate rather than unfinished — see NavGroup.
+        NavGroups.Clear();
+        NavGroups.Add(Group(null,
+            new NavItem("containers", "Containers", "IconContainer") { IsSelected = true },
+            new NavItem("images", "Images", "IconLayers"),
+            new NavItem("volumes", "Volumes", "IconDatabase"),
+            new NavItem("networks", "Networks", "IconNetwork"),
+            new NavItem("projects", "Projects", "IconBox")));
+    }
+
+    /// <summary>A section, with the shared navigate command already on every item in it.</summary>
+    private NavGroup Group(string? label, params NavItem[] items)
+    {
+        var group = new NavGroup(label);
+
+        foreach (var item in items)
+        {
             item.Command = NavigateCommand;
+            group.Items.Add(item);
+        }
+
+        return group;
     }
     /// <summary>The cluster (OAL) sidebar nav — the Kubernetes resource tree.</summary>
     private void SetClusterNav()
     {
-        NavItems.Clear();
-        NavItems.Add(new NavItem("overview", "Overview", "IconGauge") { IsSelected = true });
-        NavItems.Add(new NavItem("nodes", "Nodes", "IconCpu"));
-        NavItems.Add(new NavItem("namespaces", "Namespaces", "IconBox"));
-        NavItems.Add(new NavItem("workloads", "Workloads", "IconLayers"));
-        NavItems.Add(new NavItem("pods", "Pods", "IconContainer"));
-        NavItems.Add(new NavItem("services", "Services", "IconNetwork"));
-        NavItems.Add(new NavItem("portforwards", "Port forwards", "IconPlug"));
-        NavItems.Add(new NavItem("resources", "Resources", "IconBox"));
-        NavItems.Add(new NavItem("apply", "Apply manifest", "IconPlay"));
-        NavItems.Add(new NavItem("terminal", "Terminal", "IconTerminal"));
-        foreach (var item in NavItems)
-            item.Command = NavigateCommand;
+        // Four sections, following the mockup's shape rather than its exact wording — it lists kinds
+        // this app does not have pages for yet, and inventing headings for absent items would be a nav
+        // that describes a different product.
+        NavGroups.Clear();
+        NavGroups.Add(Group("Cluster",
+            new NavItem("overview", "Overview", "IconGauge") { IsSelected = true },
+            new NavItem("nodes", "Nodes", "IconCpu"),
+            new NavItem("namespaces", "Namespaces", "IconBox")));
+        NavGroups.Add(Group("Workloads",
+            new NavItem("workloads", "Workloads", "IconLayers"),
+            new NavItem("pods", "Pods", "IconContainer")));
+        NavGroups.Add(Group("Network",
+            new NavItem("services", "Services", "IconNetwork"),
+            new NavItem("portforwards", "Port forwards", "IconPlug")));
+        NavGroups.Add(Group("System",
+            new NavItem("resources", "Resources", "IconBox"),
+            new NavItem("apply", "Apply manifest", "IconPlay"),
+            new NavItem("terminal", "Terminal", "IconTerminal")));
     }
     private void NavigateCluster(string key)
     {
@@ -241,17 +261,20 @@ public partial class MainWindowViewModel
     /// </summary>
     private void SyncWorkloadKindNav(IReadOnlyList<Workload> workloads)
     {
-        var parentIndex = NavItems.ToList().FindIndex(i => i.Key == "workloads");
-        if (parentIndex < 0)
+        // Within the group that holds Workloads, not the whole sidebar: the children belong to their
+        // parent, and inserting by an index into a flat list was only ever a way of saying that.
+        var items = NavGroups.FirstOrDefault(g => g.Items.Any(i => i.Key == "workloads"))?.Items;
+        if (items is null)
             return;
 
-        var parent = NavItems[parentIndex];
+        var parentIndex = items.ToList().FindIndex(i => i.Key == "workloads");
+        var parent = items[parentIndex];
 
         // Drop the current children before rebuilding; the set changes as objects come and go.
-        for (var i = NavItems.Count - 1; i > parentIndex; i--)
+        for (var i = items.Count - 1; i > parentIndex; i--)
         {
-            if (NavItems[i].IsChild)
-                NavItems.RemoveAt(i);
+            if (items[i].IsChild)
+                items.RemoveAt(i);
         }
 
         var groups = WorkloadNavGroups.For(workloads);
@@ -272,7 +295,7 @@ public partial class MainWindowViewModel
         {
             var key = WorkloadNavGroups.KeyFor(group.Kind);
 
-            NavItems.Insert(at++, new NavItem(key, WorkloadNavGroups.LabelFor(group.Kind), "IconLayers", isChild: true)
+            items.Insert(at++, new NavItem(key, WorkloadNavGroups.LabelFor(group.Kind), "IconLayers", isChild: true)
             {
                 Count = group.Count.ToString(CultureInfo.InvariantCulture),
                 Command = NavigateCommand,
@@ -419,17 +442,20 @@ public partial class MainWindowViewModel
         if (_engine is null || Containers is null)
             return;
 
+        // By key, like the cluster side already did. The comment on SetNavCount warned about exactly
+        // this: an index-based assignment puts the image count on Volumes the day the nav gains an
+        // entry — and grouping the nav is that day.
         var ci = CultureInfo.InvariantCulture;
-        NavItems[0].Count = Containers.ContainerCount.ToString(ci);
-        NavItems[1].Count = (await _engine.ListImagesAsync()).Count.ToString(ci);
-        NavItems[2].Count = (await _engine.ListVolumesAsync()).Count.ToString(ci);
-        NavItems[3].Count = (await _engine.ListNetworksAsync()).Count.ToString(ci);
+        SetNavCount("containers", Containers.ContainerCount.ToString(ci));
+        SetNavCount("images", (await _engine.ListImagesAsync()).Count.ToString(ci));
+        SetNavCount("volumes", (await _engine.ListVolumesAsync()).Count.ToString(ci));
+        SetNavCount("networks", (await _engine.ListNetworksAsync()).Count.ToString(ci));
 
         var projects = (await _engine.ListContainersAsync())
             .Where(c => c.Labels.ContainsKey(ComposeProjectsViewModel.ProjectLabel))
             .Select(c => c.Labels[ComposeProjectsViewModel.ProjectLabel])
             .Distinct()
             .Count();
-        NavItems[4].Count = projects.ToString(ci);
+        SetNavCount("projects", projects.ToString(ci));
     }
 }

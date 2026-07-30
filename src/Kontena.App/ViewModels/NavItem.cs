@@ -44,7 +44,14 @@ public partial class NavItem : ObservableObject
     private bool _isSelected;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCount))]
     private string _count = string.Empty;
+
+    /// <summary>
+    /// Whether there is anything to show a badge for. The pill used to render on every row, empty
+    /// included, which put a small grey plate next to every entry that has nothing to count (KON-219).
+    /// </summary>
+    public bool HasCount => Count.Length > 0;
 
     /// <summary>
     /// Draws a small marker on the item: something here needs looking at, independently of

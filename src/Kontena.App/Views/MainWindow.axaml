@@ -195,11 +195,24 @@
                 DoubleTapped="OnTitleBarDoubleTapped"
                 chrome:WindowDecorationProperties.ElementRole="TitleBar">
             <Panel>
+                <!-- "Where am I" belongs here: the space is already reserved and the question is asked
+                     often (KON-219). The trail is the app, then the backend that is open and what it
+                     is — the same two strings the switcher shows, so the two cannot disagree. -->
                 <StackPanel Orientation="Horizontal" Spacing="9"
                             HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Image Source="{StaticResource KontenaLogo}" Width="18" Height="18"/>
                     <TextBlock Text="Kontena" FontSize="13" FontWeight="SemiBold" LetterSpacing="-0.13"
                                Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    <TextBlock Text="/" FontSize="12.5" Foreground="{DynamicResource TextFaint}"
+                               VerticalAlignment="Center" IsVisible="{Binding HasBackendCrumb}"/>
+                    <TextBlock Text="{Binding EngineName}" FontSize="12.5" FontWeight="Medium"
+                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"
+                               IsVisible="{Binding HasBackendCrumb}" TextTrimming="CharacterEllipsis" MaxWidth="220"/>
+                    <TextBlock Text="·" FontSize="12.5" Foreground="{DynamicResource TextFaint}"
+                               VerticalAlignment="Center" IsVisible="{Binding HasBackendCrumb}"/>
+                    <TextBlock Text="{Binding EngineDetail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"
+                               IsVisible="{Binding HasBackendCrumb}" TextTrimming="CharacterEllipsis" MaxWidth="260"/>
                 </StackPanel>
 
                 <StackPanel x:Name="CaptionButtons" Orientation="Horizontal" HorizontalAlignment="Right"
@@ -362,9 +375,18 @@
                      block pinned to the bottom. -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               IsVisible="{Binding !IsBackendDown}">
-                <ItemsControl ItemsSource="{Binding NavItems}">
+                <ItemsControl ItemsSource="{Binding NavGroups}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:NavItem">
+                        <DataTemplate x:DataType="vm:NavGroup">
+                          <StackPanel Margin="0,0,0,10">
+                            <!-- A heading only where a group has one: the engine nav is a single
+                                 unlabelled run, and a lone heading over the whole list says nothing. -->
+                            <TextBlock Text="{Binding Label}" IsVisible="{Binding HasLabel}"
+                                       FontSize="10.5" FontWeight="SemiBold" LetterSpacing="0.7"
+                                       Foreground="{DynamicResource TextFaint}" Margin="10,4,0,5"/>
+                            <ItemsControl ItemsSource="{Binding Items}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:NavItem">
                             <!-- Sub-entries are the same button, indented (KON-169). A tree would need a
                                  second template, a second selection rule and a second home for the count
                                  badge, all for one level of depth. -->
@@ -393,11 +415,18 @@
                                              VerticalAlignment="Center" Fill="{DynamicResource Warn}"
                                              IsVisible="{Binding NeedsAttention}"
                                              ToolTip.Tip="{Binding AttentionTip}"/>
-                                    <Border Grid.Column="5" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}" Padding="7,1" VerticalAlignment="Center">
+                                    <!-- Only where there is something to count: an empty pill on every
+                                         other row is noise that reads as a control (KON-219). -->
+                                    <Border Grid.Column="5" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
+                                            Padding="7,1" VerticalAlignment="Center" IsVisible="{Binding HasCount}">
                                         <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>
                                 </Grid>
                             </Button>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

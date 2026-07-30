@@ -70,7 +70,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _settings = settings;
         _updateService = updateService ?? new VelopackUpdateService();
 
-        NavItems = [];
+        NavGroups = [];
         SetEngineNav();
         _portForwards.Changed += OnPortForwardsChanged;
 
@@ -195,7 +195,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         ConfirmPrimaryCommand.NotifyCanExecuteChanged();
     }
 
-    public ObservableCollection<NavItem> NavItems { get; }
+    /// <summary>
+    /// The sidebar, in labelled sections (KON-219). A group without a label is a plain run of items.
+    /// </summary>
+    public ObservableCollection<NavGroup> NavGroups { get; }
+
+    /// <summary>Every nav entry, whichever group it sits in — for lookups by key.</summary>
+    private IEnumerable<NavItem> NavItems => NavGroups.SelectMany(g => g.Items);
 
     /// <summary>Container engines shown in the switcher's "Container engines" group.</summary>
     public ObservableCollection<EngineOption> Engines { get; } = [];
@@ -217,11 +223,24 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private const string AllNamespaces = "All namespaces";
 
-    [ObservableProperty] private string _engineName = "Connecting…";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBackendCrumb))]
+    private string _engineName = "Connecting…";
+
     [ObservableProperty] private BackendChipInfo _engineChip = new("?");
 
     /// <summary>Second line of the sidebar pill — the active backend's version/kind.</summary>
-    [ObservableProperty] private string _engineDetail = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBackendCrumb))]
+    private string _engineDetail = string.Empty;
+
+    /// <summary>
+    /// Whether the title bar has a backend to name (KON-219). Suppressed while connecting and when
+    /// nothing is open: a breadcrumb whose second half reads "Connecting…" is the app telling you where
+    /// you are not.
+    /// </summary>
+    public bool HasBackendCrumb =>
+        EngineDetail.Length > 0 && EngineName is not ("Connecting…" or "Not connected");
 
     /// <summary>Third line of the sidebar pill — the active backend's endpoint (socket/URL).</summary>
     [ObservableProperty] private string _engineEndpoint = string.Empty;
