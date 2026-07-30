@@ -387,37 +387,26 @@
                             <ItemsControl ItemsSource="{Binding Items}">
                               <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:NavItem">
-                            <!-- Sub-entries are the same button, indented (KON-169). A tree would need a
-                                 second template, a second selection rule and a second home for the count
-                                 badge, all for one level of depth. -->
+                            <!-- One shape for every entry. The per-kind rows under Workloads used to be
+                                 indented behind a chevron; the group heading is the grouping now, so an
+                                 indent would be a second way of saying the same thing (KON-219). -->
                             <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
                                     Command="{Binding Command}" CommandParameter="{Binding Key}">
-                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
-                                    <Border Grid.Column="0" Width="14" IsVisible="{Binding IsChild}"/>
-                                    <Path Grid.Column="1" Classes="icon" Width="17" Height="17"
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                    <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                           Stroke="{Binding $parent[Button].Foreground}"
-                                          IsVisible="{Binding !IsChild}"
                                           Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
-
-                                    <!-- An indicator, not a button. The row itself opens the group, so a
-                                         second hit target inside it would be a control that duplicates
-                                         its own parent — and it looked like one. -->
-                                    <Path Grid.Column="3" Classes="icon" Width="12" Height="12" Margin="0,0,8,0"
-                                          VerticalAlignment="Center"
-                                          IsVisible="{Binding HasChildren}"
-                                          Stroke="{DynamicResource TextFaint}"
-                                          Data="{Binding IsExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
 
                                     <!-- Something on this page fell over; separate from the count, which
                                          says how many are working (KON-107). -->
-                                    <Ellipse Grid.Column="4" Width="7" Height="7" Margin="0,0,7,0"
+                                    <Ellipse Grid.Column="2" Width="7" Height="7" Margin="0,0,7,0"
                                              VerticalAlignment="Center" Fill="{DynamicResource Warn}"
                                              IsVisible="{Binding NeedsAttention}"
                                              ToolTip.Tip="{Binding AttentionTip}"/>
                                     <!-- Only where there is something to count: an empty pill on every
                                          other row is noise that reads as a control (KON-219). -->
-                                    <Border Grid.Column="5" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
+                                    <Border Grid.Column="3" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
                                             Padding="7,1" VerticalAlignment="Center" IsVisible="{Binding HasCount}">
                                         <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>

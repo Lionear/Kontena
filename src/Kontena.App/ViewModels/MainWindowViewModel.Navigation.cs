@@ -37,12 +37,6 @@ public partial class MainWindowViewModel
 
         if (IsClusterMode)
         {
-            // A parent with children opens its group as well as its page (KON-169/KON-174): the group
-            // shows the kinds, the page shows the dashboard. Not the flat list — that was the thing
-            // the split replaced.
-            if (NavItems.FirstOrDefault(i => i.Key == key) is { HasChildren: true, IsExpanded: false })
-                ToggleNavGroup(key);
-
             NavigateCluster(key);
             return;
         }
@@ -108,7 +102,7 @@ public partial class MainWindowViewModel
             new NavItem("nodes", "Nodes", "IconCpu"),
             new NavItem("namespaces", "Namespaces", "IconBox")));
         NavGroups.Add(Group("Workloads",
-            new NavItem("workloads", "Workloads", "IconLayers"),
+            new NavItem("workloads", "All workloads", "IconLayers"),
             new NavItem("pods", "Pods", "IconContainer")));
         NavGroups.Add(Group("Network",
             new NavItem("services", "Services", "IconNetwork"),
@@ -134,17 +128,6 @@ public partial class MainWindowViewModel
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
 
-        // Opening a child keeps its parent open, otherwise the group folds up under the page you just
-        // navigated into and the trail back to its siblings disappears. The refresh matters as much as
-        // the flag: the children are only inserted while rebuilding, so setting IsExpanded on its own
-        // leaves an open chevron above nothing.
-        if (WorkloadNavGroups.KindOf(key) is not null
-            && NavItems.FirstOrDefault(i => i.Key == "workloads") is { IsExpanded: false } workloadsNav)
-        {
-            workloadsNav.IsExpanded = true;
-            _ = UpdateClusterNavCountsAsync();
-        }
-
         // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker.
         CurrentPage = key switch
         {
@@ -159,7 +142,7 @@ public partial class MainWindowViewModel
             // The dashboard only where there is something to summarise. With one kind the sidebar has
             // no submenu either, and a dashboard of a single card is a page that says less than the
             // list it replaces — so there it stays the list (KON-174).
-            "workloads" when NavItems.Any(i => i.Key == "workloads" && i.HasChildren) =>
+            "workloads" when WorkloadNavGroups.ShouldGroup(_workloadGroups) =>
                 new ClusterWorkloadsDashboardViewModel(
                     _cluster, ActiveNamespace,
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
@@ -268,7 +251,6 @@ public partial class MainWindowViewModel
             return;
 
         var parentIndex = items.ToList().FindIndex(i => i.Key == "workloads");
-        var parent = items[parentIndex];
 
         // Drop the current children before rebuilding; the set changes as objects come and go.
         for (var i = items.Count - 1; i > parentIndex; i--)
@@ -279,15 +261,12 @@ public partial class MainWindowViewModel
 
         var groups = WorkloadNavGroups.For(workloads);
         _workloadGroups = groups;
-        parent.HasChildren = WorkloadNavGroups.ShouldGroup(groups);
 
-        if (!parent.HasChildren)
-        {
-            parent.IsExpanded = false;
-            return;
-        }
-
-        if (!parent.IsExpanded)
+        // Always listed, never folded (KON-219). The kinds used to hide behind a chevron on the entry
+        // above them, which repeated the word the group heading already carries and gave every kind
+        // page two routes: this submenu and the dashboard, which does the same job with counts and
+        // rollout state. One kind is not a set worth listing — the entry above it already is the page.
+        if (!WorkloadNavGroups.ShouldGroup(groups))
             return;
 
         var at = parentIndex + 1;
@@ -302,17 +281,6 @@ public partial class MainWindowViewModel
                 IsSelected = _clusterPageKey == key,
             });
         }
-    }
-
-    /// <summary>Expand or collapse the Workloads sub-entries without navigating (KON-169).</summary>
-    [RelayCommand]
-    private void ToggleNavGroup(string key)
-    {
-        if (NavItems.FirstOrDefault(i => i.Key == key) is not { HasChildren: true } item)
-            return;
-
-        item.IsExpanded = !item.IsExpanded;
-        _ = UpdateClusterNavCountsAsync();
     }
 
     // Keyed rather than indexed: the nav gained an entry in the middle once already, and an index-based

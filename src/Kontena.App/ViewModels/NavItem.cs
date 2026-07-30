@@ -23,22 +23,11 @@ public partial class NavItem : ObservableObject
     public string IconKey { get; }
 
     /// <summary>
-    /// A sub-entry, drawn indented under the item above it (KON-169).
-    /// <para>
-    /// The list stays flat rather than becoming a tree: nesting would mean a second item template, a
-    /// second selection rule and a second place for the count badge to live, for one level of depth.
-    /// A flag the template indents on is the whole feature.
-    /// </para>
+    /// A per-kind entry under Workloads. Kept as a flag rather than a nesting level: it decides
+    /// nothing about layout any more — the group heading is the grouping — but it is still how the
+    /// nav tells its own generated entries apart from the fixed ones when it rebuilds them.
     /// </summary>
     public bool IsChild { get; }
-
-    /// <summary>Whether this item has children and is currently showing them.</summary>
-    [ObservableProperty]
-    private bool _isExpanded;
-
-    /// <summary>Whether to draw the expand chevron at all.</summary>
-    [ObservableProperty]
-    private bool _hasChildren;
 
     [ObservableProperty]
     private bool _isSelected;

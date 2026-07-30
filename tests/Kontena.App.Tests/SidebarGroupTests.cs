@@ -67,6 +67,27 @@ public sealed class SidebarGroupTests
     }
 
     [Fact]
+    public void The_workloads_entry_no_longer_repeats_its_own_heading()
+    {
+        // The group heading says Workloads; a row underneath saying the same word, with a chevron that
+        // reveals what the heading already groups, is the same idea told twice. The row is named for
+        // the page it opens instead — the dashboard across all kinds.
+        var shell = Shell();
+        shell.NavGroups.Clear();
+
+        // Reached through the cluster nav builder rather than constructed here, so the test fails if
+        // the label is changed in one place and not the other.
+        typeof(MainWindowViewModel)
+            .GetMethod("SetClusterNav", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(shell, null);
+
+        var workloads = shell.NavGroups.Single(g => g.Label == "Workloads");
+
+        Assert.Equal("All workloads", workloads.Items.Single(i => i.Key == "workloads").Label);
+        Assert.DoesNotContain(workloads.Items, i => i.Label == workloads.Label);
+    }
+
+    [Fact]
     public void A_group_without_a_label_still_holds_its_items()
     {
         // HasLabel drives whether the heading renders; it must not gate the items themselves.
