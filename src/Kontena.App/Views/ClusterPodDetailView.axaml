@@ -121,11 +121,42 @@
             <!-- Overview -->
             <ScrollViewer IsVisible="{Binding IsOverviewSelected}">
                 <StackPanel Spacing="16">
-                    <Border IsVisible="{Binding HasDiagnostic}" Background="#F5B14C1A" BorderBrush="#F5B14C55" BorderThickness="1" CornerRadius="10" Padding="14,11">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Ellipse Width="8" Height="8" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding DiagnosticText}" Foreground="{DynamicResource Text}" FontSize="12.5" TextWrapping="Wrap"/>
-                        </StackPanel>
+                    <!-- Diagnosis (KON-150): only present when the rules recognised the case. There is
+                         no "could not determine" state on purpose — a wrong explanation costs more
+                         than a missing one. -->
+                    <Border IsVisible="{Binding HasDiagnosis}" Background="{DynamicResource WarnSoft}"
+                            BorderBrush="{DynamicResource WarnSoftBorder}" BorderThickness="1" CornerRadius="10" Padding="16,14">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Path Grid.Column="0" Classes="icon" Width="17" Height="17" Margin="0,1,12,0"
+                                  Stroke="{DynamicResource Warn}" Data="{StaticResource IconWarning}" VerticalAlignment="Top"/>
+                            <StackPanel Grid.Column="1" Spacing="8">
+                                <TextBlock Text="{Binding DiagnosisTitle}" FontSize="13.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding DiagnosisExplanation}" FontSize="12.5"
+                                           Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+
+                                <!-- The facts it was read off, verbatim, so the conclusion can be checked
+                                     instead of taken. -->
+                                <ItemsControl ItemsSource="{Binding DiagnosisEvidence}" Margin="0,2,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                       Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap" Margin="0,0,0,3"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0" IsVisible="{Binding HasDiagnosisSuggestion}">
+                                    <TextBlock Grid.Column="0" Text="{Binding DiagnosisSuggestion}" FontSize="12.5"
+                                               Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                               VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <Button Grid.Column="1" Classes="pill" VerticalAlignment="Center"
+                                            IsVisible="{Binding HasDiagnosisAction}"
+                                            Content="{Binding DiagnosisActionLabel}"
+                                            Command="{Binding FollowDiagnosisCommand}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
                     </Border>
 
                     <TextBlock Text="Containers" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
@@ -178,7 +209,7 @@
 
             <!-- Logs -->
             <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsLogsSelected}">
-                <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="0,0,0,12">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,12">
                     <Border Grid.Column="0" Height="34" HorizontalAlignment="Stretch" Margin="0,0,8,0"
                             Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
                             CornerRadius="8" Padding="11,0">
@@ -189,10 +220,15 @@
                                      Text="{Binding LogFilter, Mode=TwoWay}" VerticalAlignment="Center" Background="Transparent" BorderThickness="0"/>
                         </DockPanel>
                     </Border>
-                    <Button Grid.Column="1" Classes="pill" Classes.on="{Binding AutoScroll}" Margin="8,0,0,0" Command="{Binding ToggleFollowCommand}">Follow</Button>
-                    <Button Grid.Column="2" Classes="pill" Classes.on="{Binding ShowTimestamps}" Margin="8,0,0,0" Command="{Binding ToggleTimestampsCommand}">Timestamps</Button>
-                    <Button Grid.Column="3" Classes="pill" Classes.on="{Binding Wrap}" Margin="8,0,0,0" Command="{Binding ToggleWrapCommand}">Wrap</Button>
-                    <Button Grid.Column="4" Classes="pill" Margin="8,0,0,0" Command="{Binding ClearLogsCommand}">Clear</Button>
+                    <!-- Only where there was an earlier run: on a container that never restarted this
+                         would open an empty console, which reads as "it logged nothing" (KON-150). -->
+                    <Button Grid.Column="1" Classes="pill" Classes.on="{Binding ShowPreviousLogs}" Margin="8,0,0,0"
+                            IsVisible="{Binding HasPreviousRun}" Command="{Binding TogglePreviousLogsCommand}"
+                            ToolTip.Tip="Show the logs of the run that ended">Previous run</Button>
+                    <Button Grid.Column="2" Classes="pill" Classes.on="{Binding AutoScroll}" Margin="8,0,0,0" Command="{Binding ToggleFollowCommand}">Follow</Button>
+                    <Button Grid.Column="3" Classes="pill" Classes.on="{Binding ShowTimestamps}" Margin="8,0,0,0" Command="{Binding ToggleTimestampsCommand}">Timestamps</Button>
+                    <Button Grid.Column="4" Classes="pill" Classes.on="{Binding Wrap}" Margin="8,0,0,0" Command="{Binding ToggleWrapCommand}">Wrap</Button>
+                    <Button Grid.Column="5" Classes="pill" Margin="8,0,0,0" Command="{Binding ClearLogsCommand}">Clear</Button>
                 </Grid>
                 <Border Grid.Row="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                     <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"

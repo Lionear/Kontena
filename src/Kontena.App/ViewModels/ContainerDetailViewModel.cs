@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
 using Kontena.Sdk.Models;
 using Kontena.Sdk;
+using Kontena.Core.Diagnostics;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 
@@ -198,8 +199,52 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
         finally
         {
             InspectLoading = false;
+            Diagnose();
         }
     }
+
+    // ── Diagnosis (KON-150) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Why this container is not running, when the rules recognise the case. Null means no block is
+    /// shown at all: an explanation that might be wrong is worse than none.
+    /// </summary>
+    [ObservableProperty] private Diagnosis? _diagnosis;
+
+    private ContainerStats? _lastStats;
+
+    public bool HasDiagnosis => Diagnosis is not null;
+    public string DiagnosisTitle => Diagnosis?.Title ?? string.Empty;
+    public string DiagnosisExplanation => Diagnosis?.Explanation ?? string.Empty;
+    public IReadOnlyList<string> DiagnosisEvidence => Diagnosis?.Evidence ?? [];
+    public string DiagnosisSuggestion => Diagnosis?.Suggestion ?? string.Empty;
+    public bool HasDiagnosisSuggestion => Diagnosis?.Suggestion is { Length: > 0 };
+
+    /// <summary>Only the destinations this page has. Anything else leaves the suggestion as text.</summary>
+    public string DiagnosisActionLabel => Diagnosis?.Action switch
+    {
+        DiagnosisAction.Logs or DiagnosisAction.PreviousLogs => "Logs",
+        _ => string.Empty,
+    };
+
+    public bool HasDiagnosisAction => DiagnosisActionLabel.Length > 0;
+
+    partial void OnDiagnosisChanged(Diagnosis? value)
+    {
+        OnPropertyChanged(nameof(HasDiagnosis));
+        OnPropertyChanged(nameof(DiagnosisTitle));
+        OnPropertyChanged(nameof(DiagnosisExplanation));
+        OnPropertyChanged(nameof(DiagnosisEvidence));
+        OnPropertyChanged(nameof(DiagnosisSuggestion));
+        OnPropertyChanged(nameof(HasDiagnosisSuggestion));
+        OnPropertyChanged(nameof(DiagnosisActionLabel));
+        OnPropertyChanged(nameof(HasDiagnosisAction));
+    }
+
+    private void Diagnose() => Diagnosis = ContainerDiagnosis.Diagnose(_c, Inspect, _lastStats);
+
+    [RelayCommand]
+    private void FollowDiagnosis() => SelectedTab = "logs";
 
     // ── Live stats strip ──────────────────────────────────────────────────────
 
@@ -213,6 +258,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
 
     private void ApplyStats(ContainerStats s)
     {
+        _lastStats = s;
         CpuText = $"{s.CpuPercent:0.0}%";
         CpuPercent = Math.Clamp(s.CpuPercent, 0, 100);
         MemUsedText = Format.Size(s.MemoryUsedBytes);
@@ -302,6 +348,11 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     {
         _cts = new CancellationTokenSource();
         _ = StreamLogsAsync(_cts.Token);
+
+        // Not lazy like the Inspect tab any more: the exit code and the OOM flag live in the same
+        // payload, and they are what the diagnosis is read from (KON-150).
+        _ = LoadInspectAsync();
+
         if (SupportsStats && IsRunning)
             _ = StreamStatsAsync(_cts.Token);
     }

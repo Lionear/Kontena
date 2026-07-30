@@ -12,7 +12,7 @@
              x:DataType="vm:ContainerDetailViewModel"
              x:Name="Root">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
 
         <!-- Header -->
         <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
@@ -142,7 +142,7 @@
         </Border>
 
         <!-- Live stat strip -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" ColumnSpacing="12" Margin="24,16"
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" ColumnSpacing="12" Margin="24,16,24,0"
               IsVisible="{Binding SupportsStats}">
             <Border Grid.Column="0" Classes="card" Padding="14,12">
                 <StackPanel Orientation="Horizontal" Spacing="12">
@@ -190,8 +190,42 @@
             </Border>
         </Grid>
 
+        <!-- Diagnosis (KON-150): shown on every tab, because "why is it not running" is the question
+             you arrive with. Absent unless the rules recognised the case — no "unknown" state. -->
+        <Border Grid.Row="2" Margin="24,16,24,0" IsVisible="{Binding HasDiagnosis}"
+                Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                BorderThickness="1" CornerRadius="10" Padding="16,14">
+            <Grid ColumnDefinitions="Auto,*">
+                <Path Grid.Column="0" Classes="icon" Width="17" Height="17" Margin="0,1,12,0"
+                      Stroke="{DynamicResource Warn}" Data="{StaticResource IconWarning}" VerticalAlignment="Top"/>
+                <StackPanel Grid.Column="1" Spacing="8">
+                    <TextBlock Text="{Binding DiagnosisTitle}" FontSize="13.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding DiagnosisExplanation}" FontSize="12.5"
+                               Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                    <ItemsControl ItemsSource="{Binding DiagnosisEvidence}" Margin="0,2,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                           Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap" Margin="0,0,0,3"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0" IsVisible="{Binding HasDiagnosisSuggestion}">
+                        <TextBlock Grid.Column="0" Text="{Binding DiagnosisSuggestion}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Button Grid.Column="1" Classes="pill" VerticalAlignment="Center"
+                                IsVisible="{Binding HasDiagnosisAction}"
+                                Content="{Binding DiagnosisActionLabel}"
+                                Command="{Binding FollowDiagnosisCommand}"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- Tab content -->
-        <Panel Grid.Row="2" Margin="24,0,24,24">
+        <Panel Grid.Row="3" Margin="24,16,24,24">
 
             <!-- Logs -->
             <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsLogsSelected}">
