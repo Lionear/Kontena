@@ -83,7 +83,7 @@
             </Border>
 
             <!-- ── Footer ─────────────────────────────────────────────── -->
-            <Border DockPanel.Dock="Bottom" Background="{DynamicResource Raised}"
+            <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceRaised}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
                 <Grid Margin="22,14" ColumnDefinitions="Auto,*,Auto,Auto">
                     <Button Grid.Column="0" Classes="ghost" Command="{Binding BackCommand}"
