@@ -14,7 +14,7 @@
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="MinHeight" Value="0"/>
             <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
@@ -28,7 +28,7 @@
         <Style Selector="ComboBox.fieldinput">
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="10,7"/>
             <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
             <Setter Property="FontSize" Value="13"/>
@@ -44,7 +44,7 @@
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Width" Value="32"/>
             <Setter Property="Height" Value="32"/>
             <Setter Property="Padding" Value="0"/>
@@ -56,7 +56,7 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="{DynamicResource PrimaryDim}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="8,7"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -68,13 +68,13 @@
     </UserControl.Styles>
 
     <Border Width="660" MaxHeight="760" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <Grid RowDefinitions="Auto,*,Auto">
 
             <!-- Header -->
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="24,20"
                   Background="Transparent">
-                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="9" Background="{DynamicResource PrimarySoft}">
+                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="{StaticResource RadiusSm}" Background="{DynamicResource PrimarySoft}">
                     <Path Classes="icon" Width="19" Height="19" Stroke="{DynamicResource Primary}" Data="{StaticResource IconPlay}"/>
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
@@ -108,13 +108,13 @@
                             </Button>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="2,8,0,0">
-                            <Border CornerRadius="6" Padding="9,4" Background="#34D39916" IsVisible="{Binding IsImageLocal}">
+                            <Border CornerRadius="{StaticResource RadiusSm}" Padding="9,4" Background="#34D39916" IsVisible="{Binding IsImageLocal}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <Ellipse Width="6" Height="6" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
                                     <TextBlock Text="Found locally" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
                                 </StackPanel>
                             </Border>
-                            <Border CornerRadius="6" Padding="9,4" Background="#5AB8FF16"
+                            <Border CornerRadius="{StaticResource RadiusSm}" Padding="9,4" Background="#5AB8FF16"
                                     IsVisible="{Binding IsImagePulled}" IsEnabled="{Binding !IsPulling}">
                                 <TextBlock Text="Will be pulled before start" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Info}"/>
                             </Border>
@@ -177,7 +177,7 @@
                     <!-- Environment -->
                     <StackPanel>
                         <TextBlock Classes="flabel" Text="Environment variables"/>
-                        <Border IsVisible="{Binding HasRecipe}" Background="{DynamicResource PrimarySoft}" CornerRadius="7"
+                        <Border IsVisible="{Binding HasRecipe}" Background="{DynamicResource PrimarySoft}" CornerRadius="{StaticResource RadiusSm}"
                                 Padding="10,6" Margin="0,0,0,8">
                             <StackPanel Orientation="Horizontal" Spacing="7">
                                 <Path Classes="icon" Width="13" Height="13" Stroke="{DynamicResource Primary}" Data="{StaticResource IconInfo}"

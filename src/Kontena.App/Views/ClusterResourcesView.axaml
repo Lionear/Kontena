@@ -11,7 +11,7 @@
         <Style Selector="Button.kind">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="10,7"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
@@ -31,7 +31,7 @@
 
         <!-- The kinds the cluster serves, asked for rather than assumed. -->
         <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource Surface}"
-                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"
+                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
                 Padding="10" Margin="0,0,16,0">
             <Grid RowDefinitions="Auto,*">
                 <TextBox Grid.Row="0" Text="{Binding KindSearch}" PlaceholderText="Filter kinds…" Margin="0,0,0,10"/>
@@ -84,7 +84,7 @@
             </Grid>
 
             <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="1" CornerRadius="10" Padding="4" ClipToBounds="True">
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="4" ClipToBounds="True">
                 <ScrollViewer HorizontalScrollBarVisibility="Auto">
                     <!-- Built in code: the number of columns is the server's answer, not something a
                          template can be written against. -->
@@ -108,7 +108,7 @@
             <StackPanel Grid.Row="2" Margin="0,10,0,0" Spacing="8">
                 <Border IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                         Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource Danger}"
-                        BorderThickness="1" CornerRadius="8" Padding="14,10">
+                        BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="14,10">
                     <TextBlock Text="{Binding Error}" FontSize="12.5" Foreground="{DynamicResource Danger}"
                                TextWrapping="Wrap"/>
                 </Border>
@@ -121,7 +121,7 @@
         <!-- One object's manifest. The same for every kind, which is why it needs no model. -->
         <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding Manifest, Converter={x:Static ObjectConverters.IsNotNull}}"
                 Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                BorderThickness="1" CornerRadius="10">
+                BorderThickness="1" CornerRadius="{StaticResource Radius}">
             <Grid RowDefinitions="Auto,*">
                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="14,10">
                     <TextBlock Grid.Column="0" Text="{Binding ManifestTitle}" FontSize="13.5" FontWeight="SemiBold"

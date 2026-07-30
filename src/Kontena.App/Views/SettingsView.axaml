@@ -14,7 +14,7 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
             <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="FontSize" Value="13.5"/>
@@ -33,7 +33,7 @@
         <Style Selector="Button.seg">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
-            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="FontSize" Value="12.5"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -57,7 +57,7 @@
             <Setter Property="Foreground" Value="{DynamicResource Text}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="MinWidth" Value="128"/>
             <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
@@ -140,7 +140,7 @@
                                 <TextBlock Text="Kontena follows your OS by default. Override it here." FontSize="12" Foreground="{DynamicResource TextDim}"/>
                             </StackPanel>
                             <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                    BorderThickness="1" CornerRadius="8" Padding="3" VerticalAlignment="Center">
+                                    BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="2">
                                     <Button Classes="seg" Classes.on="{Binding IsLightTheme}" Command="{Binding SetThemeCommand}" CommandParameter="light">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -437,7 +437,7 @@
                                        Text="An engine on another host appears in the switcher like a local one. Over SSH Kontena forwards the remote socket using your existing keys and agent; over TCP it needs TLS certificates."/>
 
                             <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                    BorderThickness="1" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                                    BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" HorizontalAlignment="Left">
                                 <StackPanel Orientation="Horizontal" Spacing="2">
                                     <Button Classes="seg" Classes.on="{Binding RemoteIsSsh}"
                                             Command="{Binding SetRemoteTransportCommand}" CommandParameter="ssh">
@@ -689,7 +689,7 @@
                                                    HorizontalAlignment="Left"/>
                                     </StackPanel>
                                     <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                            BorderThickness="1" CornerRadius="8" Padding="3" VerticalAlignment="Center">
+                                            BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal" Spacing="2">
                                             <Button Classes="seg" Classes.on="{Binding IsStableChannel}"
                                                     Command="{Binding SetUpdateChannelCommand}" CommandParameter="stable">
@@ -709,7 +709,7 @@
 
                                 <!-- Why the channel is what it is, when nobody picked it (KON-123). -->
                                 <Border Background="{DynamicResource InfoSoft}" Margin="18,0,18,15" Padding="12,10"
-                                        CornerRadius="9" IsVisible="{Binding IsFollowingBuildChannel}">
+                                        CornerRadius="{StaticResource RadiusSm}" IsVisible="{Binding IsFollowingBuildChannel}">
                                     <TextBlock Text="{Binding FollowingBuildNote}" FontSize="12.5"
                                                TextWrapping="Wrap" LineHeight="19" MaxWidth="620"
                                                HorizontalAlignment="Left" Foreground="{DynamicResource Text}"/>

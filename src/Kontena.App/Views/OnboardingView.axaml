@@ -11,7 +11,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="Padding" Value="16"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -31,7 +31,7 @@
         <Style Selector="Border.radio">
             <Setter Property="Width" Value="20"/>
             <Setter Property="Height" Value="20"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="BorderThickness" Value="2"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -44,7 +44,7 @@
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="18,11"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Button.ob.ghost">
@@ -64,7 +64,7 @@
 
     <Border Width="640" MaxWidth="640"
             Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True">
         <StackPanel>
 
             <!-- Header -->
@@ -137,7 +137,7 @@
                 </ItemsControl>
 
                 <!-- Install assist -->
-                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"
+                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
                         Background="{DynamicResource SurfaceRaised}" Padding="16,14">
                     <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                         <TextBlock Grid.Column="0" FontSize="12.5" Foreground="{DynamicResource TextDim}"

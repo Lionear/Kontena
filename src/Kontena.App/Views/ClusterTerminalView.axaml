@@ -16,7 +16,7 @@
              environment it starts in, and an environment you cannot see is one you end up checking
              with kubectl config current-context anyway. -->
         <WrapPanel Grid.Row="1" Margin="0,10,0,16" ItemSpacing="8" LineSpacing="8">
-            <Border Background="{DynamicResource Surface2}" CornerRadius="6" Padding="9,5">
+            <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="9,5">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                     <TextBlock Text="context" FontSize="11.5" Foreground="{DynamicResource TextFaint}"
                                VerticalAlignment="Center"/>
@@ -24,7 +24,7 @@
                                Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
-            <Border Background="{DynamicResource Surface2}" CornerRadius="6" Padding="9,5"
+            <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="9,5"
                     IsVisible="{Binding HasNamespace}">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                     <TextBlock Text="namespace" FontSize="11.5" Foreground="{DynamicResource TextFaint}"
@@ -33,7 +33,7 @@
                                Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
-            <Border Background="{DynamicResource Surface2}" CornerRadius="6" Padding="9,5">
+            <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="9,5">
                 <TextBlock Text="k = kubectl" FontFamily="{StaticResource Mono}" FontSize="12"
                            Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
             </Border>

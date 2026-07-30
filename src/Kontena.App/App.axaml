@@ -1,7 +1,8 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Kontena.App.App"
-             xmlns:local="using:Kontena.App">
+             xmlns:local="using:Kontena.App"
+             xmlns:sys="using:System">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
@@ -128,11 +129,52 @@
 
             <!-- List-row content margin; swapped live by DensityApplier for compact density. -->
             <Thickness x:Key="RowMargin">18,11</Thickness>
+
+            <!-- The radius scale (KON-220). Three steps, not a collection: small things that sit
+                 inside something else, panels, and surfaces that float above the page. Values that
+                 stay off the scale on purpose: 0 where a shape is deliberately square; 2, 3, 4 and 5
+                 on elements only a few pixels tall, where 6 reads as a lozenge; 16 and 18 on the
+                 64–72px empty-state tiles, whose radius tracks the box rather than the scale; and
+                 20/999 where the shape is a capsule and not a rounded rectangle. -->
+            <CornerRadius x:Key="RadiusSm">6</CornerRadius>
+            <CornerRadius x:Key="Radius">10</CornerRadius>
+            <CornerRadius x:Key="RadiusLg">14</CornerRadius>
+
+            <!-- One duration and one curve for the whole app, so hover states settle instead of
+                 snapping. Applied to the sidebar and to buttons only: animating rows and tables makes
+                 a list feel slow rather than considered.
+                 Avalonia 12.1 exposes no reduced-motion signal — there is no platform setting to read
+                 and no media query, checked against the assembly rather than assumed (KON-230). The
+                 answer until there is one is a duration short enough that it cannot induce discomfort,
+                 which is what the design system asks for when the signal is missing. -->
+            <sys:TimeSpan x:Key="EaseDuration">0:0:0.18</sys:TimeSpan>
+            <SplineEasing x:Key="Ease" X1="0.4" Y1="0" X2="0.2" Y2="1"/>
         </ResourceDictionary>
     </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
+
+        <!-- The app's only motion (KON-220). On the ContentPresenter because that is the part these
+             styles colour, and on Background alone: fading the label as well makes the text look out
+             of focus for a fifth of a second, which is the opposite of the point. Deliberately not on
+             list rows or table cells — hover animation on a dense grid reads as lag, not polish. -->
+        <Style Selector="Button.nav /template/ ContentPresenter">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="{StaticResource EaseDuration}"
+                                     Easing="{StaticResource Ease}"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.primary /template/ ContentPresenter, Button.pill /template/ ContentPresenter, Button.ghost /template/ ContentPresenter">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="{StaticResource EaseDuration}"
+                                     Easing="{StaticResource Ease}"/>
+                </Transitions>
+            </Setter>
+        </Style>
 
         <!-- Sidebar nav button -->
         <Style Selector="Button.nav">
@@ -141,7 +183,7 @@
             <Setter Property="Padding" Value="11,9"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="FontSize" Value="13.5"/>
             <Setter Property="FontWeight" Value="Medium"/>
         </Style>
@@ -161,7 +203,7 @@
             <Setter Property="Background" Value="{DynamicResource Primary}"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryInk}"/>
             <Setter Property="Padding" Value="15,9"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <!-- The confirm button of a destructive dialog. Until KON-126 it rendered as .primary, so the
@@ -174,7 +216,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
             <Setter Property="Padding" Value="15,9"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -187,7 +229,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="Padding" Value="15"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
@@ -207,7 +249,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="Padding" Value="17,16"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
@@ -226,7 +268,7 @@
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Width" Value="30"/>
             <Setter Property="Height" Value="30"/>
             <Setter Property="Padding" Value="0"/>
@@ -288,7 +330,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="Padding" Value="16,14"/>
         </Style>
 
@@ -361,7 +403,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="11,7"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
             <Setter Property="FontSize" Value="12.5"/>

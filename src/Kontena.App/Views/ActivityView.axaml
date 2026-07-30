@@ -68,7 +68,7 @@
 
         <!-- Feed -->
         <Border Grid.Row="2" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
             <Panel>
                 <ScrollViewer>
                     <ItemsControl ItemsSource="{Binding Items}">
@@ -80,7 +80,7 @@
                                                    FontSize="12" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
 
                                         <Panel Grid.Column="1" Width="32" Height="32">
-                                            <Border CornerRadius="9" Opacity="0.16"
+                                            <Border CornerRadius="{StaticResource RadiusSm}" Opacity="0.16"
                                                     Background="{Binding AccentKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"/>
                                             <Path Classes="icon" Width="16" Height="16"
                                                   Stroke="{Binding AccentKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"

@@ -22,7 +22,7 @@
             <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextDim}"/>
 
             <Border IsVisible="{Binding HasItems}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <Grid Margin="18,12" ColumnDefinitions="1.4*,.8*,.7*,1.2*,1.4*,68">
@@ -43,7 +43,7 @@
                                                        FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource Text}"/>
                                             <TextBlock Text="{Binding Kind}" FontSize="11" Foreground="{DynamicResource TextFaint}"/>
                                         </StackPanel>
-                                        <Border Grid.Column="1" CornerRadius="6" Padding="8,3" HorizontalAlignment="Left"
+                                        <Border Grid.Column="1" CornerRadius="{StaticResource RadiusSm}" Padding="8,3" HorizontalAlignment="Left"
                                                 VerticalAlignment="Center" Background="{DynamicResource Surface2}">
                                             <TextBlock Text="{Binding Driver}" FontFamily="{StaticResource Mono}" FontSize="11.5"
                                                        FontWeight="SemiBold" Foreground="{Binding DriverBrush}"/>
@@ -79,12 +79,12 @@
             <!-- Two different nothings (KON-189). A search with no hits used to leave the same bare page
                  as an engine with none at all, which reads as a page that failed to load. -->
             <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
                 <TextBlock Text="No networks match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
 
             <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
                 <TextBlock Text="No networks on this engine yet. Create one to connect containers."
                            FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
