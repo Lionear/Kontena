@@ -152,6 +152,62 @@ public sealed class ClusterTerminalsTests
         Assert.Equal("argocd", page.Terminals[^1].Namespace);
     }
 
+    /// <summary>
+    /// While a terminal is in its own window the page must hold nothing at all, not a hidden view. A
+    /// hidden view is still a view, and it would attach to the session the window is showing — one
+    /// viewer at a time is the reason detaching moves rather than mirrors (KON-217).
+    /// </summary>
+    [Fact]
+    public void A_detached_terminal_is_not_drawn_on_the_page()
+    {
+        var terminals = new ClusterTerminals();
+        var page = Page(terminals);
+
+        Assert.NotNull(page.Shown);
+        Assert.False(page.IsSelectedDetached);
+
+        page.Selected!.IsDetached = true;
+
+        Assert.Null(page.Shown);
+        Assert.True(page.IsSelectedDetached);
+    }
+
+    /// <summary>
+    /// The window outlives the page, so closing it has to reach a page that is already open — which is
+    /// what the terminal's own notification is for.
+    /// </summary>
+    [Fact]
+    public void Closing_the_window_puts_the_terminal_back_on_a_page_that_is_already_open()
+    {
+        var terminals = new ClusterTerminals();
+        var page = Page(terminals);
+        page.Selected!.IsDetached = true;
+
+        page.Selected.IsDetached = false;
+
+        Assert.NotNull(page.Shown);
+        Assert.False(page.IsSelectedDetached);
+    }
+
+    /// <summary>
+    /// Closing the tab of a terminal that is off in its own window has to take the window with it, or it
+    /// stands there showing a shell that has already been torn down.
+    /// </summary>
+    [Fact]
+    public async Task Closing_a_detached_terminal_tells_its_window_to_go()
+    {
+        var terminals = new ClusterTerminals();
+        var terminal = terminals.Add(Backend, Request());
+        terminal.IsDetached = true;
+
+        var told = false;
+        terminal.Closed += () => told = true;
+
+        await terminals.CloseAsync(terminal);
+
+        Assert.True(told);
+    }
+
     private static ClusterTerminalsViewModel Page(ClusterTerminals terminals) =>
         new(terminals, Backend, () => Request(), () => Font, () => { });
 }

@@ -25,6 +25,43 @@ public sealed class ClusterTerminal(string backend, string id, string title, Clu
     public ClusterShellRequest Request { get; } = request;
 
     private RetainedShellSession? _session;
+    private bool _detached;
+
+    /// <summary>
+    /// Whether this terminal is showing in a window of its own (KON-217).
+    /// <para>
+    /// It moves rather than mirrors: <see cref="RetainedShellSession"/> serves one viewer at a time on
+    /// purpose, and two emulators rendering the same bytes would disagree the moment their windows were
+    /// different sizes — a PTY has one size, so one of the two would be showing nonsense.
+    /// </para>
+    /// </summary>
+    public bool IsDetached
+    {
+        get => _detached;
+        set
+        {
+            if (_detached == value)
+                return;
+
+            _detached = value;
+            DetachedChanged?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Raised when it moves in or out of its own window. The page listens because the window outlives
+    /// it: closing the window has to put the terminal back on a page that may already be open.
+    /// </summary>
+    public event Action? DetachedChanged;
+
+    /// <summary>
+    /// Raised when the terminal is closed for good. Its window listens: closing the tab of a terminal
+    /// that is off in a window of its own would otherwise leave that window standing with a shell that
+    /// has already been torn down.
+    /// </summary>
+    public event Action? Closed;
+
+    internal void RaiseClosed() => Closed?.Invoke();
 
     /// <summary>True while a shell is running for this terminal.</summary>
     public bool IsRunning => _session is { HasEnded: false };
@@ -131,6 +168,7 @@ public sealed class ClusterTerminals : IAsyncDisposable
         if (_selected.TryGetValue(terminal.Backend, out var selected) && selected == terminal.Id)
             _selected.Remove(terminal.Backend);
 
+        terminal.RaiseClosed();
         await terminal.EndAsync().ConfigureAwait(false);
     }
 
