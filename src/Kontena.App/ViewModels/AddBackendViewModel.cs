@@ -67,7 +67,7 @@ public partial class ProbeStepViewModel : ViewModelBase
 /// <param name="Detail">Endpoint or source file.</param>
 /// <param name="Chip">Switcher chip, so the row is recognisable.</param>
 /// <param name="Connected">Whether it answered the last probe.</param>
-public sealed record DetectedBackend(string Name, string Detail, string Chip, bool Connected)
+public sealed record DetectedBackend(string Name, string Detail, BackendChipInfo Chip, bool Connected)
 {
     public string Status => Connected ? "in your switcher" : "not answering";
 }
@@ -289,7 +289,7 @@ public partial class AddBackendViewModel : ViewModelBase
             Detected.Add(new DetectedBackend(
                 probe.Provider.DisplayName,
                 probe.Detail ?? string.Empty,
-                probe.Provider.Chip,
+                BackendChipInfo.For(probe.Provider),
                 probe.Connected));
         }
 

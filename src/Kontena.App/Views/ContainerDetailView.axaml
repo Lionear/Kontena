@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:behaviors="using:Kontena.App.Behaviors"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:models="using:Kontena.Core.Models"
@@ -32,10 +33,7 @@
                             </StackPanel>
                         </Border>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Width="17" Height="17" CornerRadius="4" Background="{DynamicResource DockerChip}">
-                                <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}" FontSize="9" FontWeight="Bold"
-                                           Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
+                            <controls:BackendChip Chip="{Binding BackendChip}" ChipSize="17"/>
                             <TextBlock Text="{Binding Backend}" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Border Background="{DynamicResource PrimarySoft}" CornerRadius="20" Padding="10,4" VerticalAlignment="Center"

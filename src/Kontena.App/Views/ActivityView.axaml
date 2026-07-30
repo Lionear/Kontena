@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:conv="using:Kontena.App.Converters"
              x:Class="Kontena.App.Views.ActivityView"
@@ -101,11 +102,7 @@
 
                                         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                <Border Width="16" Height="16" CornerRadius="4" Background="{DynamicResource Surface2}">
-                                                    <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontSize="9"
-                                                               FontWeight="Bold" Foreground="{DynamicResource TextDim}"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
+                                                <controls:BackendChip Chip="{Binding Chip}" ChipSize="16"/>
                                                 <TextBlock Text="{Binding Backend}" FontSize="11" Foreground="{DynamicResource TextFaint}"/>
                                             </StackPanel>
                                             <TextBlock Text="{Binding Ago}" FontFamily="{StaticResource Mono}" FontSize="11.5"

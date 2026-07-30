@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -300,11 +301,7 @@
                                                         <TextBlock Text="{Binding Service}" FontFamily="{StaticResource Mono}"
                                                                    FontSize="10" Foreground="{DynamicResource TextFaint}"/>
                                                     </Border>
-                                                    <Border Width="16" Height="16" CornerRadius="4" Background="{DynamicResource DockerChip}">
-                                                        <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}"
-                                                                   FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Info}"
-                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    </Border>
+                                                    <controls:BackendChip Chip="{Binding BackendChip}" ChipSize="16"/>
                                                     <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                                Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                                                     <Border Background="{DynamicResource PrimarySoft}" CornerRadius="20" Padding="7,1"

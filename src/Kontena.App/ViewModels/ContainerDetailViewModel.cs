@@ -56,7 +56,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
 
     public string Name => _c.Name;
     public string Backend => _c.Backend;
-    public string BackendChip => _c.Backend.Length > 0 ? _c.Backend[..1].ToUpperInvariant() : "?";
+    public BackendChipInfo BackendChip => BackendChips.For(_c.Backend);
     public string ImageText => _c.Image;
     public string ShortId => _c.Id.Length > 12 ? _c.Id[..12] : _c.Id;
     public string CreatedText => Format.Age(_c.CreatedAt);

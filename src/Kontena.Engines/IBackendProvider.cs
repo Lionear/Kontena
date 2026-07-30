@@ -24,6 +24,13 @@ public interface IBackendProvider
     /// <summary>Single-letter/short chip for the switcher, e.g. "D", "P", "K8s".</summary>
     string Chip { get; }
 
+    /// <summary>
+    /// The mark and colour for this backend's chip, or null to fall back to <see cref="Chip"/> as a
+    /// letter badge (KON-80). Null is the default so an adapter — including a third-party one — is not
+    /// forced to draw a logo it does not have; the demo backends use it deliberately.
+    /// </summary>
+    BackendChipStyle? ChipStyle => null;
+
     /// <summary>Which axis this backend belongs to — drives switcher grouping and UI mode.</summary>
     BackendKind Kind { get; }
 

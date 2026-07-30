@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -275,10 +276,7 @@
 
                 <Grid ColumnDefinitions="*,Auto" Margin="24,16">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                        <Border Width="20" Height="20" CornerRadius="5" Background="{DynamicResource DockerChip}">
-                            <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="10"
-                                       Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
+                        <controls:BackendChip Chip="{Binding BackendChip}" ChipSize="20"/>
                         <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center">
                             <Run Text="Running on"/><Run Text=" "/><Run Text="{Binding BackendName}" FontWeight="SemiBold"/>
                         </TextBlock>

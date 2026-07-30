@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -331,10 +332,7 @@
                                 <DataTemplate x:DataType="vm:EngineListItem">
                                     <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                         <Grid Margin="18,14" ColumnDefinitions="Auto,*">
-                                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9" Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="16"
-                                                           Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Border>
+                                            <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="38" VerticalAlignment="Center"/>
                                             <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Spacing="3">
                                                 <StackPanel Orientation="Horizontal" Spacing="9">
                                                     <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
@@ -420,12 +418,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:BackendNameRow">
                                         <Grid Margin="0,0,0,9" ColumnDefinitions="Auto,*">
-                                            <Border Grid.Column="0" Width="32" Height="32" CornerRadius="8"
-                                                    Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}"
-                                                           FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Info}"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Border>
+                                            <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="32" VerticalAlignment="Center"/>
                                             <TextBox Grid.Column="1" Margin="12,0,0,0"
                                                      Text="{Binding Name, Mode=TwoWay}"
                                                      PlaceholderText="{Binding SourceName}"/>

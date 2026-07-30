@@ -25,6 +25,10 @@ public sealed class RemoteDockerEngineProvider : IBackendProvider
     /// <summary>
     /// "R" rather than Docker's "D": in a switcher holding both, which entry is the one on the server is
     /// the thing worth being able to tell at a glance.
+    /// <para>
+    /// And no logo, for the same reason (KON-80): a remote engine *is* Docker, so the whale would say
+    /// something true and lose the only thing that told it apart from the socket next to it.
+    /// </para>
     /// </summary>
     public string Chip => "R";
 
