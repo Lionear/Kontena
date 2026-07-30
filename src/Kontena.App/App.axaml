@@ -29,6 +29,12 @@
                          disappears against a bluer, darker Bg; WCAG sets no bar for purely decorative
                          dividers, so this is a legibility call rather than a contrast one. -->
                     <SolidColorBrush x:Key="Border" Color="#2D334D"/>
+                    <!-- Row dividers *inside* a card, where the card's own Border is too loud: ten
+                         views asked for this and it existed nowhere, so those hairlines have been
+                         rendering as nothing at all (KON-218). The value is derived rather than
+                         picked — it sits at the same fraction between Surface and Border that the
+                         mockup's soft divider sits at on its own ladder. -->
+                    <SolidColorBrush x:Key="BorderSoft" Color="#212741"/>
                     <SolidColorBrush x:Key="Text" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="TextDim" Color="#9AA4B2"/>
                     <SolidColorBrush x:Key="TextFaint" Color="#808B9B"/>
@@ -75,6 +81,9 @@
                     <SolidColorBrush x:Key="Surface2" Color="#F0F3F6"/>
                     <SolidColorBrush x:Key="SidebarBg" Color="#FBFCFD"/>
                     <SolidColorBrush x:Key="Border" Color="#DCE1E8"/>
+                    <!-- The light ladder did not move under KON-130, so this is the mockup's own
+                         soft divider unchanged. -->
+                    <SolidColorBrush x:Key="BorderSoft" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="Text" Color="#1B2430"/>
                     <SolidColorBrush x:Key="TextDim" Color="#55606E"/>
                     <SolidColorBrush x:Key="TextFaint" Color="#65707F"/>
