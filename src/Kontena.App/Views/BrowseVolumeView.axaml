@@ -8,7 +8,7 @@
              x:Class="Kontena.App.Views.BrowseVolumeView"
              x:DataType="vm:BrowseVolumeViewModel">
     <Border Width="640" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <StackPanel>
 
             <!-- Header: which volume, and where in it -->

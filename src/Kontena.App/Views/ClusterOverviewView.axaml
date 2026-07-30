@@ -30,7 +30,7 @@
                         <Setter Property="Background" Value="{DynamicResource Surface}"/>
                         <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
                         <Setter Property="BorderThickness" Value="1"/>
-                        <Setter Property="CornerRadius" Value="10"/>
+                        <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
                         <Setter Property="Padding" Value="16,14"/>
                         <Setter Property="Margin" Value="0,0,10,0"/>
                     </Style>
@@ -68,7 +68,7 @@
             </Grid>
 
             <!-- Nodes table -->
-            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
                         <Grid ColumnDefinitions="2*,1.4*,1*,1.2*,1.2*">

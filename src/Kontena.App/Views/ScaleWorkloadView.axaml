@@ -24,7 +24,7 @@
     </UserControl.Styles>
 
     <Border Width="460" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <StackPanel>
             <StackPanel Margin="24,22,24,20" Spacing="16">
                 <StackPanel Spacing="4">
@@ -38,7 +38,7 @@
                     <TextBlock Text="Replicas" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                     <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
                         <Border Height="42" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                                BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                             <StackPanel Orientation="Horizontal">
                                 <Button Classes="stepper" Command="{Binding DecrementCommand}">
                                     <TextBlock Text="−" FontSize="19"/>

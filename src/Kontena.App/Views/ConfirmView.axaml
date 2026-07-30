@@ -8,13 +8,13 @@
              x:Class="Kontena.App.Views.ConfirmView"
              x:DataType="vm:ConfirmViewModel">
     <Border Width="520" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <StackPanel>
             <Grid Margin="24,22,24,20" ColumnDefinitions="Auto,*">
 
                 <!-- Only where something is actually destroyed. Signing out of a registry does not
                      deserve a warning mark, and a mark that appears everywhere stops meaning anything. -->
-                <Border Grid.Column="0" Width="38" Height="38" CornerRadius="10" Margin="0,0,15,0"
+                <Border Grid.Column="0" Width="38" Height="38" CornerRadius="{StaticResource Radius}" Margin="0,0,15,0"
                         VerticalAlignment="Top" Background="{DynamicResource DangerSoft}"
                         IsVisible="{Binding Destructive}">
                     <Path Classes="icon" Width="19" Height="19" Stroke="{DynamicResource Danger}"
@@ -29,7 +29,7 @@
                          you parse it to find out what you lose, a list lets you count it. -->
                     <Border IsVisible="{Binding HasDetails}" Background="{DynamicResource Surface2}"
                             BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                            CornerRadius="8" Padding="13,11">
+                            CornerRadius="{StaticResource RadiusSm}" Padding="13,11">
                         <ItemsControl ItemsSource="{Binding Details}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ConfirmDetail">

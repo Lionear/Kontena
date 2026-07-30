@@ -49,7 +49,7 @@
             </Grid>
 
             <Border IsVisible="{Binding PruneArmed}" Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
-                    BorderThickness="1" CornerRadius="10" Padding="14,12">
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="14,12">
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <Path Grid.Column="0" Classes="icon" Width="17" Height="17" Stroke="{DynamicResource Warn}"
                           Data="{StaticResource IconBroom}" VerticalAlignment="Center"/>
@@ -58,7 +58,7 @@
                     <Button Grid.Column="2" Classes="ghost" Command="{Binding CancelPruneCommand}" Margin="0,0,8,0">Cancel</Button>
                     <Button Grid.Column="3" Command="{Binding PruneCommand}"
                             Background="{DynamicResource DangerSoft}" Foreground="{DynamicResource Danger}"
-                            BorderBrush="{DynamicResource DangerSoftBorder}" BorderThickness="1" CornerRadius="8" Padding="14,7" FontWeight="SemiBold">
+                            BorderBrush="{DynamicResource DangerSoftBorder}" BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="14,7" FontWeight="SemiBold">
                         Remove containers
                     </Button>
                 </Grid>
@@ -174,7 +174,7 @@
 
             <!-- Container table -->
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="1" CornerRadius="10" ClipToBounds="True" IsVisible="{Binding HasAnyContainers}">
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True" IsVisible="{Binding HasAnyContainers}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <Grid Margin="18,12" ColumnDefinitions="24,1.6*,1.7*,1*,90,90,158">

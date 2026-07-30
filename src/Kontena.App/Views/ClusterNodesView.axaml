@@ -12,9 +12,9 @@
 
             <!-- No usage backend: explain the empty gauges instead of leaving dashes unexplained -->
             <Border IsVisible="{Binding ShowMetricsNotice}" Background="{DynamicResource Surface}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="16,13">
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,13">
                 <Grid ColumnDefinitions="Auto,*">
-                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="8" VerticalAlignment="Top"
+                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="{StaticResource RadiusSm}" VerticalAlignment="Top"
                             Background="{DynamicResource Surface2}">
                         <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Info}"
                               Data="{StaticResource IconGauge}" HorizontalAlignment="Center"/>
@@ -52,7 +52,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:NodeCardRow">
                         <Border Width="340" Margin="0,0,14,14" Background="{DynamicResource Surface}"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="12" Padding="18,16">
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
                             <StackPanel Spacing="14">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0" Spacing="3">
@@ -145,7 +145,7 @@
             <!-- Typing something with no hits leaves an empty page, which reads as a page that failed
                  to load rather than a search that found nothing (KON-164). -->
             <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="18,16">
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
                 <TextBlock Text="No nodes match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
         </StackPanel>

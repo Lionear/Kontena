@@ -7,7 +7,7 @@
              x:Class="Kontena.App.Views.NetworkAttachmentsView"
              x:DataType="vm:NetworkAttachmentsViewModel">
     <Border Width="560" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <StackPanel>
             <Grid Margin="24,20,20,16" ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Spacing="5">

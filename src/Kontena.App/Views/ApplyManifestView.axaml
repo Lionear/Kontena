@@ -15,7 +15,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="ClipToBounds" Value="True"/>
         </Style>
         <Style Selector="Border.panelhead">
@@ -41,7 +41,7 @@
         <Style Selector="Button.source">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="10,4"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
@@ -110,7 +110,7 @@
         <Style Selector="Button.chartrow">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="8,5"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -121,7 +121,7 @@
 
         <!-- Plan rows follow the design tokens, not the platform's selection blue -->
         <Style Selector="ListBoxItem">
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="9,5"/>
         </Style>
         <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
@@ -281,7 +281,7 @@
                                                 ToolTip.Tip="helm repo update">Update</Button>
                                     </Grid>
 
-                                    <Border Background="{DynamicResource Surface2}" CornerRadius="8" MaxHeight="180">
+                                    <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" MaxHeight="180">
                                         <ScrollViewer>
                                             <ItemsControl ItemsSource="{Binding Charts}" Margin="4">
                                                 <ItemsControl.ItemTemplate>
@@ -408,7 +408,7 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:ApplyPlanRow">
                                 <Grid ColumnDefinitions="26,*,Auto" Margin="0,3">
-                                    <Border Grid.Column="0" Width="26" Height="26" CornerRadius="7"
+                                    <Border Grid.Column="0" Width="26" Height="26" CornerRadius="{StaticResource RadiusSm}"
                                             Background="{DynamicResource Surface2}">
                                         <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource Mono}" FontSize="13"
                                                    FontWeight="Bold" Foreground="{Binding Accent}"

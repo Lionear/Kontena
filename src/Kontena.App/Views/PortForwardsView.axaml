@@ -35,12 +35,12 @@
             <!-- A reconnect that could not get its local port back -->
             <Border IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                     Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource Danger}"
-                    BorderThickness="1" CornerRadius="8" Padding="14,10">
+                    BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="14,10">
                 <TextBlock Text="{Binding Error}" FontSize="12.5" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"/>
             </Border>
 
             <Border IsVisible="{Binding HasAny}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
                         <Grid ColumnDefinitions="1.7*,0.7*,1.4*,0.9*,300">

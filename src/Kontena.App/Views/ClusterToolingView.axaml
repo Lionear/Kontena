@@ -42,7 +42,7 @@
                                                Foreground="{DynamicResource TextDim}"/>
 
                                     <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
-                                            BorderThickness="1" CornerRadius="8" Padding="11,9" Margin="0,7,0,0"
+                                            BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="11,9" Margin="0,7,0,0"
                                             IsVisible="{Binding IsOutdated}" MaxWidth="520" HorizontalAlignment="Left">
                                         <TextBlock Text="{Binding OutdatedConsequence}" FontSize="12.5" TextWrapping="Wrap"
                                                    Foreground="{DynamicResource WarnText}"/>
@@ -52,7 +52,7 @@
                                           HorizontalAlignment="Left" IsVisible="{Binding HasHint}">
                                         <Border Grid.Column="0" Background="{DynamicResource CodeSurface}"
                                                 BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                CornerRadius="8" Padding="11,8">
+                                                CornerRadius="{StaticResource RadiusSm}" Padding="11,8">
                                             <TextBlock Text="{Binding HintCommand}" FontFamily="{StaticResource Mono}"
                                                        FontSize="12" Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
                                         </Border>
@@ -97,7 +97,7 @@
                                  Foreground="{DynamicResource Primary}"/>
 
                     <Border Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
-                            BorderThickness="1" CornerRadius="10" Padding="13,11" MaxHeight="190">
+                            BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" MaxHeight="190">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding Output}">
                                 <ItemsControl.ItemTemplate>
@@ -112,7 +112,7 @@
                 </StackPanel>
 
                 <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerSoftBorder}"
-                        BorderThickness="1" CornerRadius="10" Padding="13,11" Margin="0,6,0,0"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" Margin="0,6,0,0"
                         IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <TextBlock Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap"
                                Foreground="{DynamicResource Text}"/>

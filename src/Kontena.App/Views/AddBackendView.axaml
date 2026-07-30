@@ -36,7 +36,7 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceRaised}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
         </Style>
 
         <!-- A whole row is the target, so the choice reads as one thing rather than a link inside a card. -->
@@ -44,7 +44,7 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceRaised}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
         <Style Selector="Button.choice:pointerover /template/ ContentPresenter">
@@ -54,7 +54,7 @@
     </UserControl.Styles>
 
     <Border Width="660" MaxHeight="700" Background="{DynamicResource Surface}"
-            BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="14"
+            BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource RadiusLg}"
             ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <DockPanel>
 
@@ -154,7 +154,7 @@
                     <!-- ══ Step 2 · remote engine ═════════════════════ -->
                     <StackPanel Spacing="14" IsVisible="{Binding IsRemoteEngine}">
                         <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                                BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal" Spacing="2">
                                 <Button Classes="seg" Classes.on="{Binding IsSsh}"
                                         Command="{Binding SetTransportCommand}" CommandParameter="ssh">
@@ -188,7 +188,7 @@
                                 <TextBlock Classes="hint"
                                            Text="Leave empty to let ssh decide, which respects your ssh_config."/>
                             </StackPanel>
-                            <Border Background="{DynamicResource InfoSoft}" CornerRadius="10" Padding="12,11">
+                            <Border Background="{DynamicResource InfoSoft}" CornerRadius="{StaticResource Radius}" Padding="12,11">
                                 <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
                                            Foreground="{DynamicResource Text}"
                                            Text="Kontena uses the ssh client already on this machine — your keys, your agent, your jump hosts. Nothing new to generate or hand out. Password prompts are not supported: a key or an agent is the way in."/>
@@ -220,7 +220,7 @@
                                 </CheckBox>
                             </Border>
 
-                            <Border Background="{DynamicResource DangerSoft}" CornerRadius="10" Padding="12,11"
+                            <Border Background="{DynamicResource DangerSoft}" CornerRadius="{StaticResource Radius}" Padding="12,11"
                                     IsVisible="{Binding ShowInsecureWarning}">
                                 <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
                                            Foreground="{DynamicResource Text}"
@@ -283,7 +283,7 @@
                                        Text="Each context becomes its own entry in the switcher. Unticking one here does not change the file."/>
                         </StackPanel>
 
-                        <Border Background="{DynamicResource InfoSoft}" CornerRadius="10" Padding="12,11">
+                        <Border Background="{DynamicResource InfoSoft}" CornerRadius="{StaticResource Radius}" Padding="12,11">
                             <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
                                        Foreground="{DynamicResource Text}"
                                        Text="A cluster opens the Kubernetes side of Kontena — workloads, config, storage — not the container pages. The switcher groups them apart for that reason."/>
@@ -327,7 +327,7 @@
 
                     <!-- ══ Step 3 · connected ═════════════════════════ -->
                     <StackPanel Spacing="14" IsVisible="{Binding IsConnected}">
-                        <Border Background="{DynamicResource SuccessSoft}" CornerRadius="10" Padding="15">
+                        <Border Background="{DynamicResource SuccessSoft}" CornerRadius="{StaticResource Radius}" Padding="15">
                             <StackPanel Spacing="10">
                                 <TextBlock Text="{Binding SuccessHeadline}" FontSize="14.5" FontWeight="SemiBold"
                                            Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
@@ -339,7 +339,7 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="x:String">
-                                            <Border Background="{DynamicResource Surface}" CornerRadius="7"
+                                            <Border Background="{DynamicResource Surface}" CornerRadius="{StaticResource RadiusSm}"
                                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                     Padding="9,4" Margin="0,0,6,6">
                                                 <TextBlock Text="{Binding}" FontSize="11.5"
@@ -371,7 +371,7 @@
                                        Text="Leave a field empty to keep the context's own name. You can change these later in Settings › Engines."/>
                         </StackPanel>
 
-                        <Border Background="{DynamicResource InfoSoft}" CornerRadius="10" Padding="12,11">
+                        <Border Background="{DynamicResource InfoSoft}" CornerRadius="{StaticResource Radius}" Padding="12,11">
                             <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
                                        Foreground="{DynamicResource Text}"
                                        Text="Nothing secret is written to your settings file. A key passphrase or certificate password goes to your system keychain."/>
@@ -380,14 +380,14 @@
 
                     <!-- ══ Step 3 · refused ═══════════════════════════ -->
                     <StackPanel Spacing="14" IsVisible="{Binding IsRefused}">
-                        <Border Background="{DynamicResource DangerSoft}" CornerRadius="10" Padding="15">
+                        <Border Background="{DynamicResource DangerSoft}" CornerRadius="{StaticResource Radius}" Padding="15">
                             <StackPanel Spacing="9">
                                 <TextBlock Text="{Binding FailureHeadline}" FontSize="14.5" FontWeight="SemiBold"
                                            Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding FailureExplanation}" FontSize="12.5" TextWrapping="Wrap"
                                            LineHeight="19" Foreground="{DynamicResource TextDim}"/>
 
-                                <Border Background="{StaticResource Terminal}" CornerRadius="9" Padding="12,10"
+                                <Border Background="{StaticResource Terminal}" CornerRadius="{StaticResource RadiusSm}" Padding="12,10"
                                         IsVisible="{Binding FailureOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                     <TextBlock Text="{Binding FailureOutput}" FontSize="12"
                                                FontFamily="{StaticResource Mono}" TextWrapping="Wrap"
@@ -410,7 +410,7 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Background="{DynamicResource WarnSoft}" CornerRadius="10" Padding="12,11">
+                        <Border Background="{DynamicResource WarnSoft}" CornerRadius="{StaticResource Radius}" Padding="12,11">
                             <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource Text}"
                                        Text="Nothing was stored. Go back, change what you need, and test again."/>
                         </Border>

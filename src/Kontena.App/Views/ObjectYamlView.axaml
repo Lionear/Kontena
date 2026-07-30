@@ -10,7 +10,7 @@
     <!-- Read-only on purpose. The pod detail's editable manifest carries an apply, a dirty check and a
          revert; offering a text box here that silently does nothing on edit would be worse than not
          offering one. Editing these kinds goes through Apply manifest. -->
-    <Border Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+    <Border Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
         <ScrollViewer HorizontalScrollBarVisibility="Auto">
             <SelectableTextBlock Text="{Binding YamlText}" TextWrapping="NoWrap" Padding="16,12"
                                  FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>

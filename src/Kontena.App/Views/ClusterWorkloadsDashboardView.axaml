@@ -19,7 +19,7 @@
                  one too. The headline counts; the table below names. -->
             <Border IsVisible="{Binding HasTrouble}" Background="{DynamicResource DangerSoft}"
                     BorderBrush="{DynamicResource DangerSoftBorder}" BorderThickness="1"
-                    CornerRadius="10" Padding="16,14">
+                    CornerRadius="{StaticResource Radius}" Padding="16,14">
                 <Grid ColumnDefinitions="Auto,*">
                     <Path Grid.Column="0" Classes="icon" Width="18" Height="18" Margin="0,1,13,0"
                           VerticalAlignment="Top" Stroke="{DynamicResource Danger}" Data="{StaticResource IconWarning}"/>
@@ -45,7 +45,7 @@
                         <Button Classes="kindcard" Command="{Binding OpenCommand}" Margin="0,0,14,14" Width="272">
                             <StackPanel Spacing="11">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Border Width="30" Height="30" CornerRadius="8" Background="{DynamicResource AccentSoft}">
+                                    <Border Width="30" Height="30" CornerRadius="{StaticResource RadiusSm}" Background="{DynamicResource AccentSoft}">
                                         <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Accent}"
                                               Data="{StaticResource IconLayers}"/>
                                     </Border>
@@ -98,7 +98,7 @@
             <StackPanel Spacing="11" IsVisible="{Binding HasAttention}">
                 <TextBlock Text="Needs attention" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                 <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                        BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                     <StackPanel>
                         <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}"
                                 BorderThickness="0,0,0,1" Padding="16,10">
@@ -136,7 +136,7 @@
             </StackPanel>
 
             <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="1" CornerRadius="10" Padding="18,16">
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
                 <TextBlock Text="No workloads in this namespace." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
         </StackPanel>
