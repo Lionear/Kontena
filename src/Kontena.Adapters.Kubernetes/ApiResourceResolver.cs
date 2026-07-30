@@ -41,6 +41,76 @@ internal sealed class ApiResourceResolver(IKubernetes client)
             : new ApiResourceInfo(gvk.Group, gvk.Version, match.Name, match.Namespaced);
     }
 
+    /// <summary>
+    /// Everything the cluster serves: the core group plus every API group at its preferred version.
+    /// <para>
+    /// Subresources ("pods/log") and anything that cannot be listed are left out — the first is not a
+    /// kind, the second is a row in a picker that could only ever fail.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<ApiResource>> DiscoverAllAsync(CancellationToken ct = default)
+    {
+        var groups = new List<(string Group, string Version)> { (string.Empty, "v1") };
+
+        try
+        {
+            var list = await client.Apis.GetAPIVersionsAsync(ct).ConfigureAwait(false);
+
+            // The preferred version only. Offering every served version of a kind turns one entry into
+            // three that show the same objects, and the server is telling us which one it means.
+            groups.AddRange(
+                from g in list.Groups ?? []
+                let version = g.PreferredVersion?.Version ?? g.Versions?.FirstOrDefault()?.Version
+                where !string.IsNullOrEmpty(g.Name) && !string.IsNullOrEmpty(version)
+                select (g.Name, version!));
+        }
+        catch (Exception)
+        {
+            // No group discovery — the core group alone is still worth offering.
+        }
+
+        var resources = new List<ApiResource>();
+
+        foreach (var (group, version) in groups)
+        {
+            foreach (var resource in await ResourcesForAsync(group, version, ct).ConfigureAwait(false))
+            {
+                if (string.IsNullOrEmpty(resource.Kind)
+                    || resource.Name.Contains('/', StringComparison.Ordinal)
+                    || resource.Verbs?.Contains("list") != true)
+                {
+                    continue;
+                }
+
+                resources.Add(new ApiResource
+                {
+                    Kind = new GroupVersionKind(group, version, resource.Kind),
+                    Plural = resource.Name,
+                    Namespaced = resource.Namespaced,
+                    Verbs = [.. resource.Verbs],
+                    IsCustom = IsCustom(group),
+                });
+            }
+        }
+
+        return resources;
+    }
+
+    /// <summary>
+    /// Kubernetes reserves the <c>k8s.io</c> suffix for its own APIs, so anything outside it was added
+    /// by whoever installed it — with the exception of the groups that predate that convention and never
+    /// got the suffix. Missing those would file Deployments under "custom", which is the one heading
+    /// they are not.
+    /// </summary>
+    private static readonly string[] BuiltInGroups =
+        ["apps", "batch", "autoscaling", "policy", "extensions"];
+
+    internal static bool IsCustom(string group) =>
+        !string.IsNullOrEmpty(group)
+        && !BuiltInGroups.Contains(group, StringComparer.Ordinal)
+        && !group.Equals("k8s.io", StringComparison.Ordinal)
+        && !group.EndsWith(".k8s.io", StringComparison.Ordinal);
+
     private async Task<IReadOnlyList<V1APIResource>> ResourcesForAsync(string group, string version, CancellationToken ct)
     {
         var key = $"{group}/{version}";
