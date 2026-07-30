@@ -349,22 +349,26 @@ public partial class MainWindowViewModel
     /// shell that is already open. Reconnect discards it, and the next open reads the pickers again.
     /// </para>
     /// </summary>
-    private ClusterTerminalViewModel? CreateClusterTerminal()
+    private ClusterTerminalsViewModel? CreateClusterTerminals()
     {
-        if (BuildShellRequest() is not { } fresh || _activeBackend is not { Length: > 0 } backend)
+        if (BuildShellRequest() is null || _activeBackend is not { Length: > 0 } backend)
             return null;
 
-        return new ClusterTerminalViewModel(
-            _terminals.RequestFor(backend) ?? fresh,
-            CurrentTerminalFont(),
-            open: ct => _terminals.OpenAsync(backend, fresh, columns: 120, rows: 30, ct),
-            release: async (_, discard) =>
-            {
-                if (discard)
-                    await _terminals.DiscardAsync(backend);
-                else
-                    _terminals.Detach(backend);
-            });
+        return new ClusterTerminalsViewModel(
+            _terminals,
+            backend,
+            // Read afresh per terminal rather than captured: a new tab opens on the namespace selected
+            // now, which is not necessarily the one the page was built with.
+            request: () => BuildShellRequest()!,
+            font: CurrentTerminalFont,
+            onCountChanged: () => UpdateTerminalCount(backend));
+    }
+
+    /// <summary>Badge the sidebar with how many shells are open, the way port forwards does.</summary>
+    private void UpdateTerminalCount(string backend)
+    {
+        var count = _terminals.CountFor(backend);
+        SetNavCount("terminal", count > 1 ? count.ToString(CultureInfo.InvariantCulture) : string.Empty);
     }
 
     private ClusterShellRequest? BuildShellRequest()

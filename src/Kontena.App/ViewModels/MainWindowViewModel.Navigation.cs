@@ -150,7 +150,7 @@ public partial class MainWindowViewModel
             // A shell on this machine, already on this cluster (KON-171). Falls back to the
             // overview when the active backend is not a kubeconfig context, so the page can never
             // open onto a cluster it cannot name.
-            "terminal" when CreateClusterTerminal() is { } terminal => terminal,
+            "terminal" when CreateClusterTerminals() is { } terminals => terminals,
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
             {
                 // An apply can create or remove anything — refresh the counts, not the open page.

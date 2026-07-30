@@ -1,10 +1,70 @@
+using System.Globalization;
 using Kontena.Core.Shell;
 using Kontena.Sdk.Models;
 
 namespace Kontena.App;
 
 /// <summary>
-/// The shells opened from cluster mode, one per context, kept for as long as the window is (KON-171).
+/// One open terminal: a shell of its own, and the cluster and namespace it was started on.
+/// <para>
+/// Its context and namespace are fixed here, at the moment it is opened. Moving the namespace picker
+/// afterwards does not reach into a shell that is already running, and with several terminals side by
+/// side that is visible rather than theoretical — two of them can be on different namespaces while the
+/// picker shows one. So each shows its own.
+/// </para>
+/// </summary>
+public sealed class ClusterTerminal(string backend, string id, string title, ClusterShellRequest request)
+{
+    public string Backend { get; } = backend;
+
+    public string Id { get; } = id;
+
+    /// <summary>What the tab is called. Numbered per cluster, plus the namespace when one is pinned.</summary>
+    public string Title { get; } = title;
+
+    public ClusterShellRequest Request { get; } = request;
+
+    private RetainedShellSession? _session;
+
+    /// <summary>True while a shell is running for this terminal.</summary>
+    public bool IsRunning => _session is { HasEnded: false };
+
+    /// <summary>The shell, started if it is not running yet.</summary>
+    public async ValueTask<IExecSession> OpenAsync(int columns, int rows, CancellationToken ct = default)
+    {
+        if (_session is { } existing)
+        {
+            if (!existing.HasEnded)
+                return existing;
+
+            // Typed exit, or the shell fell over. Reattaching to a dead one would show its last screen
+            // and swallow every keystroke after it.
+            _session = null;
+            await existing.DisposeAsync().ConfigureAwait(false);
+        }
+
+        _session = RetainedShellSession.Retain(
+            await HostShellLauncher.OpenAsync(Request, columns, rows, ct).ConfigureAwait(false));
+
+        return _session;
+    }
+
+    /// <summary>Let go of the view without ending the shell.</summary>
+    public void Detach() => _session?.Detach();
+
+    /// <summary>End the shell but keep the terminal — what Reconnect asks for.</summary>
+    public async ValueTask EndAsync()
+    {
+        var session = _session;
+        _session = null;
+
+        if (session is not null)
+            await session.DisposeAsync().ConfigureAwait(false);
+    }
+}
+
+/// <summary>
+/// The shells opened from cluster mode, kept for as long as the window is (KON-171, KON-216).
 /// <para>
 /// Navigating away from the Terminal page tears down its view, not its shell. A terminal that restarted
 /// every time you looked at a pod is one you cannot leave a build running in, and the shell being alive
@@ -13,74 +73,73 @@ namespace Kontena.App;
 /// next view the screen as it was.
 /// </para>
 /// <para>
-/// Keyed by backend id, which is what "per context" means here: two clusters are two shells, and coming
-/// back to either finds the one you left.
+/// Keyed per cluster and then per terminal, so a cluster can have several and coming back to any of them
+/// finds the one you left.
 /// </para>
 /// </summary>
 public sealed class ClusterTerminals : IAsyncDisposable
 {
-    private readonly Dictionary<string, Entry> _sessions = new(StringComparer.Ordinal);
+    private readonly List<ClusterTerminal> _terminals = [];
+    private readonly Dictionary<string, int> _counters = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _selected = new(StringComparer.Ordinal);
 
-    private sealed record Entry(RetainedShellSession Session, ClusterShellRequest Request);
+    /// <summary>The terminals open on <paramref name="backend"/>, in the order they were opened.</summary>
+    public IReadOnlyList<ClusterTerminal> For(string backend) =>
+        [.. _terminals.Where(t => t.Backend == backend)];
 
-    /// <summary>
-    /// The shell for <paramref name="backend"/>, started if there is not one already.
-    /// </summary>
-    public async ValueTask<IExecSession> OpenAsync(
-        string backend, ClusterShellRequest request, int columns, int rows, CancellationToken ct = default)
-    {
-        if (_sessions.TryGetValue(backend, out var existing))
-        {
-            if (!existing.Session.HasEnded)
-                return existing.Session;
-
-            // Typed exit, or the shell fell over. Reattaching to a dead one would show its last screen
-            // and swallow every keystroke after it.
-            _sessions.Remove(backend);
-            await existing.Session.DisposeAsync().ConfigureAwait(false);
-        }
-
-        var session = RetainedShellSession.Retain(
-            await HostShellLauncher.OpenAsync(request, columns, rows, ct).ConfigureAwait(false));
-
-        _sessions[backend] = new Entry(session, request);
-        return session;
-    }
+    /// <summary>How many are open on <paramref name="backend"/> — the number the sidebar shows.</summary>
+    public int CountFor(string backend) => _terminals.Count(t => t.Backend == backend);
 
     /// <summary>
-    /// What the kept shell for <paramref name="backend"/> was started with, or null if there is none.
-    /// <para>
-    /// The page shows this rather than what the pickers say now. A shell's context and namespace are
-    /// fixed when it starts — changing the namespace afterwards does not reach into a running shell, and
-    /// a header claiming otherwise would be telling the user something <c>kubectl</c> disagrees with.
-    /// Reconnect is how you get one on the current selection.
-    /// </para>
+    /// Open another terminal on <paramref name="backend"/>. The shell itself starts when a view first
+    /// attaches, so opening a tab costs nothing until it is looked at.
     /// </summary>
-    public ClusterShellRequest? RequestFor(string backend) =>
-        _sessions.TryGetValue(backend, out var entry) && !entry.Session.HasEnded ? entry.Request : null;
-
-    /// <summary>Let go of the view without ending the shell.</summary>
-    public void Detach(string backend)
+    public ClusterTerminal Add(string backend, ClusterShellRequest request)
     {
-        if (_sessions.TryGetValue(backend, out var entry))
-            entry.Session.Detach();
+        // Numbered by a counter that only goes up. Reusing the number of a closed terminal would put
+        // "Terminal 1" back on the screen as something that shares nothing with the one just closed.
+        var number = _counters.TryGetValue(backend, out var last) ? last + 1 : 1;
+        _counters[backend] = number;
+
+        var title = "Terminal " + number.ToString(CultureInfo.InvariantCulture);
+        if (request.Namespace is { Length: > 0 } ns)
+            title += " · " + ns;
+
+        var terminal = new ClusterTerminal(
+            backend, backend + "#" + number.ToString(CultureInfo.InvariantCulture), title, request);
+
+        _terminals.Add(terminal);
+        _selected[backend] = terminal.Id;
+        return terminal;
     }
 
-    /// <summary>End the shell for <paramref name="backend"/> — what Reconnect asks for.</summary>
-    public async ValueTask DiscardAsync(string backend)
-    {
-        if (!_sessions.Remove(backend, out var entry))
-            return;
+    /// <summary>Which terminal was last looked at on this cluster, so returning to the page lands there.</summary>
+    public string? SelectedFor(string backend) =>
+        _selected.TryGetValue(backend, out var id) && _terminals.Any(t => t.Id == id) ? id : null;
 
-        await entry.Session.DisposeAsync().ConfigureAwait(false);
+    /// <summary>Remember the terminal the user switched to.</summary>
+    public void Select(ClusterTerminal terminal) => _selected[terminal.Backend] = terminal.Id;
+
+    /// <summary>
+    /// Close the tab and end its shell. A terminal with no tab is one nobody can reach again, so leaving
+    /// the shell running would only hide it.
+    /// </summary>
+    public async ValueTask CloseAsync(ClusterTerminal terminal)
+    {
+        _terminals.Remove(terminal);
+
+        if (_selected.TryGetValue(terminal.Backend, out var selected) && selected == terminal.Id)
+            _selected.Remove(terminal.Backend);
+
+        await terminal.EndAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        foreach (var entry in _sessions.Values)
-            await entry.Session.DisposeAsync().ConfigureAwait(false);
+        foreach (var terminal in _terminals)
+            await terminal.EndAsync().ConfigureAwait(false);
 
-        _sessions.Clear();
+        _terminals.Clear();
     }
 }

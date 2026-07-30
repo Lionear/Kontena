@@ -1,5 +1,6 @@
 using Kontena.App.ViewModels;
 using Kontena.Core.Models;
+using Kontena.App;
 using Kontena.Core.Shell;
 
 namespace Kontena.App.Tests;
@@ -10,10 +11,10 @@ public sealed class ClusterTerminalViewModelTests
     private static readonly TerminalFont Font = new("JetBrains Mono", 13, Ligatures: false);
 
     private static ClusterTerminalViewModel For(string context, string? @namespace) =>
-        new(new ClusterShellRequest(context, "kind-test", "kind-test", @namespace, ["/home/rick/.kube/config"]),
-            Font,
-            open: _ => throw new InvalidOperationException("These cover the header, not the session."),
-            release: (_, _) => ValueTask.CompletedTask);
+        new(new ClusterTerminals().Add(
+                "kubernetes:" + context,
+                new ClusterShellRequest(context, "kind-test", "kind-test", @namespace, ["/home/rick/.kube/config"])),
+            Font);
 
     /// <summary>
     /// The page is the terminal, so there is no tab to wait for — unlike container and pod detail, where

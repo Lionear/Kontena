@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterTerminalsView"
+             x:DataType="vm:ClusterTerminalsViewModel">
+
+    <UserControl.Styles>
+        <!-- Sits against its tab rather than beside it, so the pair reads as one thing to click twice. -->
+        <Style Selector="Button.tabclose">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Margin" Value="-4,0,0,0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.tabclose:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="28,24" RowDefinitions="Auto,Auto,*">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Terminal" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text}"/>
+            <Button Grid.Column="1" Classes="ghost" Command="{Binding NewTerminalCommand}"
+                    ToolTip.Tip="Open another shell on this cluster">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
+                          Data="{StaticResource IconPlus}"/>
+                    <TextBlock Text="New terminal" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <!-- The strip earns its room only from the second tab on; with one terminal it would be a row of
+             chrome repeating what the page title already says. Same tab style as container and pod
+             detail, so a tab is a tab everywhere in the app. -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Terminals}" IsVisible="{Binding HasTabs}"
+                      Margin="0,14,0,0">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel ItemSpacing="4" LineSpacing="4"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ClusterTerminalViewModel">
+                    <StackPanel Orientation="Horizontal">
+                        <Button Classes="tab" Classes.on="{Binding IsCurrent}"
+                                Command="{Binding $parent[ItemsControl].((vm:ClusterTerminalsViewModel)DataContext).SelectCommand}"
+                                CommandParameter="{Binding}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Classes="icon" Width="14" Height="14" Stroke="{Binding $parent[Button].Foreground}"
+                                      Data="{StaticResource IconTerminal}"/>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="tabclose" ToolTip.Tip="Close this terminal and end its shell"
+                                VerticalAlignment="Center"
+                                Command="{Binding $parent[ItemsControl].((vm:ClusterTerminalsViewModel)DataContext).CloseCommand}"
+                                CommandParameter="{Binding}">
+                            <Path Classes="icon" Width="10" Height="10" Stroke="{DynamicResource TextFaint}"
+                                  Data="{StaticResource IconClose}"/>
+                        </Button>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <ContentControl Grid.Row="2" Margin="0,16,0,0" Content="{Binding Selected}"/>
+    </Grid>
+</UserControl>
