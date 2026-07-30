@@ -22,7 +22,7 @@ public sealed class ContainerDiagnosisTests
 
     private static ContainerInspect Inspect(
         int exitCode = 0, bool oom = false, int restarts = 0,
-        RestartPolicy policy = RestartPolicy.No, long? memoryLimit = null) => new()
+        RestartPolicy policy = RestartPolicy.No, long? memoryLimit = null, string error = "") => new()
     {
         Id = "c1",
         Name = "api",
@@ -32,6 +32,7 @@ public sealed class ContainerDiagnosisTests
         RestartCount = restarts,
         RestartPolicy = policy,
         MemoryLimitBytes = memoryLimit,
+        Error = error,
     };
 
     [Fact]
@@ -87,6 +88,47 @@ public sealed class ContainerDiagnosisTests
         var diagnosis = ContainerDiagnosis.Diagnose(Container(), Inspect(exitCode: 137, oom: true), stats: null);
 
         Assert.Contains("Memory limit: none set", diagnosis!.Evidence);
+    }
+
+    [Fact]
+    public void A_container_that_never_started_is_explained_from_the_runtimes_message()
+    {
+        // A command that is not in the image never runs: the container stays Created, so there is no
+        // exit code and no log, and every other rule here is looking at one that at least got going.
+        // This was the case that went unexplained until a live round found it.
+        const string error = "failed to create task for container: OCI runtime create failed: "
+                             + "exec: \"doesnotexist\": executable file not found in $PATH";
+
+        var diagnosis = ContainerDiagnosis.Diagnose(
+            Container(ContainerState.Created), Inspect(exitCode: 127, error: error));
+
+        Assert.Equal("CannotStart", diagnosis!.Code);
+        Assert.Contains(error, diagnosis.Evidence);
+        Assert.Equal(DiagnosisAction.Inspect, diagnosis.Action);
+    }
+
+    [Fact]
+    public void A_created_container_that_has_simply_not_been_started_is_not_a_fault()
+    {
+        // `docker create` without a start is a container waiting to be run, not one that failed.
+        Assert.Null(ContainerDiagnosis.Diagnose(Container(ContainerState.Created), Inspect()));
+    }
+
+    [Fact]
+    public void An_oom_kill_that_the_container_survived_long_enough_to_report_points_at_the_logs()
+    {
+        // Live finding: `stress` under a 64Mi limit reports oom=true with exit code 1 — the kernel
+        // killed a worker, not the container's own process. Saying "it did not choose to exit, so its
+        // logs will not say why" is then false twice over, and sends you away from a log that does say.
+        var killedOutright = ContainerDiagnosis.Diagnose(
+            Container(), Inspect(exitCode: 137, oom: true, memoryLimit: 67_108_864));
+        var lostAChild = ContainerDiagnosis.Diagnose(
+            Container(), Inspect(exitCode: 1, oom: true, memoryLimit: 67_108_864));
+
+        Assert.Contains("did not choose to exit", killedOutright!.Explanation, StringComparison.Ordinal);
+        Assert.DoesNotContain("did not choose to exit", lostAChild!.Explanation, StringComparison.Ordinal);
+        Assert.Contains("exited by itself", lostAChild.Explanation, StringComparison.Ordinal);
+        Assert.Equal("OOMKilled", lostAChild.Code);
     }
 
     [Fact]

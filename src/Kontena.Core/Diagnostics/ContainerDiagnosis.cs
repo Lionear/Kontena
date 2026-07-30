@@ -28,9 +28,33 @@ public static class ContainerDiagnosis
         if (inspect is null)
             return null;
 
-        return OutOfMemory(container, inspect, stats)
+        return CannotStart(container, inspect)
+               ?? OutOfMemory(container, inspect, stats)
                ?? RestartLoop(container, inspect)
                ?? ExitedBadly(container, inspect);
+    }
+
+    /// <summary>
+    /// It never ran. A container whose command is not in the image stays <c>Created</c>: the runtime
+    /// could not start the process, so there is no exit code to read and no log to open, and every
+    /// other rule here is looking at a container that at least got going.
+    /// </summary>
+    private static Diagnosis? CannotStart(ContainerSummary container, ContainerInspect inspect)
+    {
+        if (container.State != ContainerState.Created || inspect.Error.Length == 0)
+            return null;
+
+        return new Diagnosis
+        {
+            Code = "CannotStart",
+            Title = $"\"{container.Name}\" could not be started",
+            // Deliberately not classified further. The runtime's message below is exact, and picking
+            // it apart would mean matching on wording that is not API.
+            Explanation = "The engine created the container but could not start the process inside it, so it never ran. The runtime's own message says what stopped it — most often a command that is not in the image, or a file that is not executable.",
+            Evidence = [inspect.Error],
+            Suggestion = "Check the command and entrypoint against what the image actually contains.",
+            Action = DiagnosisAction.Inspect,
+        };
     }
 
     /// <summary>The engine says the kernel killed it; the exit code alone never could.</summary>
@@ -54,15 +78,28 @@ public static class ContainerDiagnosis
         if (inspect.RestartCount > 0)
             evidence.Add($"Restarts: {inspect.RestartCount}");
 
+        // Whether the container itself was killed decides what its logs are worth. Exit 137 is the
+        // container's own process taking SIGKILL: it never got to write anything. Any other code with
+        // the OOM flag means something *inside* it was killed and the process then exited on its own —
+        // and then the logs usually do say something, which the first wording sends you away from.
+        var itselfKilled = inspect.ExitCode == 137;
+        var ceiling = inspect.MemoryLimitBytes is { } bytes
+            ? $"its memory limit of {ByteSize.Format(bytes)}"
+            : "the memory available to it";
+
         return new Diagnosis
         {
             Code = "OOMKilled",
-            Title = $"\"{container.Name}\" was killed for using too much memory",
-            Explanation = inspect.MemoryLimitBytes is { } bytes
-                ? $"It went over its memory limit of {ByteSize.Format(bytes)} and the kernel killed it. The container did not choose to exit, so its own logs will not say why it stopped."
-                : "The kernel killed it for using too much memory. No limit is set on the container, so the ceiling it hit is the host's.",
+            Title = itselfKilled
+                ? $"\"{container.Name}\" was killed for using too much memory"
+                : $"Something in \"{container.Name}\" was killed for using too much memory",
+            Explanation = itselfKilled
+                ? $"It went over {ceiling} and the kernel killed it. The container did not choose to exit, so its own logs will not say why it stopped."
+                : $"A process inside it went over {ceiling} and the kernel killed that process. The container then exited by itself with code {inspect.ExitCode}, so what it logged before stopping is worth reading.",
             Evidence = evidence,
-            Suggestion = "Raise the container's memory limit, or find out what is holding the memory.",
+            Suggestion = itselfKilled
+                ? "Raise the container's memory limit, or find out what is holding the memory."
+                : "The logs hold what it wrote before it stopped.",
             Action = DiagnosisAction.Logs,
         };
     }

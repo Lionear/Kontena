@@ -224,6 +224,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     public string DiagnosisActionLabel => Diagnosis?.Action switch
     {
         DiagnosisAction.Logs or DiagnosisAction.PreviousLogs => "Logs",
+        DiagnosisAction.Inspect => "Inspect",
         _ => string.Empty,
     };
 
@@ -244,7 +245,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     private void Diagnose() => Diagnosis = ContainerDiagnosis.Diagnose(_c, Inspect, _lastStats);
 
     [RelayCommand]
-    private void FollowDiagnosis() => SelectedTab = "logs";
+    private void FollowDiagnosis() =>
+        SelectedTab = Diagnosis?.Action == DiagnosisAction.Inspect ? "inspect" : "logs";
 
     // ── Live stats strip ──────────────────────────────────────────────────────
 

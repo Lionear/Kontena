@@ -17,6 +17,9 @@ public enum DiagnosisAction
 
     /// <summary>Open the manifest, where limits and probes are declared.</summary>
     Manifest,
+
+    /// <summary>Open the inspect view, where the command and the mounts are.</summary>
+    Inspect,
 }
 
 /// <summary>

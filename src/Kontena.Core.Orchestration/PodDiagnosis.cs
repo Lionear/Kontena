@@ -258,10 +258,22 @@ public static class PodDiagnosis
         string.Equals(reason, "OOMKilled", StringComparison.Ordinal)
         || (exitCode == 137 && reason.Length == 0);
 
-    private static string OomSentence(ContainerStatus c) =>
-        c.MemoryLimitBytes is { } limit
-            ? $"It asked for more memory than its limit of {ByteSize.Format(limit)} and the kernel killed it. The container did not choose to exit — nothing it logged will say why it stopped."
-            : "The kernel killed it for using too much memory. No limit is declared on the container, so the ceiling it hit is the node's.";
+    /// <summary>
+    /// Whether the container itself took the SIGKILL decides what its logs are worth. 137 is the
+    /// container's own process being killed outright; the same reason with another exit code means
+    /// something inside it was killed and the process then exited by itself — and then it did get to
+    /// write something.
+    /// </summary>
+    private static string OomSentence(ContainerStatus c)
+    {
+        var ceiling = c.MemoryLimitBytes is { } limit
+            ? $"its memory limit of {ByteSize.Format(limit)}"
+            : "the memory available to it (no limit is declared, so the ceiling is the node's)";
+
+        return (c.ExitCode ?? c.LastExitCode) == 137
+            ? $"It asked for more memory than {ceiling} and the kernel killed it. The container did not choose to exit — nothing it logged will say why it stopped."
+            : $"A process inside it went over {ceiling} and the kernel killed that process; the container then exited by itself. What it wrote before stopping is worth reading.";
+    }
 
     private static string SignalSuffix(int code) => code switch
     {
