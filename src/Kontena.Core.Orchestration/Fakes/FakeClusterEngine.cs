@@ -268,6 +268,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             case "PersistentVolumeClaim":
                 _pvcs.RemoveAll(p => p.Name == name && p.Namespace == ns);
                 break;
+            case "ConfigMap":
+                _configMaps.RemoveAll(c => c.Name == name && c.Namespace == ns);
+                _configData.Remove($"ConfigMap/{ns}/{name}");
+                break;
+            case "Secret":
+                // The values go with the object, which is what makes the delete irreversible and is
+                // therefore the thing a fake has to model rather than merely hide the row (KON-253).
+                _secrets.RemoveAll(x => x.Name == name && x.Namespace == ns);
+                _configData.Remove($"Secret/{ns}/{name}");
+                break;
             case "Namespace":
                 _namespaces.RemoveAll(n => n.Name == name);
                 break;

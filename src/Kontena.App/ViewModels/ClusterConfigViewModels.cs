@@ -23,6 +23,9 @@ public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObject
         _ = LoadAsync();
     }
 
+    /// <summary>Delete, always confirmed (KON-253). Shared with the secrets page below.</summary>
+    private void ConfirmDelete(ConfigObjectRow row) => ConfigDelete.Confirm(this, _cluster, row, LoadAsync);
+
     public override string SearchPlaceholder => "Search config maps…";
 
     protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
@@ -30,7 +33,8 @@ public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObject
         .. (await _cluster.ListConfigMapsAsync(_namespace))
             .Select(c => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.ConfigMap, c.Namespace, c.Name),
-                type: null, c.Keys, c.Age, _cluster.GetConfigDataAsync, secret: false)),
+                type: null, c.Keys, c.Age, _cluster.GetConfigDataAsync, secret: false,
+                onDelete: ConfirmDelete)),
     ];
 
     // The key names too: "which config map holds nginx.conf" is a question the name alone cannot
@@ -52,6 +56,8 @@ public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow
         _ = LoadAsync();
     }
 
+    private void ConfirmDelete(ConfigObjectRow row) => ConfigDelete.Confirm(this, _cluster, row, LoadAsync);
+
     public override string SearchPlaceholder => "Search secrets…";
 
     protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
@@ -59,7 +65,8 @@ public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow
         .. (await _cluster.ListSecretsAsync(_namespace))
             .Select(s => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.Secret, s.Namespace, s.Name),
-                s.Type, s.Keys, s.Age, _cluster.GetConfigDataAsync, secret: true)),
+                s.Type, s.Keys, s.Age, _cluster.GetConfigDataAsync, secret: true,
+                onDelete: ConfirmDelete)),
     ];
 
     protected override bool Matches(ConfigObjectRow row, string term) =>
@@ -72,16 +79,20 @@ public sealed partial class ConfigObjectRow : ObservableObject
 {
     private readonly Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> _fetch;
 
+    private readonly Action<ConfigObjectRow>? _onDelete;
+
     public ConfigObjectRow(
         ResourceRef reference, string? type, IReadOnlyList<ConfigKey> keys, TimeSpan age,
         Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> fetch,
-        bool secret)
+        bool secret, Action<ConfigObjectRow>? onDelete = null)
     {
         ArgumentNullException.ThrowIfNull(keys);
 
         Reference = reference;
         _fetch = fetch;
+        _onDelete = onDelete;
         IsSecret = secret;
+        CanDelete = onDelete is not null;
 
         Name = reference.Name;
         Namespace = reference.Namespace ?? "default";
@@ -132,6 +143,12 @@ public sealed partial class ConfigObjectRow : ObservableObject
 
     [RelayCommand]
     private void Toggle() => IsExpanded = !IsExpanded;
+
+    /// <summary>Whether the page wired a delete handler (KON-253).</summary>
+    public bool CanDelete { get; }
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 
     public bool MatchesKey(string term) =>
         Keys.Any(k => k.Name.Contains(term, StringComparison.OrdinalIgnoreCase));
@@ -269,5 +286,42 @@ public sealed partial class ConfigKeyRow : ObservableObject
             Error = failure.Message;
             return null;
         }
+    }
+}
+
+/// <summary>
+/// The confirm text for deleting a ConfigMap or a Secret (KON-253).
+/// <para>
+/// Written once because the two pages must say the same thing about the same act, and pulled out of
+/// both view-models because the wording is the whole feature: the delete itself is one call.
+/// </para>
+/// </summary>
+internal static class ConfigDelete
+{
+    public static void Confirm(
+        ViewModelBase page, IClusterEngine cluster, ConfigObjectRow row, Func<Task> reload)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var kind = row.IsSecret ? "secret" : "config map";
+
+        // The consequence is delayed, and that is the part worth saying. A running pod holds what it
+        // mounted at start; it keeps running, and fails the next time it is recreated — which may be
+        // days later and will not look connected to this by then.
+        var mounted = row.IsSecret
+            ? "Pods already running keep the values they started with, so nothing breaks now. The next"
+              + " pod that tries to mount it will not start."
+            : "Pods already running keep the values they started with, so nothing breaks now. The next"
+              + " pod that tries to mount it, or read it as environment, will not start.";
+
+        page.ConfirmDelete(
+            $"Delete {kind}",
+            $"Delete {kind} \"{row.Name}\" in {row.Namespace}? This cannot be undone — Kontena does not"
+            + $" keep a copy. {mounted}",
+            async () =>
+            {
+                await cluster.DeleteAsync(row.Reference);
+                await reload();
+            });
     }
 }
