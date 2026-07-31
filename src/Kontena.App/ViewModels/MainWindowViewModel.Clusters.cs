@@ -77,6 +77,67 @@ public partial class MainWindowViewModel
             destructive: true);
     }
     /// <summary>
+    /// The node-detail page (KON-197). Until this existed a node was a dead end: the card summarised
+    /// its conditions to a chip and there was nowhere to read them in full, nor to see what was
+    /// actually running on it.
+    /// </summary>
+    private async void ShowNodeDetail(Node node)
+    {
+        if (_cluster is null)
+            return;
+
+        Arrived($"node {node.Name}", () => ShowNodeDetail(node), node);
+        DisposeDetail();
+
+        // The apiserver version is what a kubelet version means anything against (KON-95), and a
+        // failed lookup costs the warning rather than the page.
+        var apiServer = string.Empty;
+        try
+        {
+            apiServer = (await _cluster.GetInfoAsync()).Version;
+        }
+        catch (Exception)
+        {
+            // No version, no skew warning; everything else on the page stands.
+        }
+
+        CurrentPage = new ClusterNodeDetailViewModel(
+            _cluster, node, apiServer,
+            onOpenPod: ShowPodDetail,
+            onCordon: (name, cordoned) => _cluster.CordonNodeAsync(name, cordoned).AsTask(),
+            onDrain: ShowDrainNode);
+    }
+
+    /// <summary>
+    /// The namespace-detail page (KON-197). The list answered "does it exist"; this answers what is
+    /// in it — which is the question you had, and the one that decides whether it can go.
+    /// </summary>
+    private void ShowNamespaceDetail(KubeNamespace ns)
+    {
+        if (_cluster is null)
+            return;
+
+        Arrived($"namespace {ns.Name}", () => ShowNamespaceDetail(ns), ns);
+        DisposeDetail();
+
+        CurrentPage = new ClusterNamespaceDetailViewModel(
+            _cluster, ns,
+            onOpenPod: ShowPodDetail,
+            onOpenKind: OpenKindInNamespace);
+    }
+
+    /// <summary>
+    /// Go to a list page with the namespace picker moved to the namespace you came from. Setting the
+    /// picker rather than passing a filter keeps one source of truth for "which namespace am I in" —
+    /// a page filtered to something the picker disagrees with is a page nobody can read.
+    /// </summary>
+    private void OpenKindInNamespace(string key, string ns)
+    {
+        SelectedNamespace = ns;
+        Navigate(key);
+    }
+
+    /// <summary>
     /// The drain modal (KON-251). A dialog rather than something on the page, because a drain runs
     /// for as long as its pods take to go and the page underneath it is rebuilt on every visit.
     /// </summary>

@@ -49,6 +49,16 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
     /// <summary>What the pods tab is called for this kind — "Pods" is not always the honest word.</summary>
     public virtual string PodsTabLabel => "Pods";
 
+    /// <summary>
+    /// Which namespace this page's pods and events are read from; null means every one.
+    /// <para>
+    /// The object's own namespace is right for a Deployment or a Service and wrong for both of the
+    /// cluster-scoped kinds (KON-197): a Node's pods are spread across every namespace there is, and
+    /// a Namespace <i>is</i> the scope rather than living in one.
+    /// </para>
+    /// </summary>
+    protected virtual string? Scope => Reference.Namespace is { Length: > 0 } ns ? ns : null;
+
     // ── Tabs ─────────────────────────────────────────────────────────────────
 
     [ObservableProperty] private string _selectedTab = "overview";
@@ -96,7 +106,7 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
         PodsLoading = true;
         try
         {
-            var all = await _cluster.ListPodsAsync(Namespace);
+            var all = await _cluster.ListPodsAsync(Scope);
             var mine = SelectPods(all);
 
             Pods.Clear();
@@ -143,7 +153,7 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
         EventsLoading = true;
         try
         {
-            var events = await _cluster.ListEventsAsync(Namespace);
+            var events = await _cluster.ListEventsAsync(Scope);
             Events.Clear();
 
             // Matched on kind as well as name: a Deployment and its Service commonly share a name, and
