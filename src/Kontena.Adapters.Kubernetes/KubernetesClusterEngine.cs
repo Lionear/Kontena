@@ -68,6 +68,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         Apply = true,
         Exec = true,
         PortForward = true,
+        NodeMaintenance = true,
         Metrics = false,
         Helm = false,
     };
@@ -332,6 +333,24 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
 
         return [.. (list.Items ?? []).Select(K8sMap.ToEvent).OrderByDescending(e => e.LastSeen)];
     }
+
+    // ── Node maintenance (KON-251) ───────────────────────────────────────────
+
+    public async ValueTask CordonNodeAsync(string node, bool cordoned, CancellationToken ct = default)
+    {
+        try
+        {
+            await NodeMaintenance.CordonAsync(_client, node, cordoned, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw K8sErrors.Map(ex, _context);
+        }
+    }
+
+    public IAsyncEnumerable<DrainProgress> DrainNodeAsync(
+        string node, DrainOptions options, CancellationToken ct = default) =>
+        NodeMaintenance.DrainAsync(_client, node, options, ct);
 
     public async ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(
         string? ns = null, CancellationToken ct = default)

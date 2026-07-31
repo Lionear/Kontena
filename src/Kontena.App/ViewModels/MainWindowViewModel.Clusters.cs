@@ -77,6 +77,24 @@ public partial class MainWindowViewModel
             destructive: true);
     }
     /// <summary>
+    /// The drain modal (KON-251). A dialog rather than something on the page, because a drain runs
+    /// for as long as its pods take to go and the page underneath it is rebuilt on every visit.
+    /// </summary>
+    private void ShowDrainNode(string node)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new DrainNodeViewModel(_cluster, node, CloseDialog, onDone: () =>
+        {
+            // The node list is what changed — pod counts and the cordoned marker — and the dialog
+            // stays open holding the outcome.
+            ReloadCurrentClusterPage();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
     /// The manifest editor as a modal (KON-252), for the kinds whose page is a list of rows rather
     /// than a detail page with tabs.
     /// </summary>

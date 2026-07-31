@@ -134,6 +134,28 @@ public interface IClusterEngine : IBackend
     ValueTask RolloutRestartAsync(ResourceRef workload, CancellationToken ct = default);
 
     /// <summary>
+    /// Mark a node unschedulable, or schedulable again (KON-251). Requires
+    /// <see cref="ClusterCapabilities.NodeMaintenance"/>.
+    /// </summary>
+    ValueTask CordonNodeAsync(string node, bool cordoned, CancellationToken ct = default);
+
+    /// <summary>
+    /// Move the work off a node: cordon it, then evict what can be evicted, streaming one
+    /// <see cref="DrainProgress"/> per decision.
+    /// <para>
+    /// <b>The eviction API, not delete.</b> That is what consults PodDisruptionBudgets, and a budget
+    /// refusing is a true statement about the cluster rather than a failure of the drain.
+    /// </para>
+    /// <para>
+    /// <b>A failed drain rolls nothing back.</b> A half-drained node stays cordoned, because that is
+    /// the safe state and undoing it would put work back onto a node someone is about to touch. The
+    /// stream says how far it got; putting the node back into service is a separate, deliberate act.
+    /// </para>
+    /// </summary>
+    IAsyncEnumerable<DrainProgress> DrainNodeAsync(
+        string node, DrainOptions options, CancellationToken ct = default);
+
+    /// <summary>
     /// Open an interactive exec session into a pod container. Reuses the CEAL's
     /// <see cref="IExecSession"/> — the duplex PTY channel is identical.
     /// Requires <see cref="ClusterCapabilities.Exec"/>.

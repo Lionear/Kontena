@@ -46,6 +46,9 @@ public sealed record ClusterCapabilities
 
     /// <summary>Custom Resource Definitions can be browsed.</summary>
     public bool Crds { get; init; }
+
+    /// <summary>Nodes can be cordoned, uncordoned and drained (KON-251).</summary>
+    public bool NodeMaintenance { get; init; }
 }
 
 /// <summary>
