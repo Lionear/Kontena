@@ -26,6 +26,11 @@ public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObject
     /// <summary>Delete, always confirmed (KON-253). Shared with the secrets page below.</summary>
     private void ConfirmDelete(ConfigObjectRow row) => ConfigDelete.Confirm(this, _cluster, row, LoadAsync);
 
+    /// <summary>Opens the manifest editor; the shell owns the modal (KON-252).</summary>
+    public Action<ResourceRef>? RequestEdit { get; set; }
+
+    private void Edit(ConfigObjectRow row) => RequestEdit?.Invoke(row.Reference);
+
     public override string SearchPlaceholder => "Search config maps…";
 
     protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
@@ -34,7 +39,7 @@ public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObject
             .Select(c => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.ConfigMap, c.Namespace, c.Name),
                 type: null, c.Keys, c.Age, _cluster.GetConfigDataAsync, secret: false,
-                onDelete: ConfirmDelete)),
+                onDelete: ConfirmDelete, onEdit: Edit)),
     ];
 
     // The key names too: "which config map holds nginx.conf" is a question the name alone cannot
@@ -58,6 +63,11 @@ public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow
 
     private void ConfirmDelete(ConfigObjectRow row) => ConfigDelete.Confirm(this, _cluster, row, LoadAsync);
 
+    /// <summary>Opens the manifest editor; the shell owns the modal (KON-252).</summary>
+    public Action<ResourceRef>? RequestEdit { get; set; }
+
+    private void Edit(ConfigObjectRow row) => RequestEdit?.Invoke(row.Reference);
+
     public override string SearchPlaceholder => "Search secrets…";
 
     protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
@@ -66,7 +76,7 @@ public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow
             .Select(s => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.Secret, s.Namespace, s.Name),
                 s.Type, s.Keys, s.Age, _cluster.GetConfigDataAsync, secret: true,
-                onDelete: ConfirmDelete)),
+                onDelete: ConfirmDelete, onEdit: Edit)),
     ];
 
     protected override bool Matches(ConfigObjectRow row, string term) =>
@@ -80,19 +90,22 @@ public sealed partial class ConfigObjectRow : ObservableObject
     private readonly Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> _fetch;
 
     private readonly Action<ConfigObjectRow>? _onDelete;
+    private readonly Action<ConfigObjectRow>? _onEdit;
 
     public ConfigObjectRow(
         ResourceRef reference, string? type, IReadOnlyList<ConfigKey> keys, TimeSpan age,
         Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> fetch,
-        bool secret, Action<ConfigObjectRow>? onDelete = null)
+        bool secret, Action<ConfigObjectRow>? onDelete = null, Action<ConfigObjectRow>? onEdit = null)
     {
         ArgumentNullException.ThrowIfNull(keys);
 
         Reference = reference;
         _fetch = fetch;
         _onDelete = onDelete;
+        _onEdit = onEdit;
         IsSecret = secret;
         CanDelete = onDelete is not null;
+        CanEdit = onEdit is not null;
 
         Name = reference.Name;
         Namespace = reference.Namespace ?? "default";
@@ -149,6 +162,12 @@ public sealed partial class ConfigObjectRow : ObservableObject
 
     [RelayCommand]
     private void Delete() => _onDelete?.Invoke(this);
+
+    /// <summary>Whether the page wired the manifest editor (KON-252).</summary>
+    public bool CanEdit { get; }
+
+    [RelayCommand]
+    private void Edit() => _onEdit?.Invoke(this);
 
     public bool MatchesKey(string term) =>
         Keys.Any(k => k.Name.Contains(term, StringComparison.OrdinalIgnoreCase));

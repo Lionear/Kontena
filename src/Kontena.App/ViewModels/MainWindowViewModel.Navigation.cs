@@ -174,9 +174,9 @@ public partial class MainWindowViewModel
             "storageclasses" => new ClusterStorageClassesViewModel(_cluster),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
-            "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm, RequestEdit = ShowManifestEditor },
             // Keys and sizes; a value only moves when asked for, one key at a time (KON-249).
-            "secrets" => new ClusterSecretsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "secrets" => new ClusterSecretsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm, RequestEdit = ShowManifestEditor },
             // The feed you open when you do not yet know which object is the broken one (KON-248).
             "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm

@@ -77,6 +77,23 @@ public partial class MainWindowViewModel
             destructive: true);
     }
     /// <summary>
+    /// The manifest editor as a modal (KON-252), for the kinds whose page is a list of rows rather
+    /// than a detail page with tabs.
+    /// </summary>
+    private void ShowManifestEditor(ResourceRef reference)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new EditManifestDialogViewModel(_cluster, reference, CloseDialog, onDone: () =>
+        {
+            // Keys and sizes live on the list behind it, and an apply changes them.
+            ReloadCurrentClusterPage();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
     /// Open one of the storage pages at a single object (KON-254).
     /// <para>
     /// The search box is the filter, rather than a private one the page owns: there is then one way
