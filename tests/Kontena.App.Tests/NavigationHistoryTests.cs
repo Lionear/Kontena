@@ -2,6 +2,8 @@ using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.Sdk;
 using Kontena.Engines;
+using Kontena.Engines.Fakes;
+using Kontena.Core.Orchestration.Fakes;
 
 namespace Kontena.App.Tests;
 
@@ -17,6 +19,49 @@ public sealed class NavigationHistoryTests
         var store = new SettingsStore(path);
 
         return new MainWindowViewModel(new BackendRegistry([]), store, store.Load(), new FakeUpdateService());
+    }
+
+    // ── Landing (KON-263) ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task The_page_a_session_lands_on_is_somewhere_you_can_return_to()
+    {
+        // Landing set CurrentPage directly instead of navigating, so the shell arrived somewhere
+        // without recording that it had — and the very first Back of a session had nothing behind it.
+        // The second navigation onwards was fine, which is what made it look like a rendering glitch.
+        var shell = new MainWindowViewModel();
+        await shell.EnterEngineModeAsync(new FakeEngine());
+
+        Assert.False(shell.CanGoBack);   // the landing page itself has nothing behind it
+
+        shell.NavigateCommand.Execute("images");
+
+        Assert.True(shell.CanGoBack);
+        Assert.Equal("Back to Containers", shell.BackTooltip);
+
+        shell.GoBackCommand.Execute(null);
+
+        Assert.Same(shell.Containers, shell.CurrentPage);
+    }
+
+    [Fact]
+    public async Task And_the_same_holds_for_a_cluster()
+    {
+        // The cluster half built its overview here rather than navigating to it, so it had the
+        // identical gap — found by looking rather than by being reported.
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
+
+        Assert.False(shell.CanGoBack);
+
+        shell.NavigateCommand.Execute("pods");
+
+        Assert.True(shell.CanGoBack);
+        Assert.Equal("Back to Overview", shell.BackTooltip);
+
+        shell.GoBackCommand.Execute(null);
+
+        Assert.IsType<ClusterOverviewViewModel>(shell.CurrentPage);
     }
 
     [Fact]
