@@ -166,6 +166,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
         [
             new ConfigMapSummary { Name = "web-config", Namespace = "app", Age = TimeSpan.FromDays(4), Keys = [new ConfigKey("nginx.conf", 812), new ConfigKey("LOG_LEVEL", 4)] },
             new ConfigMapSummary { Name = "kube-root-ca.crt", Namespace = "app", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("ca.crt", 1099)] },
+            // Kubernetes writes this one into *every* namespace, so a fake where only one namespace
+            // has it lets "this namespace is empty" pass a test it would fail on a real cluster.
+            new ConfigMapSummary { Name = "kube-root-ca.crt", Namespace = "kube-system", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("ca.crt", 1099)] },
         ];
 
         _secrets =
@@ -175,6 +178,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             new SecretSummary { Name = "postgres-credentials", Namespace = "app", Type = "Opaque", Age = TimeSpan.FromDays(9), Keys = [new ConfigKey("password", 24), new ConfigKey("username", 8)] },
             new SecretSummary { Name = "app-tls", Namespace = "app", Type = "kubernetes.io/tls", Age = TimeSpan.FromDays(2), Keys = [new ConfigKey("tls.crt", 1704), new ConfigKey("tls.key", 1675)] },
             new SecretSummary { Name = "ghcr-pull", Namespace = "app", Type = "kubernetes.io/dockerconfigjson", Age = TimeSpan.FromDays(40), Keys = [new ConfigKey(".dockerconfigjson", 187)] },
+            // Minted beside a service account rather than by anyone; same reason as kube-root-ca.crt.
+            new SecretSummary { Name = "default-token-x9f2q", Namespace = "kube-system", Type = "kubernetes.io/service-account-token", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("token", 1024)] },
         ];
 
         _configData = new Dictionary<string, IReadOnlyList<ConfigEntry>>(StringComparer.Ordinal)

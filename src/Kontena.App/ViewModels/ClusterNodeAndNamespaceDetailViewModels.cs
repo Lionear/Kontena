@@ -203,13 +203,34 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
 
     [ObservableProperty] private bool _contentsLoading;
 
-    public bool IsEmptyNamespace => !ContentsLoading && Contents.All(c => c.Count == 0);
+    /// <summary>
+    /// What is in here that someone put there. Kubernetes creates a <c>kube-root-ca.crt</c> config
+    /// map in every namespace and a token beside every service account, so counting those would mean
+    /// no namespace is ever empty — and emptiness is the whole question this page is opened with.
+    /// </summary>
+    private int _ownContents;
+
+    /// <summary>The config map the API server writes into every namespace, since Kubernetes 1.20.</summary>
+    private const string RootCaConfigMap = "kube-root-ca.crt";
+
+    /// <summary>The secret type Kubernetes mints beside a service account.</summary>
+    private const string ServiceAccountTokenSecret = "kubernetes.io/service-account-token";
+
+    /// <summary>
+    /// Whether the contents could be read at all. A namespace whose contents were refused is not an
+    /// empty namespace, and saying so would be the most confident possible way to be wrong.
+    /// </summary>
+    private bool _contentsFailed;
+
+    public bool IsEmptyNamespace => !ContentsLoading && !_contentsFailed && _ownContents == 0;
 
     /// <summary>
     /// A namespace with nothing in it is worth stating outright — it is the answer to "can I delete
-    /// this", and a page of five zeroes makes you count them yourself.
+    /// this", and a page of seven zeroes makes you count them yourself. It names what it is ignoring,
+    /// because "nothing is in this namespace" beside a config map count of 1 reads as a contradiction.
     /// </summary>
-    public string EmptyNote { get; } = "Nothing is in this namespace.";
+    public string EmptyNote { get; } =
+        "Nothing is in this namespace, apart from what Kubernetes puts in every one.";
 
     private async Task LoadContentsAsync()
     {
@@ -217,7 +238,7 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
 
         try
         {
-            // One namespace, five questions, asked together rather than in sequence: they are
+            // One namespace, seven questions, asked together rather than in sequence: they are
             // independent and the page is not readable until the last of them lands anyway.
             var workloads = _cluster.ListWorkloadsAsync(null, Name);
             var pods = _cluster.ListPodsAsync(Name);
@@ -225,17 +246,35 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
             var ingresses = _cluster.ListIngressesAsync(Name);
             var claims = _cluster.ListPvcsAsync(Name);
 
+            // Config maps and secrets count too, and leaving them out was not a missing row but a
+            // wrong answer: this tally is what "can I delete this namespace?" is asked with, and a
+            // namespace holding nothing but secrets read as empty.
+            var configMaps = _cluster.ListConfigMapsAsync(Name);
+            var secrets = _cluster.ListSecretsAsync(Name);
+
+            var maps = await configMaps;
+            var keys = await secrets;
+
             Add("Workloads", (await workloads).Count, "workloads");
             Add("Pods", (await pods).Count, "pods");
             Add("Services", (await services).Count, "services");
             Add("Ingresses", (await ingresses).Count, "ingresses");
             Add("Volume claims", (await claims).Count, "pvcs");
+            Add("Config maps", maps.Count, "configmaps");
+            Add("Secrets", keys.Count, "secrets");
+
+            // The rows carry the real counts; emptiness is measured against what you would actually
+            // lose. See _ownContents for why those are not the same number.
+            _ownContents = Contents.Where(c => c.Label is not ("Config maps" or "Secrets")).Sum(c => c.Count)
+                + maps.Count(m => !string.Equals(m.Name, RootCaConfigMap, StringComparison.Ordinal))
+                + keys.Count(s => !string.Equals(s.Type, ServiceAccountTokenSecret, StringComparison.Ordinal));
         }
         catch (Exception)
         {
             // A namespace you cannot read the contents of still has a name, a phase and its labels,
             // and that is most of why this page was opened.
             Contents.Clear();
+            _contentsFailed = true;
         }
         finally
         {
