@@ -116,6 +116,20 @@ public sealed partial class ConfigObjectRow : ObservableObject
 
     [ObservableProperty] private bool _isExpanded;
 
+    partial void OnIsExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanExpand));
+        OnPropertyChanged(nameof(CanCollapse));
+    }
+
+    /// <summary>
+    /// Which way the chevron points, and whether there is one at all. An object with no keys has
+    /// nothing to open, and a control that opens onto nothing is a dead button (KON-117).
+    /// </summary>
+    public bool CanExpand => HasKeys && !IsExpanded;
+
+    public bool CanCollapse => HasKeys && IsExpanded;
+
     [RelayCommand]
     private void Toggle() => IsExpanded = !IsExpanded;
 
