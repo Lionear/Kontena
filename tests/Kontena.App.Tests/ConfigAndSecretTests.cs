@@ -142,13 +142,13 @@ public sealed class ConfigAndSecretTests
     }
 
     [Fact]
-    public void Asking_a_third_kind_for_configuration_data_is_a_bug_and_says_so()
+    public async Task Asking_a_third_kind_for_configuration_data_is_a_bug_and_says_so()
     {
         // An empty list would look like an object with no keys, which is a different and valid
         // answer.
         var engine = new FakeClusterEngine();
         var pod = new ResourceRef(GroupVersionKind.Pod, "app", "web-7f9");
 
-        Assert.Throws<NotSupportedException>(() => engine.GetConfigDataAsync(pod));
+        await Assert.ThrowsAsync<NotSupportedException>(async () => await engine.GetConfigDataAsync(pod));
     }
 }
