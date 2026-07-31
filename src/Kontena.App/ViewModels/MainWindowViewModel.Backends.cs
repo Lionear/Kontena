@@ -250,7 +250,15 @@ public partial class MainWindowViewModel
 
         _settings = _store.Update(s => s with { LastBackend = backend });
     }
-    private async Task EnterEngineModeAsync(IContainerEngine engine)
+    /// <summary>
+    /// Open a container engine and land on Containers.
+    /// <para>
+    /// Internal rather than private for the same reason as <see cref="EnterClusterModeAsync"/>: what
+    /// landing does to the shell — the nav, the history — only happens here, so a test of it has to
+    /// come through this door too.
+    /// </para>
+    /// </summary>
+    internal async Task EnterEngineModeAsync(IContainerEngine engine)
     {
         _engine = engine;
         IsClusterMode = false;
@@ -301,9 +309,17 @@ public partial class MainWindowViewModel
             RequestConfirm = ShowConfirm,
         };
         SearchText = string.Empty;
-        CurrentPage = Containers;
 
         await Containers.LoadAsync();
+
+        // Through the same door as every other navigation (KON-263). Landing here used to set
+        // CurrentPage directly, so the shell arrived somewhere without recording that it had — and
+        // the first Back of the session had nothing behind it.
+        //
+        // After the load rather than before: Navigate starts one for a page that has not loaded yet,
+        // and this one is already under way. Nothing renders CurrentPage until IsReady anyway.
+        Navigate("containers");
+
         IsReady = true;
         Containers.StartWatching();
         _activityLog.Attach(_engine, _activeBackend, ResolveEventName);
@@ -362,7 +378,11 @@ public partial class MainWindowViewModel
         RestorePortForwards(cluster, _activeBackend);
 
         SearchText = string.Empty;
-        CurrentPage = new ClusterOverviewViewModel(cluster);
+
+        // Same door, same reason (KON-263). This side had the identical gap: the overview was built
+        // here rather than navigated to, so a cluster's first Back was missing too.
+        Navigate("overview");
+
         SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
         await UpdateClusterNavCountsAsync();
         IsReady = true;
