@@ -37,13 +37,13 @@ public sealed record SshAskpass(string Executable, string SecretKey)
 /// </summary>
 public sealed class SshTunnel : IAsyncDisposable
 {
-    private readonly string _localSocket;
+    private readonly SshForward _forward;
     private Process? _process;
 
-    private SshTunnel(string localSocket) => _localSocket = localSocket;
+    private SshTunnel(SshForward forward) => _forward = forward;
 
-    /// <summary>The local socket to point a Docker client at, once <see cref="OpenAsync"/> has returned.</summary>
-    public Uri Endpoint => new($"unix://{_localSocket}");
+    /// <summary>The address to point a Docker client at, once <see cref="OpenAsync"/> has returned.</summary>
+    public Uri Endpoint => _forward.Endpoint;
 
     /// <summary>
     /// Opens the tunnel and waits for the local socket to exist. Throws when ssh exits first, carrying
@@ -57,16 +57,8 @@ public sealed class SshTunnel : IAsyncDisposable
     public static async Task<SshTunnel> OpenAsync(
         RemoteEngine remote, TimeSpan timeout, SshAskpass? askpass = null, CancellationToken ct = default)
     {
-        // A socket per tunnel, under the runtime dir where sockets belong and are cleaned up on logout.
-        var directory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
-            ?? Path.Combine(Path.GetTempPath(), "kontena");
-        Directory.CreateDirectory(directory);
-
-        var localSocket = Path.Combine(directory, $"kontena-{remote.Id}.sock");
-        if (File.Exists(localSocket))
-            File.Delete(localSocket);                        // a socket left by a previous run blocks bind
-
-        var tunnel = new SshTunnel(localSocket);
+        var forward = LocalEnd(remote);
+        var tunnel = new SshTunnel(forward);
         var start = new ProcessStartInfo("ssh")
         {
             RedirectStandardError = true,
@@ -74,7 +66,7 @@ public sealed class SshTunnel : IAsyncDisposable
             UseShellExecute = false,
         };
 
-        foreach (var argument in Arguments(remote, localSocket))
+        foreach (var argument in Arguments(remote, forward.Spec))
             start.ArgumentList.Add(argument);
 
         if (remote.UsePassword && askpass is { } helper)
@@ -96,7 +88,7 @@ public sealed class SshTunnel : IAsyncDisposable
 
         try
         {
-            await WaitForSocketAsync(localSocket, process, remote, timeout, ct).ConfigureAwait(false);
+            await WaitForReadyAsync(forward, process, remote, timeout, ct).ConfigureAwait(false);
             return tunnel;
         }
         catch (Exception)
@@ -107,10 +99,37 @@ public sealed class SshTunnel : IAsyncDisposable
     }
 
     /// <summary>
+    /// Where this machine will listen — a unix socket, or a loopback port on Windows (KON-258).
+    /// Public for tests: which of the two is chosen cannot be seen from the outside, and choosing
+    /// wrong is a connection that never opens.
+    /// </summary>
+    public static SshForward LocalEnd(RemoteEngine remote)
+    {
+        ArgumentNullException.ThrowIfNull(remote);
+
+        if (OperatingSystem.IsWindows())
+            return SshForward.OverLoopback(SshForward.FreeLoopbackPort());
+
+        // A socket per tunnel, under the runtime dir where sockets belong and are cleaned up on logout.
+        var directory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
+            ?? Path.Combine(Path.GetTempPath(), "kontena");
+        Directory.CreateDirectory(directory);
+
+        var socket = Path.Combine(directory, $"kontena-{remote.Id}.sock");
+        if (File.Exists(socket))
+            File.Delete(socket);                             // a socket left by a previous run blocks bind
+
+        return SshForward.OverSocket(socket);
+    }
+
+    /// <summary>
     /// The ssh command line. Public for tests: this is the part that silently does the wrong thing, and
     /// it cannot be checked by reading the code back.
     /// </summary>
-    public static IReadOnlyList<string> Arguments(RemoteEngine remote, string localSocket)
+    /// <param name="localEnd">
+    /// The local half of <c>-L</c>: a socket path, or <c>127.0.0.1:port</c>. See <see cref="SshForward"/>.
+    /// </param>
+    public static IReadOnlyList<string> Arguments(RemoteEngine remote, string localEnd)
     {
         ArgumentNullException.ThrowIfNull(remote);
 
@@ -146,7 +165,9 @@ public sealed class SshTunnel : IAsyncDisposable
             // BatchMode on would refuse the only method that was chosen.
             "-o", remote.UsePassword ? "BatchMode=no" : "BatchMode=yes",
 
-            "-L", $"{localSocket}:{remote.SocketPath ?? RemoteEngine.DefaultSocketPath}",
+            // The remote half is a unix socket on every platform: that end is served by the remote
+            // host's sshd, which supports it. Only the local half varies (KON-258).
+            "-L", $"{localEnd}:{remote.SocketPath ?? RemoteEngine.DefaultSocketPath}",
         };
 
         if (remote.KeyFile is { Length: > 0 } keyFile)
@@ -179,15 +200,15 @@ public sealed class SshTunnel : IAsyncDisposable
         return arguments;
     }
 
-    private static async Task WaitForSocketAsync(
-        string socket, Process process, RemoteEngine remote, TimeSpan timeout, CancellationToken ct)
+    private static async Task WaitForReadyAsync(
+        SshForward forward, Process process, RemoteEngine remote, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
 
-            if (File.Exists(socket))
+            if (await IsListeningAsync(forward, ct).ConfigureAwait(false))
                 return;
 
             if (process.HasExited)
@@ -212,6 +233,32 @@ public sealed class SshTunnel : IAsyncDisposable
         throw new TimeoutException(
             "The SSH tunnel did not open in time. The host may be unreachable, or the remote socket path "
             + "may be wrong.");
+    }
+
+    /// <summary>
+    /// Whether the local end is accepting connections yet. A file on disk for a socket forward, and an
+    /// actual connect for a port — "something is bound here" is the only honest test of a port, and it
+    /// is the same claim the file's existence makes.
+    /// </summary>
+    private static async Task<bool> IsListeningAsync(SshForward forward, CancellationToken ct)
+    {
+        if (forward.SocketPath is { } path)
+            return File.Exists(path);
+
+        try
+        {
+            using var probe = new System.Net.Sockets.TcpClient();
+            await probe.ConnectAsync(System.Net.IPAddress.Loopback, forward.Endpoint.Port, ct)
+                .ConfigureAwait(false);
+
+            return probe.Connected;
+        }
+        catch (Exception) when (ct.IsCancellationRequested is false)
+        {
+            // Nothing there yet. ssh binds the listener once authentication completes, so this is the
+            // ordinary state for the first moment of every connection.
+            return false;
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -242,8 +289,9 @@ public sealed class SshTunnel : IAsyncDisposable
         try
         {
             // ssh does not always remove the socket it created, and a leftover blocks the next bind.
-            if (File.Exists(_localSocket))
-                File.Delete(_localSocket);
+            // A port forward has no such leftover: killing the process is all the cleanup there is.
+            if (_forward.SocketPath is { } path && File.Exists(path))
+                File.Delete(path);
         }
         catch (Exception)
         {
