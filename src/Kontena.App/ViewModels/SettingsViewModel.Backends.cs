@@ -3,6 +3,7 @@ using Kontena.Adapters.Docker;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
@@ -141,6 +142,51 @@ public partial class SettingsViewModel
 
     public bool CanAddRemote => !IsRemoteBusy && Draft().Problem is null;
 
+    /// <summary>
+    /// The connection whose host key is not trusted yet, or null (KON-260). Set only by a test that
+    /// failed for that one reason, so the button below appears exactly when it has something to offer
+    /// — and never after a key that <i>changed</i>, which is not a question the user should be
+    /// invited to answer with a click.
+    /// </summary>
+    [ObservableProperty] private RemoteEngine? _untrustedHost;
+
+    public bool CanReviewHostKey => UntrustedHost is not null && !IsRemoteBusy;
+
+    partial void OnUntrustedHostChanged(RemoteEngine? value) => OnPropertyChanged(nameof(CanReviewHostKey));
+
+    /// <summary>
+    /// Fetches the host's fingerprint and asks about it. Confirming writes it to <c>known_hosts</c> and
+    /// tests again, so the user ends where they were going rather than back at a form.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReviewHostKeyAsync()
+    {
+        if (UntrustedHost is not { } remote)
+            return;
+
+        IsRemoteBusy = true;
+        try
+        {
+            var request = await SshHostKeyTrust.AskAsync(remote, async () =>
+            {
+                UntrustedHost = null;
+                await TestRemoteAsync();
+            });
+
+            RequestConfirm?.Invoke(request);
+        }
+        catch (Exception ex)
+        {
+            // Scanning failed — the host went away between the attempt and the question, or it never
+            // answered ssh-keyscan. Nothing to confirm, so say so rather than showing an empty dialog.
+            RemoteError = ex.Message;
+        }
+        finally
+        {
+            IsRemoteBusy = false;
+        }
+    }
+
     [RelayCommand]
     private void SetRemoteTransport(string transport) => RemoteIsSsh = transport != "tcp";
 
@@ -167,7 +213,11 @@ public partial class SettingsViewModel
     partial void OnRemoteHostChanged(string value) => OnRemoteFieldChanged();
     partial void OnRemotePortChanged(string value) => OnRemoteFieldChanged();
     partial void OnRemoteAllowInsecureChanged(bool value) => OnRemoteFieldChanged();
-    partial void OnIsRemoteBusyChanged(bool value) => OnPropertyChanged(nameof(CanAddRemote));
+    partial void OnIsRemoteBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanAddRemote));
+        OnPropertyChanged(nameof(CanReviewHostKey));
+    }
 
     // These two had no handler at all, so the submit button did not re-evaluate while they were being
     // typed — invisible while the only rule was about certificates, and wrong the moment the user and
@@ -187,6 +237,10 @@ public partial class SettingsViewModel
         OnPropertyChanged(nameof(RemoteProblem));
         RemoteError = null;
         RemoteNotice = null;
+
+        // The offer belongs to the host that was tested. Once the form describes a different one it is
+        // an offer to trust a machine nobody asked about.
+        UntrustedHost = null;
     }
 
     /// <summary>
@@ -255,12 +309,22 @@ public partial class SettingsViewModel
             });
 
             RemoteNotice = $"Connected — {info.DisplayName} {info.Version}.".Replace("  ", " ", StringComparison.Ordinal);
+            UntrustedHost = null;
+        }
+        catch (SshHostKeyException ex) when (ex.Problem == SshHostKeyProblem.Unknown)
+        {
+            // The one failure that is a question rather than a fault (KON-260). Offering the fingerprint
+            // here is what stops this being "go and use a terminal, then come back".
+            RemoteError = ex.Message;
+            UntrustedHost = draft;
         }
         catch (Exception ex)
         {
-            // ssh's and the daemon's own words. "Permission denied (publickey)" and "Host key verification
-            // failed" say exactly what to fix, and nothing written here would say it better.
+            // ssh's and the daemon's own words. "Permission denied (publickey)" says exactly what to fix,
+            // and nothing written here would say it better. A changed host key lands here too, on
+            // purpose: it names the file and line to undo, and Kontena will not offer to undo it.
             RemoteError = ex.Message;
+            UntrustedHost = null;
         }
         finally
         {
