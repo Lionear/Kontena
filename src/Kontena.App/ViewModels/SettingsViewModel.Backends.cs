@@ -109,6 +109,19 @@ public partial class SettingsViewModel
     [ObservableProperty] private string _remoteSocketPath = string.Empty;
     [ObservableProperty] private string _remoteCertificateDirectory = string.Empty;
     [ObservableProperty] private bool _remoteAllowInsecure;
+
+    /// <summary>A private key to use instead of whatever the agent offers (KON-261).</summary>
+    [ObservableProperty] private string _remoteKeyFile = string.Empty;
+
+    /// <summary>Authenticate with a stored password rather than a key (KON-259).</summary>
+    [ObservableProperty] private bool _remoteUsePassword;
+
+    /// <summary>
+    /// The password as it is being typed. Never persisted with the engine — it goes to the keychain on
+    /// save and this field is emptied, so a settings file cannot end up holding it.
+    /// </summary>
+    [ObservableProperty] private string _remotePassword = string.Empty;
+
     [ObservableProperty] private bool _remoteIsSsh = true;
     [ObservableProperty] private bool _isRemoteBusy;
     [ObservableProperty] private string? _remoteError;
@@ -136,6 +149,18 @@ public partial class SettingsViewModel
     }
 
     public bool RemoteIsTcp => !RemoteIsSsh;
+
+    /// <summary>
+    /// Whether to offer the password option at all (KON-259). Without a keychain there is nowhere to
+    /// put it, and Kontena has no fallback to a file — so the option is absent rather than present and
+    /// broken, the same rule the registry logins follow.
+    /// </summary>
+    public bool ShowPasswordOption => RemoteIsSsh && HasKeychain;
+
+    /// <summary>The key file box, hidden once a password is what will be used.</summary>
+    public bool ShowKeyFile => RemoteIsSsh && !RemoteUsePassword;
+
+    public bool ShowPasswordBox => ShowPasswordOption && RemoteUsePassword;
 
     /// <summary>Shown for TCP only, and only until certificates are given.</summary>
     public bool ShowInsecureWarning => RemoteIsTcp && string.IsNullOrWhiteSpace(RemoteCertificateDirectory);
@@ -194,7 +219,15 @@ public partial class SettingsViewModel
     {
         OnPropertyChanged(nameof(RemoteIsTcp));
         OnPropertyChanged(nameof(ShowInsecureWarning));
+        NotifyAuthVisibility();
         OnRemoteFieldChanged();
+    }
+
+    private void NotifyAuthVisibility()
+    {
+        OnPropertyChanged(nameof(ShowPasswordOption));
+        OnPropertyChanged(nameof(ShowKeyFile));
+        OnPropertyChanged(nameof(ShowPasswordBox));
     }
 
     /// <summary>
@@ -224,6 +257,21 @@ public partial class SettingsViewModel
     // the socket path carry a rule of their own.
     partial void OnRemoteUserChanged(string value) => OnRemoteFieldChanged();
     partial void OnRemoteSocketPathChanged(string value) => OnRemoteFieldChanged();
+    partial void OnRemoteKeyFileChanged(string value) => OnRemoteFieldChanged();
+
+    partial void OnRemoteUsePasswordChanged(bool value)
+    {
+        // A password and a key file are alternatives, not a pair (the model refuses both). Clearing the
+        // other one is what makes the choice visible rather than leaving a field that silently no
+        // longer applies.
+        if (value)
+            RemoteKeyFile = string.Empty;
+        else
+            RemotePassword = string.Empty;
+
+        NotifyAuthVisibility();
+        OnRemoteFieldChanged();
+    }
 
     partial void OnRemoteCertificateDirectoryChanged(string value)
     {
@@ -261,6 +309,8 @@ public partial class SettingsViewModel
         CertificateDirectory = RemoteCertificateDirectory,
         AllowInsecure = RemoteAllowInsecure,
         IsSsh = RemoteIsSsh,
+        KeyFile = RemoteKeyFile,
+        UsePassword = RemoteUsePassword && HasKeychain,
     }.Build(id ?? EditingRemoteId);
 
     private void RefreshRemotes()
@@ -295,7 +345,7 @@ public partial class SettingsViewModel
         {
             var info = await Task.Run(async () =>
             {
-                var backend = new RemoteDockerEngineProvider(draft).CreateBackend();
+                var backend = new RemoteDockerEngineProvider(draft, SshPasswordPrompt.For(draft)).CreateBackend();
                 try
                 {
                     await backend.PingAsync();
@@ -350,6 +400,12 @@ public partial class SettingsViewModel
         RemoteSocketPath = remote.SocketPath ?? string.Empty;
         RemoteCertificateDirectory = remote.CertificateDirectory ?? string.Empty;
         RemoteAllowInsecure = remote.AllowInsecureTcp;
+        RemoteKeyFile = remote.KeyFile ?? string.Empty;
+        RemoteUsePassword = remote.UsePassword;
+
+        // Left empty on purpose: the stored password is not read back into a box. Typing a new one
+        // replaces it, and leaving it alone keeps what the keychain already has.
+        RemotePassword = string.Empty;
 
         RemoteError = null;
         RemoteNotice = null;
@@ -370,6 +426,9 @@ public partial class SettingsViewModel
         RemoteSocketPath = string.Empty;
         RemoteCertificateDirectory = string.Empty;
         RemoteAllowInsecure = false;
+        RemoteKeyFile = string.Empty;
+        RemoteUsePassword = false;
+        RemotePassword = string.Empty;
         RemoteError = null;
     }
 
@@ -388,6 +447,15 @@ public partial class SettingsViewModel
         }
 
         var editing = EditingRemoteId;
+
+        // Before the engine is written, not after: a stored engine whose password never made it to the
+        // keychain looks configured and fails at connect time with ssh blamed for it.
+        if (draft.UsePassword && RemotePassword.Length > 0
+            && !await _secrets.SetAsync(SecretKeys.Engine(draft.Id), RemotePassword))
+        {
+            RemoteError = "The keychain refused to store the password, so nothing was saved.";
+            return;
+        }
 
         _settings = _store.Update(s => editing is null
             ? s with { RemoteEngines = [.. s.RemoteEngines, draft] }

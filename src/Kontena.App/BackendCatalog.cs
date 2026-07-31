@@ -1,6 +1,7 @@
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.Adapters.Podman;
+using Kontena.App.Services;
 using Kontena.Sdk.Models;
 using Kontena.Sdk;
 using Kontena.Engines.Fakes;
@@ -70,7 +71,7 @@ public static class BackendCatalog
         foreach (var remote in remotes ?? [])
         {
             if (remote.Problem is null)
-                providers.Add(new RemoteDockerEngineProvider(remote));
+                providers.Add(new RemoteDockerEngineProvider(remote, SshPasswordPrompt.For(remote)));
         }
 
         // One cluster backend per chosen kube-context. Yields nothing when there is no kubeconfig, so a

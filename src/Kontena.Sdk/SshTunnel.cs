@@ -5,6 +5,28 @@ using Kontena.Sdk.Models;
 namespace Kontena.Sdk;
 
 /// <summary>
+/// How ssh gets a password without a terminal to type it into (KON-259).
+/// <para>
+/// ssh runs <c>SSH_ASKPASS</c> and reads one line from its stdout. Kontena points that at
+/// <b>itself</b> — the same executable, in a mode that answers and exits — rather than shipping a
+/// second binary, which would be another artefact to sign and notarise (KON-53) for the sake of
+/// twenty lines.
+/// </para>
+/// <para>
+/// The name of a keychain entry travels in the environment; the password never does. It is not in
+/// argv either, so it is not in <c>ps</c> — which is the whole reason <c>sshpass -p</c> is not the
+/// answer here.
+/// </para>
+/// </summary>
+/// <param name="Executable">Kontena's own path, as ssh should invoke it.</param>
+/// <param name="SecretKey">Which keychain entry the helper should read.</param>
+public sealed record SshAskpass(string Executable, string SecretKey)
+{
+    /// <summary>The variable that puts Kontena into askpass mode, and names the entry to read.</summary>
+    public const string SecretVariable = "KONTENA_ASKPASS_SECRET";
+}
+
+/// <summary>
 /// An SSH forward from a local unix socket to the engine's socket on a remote host (KON-46).
 /// <para>
 /// Docker's client protocol has no SSH transport — <c>DOCKER_HOST=ssh://…</c> works by tunnelling, and so
@@ -28,8 +50,12 @@ public sealed class SshTunnel : IAsyncDisposable
     /// whatever ssh said — "Permission denied (publickey)" and "Host key verification failed" are the two
     /// most common failures, and both are far more useful than a timeout.
     /// </summary>
+    /// <param name="askpass">
+    /// How to answer a password prompt, for an engine configured to use one. Null everywhere else, and
+    /// null is what keeps <c>BatchMode=yes</c> meaningful: no helper, no prompt, no hang.
+    /// </param>
     public static async Task<SshTunnel> OpenAsync(
-        RemoteEngine remote, TimeSpan timeout, CancellationToken ct = default)
+        RemoteEngine remote, TimeSpan timeout, SshAskpass? askpass = null, CancellationToken ct = default)
     {
         // A socket per tunnel, under the runtime dir where sockets belong and are cleaned up on logout.
         var directory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
@@ -50,6 +76,18 @@ public sealed class SshTunnel : IAsyncDisposable
 
         foreach (var argument in Arguments(remote, localSocket))
             start.ArgumentList.Add(argument);
+
+        if (remote.UsePassword && askpass is { } helper)
+        {
+            start.Environment["SSH_ASKPASS"] = helper.Executable;
+            start.Environment[SshAskpass.SecretVariable] = helper.SecretKey;
+
+            // Without this ssh only consults SSH_ASKPASS when it has no terminal *and* DISPLAY is set,
+            // which is a rule about X11 that has nothing to do with whether this process can type.
+            // Requires OpenSSH 8.4 or newer; on older clients the prompt goes nowhere and the attempt
+            // fails, which is the behaviour we already had.
+            start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
+        }
 
         var process = Process.Start(start)
             ?? throw new InvalidOperationException("Could not start ssh. Is an SSH client installed?");
@@ -79,8 +117,11 @@ public sealed class SshTunnel : IAsyncDisposable
         // The last gate before a process starts (KON-181). The callers that reach a remote engine check
         // Problem first, so this should never fire — which is exactly why it is here: a future caller
         // that forgets should fail loudly rather than hand ssh an argument it reads as an option.
-        if (RemoteEngine.ArgumentProblem(remote.Host, remote.User, remote.SocketPath) is { } problem)
+        if (RemoteEngine.ArgumentProblem(remote.Host, remote.User, remote.SocketPath, remote.KeyFile)
+            is { } problem)
+        {
             throw new ArgumentException(problem, nameof(remote));
+        }
 
         var arguments = new List<string>
         {
@@ -99,10 +140,34 @@ public sealed class SshTunnel : IAsyncDisposable
 
             // Never prompt. A password prompt would block on a process with no terminal, which is a hang
             // rather than an error; keys and agents are the supported path and saying so is clearer.
-            "-o", "BatchMode=yes",
+            //
+            // Except where the user chose a password for this engine (KON-259). Then the prompt is
+            // answered without a terminal, by SSH_ASKPASS — set on the process, not here — and leaving
+            // BatchMode on would refuse the only method that was chosen.
+            "-o", remote.UsePassword ? "BatchMode=no" : "BatchMode=yes",
 
             "-L", $"{localSocket}:{remote.SocketPath ?? RemoteEngine.DefaultSocketPath}",
         };
+
+        if (remote.KeyFile is { Length: > 0 } keyFile)
+        {
+            arguments.Add("-i");
+            arguments.Add(keyFile);
+
+            // Without this ssh offers every key the agent holds first, and a host with a low
+            // MaxAuthTries can refuse the connection before the chosen key is ever tried. Someone who
+            // names a key means that key.
+            arguments.Add("-o");
+            arguments.Add("IdentitiesOnly=yes");
+        }
+
+        if (remote.UsePassword)
+        {
+            // Password only. Otherwise ssh spends its attempts on agent keys that were not chosen, and
+            // on a host with a low MaxAuthTries never reaches the password at all.
+            arguments.Add("-o");
+            arguments.Add("PreferredAuthentications=password,keyboard-interactive");
+        }
 
         if (remote.Port is { } port)
         {

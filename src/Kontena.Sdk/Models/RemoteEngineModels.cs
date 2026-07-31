@@ -37,6 +37,17 @@ public enum RemoteEngineTransport
 /// Explicit acknowledgement that this TCP endpoint has no TLS. False by default and never set on the
 /// user's behalf: it is the difference between a private connection and an open door.
 /// </param>
+/// <param name="KeyFile">
+/// A private key to authenticate with, or null to let ssh decide (KON-261). Null is still the right
+/// default — an agent and an <c>ssh_config</c> that already work should keep working — but it is not
+/// always reachable: an <c>IdentityAgent</c> line pinned to 1Password or Secretive means ssh ignores
+/// <c>SSH_AUTH_SOCK</c> entirely, and a key outside that agent is invisible with no way to point at it.
+/// </param>
+/// <param name="UsePassword">
+/// Whether to authenticate with a password from the keychain instead of a key (KON-259). Off by
+/// default, and only ever on because the user chose it for this engine: it is what turns
+/// <c>BatchMode</c> off, and that guard is the difference between an error and a hang.
+/// </param>
 public sealed record RemoteEngine(
     string Id,
     string Name,
@@ -46,7 +57,9 @@ public sealed record RemoteEngine(
     string? User = null,
     string? SocketPath = null,
     string? CertificateDirectory = null,
-    bool AllowInsecureTcp = false)
+    bool AllowInsecureTcp = false,
+    string? KeyFile = null,
+    bool UsePassword = false)
 {
     /// <summary>The backend id this appears under, unique per configured remote.</summary>
     public string Backend => $"docker-remote:{Id}";
@@ -82,7 +95,8 @@ public sealed record RemoteEngine(
     /// string someone was asked to paste.
     /// </para>
     /// </summary>
-    public static string? ArgumentProblem(string? host, string? user, string? socketPath)
+    public static string? ArgumentProblem(
+        string? host, string? user, string? socketPath, string? keyFile = null)
     {
         if (host is { Length: > 0 } h && h.StartsWith('-'))
             return "A host cannot start with \"-\". SSH would read it as one of its own options rather than a destination.";
@@ -92,6 +106,11 @@ public sealed record RemoteEngine(
 
         if (socketPath is { Length: > 0 } s && s.Contains(':', StringComparison.Ordinal))
             return "A socket path cannot contain \":\". It would change which address the tunnel forwards to.";
+
+        // Same rule, third field (KON-261). A colon is harmless here — this one is not part of a
+        // forward spec — but a leading hyphen is read as an option exactly as it is everywhere else.
+        if (keyFile is { Length: > 0 } k && k.StartsWith('-'))
+            return "A key file cannot start with \"-\". SSH would read it as one of its own options rather than a path.";
 
         return null;
     }
@@ -107,8 +126,32 @@ public sealed record RemoteEngine(
             if (string.IsNullOrWhiteSpace(Host))
                 return "A host is required.";
 
-            if (ArgumentProblem(Host, User, SocketPath) is { } unsafeValue)
+            if (ArgumentProblem(Host, User, SocketPath, KeyFile) is { } unsafeValue)
                 return unsafeValue;
+
+            if (Transport == RemoteEngineTransport.Ssh)
+            {
+                // Caught here rather than at connect time, where ssh reports a missing key as
+                // "Permission denied (publickey)" — a message that points at the host while the
+                // problem is on this machine's own disk.
+                if (KeyFile is { Length: > 0 } key)
+                {
+                    if (!File.Exists(key))
+                        return $"No key file at {key}.";
+
+                    // The easiest wrong answer, and the one a file picker makes easiest of all: both
+                    // halves sit side by side and only one of them is the identity. ssh reports it as
+                    // a rejected key, which reads as "the host does not have my key" — the opposite of
+                    // what happened.
+                    if (key.EndsWith(".pub", StringComparison.OrdinalIgnoreCase))
+                        return "That is the public half. SSH authenticates with the private key — the same path without .pub.";
+                }
+
+                // Both at once is not a configuration with a meaning: ssh would try the key and then
+                // ask for a password anyway, so the setting that was chosen last would silently win.
+                if (UsePassword && KeyFile is { Length: > 0 })
+                    return "Choose either a key file or a password, not both.";
+            }
 
             if (Transport == RemoteEngineTransport.Tcp)
             {
@@ -151,6 +194,12 @@ public sealed record RemoteEngineDraft
     public string CertificateDirectory { get; init; } = string.Empty;
     public bool AllowInsecure { get; init; }
 
+    /// <summary>Private key to authenticate with. Empty means "let ssh decide", which is the default.</summary>
+    public string KeyFile { get; init; } = string.Empty;
+
+    /// <summary>Whether to use a password from the keychain rather than a key (KON-259).</summary>
+    public bool UsePassword { get; init; }
+
     /// <summary>SSH is the default: it is the transport most people already have working.</summary>
     public bool IsSsh { get; init; } = true;
 
@@ -173,6 +222,7 @@ public sealed record RemoteEngineDraft
         var user = User.Trim();
         var socket = SocketPath.Trim();
         var certificates = CertificateDirectory.Trim();
+        var key = KeyFile.Trim();
 
         return new RemoteEngine(
             id ?? Guid.NewGuid().ToString("N")[..12],
@@ -183,7 +233,12 @@ public sealed record RemoteEngineDraft
             IsSsh && user.Length > 0 ? user : null,
             IsSsh && socket.Length > 0 ? socket : null,
             !IsSsh && certificates.Length > 0 ? certificates : null,
-            !IsSsh && AllowInsecure);
+            !IsSsh && AllowInsecure,
+
+            // Dropped along with the rest of the SSH fields when the form is on TCP, for the same
+            // reason: a path typed into one transport must not come back under the other.
+            IsSsh && key.Length > 0 ? key : null,
+            IsSsh && UsePassword);
     }
 
     /// <summary>Why this form cannot be used yet, or null. Delegates to the model's own rule.</summary>

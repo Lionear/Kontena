@@ -188,10 +188,35 @@
                                 <TextBlock Classes="hint"
                                            Text="Leave empty to let ssh decide, which respects your ssh_config."/>
                             </StackPanel>
+                            <!-- Authentication (KON-261 / KON-259) -->
+                            <StackPanel Spacing="7" IsVisible="{Binding ShowKeyFile}">
+                                <TextBlock Classes="label" Text="KEY FILE"/>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox Grid.Column="0" Text="{Binding KeyFile, Mode=TwoWay}"
+                                             FontFamily="{StaticResource Mono}"
+                                             PlaceholderText="~/.ssh/id_ed25519"/>
+                                    <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0"
+                                            Click="OnBrowseKeyFile">Browse…</Button>
+                                </Grid>
+                                <TextBlock Classes="hint"
+                                           Text="Leave empty to use your agent and ssh_config, which is usually right. Name a file when the key is not in the agent your ssh_config points at — an IdentityAgent line, 1Password or Secretive, means SSH_AUTH_SOCK is ignored."/>
+                            </StackPanel>
+
+                            <CheckBox IsChecked="{Binding UsePassword, Mode=TwoWay}"
+                                      IsVisible="{Binding ShowPasswordOption}"
+                                      Content="Use a password instead of a key"/>
+
+                            <StackPanel Spacing="7" IsVisible="{Binding ShowPasswordBox}">
+                                <TextBlock Classes="label" Text="PASSWORD"/>
+                                <TextBox Text="{Binding Password, Mode=TwoWay}" PasswordChar="•"/>
+                                <TextBlock Classes="hint"
+                                           Text="Stored in your system keychain, never in your settings file and never on a command line. A key is the better route where you have one; this is for hosts where you do not."/>
+                            </StackPanel>
+
                             <Border Background="{DynamicResource InfoSoft}" CornerRadius="{StaticResource Radius}" Padding="12,11">
                                 <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
                                            Foreground="{DynamicResource Text}"
-                                           Text="Kontena uses the ssh client already on this machine — your keys, your agent, your jump hosts. Nothing new to generate or hand out. Password prompts are not supported: a key or an agent is the way in."/>
+                                           Text="Kontena uses the ssh client already on this machine — your keys, your agent, your jump hosts. Nothing new to generate or hand out."/>
                             </Border>
                         </StackPanel>
 
