@@ -329,6 +329,53 @@ public partial class MainWindowViewModel
     }
 
     /// <summary>
+    /// Open whatever an event is about (KON-248) — the events feed's one way out.
+    /// <para>
+    /// An event carries a <see cref="ResourceRef"/>, and the detail pages take the object itself, so
+    /// this looks it up in the namespace the event names. False means it is no longer there, which
+    /// is ordinary rather than exceptional: events outlive their objects by design, and a crash-looping
+    /// pod that has since been replaced is the single most likely row to be clicked.
+    /// </para>
+    /// </summary>
+    private async Task<bool> OpenEventObjectAsync(ResourceRef target)
+    {
+        if (_cluster is null)
+            return false;
+
+        var ns = target.Namespace;
+
+        switch (target.Kind.Kind)
+        {
+            case "Pod":
+                if ((await _cluster.ListPodsAsync(ns)).FirstOrDefault(p => p.Name == target.Name) is not { } pod)
+                    return false;
+
+                ShowPodDetail(pod);
+                return true;
+
+            case "Service":
+                if ((await _cluster.ListServicesAsync(ns)).FirstOrDefault(s => s.Name == target.Name) is not { } service)
+                    return false;
+
+                ShowServiceDetail(service);
+                return true;
+
+            case var kind when Enum.TryParse<WorkloadKind>(kind, out var workloadKind):
+                if ((await _cluster.ListWorkloadsAsync(workloadKind, ns))
+                        .FirstOrDefault(w => w.Name == target.Name) is not { } workload)
+                    return false;
+
+                ShowWorkloadDetail(workload);
+                return true;
+
+            default:
+                // The row only offers the link for kinds that have a page, so this is the belt to that
+                // braces: a kind added to one list and not the other lands here rather than nowhere.
+                return false;
+        }
+    }
+
+    /// <summary>
     /// What a host shell needs to start on the cluster being shown (KON-171): the context, the names
     /// its entry points at, and the kubeconfig files already in play.
     /// <para>

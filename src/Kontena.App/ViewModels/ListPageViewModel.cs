@@ -51,6 +51,13 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     /// <summary>Whether a row matches the trimmed, non-empty search term.</summary>
     protected abstract bool Matches(TRow row, string term);
 
+    /// <summary>
+    /// A filter that is not the search box — a toggle the page owns, applied whether or not anything
+    /// has been typed (KON-248: "warnings only" on the events page). Everything passes by default, so
+    /// no existing page changes behaviour.
+    /// </summary>
+    protected virtual bool Include(TRow row) => true;
+
     /// <summary>Whether there is a list to draw at all — false hides the table rather than leaving a
     /// header floating above a "no matches" line.</summary>
     public bool HasItems => Items.Count > 0;
@@ -71,7 +78,8 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     protected void ApplyFilter()
     {
         var term = SearchText.Trim();
-        List<TRow> matches = term.Length == 0 ? [.. _all] : [.. _all.Where(r => Matches(r, term))];
+        List<TRow> matches =
+            [.. _all.Where(r => Include(r) && (term.Length == 0 || Matches(r, term)))];
 
         ListSync.Apply(Items, matches);
 

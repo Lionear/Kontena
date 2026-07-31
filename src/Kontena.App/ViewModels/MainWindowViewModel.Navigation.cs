@@ -111,6 +111,7 @@ public partial class MainWindowViewModel
         NavGroups.Add(Group("Storage",
             new NavItem("pvcs", "Volume claims", "IconDatabase")));
         NavGroups.Add(Group("System",
+            new NavItem("events", "Events", "IconActivity"),
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
@@ -156,6 +157,8 @@ public partial class MainWindowViewModel
             "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace),
             "pvcs" => new ClusterPvcsViewModel(_cluster, ActiveNamespace),
             "portforwards" => new PortForwardsViewModel(_portForwards),
+            // The feed you open when you do not yet know which object is the broken one (KON-248).
+            "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
             // because deleting from here is as destructive as anywhere else.
             "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
@@ -234,6 +237,13 @@ public partial class MainWindowViewModel
 
         SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
         SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
+
+        // Warnings, not events (KON-248). Every namespace has events all the time, so a total is a
+        // badge that is always lit and therefore says nothing; the count of warnings is the one number
+        // worth carrying into the sidebar, and no warnings means no badge at all.
+        var warnings = (await _cluster.ListEventsAsync(ns)).Count(e => e.Severity == EventSeverity.Warning);
+        SetNavCount("events", warnings > 0 ? warnings.ToString(ci) : string.Empty);
+
         SetNavCount("ingresses", (await _cluster.ListIngressesAsync(ns)).Count.ToString(ci));
         SetNavCount("pvcs", (await _cluster.ListPvcsAsync(ns)).Count.ToString(ci));
         UpdatePortForwardCount();
