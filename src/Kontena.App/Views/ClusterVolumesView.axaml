@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterVolumesView"
+             x:DataType="vm:ClusterVolumesViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Volumes" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="1.5*,0.9*,0.7*,1.4*,1.1*,0.8*,1.2*,0.5*">
+                            <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
+                            <TextBlock Grid.Column="1" Text="STATUS" Classes="colhead"/>
+                            <TextBlock Grid.Column="2" Text="CAPACITY" Classes="colhead"/>
+                            <TextBlock Grid.Column="3" Text="CLAIM" Classes="colhead"/>
+                            <TextBlock Grid.Column="4" Text="STORAGECLASS" Classes="colhead"/>
+                            <TextBlock Grid.Column="5" Text="RECLAIM" Classes="colhead"/>
+                            <TextBlock Grid.Column="6" Text="DRIVER" Classes="colhead"/>
+                            <TextBlock Grid.Column="7" Text="AGE" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PersistentVolumeRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                    <StackPanel>
+                                        <Grid ColumnDefinitions="1.5*,0.9*,0.7*,1.4*,1.1*,0.8*,1.2*,0.5*">
+                                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                       Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                                <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding Capacity}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <!-- The claim is the way back: you arrive at a volume from a claim far
+                                                 more often than by its generated name (KON-254). -->
+                                            <Button Grid.Column="3" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                    Command="{Binding OpenClaimCommand}" IsVisible="{Binding CanOpenClaim}">
+                                                <TextBlock Text="{Binding Claim}" TextTrimming="CharacterEllipsis"/>
+                                            </Button>
+                                            <TextBlock Grid.Column="3" Text="{Binding Claim}" IsVisible="{Binding !CanOpenClaim}"
+                                                       Foreground="{DynamicResource TextDim}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="4" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                    Command="{Binding OpenClassCommand}" IsVisible="{Binding CanOpenClass}">
+                                                <TextBlock Text="{Binding StorageClass}" TextTrimming="CharacterEllipsis"/>
+                                            </Button>
+                                            <TextBlock Grid.Column="4" Text="{Binding StorageClass}" IsVisible="{Binding !CanOpenClass}"
+                                                       Foreground="{DynamicResource TextDim}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="5" Text="{Binding Reclaim}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="6" Text="{Binding Driver}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                       Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="7" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <!-- Released with Retain is the state that costs money quietly, so it is
+                                             said on the row rather than left to be worked out. -->
+                                        <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" Margin="0,6,0,0"
+                                                   FontSize="11.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="This cluster has no persistent volumes." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No volumes match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
