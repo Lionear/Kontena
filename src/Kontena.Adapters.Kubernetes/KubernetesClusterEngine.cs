@@ -311,6 +311,18 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         return [.. (list.Items ?? []).Select(K8sMap.ToPvc)];
     }
 
+    public async ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default)
+    {
+        var list = await _client.CoreV1.ListPersistentVolumeAsync(cancellationToken: ct).ConfigureAwait(false);
+        return [.. (list.Items ?? []).Select(K8sMap.ToVolume)];
+    }
+
+    public async ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default)
+    {
+        var list = await _client.StorageV1.ListStorageClassAsync(cancellationToken: ct).ConfigureAwait(false);
+        return [.. (list.Items ?? []).Select(K8sMap.ToStorageClass)];
+    }
+
     public async ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(
         string? ns = null, CancellationToken ct = default)
     {

@@ -76,6 +76,25 @@ public partial class MainWindowViewModel
             onClose: CloseDialog,
             destructive: true);
     }
+    /// <summary>
+    /// Open one of the storage pages at a single object (KON-254).
+    /// <para>
+    /// The search box is the filter, rather than a private one the page owns: there is then one way
+    /// to say "show me this one", it is visible, and it can be cleared. A page silently filtered to
+    /// something the search box disagrees with is a page nobody can reason about.
+    /// </para>
+    /// </summary>
+    private void OpenStorage(string key, string term)
+    {
+        NavigateCluster(key);
+
+        if (CurrentPage is IListPage page)
+        {
+            page.SearchText = term;
+            SearchText = term;
+        }
+    }
+
     private void ShowServicePortForward(Service service)
     {
         if (_cluster is null)

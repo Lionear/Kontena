@@ -89,6 +89,17 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List PersistentVolumes — the other half of a claim (KON-254). Cluster-scoped, so no namespace.
+    /// </summary>
+    ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// List StorageClasses. Cluster-scoped. This is where a Pending claim's reason lives: a class
+    /// with no provisioner, a class that does not exist, or a binding mode that is waiting on a pod.
+    /// </summary>
+    ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default);
     ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default);
 
     // ── Actions ──────────────────────────────────────────────────────────────
