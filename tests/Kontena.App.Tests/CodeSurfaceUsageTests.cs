@@ -20,7 +20,10 @@ public sealed class CodeSurfaceUsageTests
     /// <summary>Panels holding a document: a manifest, a diff-free preview, a command to copy.</summary>
     private static readonly string[] Documents =
         [
-            "ObjectYamlView.axaml",          // read-only YAML for every cluster kind
+            // The manifest surface for every cluster kind. It moved out of ObjectYamlView into the
+            // shared editor when the tab became editable (KON-252); the guard follows the panel,
+            // because the panel is the thing that can reach for the wrong token.
+            "ManifestEditorView.axaml",
             "ClusterPodDetailView.axaml",    // the editable manifest (its log list stays a console)
             "LocalClustersView.axaml",       // kind/minikube command + config preview
             "ClusterToolingView.axaml",      // the install hint command

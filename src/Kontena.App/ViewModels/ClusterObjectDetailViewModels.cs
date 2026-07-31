@@ -180,26 +180,28 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
 
     // ── Manifest ──────────────────────────────────────────────────────────────
 
-    [ObservableProperty] private string _yamlText = string.Empty;
-    [ObservableProperty] private bool _yamlLoading;
+    /// <summary>
+    /// The manifest, editable and appliable (KON-252).
+    /// <para>
+    /// This tab was read-only on purpose, with a comment saying a text box that silently did nothing
+    /// on edit would be worse than none. That was right, and the answer was never to keep it
+    /// read-only — it was to build the missing half, which pod detail already had and no other page
+    /// could reach.
+    /// </para>
+    /// <para>
+    /// Built on first visit rather than in the constructor: it fetches, and most visits to a detail
+    /// page never open this tab.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private ManifestEditorViewModel? _yaml;
+
     private bool _yamlLoaded;
 
-    private async Task LoadYamlAsync()
+    private Task LoadYamlAsync()
     {
-        YamlLoading = true;
-        try
-        {
-            YamlText = await _cluster.GetManifestAsync(Reference);
-            _yamlLoaded = true;
-        }
-        catch
-        {
-            YamlText = "# Could not fetch the manifest.";
-        }
-        finally
-        {
-            YamlLoading = false;
-        }
+        Yaml ??= new ManifestEditorViewModel(_cluster, Reference);
+        _yamlLoaded = true;
+        return Task.CompletedTask;
     }
 
     /// <summary>Renders a label map as the "k=v, k=v" chips both pages show.</summary>

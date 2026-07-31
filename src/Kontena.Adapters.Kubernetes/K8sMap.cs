@@ -1,3 +1,4 @@
+using System.Text;
 using k8s.Models;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration.Models;
@@ -411,6 +412,83 @@ internal static class K8sMap
         Age = AgeOf(p.Metadata),
     };
 
+    public static PersistentVolume ToVolume(V1PersistentVolume v) => new()
+    {
+        Name = v.Metadata?.Name ?? "?",
+        Phase = v.Status?.Phase switch
+        {
+            "Available" => VolumePhase.Available,
+            "Bound" => VolumePhase.Bound,
+            "Released" => VolumePhase.Released,
+            "Failed" => VolumePhase.Failed,
+            _ => VolumePhase.Pending,
+        },
+        CapacityBytes = Bytes(v.Spec?.Capacity, "storage"),
+        AccessModes = [.. v.Spec?.AccessModes ?? []],
+        ReclaimPolicy = Reclaim(v.Spec?.PersistentVolumeReclaimPolicy),
+        StorageClass = v.Spec?.StorageClassName ?? string.Empty,
+
+        // "namespace/name", because a claim name on its own is ambiguous across namespaces and this
+        // column exists precisely to be matched against the claims list.
+        Claim = v.Spec?.ClaimRef is { Name: { Length: > 0 } claim } reference
+            ? $"{reference.NamespaceProperty ?? "default"}/{claim}"
+            : string.Empty,
+
+        Driver = DriverOf(v.Spec),
+        Age = AgeOf(v.Metadata),
+    };
+
+    /// <summary>
+    /// What is actually behind the volume. CSI reports its driver; the in-tree sources do not, so
+    /// the source that is set is the answer, and "hostPath" is worth saying out loud on a kind or
+    /// minikube cluster.
+    /// </summary>
+    private static string DriverOf(V1PersistentVolumeSpec? spec) => spec switch
+    {
+        null => string.Empty,
+        { Csi.Driver: { Length: > 0 } driver } => driver,
+        { HostPath: not null } => "hostPath",
+        { Local: not null } => "local",
+        { Nfs: not null } => "nfs",
+        { Iscsi: not null } => "iscsi",
+        _ => string.Empty,
+    };
+
+    public static StorageClass ToStorageClass(V1StorageClass c) => new()
+    {
+        Name = c.Metadata?.Name ?? "?",
+        Provisioner = c.Provisioner ?? string.Empty,
+        ReclaimPolicy = Reclaim(c.ReclaimPolicy),
+        BindingMode = string.Equals(c.VolumeBindingMode, "WaitForFirstConsumer", StringComparison.Ordinal)
+            ? VolumeBindingMode.WaitForFirstConsumer
+            : VolumeBindingMode.Immediate,
+
+        // The default is an annotation, not a field — and there are two spellings of it, the second
+        // left over from the beta API and still in use on clusters that were upgraded rather than
+        // rebuilt.
+        IsDefault = IsTrue(c.Metadata?.Annotations, "storageclass.kubernetes.io/is-default-class")
+            || IsTrue(c.Metadata?.Annotations, "storageclass.beta.kubernetes.io/is-default-class"),
+
+        AllowsExpansion = c.AllowVolumeExpansion ?? false,
+        Age = AgeOf(c.Metadata),
+    };
+
+    private static bool IsTrue(IDictionary<string, string>? annotations, string key) =>
+        annotations is not null
+        && annotations.TryGetValue(key, out var value)
+        && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Default is Delete, matching Kubernetes — and this is a field where guessing wrong is the
+    /// difference between keeping someone's data and not.
+    /// </summary>
+    private static ReclaimPolicy Reclaim(string? policy) => policy switch
+    {
+        "Retain" => ReclaimPolicy.Retain,
+        "Recycle" => ReclaimPolicy.Recycle,
+        _ => ReclaimPolicy.Delete,
+    };
+
     public static ClusterEvent ToEvent(Corev1Event e) => new()
     {
         Reason = e.Reason ?? string.Empty,
@@ -477,6 +555,113 @@ internal static class K8sMap
             return 0m;
         }
     }
+
+    /// <summary>
+    /// A ConfigMap without its values (KON-249). The client hands over <c>Data</c> and
+    /// <c>BinaryData</c> whether or not anyone wants them; only the key names and their sizes
+    /// survive this method.
+    /// </summary>
+    public static ConfigMapSummary ToConfigMap(V1ConfigMap c) => new()
+    {
+        Name = c.Metadata?.Name ?? "?",
+        Namespace = c.Metadata?.NamespaceProperty ?? "default",
+        Keys =
+        [
+            .. Keys(c.Data, v => Encoding.UTF8.GetByteCount(v ?? string.Empty))
+                .Concat(Keys(c.BinaryData, v => v?.LongLength ?? 0))
+                .OrderBy(k => k.Name, StringComparer.Ordinal),
+        ],
+        Age = AgeOf(c.Metadata),
+    };
+
+    /// <summary>
+    /// A Secret without its values. Same shape as <see cref="ToConfigMap"/> and for a stronger
+    /// reason: this is the seam where the values the list API sent are dropped.
+    /// </summary>
+    public static SecretSummary ToSecret(V1Secret s) => new()
+    {
+        Name = s.Metadata?.Name ?? "?",
+        Namespace = s.Metadata?.NamespaceProperty ?? "default",
+        Type = string.IsNullOrEmpty(s.Type) ? "Opaque" : s.Type,
+        Keys =
+        [
+            .. Keys(s.Data, v => v?.LongLength ?? 0)
+                .OrderBy(k => k.Name, StringComparer.Ordinal),
+        ],
+        Age = AgeOf(s.Metadata),
+    };
+
+    private static IEnumerable<ConfigKey> Keys<T>(IDictionary<string, T>? data, Func<T?, long> size) =>
+        data is null ? [] : data.Select(kv => new ConfigKey(kv.Key, size(kv.Value)));
+
+    /// <summary>
+    /// The entries of one ConfigMap, decoded. A ConfigMap's <c>data</c> is already text; its
+    /// <c>binaryData</c> is bytes and stays bytes.
+    /// </summary>
+    public static IReadOnlyList<ConfigEntry> ToEntries(V1ConfigMap c) =>
+    [
+        .. (c.Data ?? new Dictionary<string, string>())
+            .Select(kv => Entry(kv.Key, Encoding.UTF8.GetBytes(kv.Value ?? string.Empty)))
+            .Concat((c.BinaryData ?? new Dictionary<string, byte[]>()).Select(kv => Entry(kv.Key, kv.Value)))
+            .OrderBy(e => e.Key, StringComparer.Ordinal),
+    ];
+
+    /// <summary>
+    /// The entries of one Secret, decoded. The client has already undone the base64 — <c>Data</c> is
+    /// bytes by the time it reaches here — so the only question left is whether those bytes are text.
+    /// </summary>
+    public static IReadOnlyList<ConfigEntry> ToEntries(V1Secret s) =>
+    [
+        .. (s.Data ?? new Dictionary<string, byte[]>())
+            .Select(kv => Entry(kv.Key, kv.Value))
+            .OrderBy(e => e.Key, StringComparer.Ordinal),
+    ];
+
+    /// <summary>
+    /// One entry from raw bytes. Text only when the bytes decode as UTF-8 without loss: a TLS key
+    /// rendered as characters is noise, and a lossy decode would show something that was never in
+    /// the secret.
+    /// </summary>
+    private static ConfigEntry Entry(string key, byte[]? value)
+    {
+        var bytes = value ?? [];
+
+        string? text = null;
+        try
+        {
+            var decoded = StrictUtf8.GetString(bytes);
+
+            // Decoding is not enough. A PNG's first bytes are 0x00–0x02, which are perfectly valid
+            // single-byte UTF-8 and perfectly unreadable — and a value full of NULs is exactly the
+            // thing that puts a terminal into a state nobody asked for. Text means it decodes *and*
+            // holds no control characters beyond the three that belong in a config file.
+            if (!decoded.Any(IsUnprintable))
+                text = decoded;
+        }
+        catch (DecoderFallbackException)
+        {
+            // Not text. That is an answer, not a failure.
+        }
+
+        return new ConfigEntry
+        {
+            Key = key,
+            Text = text,
+            Base64 = Convert.ToBase64String(bytes),
+            SizeBytes = bytes.LongLength,
+        };
+    }
+
+    /// <summary>
+    /// A character that has no business being rendered: any control character (C0, DEL and C1),
+    /// except the tab, newline and carriage return that a script or an nginx.conf legitimately holds.
+    /// </summary>
+    private static bool IsUnprintable(char c) =>
+        char.IsControl(c) && c is not ('\t' or '\n' or '\r');
+
+    /// <summary>UTF-8 that throws rather than substituting replacement characters.</summary>
+    private static readonly Encoding StrictUtf8 =
+        Encoding.GetEncoding("utf-8", EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
     /// <summary>The client hands back mutable maps; the OAL models expose read-only ones.</summary>
     private static Dictionary<string, string> ReadOnly(IDictionary<string, string>? map) =>
