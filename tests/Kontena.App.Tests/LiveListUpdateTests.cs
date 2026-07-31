@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using Kontena.App.ViewModels;
+using Kontena.Adapters.Kubernetes;
+using Kontena.Sdk.Orchestration;
 using Kontena.Core.Orchestration.Fakes;
 using Kontena.Sdk.Orchestration.Models;
 
@@ -99,6 +101,63 @@ public sealed class LiveListUpdateTests
         Assert.False(page.IsLive);
         Assert.NotNull(page.LiveNotice);
         Assert.Contains("refresh", page.LiveNotice, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Every list page, not the three that happened to get it first. Six of the nine were still
+    /// list-plus-Refresh, which is the state the notice exists to make impossible to mistake.
+    /// </summary>
+    public static TheoryData<string, Func<IClusterEngine, IClusterListPage>> AllListPages() => new()
+    {
+        { "nodes", c => new ClusterNodesViewModel(c) },
+        { "namespaces", c => new ClusterNamespacesViewModel(c) },
+        { "workloads", c => new ClusterWorkloadsViewModel(c, "app", kind: WorkloadKind.Deployment) },
+        { "pods", c => new ClusterPodsViewModel(c, "app") },
+        { "services", c => new ClusterServicesViewModel(c, "app") },
+        { "ingresses", c => new ClusterIngressesViewModel(c, "app") },
+        { "volume claims", c => new ClusterPvcsViewModel(c, "app") },
+        { "volumes", c => new ClusterVolumesViewModel(c) },
+        { "storage classes", c => new ClusterStorageClassesViewModel(c) },
+    };
+
+    [Theory]
+    [MemberData(nameof(AllListPages))]
+    public void Every_list_page_follows_the_cluster(
+        string page, Func<IClusterEngine, IClusterListPage> build)
+    {
+        using var list = build(new FakeClusterEngine());
+
+        Assert.True(list.IsLive, $"{page} is not following the cluster");
+        Assert.Null(list.LiveNotice);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllListPages))]
+    public void And_says_so_on_a_cluster_that_cannot_watch(
+        string page, Func<IClusterEngine, IClusterListPage> build)
+    {
+        using var list = build(new FakeClusterEngine(watch: false));
+
+        Assert.False(list.IsLive, $"{page} claims to be live on a cluster that cannot watch");
+        Assert.Contains("refresh", list.LiveNotice ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllListPages))]
+    public void The_kubernetes_adapter_can_actually_watch_what_each_page_claims_to_follow(
+        string page, Func<IClusterEngine, IClusterListPage> build)
+    {
+        // The fake watches anything, so a page following a kind the real adapter has no watcher for
+        // passes every other test here and then, on a cluster, reports that the cluster closed a
+        // stream nobody opened. This is the one assertion the fake cannot make for us.
+        using var list = build(new FakeClusterEngine());
+
+        if (list.WatchedKind is not { } kind)
+            return;
+
+        Assert.True(
+            KubernetesClusterEngine.CanWatch(kind),
+            $"{page} follows {kind}, which the Kubernetes adapter has no watcher for");
     }
 
     [Fact]

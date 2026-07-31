@@ -439,6 +439,13 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             "Service" => _services.Where(s => Match(ns, s.Namespace)).Select(s => new ResourceRef(kind, s.Namespace, s.Name)),
             "Node" => _nodes.Select(n => new ResourceRef(kind, null, n.Name)),
             "Namespace" => _namespaces.Select(n => new ResourceRef(kind, null, n.Name)),
+            "Ingress" => _ingresses.Where(i => Match(ns, i.Namespace)).Select(i => new ResourceRef(kind, i.Namespace, i.Name)),
+            "PersistentVolumeClaim" => _pvcs.Where(p => Match(ns, p.Namespace)).Select(p => new ResourceRef(kind, p.Namespace, p.Name)),
+            "PersistentVolume" => _volumes.Select(v => new ResourceRef(kind, null, v.Name)),
+            "StorageClass" => _storageClasses.Select(c => new ResourceRef(kind, null, c.Name)),
+            // Everything left is a workload kind. Spelled as the fallthrough rather than five cases,
+            // but it is a fallthrough over a known set — a kind the fake does not model would come out
+            // of here carrying workload names, which is worse than nothing.
             _ => _workloads.Where(w => Match(ns, w.Namespace)).Select(w => new ResourceRef(kind, w.Namespace, w.Name)),
         };
 

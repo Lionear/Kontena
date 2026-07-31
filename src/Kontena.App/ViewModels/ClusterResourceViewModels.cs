@@ -15,7 +15,7 @@ namespace Kontena.App.ViewModels;
 // apply flow are their own tickets (KON-69/70/71).
 
 /// <summary>Nodes view — a card per node with CPU/memory gauges (see k8s-nodes mockup).</summary>
-public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
+public partial class ClusterNodesViewModel : ClusterListPageViewModel<NodeCardRow>
 {
     private readonly IClusterEngine _cluster;
 
@@ -27,6 +27,7 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
     /// <param name="onOpenDetail">Opens the node-detail page (KON-197).</param>
     public ClusterNodesViewModel(
         IClusterEngine cluster, Action<string>? onDrain = null, Action<Node>? onOpenDetail = null)
+        : base(cluster, GroupVersionKind.Node, null)
     {
         _cluster = cluster;
         _onDrain = onDrain;
@@ -40,6 +41,7 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
             : "This cluster has no usage backend configured.";
 
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search nodes…";
@@ -259,17 +261,19 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
 }
 
 /// <summary>Namespaces view.</summary>
-public partial class ClusterNamespacesViewModel : ListPageViewModel<NamespaceRow>
+public partial class ClusterNamespacesViewModel : ClusterListPageViewModel<NamespaceRow>
 {
     private readonly IClusterEngine _cluster;
 
     private readonly Action<KubeNamespace>? _onOpenDetail;
 
     public ClusterNamespacesViewModel(IClusterEngine cluster, Action<KubeNamespace>? onOpenDetail = null)
+        : base(cluster, GroupVersionKind.Namespace, null)
     {
         _cluster = cluster;
         _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search namespaces…";
@@ -427,16 +431,18 @@ public partial class ClusterServicesViewModel : ClusterListPageViewModel<Service
 }
 
 /// <summary>Ingresses view — what is reachable from outside, and through which class (KON-247).</summary>
-public partial class ClusterIngressesViewModel : ListPageViewModel<IngressRow>
+public partial class ClusterIngressesViewModel : ClusterListPageViewModel<IngressRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
 
     public ClusterIngressesViewModel(IClusterEngine cluster, string? @namespace)
+        : base(cluster, GroupVersionKind.Ingress, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search ingresses…";
@@ -452,7 +458,7 @@ public partial class ClusterIngressesViewModel : ListPageViewModel<IngressRow>
 }
 
 /// <summary>PersistentVolumeClaims view — what asked for storage, and whether it got any (KON-247).</summary>
-public partial class ClusterPvcsViewModel : ListPageViewModel<PvcRow>
+public partial class ClusterPvcsViewModel : ClusterListPageViewModel<PvcRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -466,12 +472,14 @@ public partial class ClusterPvcsViewModel : ListPageViewModel<PvcRow>
     public ClusterPvcsViewModel(
         IClusterEngine cluster, string? @namespace,
         Action<string>? onOpenVolume = null, Action<string>? onOpenClass = null)
+        : base(cluster, GroupVersionKind.PersistentVolumeClaim, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onOpenVolume = onOpenVolume;
         _onOpenClass = onOpenClass;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search volume claims…";
@@ -488,7 +496,7 @@ public partial class ClusterPvcsViewModel : ListPageViewModel<PvcRow>
 
 
 /// <summary>PersistentVolumes — the other half of a claim (KON-254). Cluster-scoped.</summary>
-public partial class ClusterVolumesViewModel : ListPageViewModel<PersistentVolumeRow>
+public partial class ClusterVolumesViewModel : ClusterListPageViewModel<PersistentVolumeRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly Action<string>? _onOpenClaim;
@@ -496,11 +504,13 @@ public partial class ClusterVolumesViewModel : ListPageViewModel<PersistentVolum
 
     public ClusterVolumesViewModel(
         IClusterEngine cluster, Action<string>? onOpenClaim = null, Action<string>? onOpenClass = null)
+        : base(cluster, GroupVersionKind.PersistentVolume, null)
     {
         _cluster = cluster;
         _onOpenClaim = onOpenClaim;
         _onOpenClass = onOpenClass;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search volumes…";
@@ -516,14 +526,16 @@ public partial class ClusterVolumesViewModel : ListPageViewModel<PersistentVolum
 }
 
 /// <summary>StorageClasses — where a Pending claim's reason lives (KON-254).</summary>
-public partial class ClusterStorageClassesViewModel : ListPageViewModel<StorageClassRow>
+public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<StorageClassRow>
 {
     private readonly IClusterEngine _cluster;
 
     public ClusterStorageClassesViewModel(IClusterEngine cluster)
+        : base(cluster, GroupVersionKind.StorageClass, null)
     {
         _cluster = cluster;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search storage classes…";

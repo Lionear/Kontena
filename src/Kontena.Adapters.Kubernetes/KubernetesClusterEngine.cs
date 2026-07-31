@@ -432,6 +432,24 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     }
 
     /// <summary>
+    /// The kinds <see cref="WatchStream"/> has a typed watcher for, as data.
+    /// <para>
+    /// A page that follows a kind this adapter cannot watch gets an empty stream, which the page
+    /// reads as "the cluster closed the stream" — a confident, wrong explanation of a mistake made
+    /// here. Stated separately so that claim can be checked without a cluster to check it against.
+    /// Keep in step with the switch below; they are five lines apart for that reason.
+    /// </para>
+    /// </summary>
+    public static bool CanWatch(GroupVersionKind kind) => WatchableKinds.Contains(kind.Kind);
+
+    private static readonly HashSet<string> WatchableKinds = new(StringComparer.Ordinal)
+    {
+        "Pod", "Service", "Node", "Namespace",
+        "Deployment", "StatefulSet", "DaemonSet",
+        "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
+    };
+
+    /// <summary>
     /// The watch stream for a kind, or null when this adapter has no typed watcher for it. Bookmarks
     /// are off: Kontena rebuilds from the typed listers on reconnect rather than tracking revisions.
     /// </summary>
@@ -455,6 +473,15 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "DaemonSet" => Box(ns is null
             ? _client.AppsV1.WatchListDaemonSetForAllNamespacesAsync(cancellationToken: ct)
             : _client.AppsV1.WatchListNamespacedDaemonSetAsync(ns, cancellationToken: ct)),
+        "Ingress" => Box(ns is null
+            ? _client.NetworkingV1.WatchListIngressForAllNamespacesAsync(cancellationToken: ct)
+            : _client.NetworkingV1.WatchListNamespacedIngressAsync(ns, cancellationToken: ct)),
+        "PersistentVolumeClaim" => Box(ns is null
+            ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),
+        // Cluster-scoped, so no namespaced variant to choose between.
+        "PersistentVolume" => Box(_client.CoreV1.WatchListPersistentVolumeAsync(cancellationToken: ct)),
+        "StorageClass" => Box(_client.StorageV1.WatchListStorageClassAsync(cancellationToken: ct)),
         _ => null,
     };
 

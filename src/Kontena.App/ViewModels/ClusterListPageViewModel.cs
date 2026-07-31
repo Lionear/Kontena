@@ -5,6 +5,26 @@ using Kontena.Sdk.Orchestration.Models;
 namespace Kontena.App.ViewModels;
 
 /// <summary>
+/// The following half of a cluster list page, without its row type. Anything that cares whether a
+/// page is keeping up with the cluster — a check across every page, a shared header — should not
+/// have to know what the page lists to ask.
+/// </summary>
+public interface IClusterListPage : IDisposable
+{
+    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.IsLive"/>
+    bool IsLive { get; }
+
+    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.LiveNotice"/>
+    string? LiveNotice { get; }
+
+    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.WatchedKind"/>
+    GroupVersionKind? WatchedKind { get; }
+
+    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.StartWatching"/>
+    void StartWatching();
+}
+
+/// <summary>
 /// A cluster list page that keeps itself up to date (KON-250).
 /// <para>
 /// <c>IClusterEngine.WatchAsync</c> and <c>ClusterCapabilities.Watch</c> existed from the day the OAL
@@ -21,7 +41,7 @@ namespace Kontena.App.ViewModels;
 /// is what keeps it from showing.
 /// </para>
 /// </summary>
-public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel<TRow>, IDisposable
+public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel<TRow>, IClusterListPage
 {
     private readonly IClusterEngine _cluster;
     private readonly GroupVersionKind? _kind;
@@ -49,6 +69,13 @@ public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel
         _namespace = ns;
         _unwatchable = unwatchable;
     }
+
+    /// <summary>
+    /// The kind this page follows, or null when it has none to follow. Readable because it is a claim
+    /// on the adapter: an adapter with no watcher for it hands back an empty stream, and the page
+    /// then blames the cluster for closing something nobody opened.
+    /// </summary>
+    public GroupVersionKind? WatchedKind => _kind;
 
     /// <summary>Whether this page is currently following the cluster rather than a stale snapshot.</summary>
     [ObservableProperty] private bool _isLive;

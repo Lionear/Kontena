@@ -9,6 +9,14 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="Nodes" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <!-- Never silent about not being live: a list that has quietly stopped moving looks
+                 exactly like a cluster where nothing is happening, and those want opposite
+                 reactions (KON-250). -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
 
             <!-- No usage backend: explain the empty gauges instead of leaving dashes unexplained -->
             <Border IsVisible="{Binding ShowMetricsNotice}" Background="{DynamicResource Surface}"
