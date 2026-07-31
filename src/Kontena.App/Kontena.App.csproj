@@ -12,6 +12,7 @@
     <!-- The autostart rules (which path, what to write) are implementation details, not API — but they
          are the part that fails silently, so the tests reach them here rather than by widening them. -->
     <InternalsVisibleTo Include="Kontena.App.Tests" />
+    <InternalsVisibleTo Include="Kontena.App.Ui.Tests" />
   </ItemGroup>
 
   <ItemGroup>
