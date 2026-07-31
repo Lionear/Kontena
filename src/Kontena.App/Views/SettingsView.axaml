@@ -773,6 +773,9 @@
                                     <TextBlock FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}">
                                         <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
                                     </TextBlock>
+                                    <TextBlock Text="{Binding BuildDate}" FontSize="12"
+                                               IsVisible="{Binding HasBuildDate}"
+                                               Foreground="{DynamicResource TextDim}"/>
                                     <TextBlock Text="{Binding Update.SidebarLabel}" FontSize="12"
                                                Foreground="{DynamicResource Primary}" IsVisible="{Binding Update.HasSidebarEntry}"/>
                                 </StackPanel>

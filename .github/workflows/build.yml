@@ -66,6 +66,7 @@ jobs:
       channel: ${{ steps.target.outputs.channel }}
       release_tag: ${{ steps.target.outputs.release_tag }}
       version: ${{ steps.target.outputs.version }}
+      build_date: ${{ steps.target.outputs.build_date }}
       ref: ${{ steps.target.outputs.ref }}
       should_build: ${{ steps.target.outputs.should_build }}
     steps:
@@ -93,6 +94,11 @@ jobs:
           set -euo pipefail
 
           SHOULD_BUILD=true
+
+          # Stamped into the binaries so About can say when a build was made. Resolved once, here,
+          # rather than per platform: three runners crossing midnight would otherwise disagree about
+          # the date of the same build.
+          BUILD_DATE=$(date -u +%Y-%m-%d)
           # Written as an if, not `[ ... ] && REF=...`: under `set -e` a failing test as the whole
           # statement ends the step, which would kill every non-tag build.
           if [ "$REF_TYPE" = tag ]; then
@@ -106,7 +112,15 @@ jobs:
             RELEASE_TAG=nightly
             BASE=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' Directory.Build.props)
             [ -n "$BASE" ] || { echo "No <Version> in Directory.Build.props" >&2; exit 1; }
-            VERSION="$BASE-nightly.$(date -u +%Y%m%d).$RUN_NUMBER"
+            # The run number alone, no date: it already increases on every run, and the date made the
+            # version long enough that nobody read it. The build date is stamped into the binary
+            # instead, where it is information rather than an ordering key (KON-268).
+            #
+            # The one thing that can break this: `github.run_number` restarts at 1 if build.yml is
+            # renamed or deleted and recreated. The version would then go *backwards* and the nightly
+            # channel would quietly stop offering updates, because Velopack only offers a version
+            # greater than the installed one. Renaming this file means bumping <Version> with it.
+            VERSION="$BASE-nightly.$RUN_NUMBER"
 
             # Republishing an identical build every night makes "there is a new nightly" meaningless.
             # The previous nightly already carries the commit it was cut from, so this is a
@@ -150,7 +164,7 @@ jobs:
             else
               BASE=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' Directory.Build.props)
               [ -n "$BASE" ] || { echo "No <Version> in Directory.Build.props" >&2; exit 1; }
-              VERSION="$BASE-preview.$(date -u +%Y%m%d).$RUN_NUMBER"
+              VERSION="$BASE-preview.$RUN_NUMBER"
             fi
           fi
 
@@ -164,6 +178,7 @@ jobs:
             echo "channel=$CHANNEL"
             echo "release_tag=$RELEASE_TAG"
             echo "version=$VERSION"
+            echo "build_date=$BUILD_DATE"
             echo "ref=$REF"
             echo "should_build=$SHOULD_BUILD"
           } >> "$GITHUB_OUTPUT"
@@ -230,6 +245,7 @@ jobs:
             -r ${{ matrix.rid }} \
             --self-contained true \
             -p:Version=${{ steps.version.outputs.value }} \
+            -p:BuildDate=${{ needs.setup.outputs.build_date }} \
             ${{ matrix.publishArgs }} \
             -o publish/${{ matrix.rid }}
 

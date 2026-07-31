@@ -110,6 +110,20 @@ public partial class UpdateViewModel : ViewModelBase
 
     public string CurrentVersion => _service.CurrentVersion;
 
+    /// <summary>
+    /// When the running build was made, beside the version it is being compared against. On a
+    /// nightly "am I current?" is really "how old is this build?", and two nightlies a day apart no
+    /// longer say so in their version (KON-268).
+    /// </summary>
+    public string BuildDate { get; } = AppVersion.BuiltOn;
+
+    public bool HasBuildDate => BuildDate.Length > 0;
+
+    /// <summary>The whole of what the card says when there is nothing to offer.</summary>
+    public string UpToDateSummary => HasBuildDate
+        ? $"You are on {CurrentVersion}, {BuildDate} — the newest release on your channel."
+        : $"You are on {CurrentVersion}, the newest release on your channel.";
+
     /// <summary>The stream this build came from — what a fresh install follows (KON-123).</summary>
     public UpdateChannel BuildChannel => _service.BuildChannel;
 
