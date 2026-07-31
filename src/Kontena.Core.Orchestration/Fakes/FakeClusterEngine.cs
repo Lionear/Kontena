@@ -34,9 +34,13 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     /// unavailable until something installs a metrics-server — which applying its manifest here does,
     /// so the install flow can be driven end to end without a cluster.
     /// </param>
-    public FakeClusterEngine(string? context = null, bool metrics = true)
+    /// <param name="watch">
+    /// Whether this cluster supports watch streams. False is a real backend and not a broken one —
+    /// the shape the UI has to degrade to rather than go quietly stale (KON-250).
+    /// </param>
+    public FakeClusterEngine(string? context = null, bool metrics = true, bool watch = true)
     {
-        _capabilities = _capabilities with { Metrics = metrics };
+        _capabilities = _capabilities with { Metrics = metrics, Watch = watch };
 
         _contexts =
         [

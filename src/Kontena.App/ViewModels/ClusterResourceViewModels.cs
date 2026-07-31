@@ -218,7 +218,7 @@ public partial class ClusterNamespacesViewModel : ListPageViewModel<NamespaceRow
 }
 
 /// <summary>Workloads view — the controllers (Deployment/StatefulSet/DaemonSet/Job/CronJob).</summary>
-public partial class ClusterWorkloadsViewModel : ListPageViewModel<WorkloadRow>
+public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<WorkloadRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -234,6 +234,14 @@ public partial class ClusterWorkloadsViewModel : ListPageViewModel<WorkloadRow>
         IClusterEngine cluster, string? @namespace,
         Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
         Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null)
+        // One kind has a coordinate to follow; the all-kinds page is five kinds at once, and a watch
+        // per kind is five streams whose bursts would land out of step with each other.
+        : base(
+            cluster,
+            kind is { } k ? GroupVersionKind.For(k) : null,
+            @namespace,
+            unwatchable: "This page shows several kinds at once and updates when you refresh it."
+                + " A single kind's page follows the cluster on its own.")
     {
         _cluster = cluster;
         _namespace = @namespace;
@@ -242,6 +250,7 @@ public partial class ClusterWorkloadsViewModel : ListPageViewModel<WorkloadRow>
         _onOpenDetail = onOpenDetail;
         _kind = kind;
         _ = LoadAsync();
+        StartWatching();
     }
 
     private readonly WorkloadKind? _kind;
@@ -287,7 +296,7 @@ public partial class ClusterWorkloadsViewModel : ListPageViewModel<WorkloadRow>
 }
 
 /// <summary>Pods view.</summary>
-public partial class ClusterPodsViewModel : ListPageViewModel<PodRow>
+public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -300,12 +309,14 @@ public partial class ClusterPodsViewModel : ListPageViewModel<PodRow>
     /// <param name="onDelete">Invoked for a row's Delete action; the shell confirms first.</param>
     public ClusterPodsViewModel(
         IClusterEngine cluster, string? @namespace, Action<Pod>? onOpenDetail = null, Action<Pod>? onDelete = null)
+        : base(cluster, GroupVersionKind.Pod, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onOpenDetail = onOpenDetail;
         _onDelete = onDelete;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search pods…";
@@ -321,7 +332,7 @@ public partial class ClusterPodsViewModel : ListPageViewModel<PodRow>
 }
 
 /// <summary>Services view.</summary>
-public partial class ClusterServicesViewModel : ListPageViewModel<ServiceRow>
+public partial class ClusterServicesViewModel : ClusterListPageViewModel<ServiceRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -332,12 +343,14 @@ public partial class ClusterServicesViewModel : ListPageViewModel<ServiceRow>
     public ClusterServicesViewModel(
         IClusterEngine cluster, string? @namespace,
         Action<Service>? onForward = null, Action<Service>? onOpenDetail = null)
+        : base(cluster, GroupVersionKind.Service, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onForward = onForward;
         _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search services…";
@@ -507,6 +520,15 @@ public sealed partial class WorkloadRow
 
     [RelayCommand]
     private void Restart() => _onRestart?.Invoke(_workload);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Namespace, Kind, Ready, Schedule, Status, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is WorkloadRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed partial class PodRow
@@ -557,6 +579,26 @@ public sealed partial class PodRow
 
     [RelayCommand]
     private void Delete() => _onDelete?.Invoke(_pod);
+
+    // ── Identity for the live reconcile (KON-250) ───────────────────────────
+
+    /// <summary>
+    /// Two rows are the same row when everything they draw is the same.
+    /// <para>
+    /// This is what stops a reload from being visible. ListSync compares rows to decide what to add,
+    /// remove and move; with reference equality a reload replaces every row with an identical-looking
+    /// twin, which throws away each row's visuals and takes the scroll position with it. With this,
+    /// an unchanged row is left exactly where it was and only the pod that actually changed is
+    /// redrawn.
+    /// </para>
+    /// </summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Namespace, Ready, Phase, Restarts, Node, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is PodRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed partial class ServiceRow
@@ -602,4 +644,12 @@ public sealed partial class ServiceRow
 
     [RelayCommand]
     private void Forward() => _onForward?.Invoke(_service);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250).</summary>
+    private string Signature => string.Join('\u001f', Name, Namespace, Type, ClusterIp, Ports, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is ServiceRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
