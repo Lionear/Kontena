@@ -24,7 +24,10 @@
                             <DataTemplate x:DataType="vm:NamespaceRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
                                     <Grid ColumnDefinitions="2*,1*,0.8*">
-                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium"/>
+                                        </Button>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                             <Ellipse Width="7" Height="7" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}"/>

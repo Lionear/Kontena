@@ -144,8 +144,8 @@ public partial class MainWindowViewModel
             // RequestConfirm because the metrics-server install writes to the cluster and asks first
             // (KON-93); the other cluster pages route their confirms through the shell callbacks they
             // are handed.
-            "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode) { RequestConfirm = ShowConfirm },
-            "namespaces" => new ClusterNamespacesViewModel(_cluster),
+            "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
+            "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
                 new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind),
             // The dashboard only where there is something to summarise. With one kind the sidebar has

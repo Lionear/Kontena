@@ -20,13 +20,17 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
     private readonly IClusterEngine _cluster;
 
     private readonly Action<string>? _onDrain;
+    private readonly Action<Node>? _onOpenDetail;
 
     /// <param name="onDrain">Opens the drain modal for a node; the shell owns the dialog because a
     /// drain outlives the page it was started from.</param>
-    public ClusterNodesViewModel(IClusterEngine cluster, Action<string>? onDrain = null)
+    /// <param name="onOpenDetail">Opens the node-detail page (KON-197).</param>
+    public ClusterNodesViewModel(
+        IClusterEngine cluster, Action<string>? onDrain = null, Action<Node>? onOpenDetail = null)
     {
         _cluster = cluster;
         _onDrain = onDrain;
+        _onOpenDetail = onOpenDetail;
 
         // Plenty of clusters (kind, plain kubeadm) ship without a usage backend. Rather than
         // leaving four dashes unexplained, say so once and say what would fix it.
@@ -80,7 +84,8 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
                     n, info.Version,
                     canMaintain: _cluster.Capabilities.NodeMaintenance,
                     onCordon: ConfirmCordon,
-                    onDrain: node => _onDrain?.Invoke(node.Name))),
+                    onDrain: node => _onDrain?.Invoke(node.Name),
+                    onOpenDetail: _onOpenDetail)),
         ];
     }
 
@@ -258,16 +263,19 @@ public partial class ClusterNamespacesViewModel : ListPageViewModel<NamespaceRow
 {
     private readonly IClusterEngine _cluster;
 
-    public ClusterNamespacesViewModel(IClusterEngine cluster)
+    private readonly Action<KubeNamespace>? _onOpenDetail;
+
+    public ClusterNamespacesViewModel(IClusterEngine cluster, Action<KubeNamespace>? onOpenDetail = null)
     {
         _cluster = cluster;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
     }
 
     public override string SearchPlaceholder => "Search namespaces…";
 
     protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListNamespacesAsync()).Select(ns => new NamespaceRow(ns.Name, ns.Phase, Format.Duration(ns.Age)))];
+        [.. (await _cluster.ListNamespacesAsync()).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
 
     protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
 }
@@ -518,18 +526,24 @@ public partial class ClusterStorageClassesViewModel : ListPageViewModel<StorageC
 
 public sealed partial class NodeCardRow
 {
+    private readonly Node _node;
     private readonly Action<NodeCardRow>? _onCordon;
     private readonly Action<NodeCardRow>? _onDrain;
+    private readonly Action<Node>? _onOpenDetail;
 
     public NodeCardRow(
         Node n, string? apiServerVersion = null, bool canMaintain = false,
-        Action<NodeCardRow>? onCordon = null, Action<NodeCardRow>? onDrain = null)
+        Action<NodeCardRow>? onCordon = null, Action<NodeCardRow>? onDrain = null,
+        Action<Node>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(n);
 
+        _node = n;
         _onCordon = onCordon;
         _onDrain = onDrain;
+        _onOpenDetail = onOpenDetail;
         CanMaintain = canMaintain && onCordon is not null;
+        CanOpen = onOpenDetail is not null;
 
         Name = n.Name;
         Roles = n.Roles.Count > 0 ? string.Join(", ", n.Roles) : "—";
@@ -619,6 +633,12 @@ public sealed partial class NodeCardRow
 
     [RelayCommand]
     private void Drain() => _onDrain?.Invoke(this);
+
+    /// <summary>Whether the shell wired a detail page to arrive at (KON-197).</summary>
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_node);
 }
 
 /// <summary>
@@ -643,6 +663,32 @@ public sealed class NodeProblemChip
     public IBrush Background { get; }
 }
 
+public sealed partial class NamespaceRow
+{
+    private readonly KubeNamespace _namespace;
+    private readonly Action<KubeNamespace>? _onOpenDetail;
+
+    public NamespaceRow(KubeNamespace ns, Action<KubeNamespace>? onOpenDetail = null)
+    {
+        ArgumentNullException.ThrowIfNull(ns);
+
+        _namespace = ns;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
+
+        Name = ns.Name;
+        Status = ns.Phase;
+        Age = Format.Duration(ns.Age);
+    }
+
+    public string Name { get; }
+    public string Status { get; }
+    public string Age { get; }
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_namespace);
+}
 
 public sealed partial class PersistentVolumeRow
 {
@@ -763,7 +809,6 @@ public sealed class StorageClassRow
         + " creates by hand.";
 }
 
-public sealed record NamespaceRow(string Name, string Status, string Age);
 
 public sealed class IngressRow
 {
