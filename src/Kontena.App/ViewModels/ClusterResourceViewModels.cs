@@ -381,23 +381,82 @@ public partial class ClusterPvcsViewModel : ListPageViewModel<PvcRow>
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
 
-    public ClusterPvcsViewModel(IClusterEngine cluster, string? @namespace)
+    private readonly Action<string>? _onOpenVolume;
+    private readonly Action<string>? _onOpenClass;
+
+    /// <param name="onOpenVolume">Route to the volume a bound claim sits on (KON-254).</param>
+    /// <param name="onOpenClass">Route to the class that provisions it — where a Pending claim's
+    /// reason lives.</param>
+    public ClusterPvcsViewModel(
+        IClusterEngine cluster, string? @namespace,
+        Action<string>? onOpenVolume = null, Action<string>? onOpenClass = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        _onOpenVolume = onOpenVolume;
+        _onOpenClass = onOpenClass;
         _ = LoadAsync();
     }
 
     public override string SearchPlaceholder => "Search volume claims…";
 
     protected override async Task<IReadOnlyList<PvcRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListPvcsAsync(_namespace)).Select(p => new PvcRow(p))];
+        [.. (await _cluster.ListPvcsAsync(_namespace)).Select(p => new PvcRow(p, _onOpenVolume, _onOpenClass))];
 
     // Status and storage class as well: "what is still Pending" and "what is on the slow class" are
     // the two questions a claim list gets asked.
     protected override bool Matches(PvcRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
         || Contains(row.Status, term) || Contains(row.StorageClass, term);
+}
+
+
+/// <summary>PersistentVolumes — the other half of a claim (KON-254). Cluster-scoped.</summary>
+public partial class ClusterVolumesViewModel : ListPageViewModel<PersistentVolumeRow>
+{
+    private readonly IClusterEngine _cluster;
+    private readonly Action<string>? _onOpenClaim;
+    private readonly Action<string>? _onOpenClass;
+
+    public ClusterVolumesViewModel(
+        IClusterEngine cluster, Action<string>? onOpenClaim = null, Action<string>? onOpenClass = null)
+    {
+        _cluster = cluster;
+        _onOpenClaim = onOpenClaim;
+        _onOpenClass = onOpenClass;
+        _ = LoadAsync();
+    }
+
+    public override string SearchPlaceholder => "Search volumes…";
+
+    protected override async Task<IReadOnlyList<PersistentVolumeRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListVolumesAsync()).Select(v => new PersistentVolumeRow(v, _onOpenClaim, _onOpenClass))];
+
+    // The claim as well: you arrive here from a claim far more often than you arrive at a volume by
+    // its generated name, which nobody has ever typed on purpose.
+    protected override bool Matches(PersistentVolumeRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Claim, term)
+        || Contains(row.Status, term) || Contains(row.StorageClass, term);
+}
+
+/// <summary>StorageClasses — where a Pending claim's reason lives (KON-254).</summary>
+public partial class ClusterStorageClassesViewModel : ListPageViewModel<StorageClassRow>
+{
+    private readonly IClusterEngine _cluster;
+
+    public ClusterStorageClassesViewModel(IClusterEngine cluster)
+    {
+        _cluster = cluster;
+        _ = LoadAsync();
+    }
+
+    public override string SearchPlaceholder => "Search storage classes…";
+
+    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListStorageClassesAsync()).Select(c => new StorageClassRow(c))];
+
+    protected override bool Matches(StorageClassRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Provisioner, term);
 }
 
 // ── Row view-models ─────────────────────────────────────────────────────────
@@ -500,6 +559,126 @@ public sealed class NodeProblemChip
     public IBrush Background { get; }
 }
 
+
+public sealed partial class PersistentVolumeRow
+{
+    private readonly string _claimName;
+    private readonly Action<string>? _onOpenClaim;
+    private readonly Action<string>? _onOpenClass;
+
+    public PersistentVolumeRow(PersistentVolume v, Action<string>? onOpenClaim = null, Action<string>? onOpenClass = null)
+    {
+        ArgumentNullException.ThrowIfNull(v);
+
+        _onOpenClaim = onOpenClaim;
+        _onOpenClass = onOpenClass;
+
+        Name = v.Name;
+        Status = v.Phase.ToString();
+        Capacity = Format.Quantity(v.CapacityBytes);
+        AccessModes = v.AccessModes.Count == 0 ? "—" : string.Join(", ", v.AccessModes);
+        Reclaim = v.ReclaimPolicy.ToString();
+        StorageClass = string.IsNullOrEmpty(v.StorageClass) ? "—" : v.StorageClass;
+        Claim = string.IsNullOrEmpty(v.Claim) ? "—" : v.Claim;
+        Driver = string.IsNullOrEmpty(v.Driver) ? "—" : v.Driver;
+        Age = Format.Duration(v.Age);
+
+        // The claim column is a route back, and only where there is a claim to route to.
+        _claimName = v.Claim.Contains('/', StringComparison.Ordinal)
+            ? v.Claim[(v.Claim.IndexOf('/', StringComparison.Ordinal) + 1)..]
+            : v.Claim;
+        CanOpenClaim = onOpenClaim is not null && _claimName.Length > 0;
+        CanOpenClass = onOpenClass is not null && v.StorageClass.Length > 0;
+
+        StatusBrush = new SolidColorBrush(Color.Parse(v.Phase switch
+        {
+            VolumePhase.Bound => "#34D399",
+            VolumePhase.Available => "#5B9BD5",
+            VolumePhase.Released => "#F5B14C",
+            VolumePhase.Failed => "#F87171",
+            _ => "#5C6675",
+        }));
+
+        // Released with Retain is the state that costs money quietly: the claim is gone, the data is
+        // not, and nothing will reuse this volume until a person deals with it. Every other phase
+        // either resolves itself or is already being looked at.
+        Note = v.Phase == VolumePhase.Released && v.ReclaimPolicy == ReclaimPolicy.Retain
+            ? "Its claim is gone and the data was kept. Nothing will bind to this volume again until"
+              + " you delete it or clear its claim reference — until then it is storage you are still paying for."
+            : v.Phase == VolumePhase.Released
+                ? "Its claim is gone. With this reclaim policy the volume is on its way out."
+                : null;
+    }
+
+    public string Name { get; }
+    public string Status { get; }
+    public string Capacity { get; }
+    public string AccessModes { get; }
+    public string Reclaim { get; }
+    public string StorageClass { get; }
+    public string Claim { get; }
+    public string Driver { get; }
+    public string Age { get; }
+    public IBrush StatusBrush { get; }
+    public bool CanOpenClaim { get; }
+    public bool CanOpenClass { get; }
+
+    /// <summary>What this phase means, where it means something worth acting on.</summary>
+    public string? Note { get; }
+
+    public bool HasNote => Note is not null;
+
+    [RelayCommand]
+    private void OpenClaim() => _onOpenClaim?.Invoke(_claimName);
+
+    [RelayCommand]
+    private void OpenClass() => _onOpenClass?.Invoke(StorageClass);
+}
+
+public sealed class StorageClassRow
+{
+    public StorageClassRow(StorageClass c)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+
+        Name = c.Name;
+        Provisioner = string.IsNullOrEmpty(c.Provisioner) ? "—" : c.Provisioner;
+        Reclaim = c.ReclaimPolicy.ToString();
+        IsDefault = c.IsDefault;
+        Expansion = c.AllowsExpansion ? "Yes" : "No";
+        Age = Format.Duration(c.Age);
+
+        // Said as a sentence rather than as the API's word. "WaitForFirstConsumer" is the single most
+        // common reason someone thinks their storage is broken when it is working exactly as designed,
+        // and the answer only helps if it is in language that reaches that conclusion.
+        Binding = c.BindingMode == VolumeBindingMode.WaitForFirstConsumer
+            ? "When a pod needs it"
+            : "As soon as a claim exists";
+
+        BindingDetail = c.BindingMode == VolumeBindingMode.WaitForFirstConsumer
+            ? "A claim on this class stays Pending until a pod actually mounts it. That is not a fault."
+            : "A claim on this class is provisioned straight away.";
+
+        // A class with no provisioner never provisions anything. It is a legitimate configuration —
+        // it means volumes are made by hand — and it is also what a typo produces.
+        NoProvisioner = string.IsNullOrEmpty(c.Provisioner) || c.Provisioner == "kubernetes.io/no-provisioner";
+    }
+
+    public string Name { get; }
+    public string Provisioner { get; }
+    public string Reclaim { get; }
+    public bool IsDefault { get; }
+    public string Expansion { get; }
+    public string Binding { get; }
+    public string BindingDetail { get; }
+    public bool NoProvisioner { get; }
+    public string Age { get; }
+
+    public string NoProvisionerDetail { get; } =
+        "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
+        + " creates by hand.";
+}
+
 public sealed record NamespaceRow(string Name, string Status, string Age);
 
 public sealed class IngressRow
@@ -565,11 +744,27 @@ public sealed class IngressRow
     public string Age { get; }
 }
 
-public sealed class PvcRow
+public sealed partial class PvcRow
 {
-    public PvcRow(PersistentVolumeClaim p)
+    private readonly string _volumeName;
+    private readonly string _className;
+    private readonly Action<string>? _onOpenVolume;
+    private readonly Action<string>? _onOpenClass;
+
+    public PvcRow(
+        PersistentVolumeClaim p, Action<string>? onOpenVolume = null, Action<string>? onOpenClass = null)
     {
         ArgumentNullException.ThrowIfNull(p);
+
+        _volumeName = p.Volume;
+        _className = p.StorageClass;
+        _onOpenVolume = onOpenVolume;
+        _onOpenClass = onOpenClass;
+
+        // Routes only where there is something at the other end (KON-254). An unbound claim has no
+        // volume to go to, and a link that opens an empty list is worse than plain text.
+        CanOpenVolume = onOpenVolume is not null && p.Volume.Length > 0;
+        CanOpenClass = onOpenClass is not null && p.StorageClass.Length > 0;
 
         Name = p.Name;
         Namespace = p.Namespace;
@@ -594,8 +789,8 @@ public sealed class PvcRow
         // the storage class — no provisioner, or a class name that does not exist. The row cannot know
         // which, so it points at the field instead of guessing.
         PendingHint = p.Phase == PvcPhase.Pending
-            ? "Waiting to be bound. Nothing has provisioned a volume for this claim yet — the storage"
-              + " class is the usual place to look."
+            ? "Waiting to be bound. Nothing has provisioned a volume for this claim yet — open its"
+              + " storage class to see why. A class that waits for a pod leaves claims here on purpose."
             : null;
     }
 
@@ -613,6 +808,15 @@ public sealed class PvcRow
     public string? PendingHint { get; }
 
     public bool IsPending => PendingHint is not null;
+
+    public bool CanOpenVolume { get; }
+    public bool CanOpenClass { get; }
+
+    [RelayCommand]
+    private void OpenVolume() => _onOpenVolume?.Invoke(_volumeName);
+
+    [RelayCommand]
+    private void OpenClass() => _onOpenClass?.Invoke(_className);
 }
 
 public sealed partial class WorkloadRow

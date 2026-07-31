@@ -109,7 +109,9 @@ public partial class MainWindowViewModel
             new NavItem("ingresses", "Ingresses", "IconGlobe"),
             new NavItem("portforwards", "Port forwards", "IconPlug")));
         NavGroups.Add(Group("Storage",
-            new NavItem("pvcs", "Volume claims", "IconDatabase")));
+            new NavItem("pvcs", "Volume claims", "IconDatabase"),
+            new NavItem("volumes", "Volumes", "IconLayers"),
+            new NavItem("storageclasses", "Storage classes", "IconTag")));
         NavGroups.Add(Group("System",
             new NavItem("events", "Events", "IconActivity"),
             new NavItem("resources", "Resources", "IconBox"),
@@ -155,7 +157,18 @@ public partial class MainWindowViewModel
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
             "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace),
-            "pvcs" => new ClusterPvcsViewModel(_cluster, ActiveNamespace),
+            // The three storage pages point at each other: a claim to its volume and its class, a
+            // volume back to its claim (KON-254). Routing by search term rather than by a filter the
+            // page owns keeps one way of saying "show me this one".
+            "pvcs" => new ClusterPvcsViewModel(
+                _cluster, ActiveNamespace,
+                onOpenVolume: name => OpenStorage("volumes", name),
+                onOpenClass: name => OpenStorage("storageclasses", name)),
+            "volumes" => new ClusterVolumesViewModel(
+                _cluster,
+                onOpenClaim: name => OpenStorage("pvcs", name),
+                onOpenClass: name => OpenStorage("storageclasses", name)),
+            "storageclasses" => new ClusterStorageClassesViewModel(_cluster),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // The feed you open when you do not yet know which object is the broken one (KON-248).
             "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
@@ -246,6 +259,8 @@ public partial class MainWindowViewModel
 
         SetNavCount("ingresses", (await _cluster.ListIngressesAsync(ns)).Count.ToString(ci));
         SetNavCount("pvcs", (await _cluster.ListPvcsAsync(ns)).Count.ToString(ci));
+        SetNavCount("volumes", (await _cluster.ListVolumesAsync()).Count.ToString(ci));
+        SetNavCount("storageclasses", (await _cluster.ListStorageClassesAsync()).Count.ToString(ci));
         UpdatePortForwardCount();
     }
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>

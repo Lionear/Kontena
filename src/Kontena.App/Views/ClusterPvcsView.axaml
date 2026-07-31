@@ -39,10 +39,21 @@
                                             <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="3" Text="{Binding Volume}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                        <!-- The volume and the class are both routes now (KON-254): the first
+                                             is the other half of this binding, the second is where a Pending
+                                             claim's reason lives. Plain text where there is nothing to go to. -->
+                                        <Button Grid.Column="3" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                Command="{Binding OpenVolumeCommand}" IsVisible="{Binding CanOpenVolume}">
+                                            <TextBlock Text="{Binding Volume}" FontFamily="{StaticResource Mono}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
+                                        <TextBlock Grid.Column="3" Text="{Binding Volume}" IsVisible="{Binding !CanOpenVolume}" FontFamily="{StaticResource Mono}" FontSize="12.5"
                                                    Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="4" Text="{Binding Capacity}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="5" Text="{Binding StorageClass}" Foreground="{DynamicResource TextDim}"
+                                        <Button Grid.Column="5" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                Command="{Binding OpenClassCommand}" IsVisible="{Binding CanOpenClass}">
+                                            <TextBlock Text="{Binding StorageClass}" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
+                                        <TextBlock Grid.Column="5" Text="{Binding StorageClass}" IsVisible="{Binding !CanOpenClass}" Foreground="{DynamicResource TextDim}"
                                                    TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="6" Text="{Binding AccessModes}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="7" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
