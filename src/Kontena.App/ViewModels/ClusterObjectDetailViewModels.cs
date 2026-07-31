@@ -49,6 +49,16 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
     /// <summary>What the pods tab is called for this kind — "Pods" is not always the honest word.</summary>
     public virtual string PodsTabLabel => "Pods";
 
+    /// <summary>
+    /// Which namespace this page's pods and events are read from; null means every one.
+    /// <para>
+    /// The object's own namespace is right for a Deployment or a Service and wrong for both of the
+    /// cluster-scoped kinds (KON-197): a Node's pods are spread across every namespace there is, and
+    /// a Namespace <i>is</i> the scope rather than living in one.
+    /// </para>
+    /// </summary>
+    protected virtual string? Scope => Reference.Namespace is { Length: > 0 } ns ? ns : null;
+
     // ── Tabs ─────────────────────────────────────────────────────────────────
 
     [ObservableProperty] private string _selectedTab = "overview";
@@ -96,7 +106,7 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
         PodsLoading = true;
         try
         {
-            var all = await _cluster.ListPodsAsync(Namespace);
+            var all = await _cluster.ListPodsAsync(Scope);
             var mine = SelectPods(all);
 
             Pods.Clear();
@@ -143,7 +153,7 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
         EventsLoading = true;
         try
         {
-            var events = await _cluster.ListEventsAsync(Namespace);
+            var events = await _cluster.ListEventsAsync(Scope);
             Events.Clear();
 
             // Matched on kind as well as name: a Deployment and its Service commonly share a name, and
@@ -170,26 +180,28 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
 
     // ── Manifest ──────────────────────────────────────────────────────────────
 
-    [ObservableProperty] private string _yamlText = string.Empty;
-    [ObservableProperty] private bool _yamlLoading;
+    /// <summary>
+    /// The manifest, editable and appliable (KON-252).
+    /// <para>
+    /// This tab was read-only on purpose, with a comment saying a text box that silently did nothing
+    /// on edit would be worse than none. That was right, and the answer was never to keep it
+    /// read-only — it was to build the missing half, which pod detail already had and no other page
+    /// could reach.
+    /// </para>
+    /// <para>
+    /// Built on first visit rather than in the constructor: it fetches, and most visits to a detail
+    /// page never open this tab.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private ManifestEditorViewModel? _yaml;
+
     private bool _yamlLoaded;
 
-    private async Task LoadYamlAsync()
+    private Task LoadYamlAsync()
     {
-        YamlLoading = true;
-        try
-        {
-            YamlText = await _cluster.GetManifestAsync(Reference);
-            _yamlLoaded = true;
-        }
-        catch
-        {
-            YamlText = "# Could not fetch the manifest.";
-        }
-        finally
-        {
-            YamlLoading = false;
-        }
+        Yaml ??= new ManifestEditorViewModel(_cluster, Reference);
+        _yamlLoaded = true;
+        return Task.CompletedTask;
     }
 
     /// <summary>Renders a label map as the "k=v, k=v" chips both pages show.</summary>

@@ -106,8 +106,17 @@ public partial class MainWindowViewModel
             new NavItem("pods", "Pods", "IconContainer")));
         NavGroups.Add(Group("Network",
             new NavItem("services", "Services", "IconNetwork"),
+            new NavItem("ingresses", "Ingresses", "IconGlobe"),
             new NavItem("portforwards", "Port forwards", "IconPlug")));
+        NavGroups.Add(Group("Storage",
+            new NavItem("pvcs", "Volume claims", "IconDatabase"),
+            new NavItem("volumes", "Volumes", "IconLayers"),
+            new NavItem("storageclasses", "Storage classes", "IconTag")));
+        NavGroups.Add(Group("Config",
+            new NavItem("configmaps", "Config maps", "IconFolder"),
+            new NavItem("secrets", "Secrets", "IconHash")));
         NavGroups.Add(Group("System",
+            new NavItem("events", "Events", "IconActivity"),
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
@@ -138,8 +147,8 @@ public partial class MainWindowViewModel
             // RequestConfirm because the metrics-server install writes to the cluster and asks first
             // (KON-93); the other cluster pages route their confirms through the shell callbacks they
             // are handed.
-            "nodes" => new ClusterNodesViewModel(_cluster) { RequestConfirm = ShowConfirm },
-            "namespaces" => new ClusterNamespacesViewModel(_cluster),
+            "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
+            "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
                 new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind),
             // The dashboard only where there is something to summarise. With one kind the sidebar has
@@ -153,7 +162,26 @@ public partial class MainWindowViewModel
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail),
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
+            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace),
+            // The three storage pages point at each other: a claim to its volume and its class, a
+            // volume back to its claim (KON-254). Routing by search term rather than by a filter the
+            // page owns keeps one way of saying "show me this one".
+            "pvcs" => new ClusterPvcsViewModel(
+                _cluster, ActiveNamespace,
+                onOpenVolume: name => OpenStorage("volumes", name),
+                onOpenClass: name => OpenStorage("storageclasses", name)),
+            "volumes" => new ClusterVolumesViewModel(
+                _cluster,
+                onOpenClaim: name => OpenStorage("pvcs", name),
+                onOpenClass: name => OpenStorage("storageclasses", name)),
+            "storageclasses" => new ClusterStorageClassesViewModel(_cluster),
             "portforwards" => new PortForwardsViewModel(_portForwards),
+            // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
+            "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm, RequestEdit = ShowManifestEditor },
+            // Keys and sizes; a value only moves when asked for, one key at a time (KON-249).
+            "secrets" => new ClusterSecretsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm, RequestEdit = ShowManifestEditor },
+            // The feed you open when you do not yet know which object is the broken one (KON-248).
+            "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
             // because deleting from here is as destructive as anywhere else.
             "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
@@ -232,6 +260,19 @@ public partial class MainWindowViewModel
 
         SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
         SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
+        SetNavCount("configmaps", (await _cluster.ListConfigMapsAsync(ns)).Count.ToString(ci));
+        SetNavCount("secrets", (await _cluster.ListSecretsAsync(ns)).Count.ToString(ci));
+
+        // Warnings, not events (KON-248). Every namespace has events all the time, so a total is a
+        // badge that is always lit and therefore says nothing; the count of warnings is the one number
+        // worth carrying into the sidebar, and no warnings means no badge at all.
+        var warnings = (await _cluster.ListEventsAsync(ns)).Count(e => e.Severity == EventSeverity.Warning);
+        SetNavCount("events", warnings > 0 ? warnings.ToString(ci) : string.Empty);
+
+        SetNavCount("ingresses", (await _cluster.ListIngressesAsync(ns)).Count.ToString(ci));
+        SetNavCount("pvcs", (await _cluster.ListPvcsAsync(ns)).Count.ToString(ci));
+        SetNavCount("volumes", (await _cluster.ListVolumesAsync()).Count.ToString(ci));
+        SetNavCount("storageclasses", (await _cluster.ListStorageClassesAsync()).Count.ToString(ci));
         UpdatePortForwardCount();
     }
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>

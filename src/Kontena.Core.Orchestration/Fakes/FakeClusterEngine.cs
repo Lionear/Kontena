@@ -21,6 +21,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     private readonly List<Service> _services;
     private readonly List<Ingress> _ingresses;
     private readonly List<PersistentVolumeClaim> _pvcs;
+    private readonly List<ConfigMapSummary> _configMaps;
+    private readonly List<SecretSummary> _secrets;
+    private readonly List<PersistentVolume> _volumes;
+    private readonly List<StorageClass> _storageClasses;
     private readonly List<ClusterEvent> _events;
 
     /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
@@ -138,7 +142,61 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
         _pvcs =
         [
             new PersistentVolumeClaim { Name = "postgres-data", Namespace = "app", Phase = PvcPhase.Bound, Volume = "pvc-8a1f", CapacityBytes = 20L * 1024 * 1024 * 1024, StorageClass = "standard-rwo", AccessModes = ["RWO"], Age = TimeSpan.FromDays(9) },
+            // Pending on purpose, and for the reason that is not a fault: its class waits for a pod.
+            // A seed where every claim is Bound hides the state these pages exist to explain.
+            new PersistentVolumeClaim { Name = "cache-data", Namespace = "app", Phase = PvcPhase.Pending, CapacityBytes = 5L * 1024 * 1024 * 1024, StorageClass = "local-path", AccessModes = ["RWO"], Age = TimeSpan.FromMinutes(3) },
         ];
+
+        _volumes =
+        [
+            new PersistentVolume { Name = "pvc-8a1f", Phase = VolumePhase.Bound, CapacityBytes = 20L * 1024 * 1024 * 1024, AccessModes = ["RWO"], ReclaimPolicy = ReclaimPolicy.Delete, StorageClass = "standard-rwo", Claim = "app/postgres-data", Driver = "pd.csi.storage.gke.io", Age = TimeSpan.FromDays(9) },
+            // Released with Retain: the claim is gone, the data is not, and nothing will reuse this
+            // volume until someone deals with it. The state that costs money quietly.
+            new PersistentVolume { Name = "pvc-3c02", Phase = VolumePhase.Released, CapacityBytes = 100L * 1024 * 1024 * 1024, AccessModes = ["RWO"], ReclaimPolicy = ReclaimPolicy.Retain, StorageClass = "standard-rwo", Claim = "app/old-postgres-data", Driver = "pd.csi.storage.gke.io", Age = TimeSpan.FromDays(40) },
+        ];
+
+        _storageClasses =
+        [
+            new StorageClass { Name = "standard-rwo", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, IsDefault = true, AllowsExpansion = true, Age = TimeSpan.FromDays(120) },
+            new StorageClass { Name = "local-path", Provisioner = "rancher.io/local-path", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, AllowsExpansion = false, Age = TimeSpan.FromDays(120) },
+            new StorageClass { Name = "retain-ssd", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Retain, BindingMode = VolumeBindingMode.Immediate, AllowsExpansion = true, Age = TimeSpan.FromDays(60) },
+        ];
+
+        _configMaps =
+        [
+            new ConfigMapSummary { Name = "web-config", Namespace = "app", Age = TimeSpan.FromDays(4), Keys = [new ConfigKey("nginx.conf", 812), new ConfigKey("LOG_LEVEL", 4)] },
+            new ConfigMapSummary { Name = "kube-root-ca.crt", Namespace = "app", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("ca.crt", 1099)] },
+        ];
+
+        _secrets =
+        [
+            // Three shapes on purpose: an Opaque secret with text values, a TLS secret whose key is
+            // bytes rather than text, and a registry credential.
+            new SecretSummary { Name = "postgres-credentials", Namespace = "app", Type = "Opaque", Age = TimeSpan.FromDays(9), Keys = [new ConfigKey("password", 24), new ConfigKey("username", 8)] },
+            new SecretSummary { Name = "app-tls", Namespace = "app", Type = "kubernetes.io/tls", Age = TimeSpan.FromDays(2), Keys = [new ConfigKey("tls.crt", 1704), new ConfigKey("tls.key", 1675)] },
+            new SecretSummary { Name = "ghcr-pull", Namespace = "app", Type = "kubernetes.io/dockerconfigjson", Age = TimeSpan.FromDays(40), Keys = [new ConfigKey(".dockerconfigjson", 187)] },
+        ];
+
+        _configData = new Dictionary<string, IReadOnlyList<ConfigEntry>>(StringComparer.Ordinal)
+        {
+            ["ConfigMap/app/web-config"] =
+            [
+                new ConfigEntry { Key = "LOG_LEVEL", Text = "info", SizeBytes = 4 },
+                new ConfigEntry { Key = "nginx.conf", Text = "server {\n  listen 80;\n  location / {\n    proxy_pass http://web:8080;\n  }\n}", SizeBytes = 812 },
+            ],
+            ["Secret/app/postgres-credentials"] =
+            [
+                new ConfigEntry { Key = "password", Text = "s3cr3t-but-not-really", SizeBytes = 24 },
+                new ConfigEntry { Key = "username", Text = "postgres", SizeBytes = 8 },
+            ],
+            // Text null is what "these bytes are not text" looks like — the case the reveal path has
+            // to handle without rendering a terminal full of noise.
+            ["Secret/app/app-tls"] =
+            [
+                new ConfigEntry { Key = "tls.crt", Text = null, SizeBytes = 1704 },
+                new ConfigEntry { Key = "tls.key", Text = null, SizeBytes = 1675 },
+            ],
+        };
 
         _events =
         [
@@ -152,6 +210,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     private ClusterCapabilities _capabilities = new()
     {
         Metrics = true, Exec = true, PortForward = true, Apply = true, Helm = true, Watch = true, Crds = true,
+        NodeMaintenance = true,
     };
 
     public ClusterCapabilities Capabilities => _capabilities;
@@ -233,6 +292,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
                 break;
             case "PersistentVolumeClaim":
                 _pvcs.RemoveAll(p => p.Name == name && p.Namespace == ns);
+                break;
+            case "ConfigMap":
+                _configMaps.RemoveAll(c => c.Name == name && c.Namespace == ns);
+                _configData.Remove($"ConfigMap/{ns}/{name}");
+                break;
+            case "Secret":
+                // The values go with the object, which is what makes the delete irreversible and is
+                // therefore the thing a fake has to model rather than merely hide the row (KON-253).
+                _secrets.RemoveAll(x => x.Name == name && x.Namespace == ns);
+                _configData.Remove($"Secret/{ns}/{name}");
                 break;
             case "Namespace":
                 _namespaces.RemoveAll(n => n.Name == name);
@@ -473,9 +542,116 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<PersistentVolumeClaim>>(_pvcs.Where(p => Match(ns, p.Namespace)).ToList());
 
+    public ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PersistentVolume>>(_volumes);
+
+    public ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<StorageClass>>(_storageClasses);
+
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(
             _events.Where(e => Match(ns, e.InvolvedObject.Namespace)).ToList());
+
+    // ── Node maintenance (KON-251) ───────────────────────────────────────────
+
+    public ValueTask CordonNodeAsync(string node, bool cordoned, CancellationToken ct = default)
+    {
+        var idx = _nodes.FindIndex(n => n.Name == node);
+        if (idx >= 0)
+            _nodes[idx] = _nodes[idx] with { Unschedulable = cordoned };
+
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// A drain over the seeded pods, applying the same rules the real adapter does — including the
+    /// ones that decide a pod stays put, since those are what the UI has to render honestly.
+    /// </summary>
+    public async IAsyncEnumerable<DrainProgress> DrainNodeAsync(
+        string node, DrainOptions options, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        await CordonNodeAsync(node, cordoned: true, ct);
+        yield return new DrainProgress { Action = DrainAction.Cordoned };
+
+        foreach (var pod in _pods.Where(p => p.Node == node).ToList())
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var owner = pod.ControlledBy;
+
+            if (options.IgnoreDaemonSets && owner.StartsWith("DaemonSet/", StringComparison.Ordinal))
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Skipped, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "managed by a DaemonSet, which would put it straight back",
+                };
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(owner))
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Skipped, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "not managed by a controller, so nothing would recreate it elsewhere",
+                };
+                continue;
+            }
+
+            yield return new DrainProgress { Action = DrainAction.Evicting, Pod = pod.Name, Namespace = pod.Namespace };
+
+            // One pod that a budget refuses, so the blocked path is reachable without a cluster: a
+            // drain where everything succeeds is the one shape that never needed the design.
+            if (pod.Name == "postgres-0")
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Blocked, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "Cannot evict pod as it would violate the pod's disruption budget (postgres-pdb).",
+                };
+                continue;
+            }
+
+            _pods.RemoveAll(p => p.Name == pod.Name && p.Namespace == pod.Namespace);
+            yield return new DrainProgress { Action = DrainAction.Evicted, Pod = pod.Name, Namespace = pod.Namespace };
+        }
+
+        yield return new DrainProgress { Action = DrainAction.Finished };
+    }
+
+    // ── ConfigMaps and Secrets (KON-249) ─────────────────────────────────────
+
+    /// <summary>
+    /// The fake's config data, keyed by "kind/namespace/name". Held apart from the summaries for the
+    /// same reason the contract splits them: a summary that carried its values would let a page show
+    /// a secret it never asked for, and a fake that allowed it would let that mistake pass its tests.
+    /// </summary>
+    private readonly Dictionary<string, IReadOnlyList<ConfigEntry>> _configData;
+
+    public ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<ConfigMapSummary>>(
+            _configMaps.Where(c => Match(ns, c.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<SecretSummary>> ListSecretsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<SecretSummary>>(
+            _secrets.Where(s => Match(ns, s.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<ConfigEntry>> GetConfigDataAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        if (resource.Kind.Kind is not ("Secret" or "ConfigMap"))
+            throw new NotSupportedException(
+                $"{resource.Kind.Kind} has no configuration data; only ConfigMap and Secret do.");
+
+        var key = $"{resource.Kind.Kind}/{resource.Namespace}/{resource.Name}";
+        return ValueTask.FromResult(
+            _configData.TryGetValue(key, out var entries) ? entries : []);
+    }
 
     public ValueTask ScaleAsync(ResourceRef workload, int replicas, CancellationToken ct = default)
     {

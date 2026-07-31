@@ -76,6 +76,121 @@ public partial class MainWindowViewModel
             onClose: CloseDialog,
             destructive: true);
     }
+    /// <summary>
+    /// The node-detail page (KON-197). Until this existed a node was a dead end: the card summarised
+    /// its conditions to a chip and there was nowhere to read them in full, nor to see what was
+    /// actually running on it.
+    /// </summary>
+    private async void ShowNodeDetail(Node node)
+    {
+        if (_cluster is null)
+            return;
+
+        Arrived($"node {node.Name}", () => ShowNodeDetail(node), node);
+        DisposeDetail();
+
+        // The apiserver version is what a kubelet version means anything against (KON-95), and a
+        // failed lookup costs the warning rather than the page.
+        var apiServer = string.Empty;
+        try
+        {
+            apiServer = (await _cluster.GetInfoAsync()).Version;
+        }
+        catch (Exception)
+        {
+            // No version, no skew warning; everything else on the page stands.
+        }
+
+        CurrentPage = new ClusterNodeDetailViewModel(
+            _cluster, node, apiServer,
+            onOpenPod: ShowPodDetail,
+            onCordon: (name, cordoned) => _cluster.CordonNodeAsync(name, cordoned).AsTask(),
+            onDrain: ShowDrainNode);
+    }
+
+    /// <summary>
+    /// The namespace-detail page (KON-197). The list answered "does it exist"; this answers what is
+    /// in it — which is the question you had, and the one that decides whether it can go.
+    /// </summary>
+    private void ShowNamespaceDetail(KubeNamespace ns)
+    {
+        if (_cluster is null)
+            return;
+
+        Arrived($"namespace {ns.Name}", () => ShowNamespaceDetail(ns), ns);
+        DisposeDetail();
+
+        CurrentPage = new ClusterNamespaceDetailViewModel(
+            _cluster, ns,
+            onOpenPod: ShowPodDetail,
+            onOpenKind: OpenKindInNamespace);
+    }
+
+    /// <summary>
+    /// Go to a list page with the namespace picker moved to the namespace you came from. Setting the
+    /// picker rather than passing a filter keeps one source of truth for "which namespace am I in" —
+    /// a page filtered to something the picker disagrees with is a page nobody can read.
+    /// </summary>
+    private void OpenKindInNamespace(string key, string ns)
+    {
+        SelectedNamespace = ns;
+        Navigate(key);
+    }
+
+    /// <summary>
+    /// The drain modal (KON-251). A dialog rather than something on the page, because a drain runs
+    /// for as long as its pods take to go and the page underneath it is rebuilt on every visit.
+    /// </summary>
+    private void ShowDrainNode(string node)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new DrainNodeViewModel(_cluster, node, CloseDialog, onDone: () =>
+        {
+            // The node list is what changed — pod counts and the cordoned marker — and the dialog
+            // stays open holding the outcome.
+            ReloadCurrentClusterPage();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// The manifest editor as a modal (KON-252), for the kinds whose page is a list of rows rather
+    /// than a detail page with tabs.
+    /// </summary>
+    private void ShowManifestEditor(ResourceRef reference)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new EditManifestDialogViewModel(_cluster, reference, CloseDialog, onDone: () =>
+        {
+            // Keys and sizes live on the list behind it, and an apply changes them.
+            ReloadCurrentClusterPage();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Open one of the storage pages at a single object (KON-254).
+    /// <para>
+    /// The search box is the filter, rather than a private one the page owns: there is then one way
+    /// to say "show me this one", it is visible, and it can be cleared. A page silently filtered to
+    /// something the search box disagrees with is a page nobody can reason about.
+    /// </para>
+    /// </summary>
+    private void OpenStorage(string key, string term)
+    {
+        NavigateCluster(key);
+
+        if (CurrentPage is IListPage page)
+        {
+            page.SearchText = term;
+            SearchText = term;
+        }
+    }
+
     private void ShowServicePortForward(Service service)
     {
         if (_cluster is null)
@@ -326,6 +441,53 @@ public partial class MainWindowViewModel
             _cluster, service,
             onOpenPod: ShowPodDetail,
             onForward: ShowServicePortForward);
+    }
+
+    /// <summary>
+    /// Open whatever an event is about (KON-248) — the events feed's one way out.
+    /// <para>
+    /// An event carries a <see cref="ResourceRef"/>, and the detail pages take the object itself, so
+    /// this looks it up in the namespace the event names. False means it is no longer there, which
+    /// is ordinary rather than exceptional: events outlive their objects by design, and a crash-looping
+    /// pod that has since been replaced is the single most likely row to be clicked.
+    /// </para>
+    /// </summary>
+    private async Task<bool> OpenEventObjectAsync(ResourceRef target)
+    {
+        if (_cluster is null)
+            return false;
+
+        var ns = target.Namespace;
+
+        switch (target.Kind.Kind)
+        {
+            case "Pod":
+                if ((await _cluster.ListPodsAsync(ns)).FirstOrDefault(p => p.Name == target.Name) is not { } pod)
+                    return false;
+
+                ShowPodDetail(pod);
+                return true;
+
+            case "Service":
+                if ((await _cluster.ListServicesAsync(ns)).FirstOrDefault(s => s.Name == target.Name) is not { } service)
+                    return false;
+
+                ShowServiceDetail(service);
+                return true;
+
+            case var kind when Enum.TryParse<WorkloadKind>(kind, out var workloadKind):
+                if ((await _cluster.ListWorkloadsAsync(workloadKind, ns))
+                        .FirstOrDefault(w => w.Name == target.Name) is not { } workload)
+                    return false;
+
+                ShowWorkloadDetail(workload);
+                return true;
+
+            default:
+                // The row only offers the link for kinds that have a page, so this is the belt to that
+                // braces: a kind added to one list and not the other lands here rather than nowhere.
+                return false;
+        }
     }
 
     /// <summary>

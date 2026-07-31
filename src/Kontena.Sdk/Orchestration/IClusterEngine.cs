@@ -89,7 +89,41 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List PersistentVolumes — the other half of a claim (KON-254). Cluster-scoped, so no namespace.
+    /// </summary>
+    ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// List StorageClasses. Cluster-scoped. This is where a Pending claim's reason lives: a class
+    /// with no provisioner, a class that does not exist, or a binding mode that is waiting on a pod.
+    /// </summary>
+    ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default);
     ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>List ConfigMaps — keys and sizes, not values (KON-249).</summary>
+    ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List Secrets — keys and sizes, never values.
+    /// <para>
+    /// The list API hands over the values whether or not anyone wants them; an implementation is
+    /// expected to keep the keys and drop the rest, so that nothing downstream of this call is able
+    /// to render or log a secret it was never asked for. Values come from
+    /// <see cref="GetConfigDataAsync"/>, one object at a time and only when asked.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<SecretSummary>> ListSecretsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetch the values of one ConfigMap or Secret, decoded.
+    /// <para>
+    /// Separate from the listers on purpose: a page that shows fifty secrets holds none of their
+    /// values, and asking for one is a deliberate act with a single object's name attached to it.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<ConfigEntry>> GetConfigDataAsync(ResourceRef resource, CancellationToken ct = default);
 
     // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -98,6 +132,28 @@ public interface IClusterEngine : IBackend
 
     /// <summary>Trigger a rolling restart of a workload (<c>kubectl rollout restart</c>).</summary>
     ValueTask RolloutRestartAsync(ResourceRef workload, CancellationToken ct = default);
+
+    /// <summary>
+    /// Mark a node unschedulable, or schedulable again (KON-251). Requires
+    /// <see cref="ClusterCapabilities.NodeMaintenance"/>.
+    /// </summary>
+    ValueTask CordonNodeAsync(string node, bool cordoned, CancellationToken ct = default);
+
+    /// <summary>
+    /// Move the work off a node: cordon it, then evict what can be evicted, streaming one
+    /// <see cref="DrainProgress"/> per decision.
+    /// <para>
+    /// <b>The eviction API, not delete.</b> That is what consults PodDisruptionBudgets, and a budget
+    /// refusing is a true statement about the cluster rather than a failure of the drain.
+    /// </para>
+    /// <para>
+    /// <b>A failed drain rolls nothing back.</b> A half-drained node stays cordoned, because that is
+    /// the safe state and undoing it would put work back onto a node someone is about to touch. The
+    /// stream says how far it got; putting the node back into service is a separate, deliberate act.
+    /// </para>
+    /// </summary>
+    IAsyncEnumerable<DrainProgress> DrainNodeAsync(
+        string node, DrainOptions options, CancellationToken ct = default);
 
     /// <summary>
     /// Open an interactive exec session into a pod container. Reuses the CEAL's

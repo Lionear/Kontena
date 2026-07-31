@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="480"
+             x:Class="Kontena.App.Views.DrainNodeView"
+             x:DataType="vm:DrainNodeViewModel">
+
+    <Border Width="560" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+            <StackPanel Margin="24,22,24,20" Spacing="16">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Drain node" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="{Binding Node}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+                </StackPanel>
+
+                <!-- What a drain does not promise, said before it runs rather than after it
+                     disappoints. -->
+                <TextBlock Text="{Binding Caveat}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+
+                <!-- The only option here that destroys something, so it is its own question and not a
+                     line in the confirm. -->
+                <CheckBox IsChecked="{Binding DeleteEmptyDirData}" IsEnabled="{Binding CanDrain}">
+                    <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                               Text="Also move pods that use local scratch storage (emptyDir). Whatever is in it is lost."/>
+                </CheckBox>
+
+                <Border IsVisible="{Binding HasSteps}" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" MaxHeight="240" ClipToBounds="True">
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding Steps}" Margin="12,10">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DrainStepRow">
+                                    <StackPanel Margin="0,3">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7">
+                                                <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Pod}" IsVisible="{Binding IsPod}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                           Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Namespace}" IsVisible="{Binding IsPod}" FontSize="11.5"
+                                                           Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding Status}" FontSize="11.5"
+                                                       Foreground="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <!-- The apiserver's own words, which is where the budget's name is. -->
+                                        <TextBlock Text="{Binding Reason}" IsVisible="{Binding Reason, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                   Margin="14,2,0,0" FontSize="11.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <TextBlock Text="{Binding Summary}" IsVisible="{Binding Summary, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           FontSize="12.5" Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+
+                <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+            <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
+                <!-- Stopping leaves the node cordoned and says so in the summary; it is a choice, not
+                     an undo. -->
+                <Button Grid.Column="0" Classes="ghost" HorizontalAlignment="Left" Command="{Binding StopCommand}"
+                        IsVisible="{Binding IsRunning}">Stop</Button>
+                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CloseCommand}">Close</Button>
+                <Button Grid.Column="2" Classes="primary danger" Command="{Binding DrainCommand}" IsEnabled="{Binding CanDrain}">Drain</Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

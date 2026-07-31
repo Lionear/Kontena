@@ -56,7 +56,10 @@
                             <StackPanel Spacing="14">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0" Spacing="3">
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                        <Button Classes="link" Padding="0" HorizontalAlignment="Left"
+                                                Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
                                         <TextBlock Text="{Binding Roles}" FontSize="11.5" Foreground="{DynamicResource TextFaint}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
@@ -136,6 +139,16 @@
                                         <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"/>
                                     </StackPanel>
                                 </Grid>
+
+                                <!-- Node maintenance (KON-251). Hidden entirely where the backend cannot do
+                                     it, rather than offered and then refused. Cordon reads Uncordon on a node
+                                     that already is: one button, and the label is the state. -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding CanMaintain}">
+                                    <Button Classes="pill" Command="{Binding CordonCommand}" Content="{Binding CordonLabel}"
+                                            ToolTip.Tip="Stop new pods being scheduled here. Pods already running stay put."/>
+                                    <Button Classes="pill" Command="{Binding DrainCommand}"
+                                            ToolTip.Tip="Cordon, then move the pods off — DaemonSet pods stay, and a disruption budget may refuse">Drain</Button>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
