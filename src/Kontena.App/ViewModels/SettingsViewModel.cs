@@ -267,6 +267,12 @@ public partial class SettingsViewModel : ViewModelBase
 
     public string Version { get; } = AppVersion.Current;
 
+    /// <summary>When this build was made, or empty for one the build workflow did not make.</summary>
+    public string BuildDate { get; } =
+        AppVersion.BuildDate is { } date ? $"Built {date}" : string.Empty;
+
+    public bool HasBuildDate => BuildDate.Length > 0;
+
     // ── Category ────────────────────────────────────────────────────────────
 
     [ObservableProperty] private string _category = "general";

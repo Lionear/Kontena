@@ -1,4 +1,5 @@
 using Kontena.App.Services;
+using Kontena.App.ViewModels;
 
 namespace Kontena.App.Tests;
 
@@ -48,5 +49,29 @@ public sealed class AppVersionTests
     public void A_host_with_neither_still_gives_something_showable()
     {
         Assert.Equal("0.0.0", AppVersion.From(null, null));
+    }
+
+    /// <summary>
+    /// A build the workflow did not make carries no date, and then the line must not keep the
+    /// separator that was there to introduce it.
+    /// </summary>
+    [Fact]
+    public void A_build_without_a_date_shows_no_dangling_separator()
+    {
+        Assert.Null(AppVersion.BuildDate);
+        Assert.Equal(string.Empty, new AboutViewModel(new NoKeychain()).BuildDateSuffix);
+    }
+
+    private sealed class NoKeychain : ISecretStore
+    {
+        public bool IsAvailable => false;
+
+        public ValueTask<bool> SetAsync(string key, string secret, CancellationToken ct = default) =>
+            ValueTask.FromResult(false);
+
+        public ValueTask<string?> GetAsync(string key, CancellationToken ct = default) =>
+            ValueTask.FromResult<string?>(null);
+
+        public ValueTask DeleteAsync(string key, CancellationToken ct = default) => ValueTask.CompletedTask;
     }
 }

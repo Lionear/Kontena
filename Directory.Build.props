@@ -11,4 +11,13 @@
     <Product>Kontena</Product>
     <Version>0.3.0</Version>
   </PropertyGroup>
+
+  <!--
+    The date the build workflow made this build, shown in About and Settings (KON-268). It is passed
+    in rather than read from the clock here, so every project in one build carries the same date and
+    a local build carries none at all — a developer build has no release date to claim.
+  -->
+  <ItemGroup Condition="'$(BuildDate)' != ''">
+    <AssemblyMetadata Include="BuildDate" Value="$(BuildDate)" />
+  </ItemGroup>
 </Project>

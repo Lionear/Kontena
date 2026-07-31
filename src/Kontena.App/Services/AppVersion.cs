@@ -20,6 +20,23 @@ public static class AppVersion
             ?.InformationalVersion,
         typeof(AppVersion).Assembly.GetName().Version);
 
+    /// <summary>
+    /// The day the build workflow made this build (<c>2026-07-31</c>), or null for a build it did
+    /// not make — a local <c>dotnet run</c> has no release date to claim.
+    /// <para>
+    /// It exists because the version no longer carries one. A nightly used to be
+    /// <c>0.3.0-nightly.20260731.44</c>; the date made it long enough that nobody read it, and it was
+    /// never what ordered two nightlies anyway — the run number already does that. So the date moved
+    /// to where it is information instead of an ordering key (KON-268).
+    /// </para>
+    /// </summary>
+    public static string? BuildDate { get; } = typeof(AppVersion).Assembly
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "BuildDate")
+        ?.Value is { Length: > 0 } date
+        ? date
+        : null;
+
     /// <param name="informational">
     /// The assembly's informational version, which is the string the build workflow stamped.
     /// </param>

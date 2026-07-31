@@ -29,6 +29,13 @@ public sealed partial class AboutViewModel : ViewModelBase
 
     public string Version { get; } = AppVersion.Current;
 
+    /// <summary>
+    /// The build date, as the line after the version reads it — empty for a build that has none,
+    /// which also takes the separator with it rather than leaving a dangling dot.
+    /// </summary>
+    public string BuildDateSuffix { get; } =
+        AppVersion.BuildDate is { } date ? $"  ·  built {date}" : string.Empty;
+
     /// <summary>The repository, without the scheme — it is a label here, not something to type.</summary>
     public string RepositoryLabel { get; } = "github.com/Lionear/Kontena";
 

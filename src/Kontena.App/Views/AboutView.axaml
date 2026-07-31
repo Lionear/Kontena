@@ -51,7 +51,7 @@
                                        Foreground="{DynamicResource Text}"/>
                             <TextBlock FontSize="13" Margin="0,6,0,0" Foreground="{DynamicResource TextDim}">
                                 <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
-                                <Run Text="  ·  source-available"/>
+                                <Run Text="{Binding BuildDateSuffix}"/><Run Text="  ·  source-available"/>
                             </TextBlock>
                             <TextBlock FontSize="13" Margin="0,14,0,0" TextWrapping="Wrap" LineHeight="20"
                                        Foreground="{DynamicResource TextDim}"
