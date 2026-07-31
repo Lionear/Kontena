@@ -407,6 +407,13 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+
+                                <!-- An unknown host key is the one refusal the user can answer from
+                                     here (KON-260); every other one sends them back to the form. -->
+                                <Button Classes="primary" Command="{Binding ReviewHostKeyCommand}"
+                                        HorizontalAlignment="Left" Margin="0,4,0,0"
+                                        IsVisible="{Binding CanReviewHostKey}"
+                                        Content="Review fingerprint…"/>
                             </StackPanel>
                         </Border>
 

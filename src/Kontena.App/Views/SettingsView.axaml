@@ -530,6 +530,13 @@
                                        HorizontalAlignment="Left" MaxWidth="620"
                                        IsVisible="{Binding RemoteError, Converter={x:Static ObjectConverters.IsNotNull}}"
                                        Foreground="{DynamicResource Danger}"/>
+                            <!-- Shown only when the test failed because nobody has trusted this host
+                                 yet (KON-260). The one failure with an answer the user can give here. -->
+                            <Button Classes="ghost" Command="{Binding ReviewHostKeyCommand}"
+                                    HorizontalAlignment="Left"
+                                    IsVisible="{Binding CanReviewHostKey}"
+                                    IsEnabled="{Binding CanReviewHostKey}"
+                                    Content="Review fingerprint…"/>
                             <TextBlock Text="{Binding RemoteNotice}" FontSize="12.5"
                                        IsVisible="{Binding RemoteNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
                                        Foreground="{DynamicResource Success}"/>

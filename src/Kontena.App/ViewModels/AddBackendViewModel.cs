@@ -8,6 +8,7 @@ using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.App.Services;
 using Kontena.Sdk;
+using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
@@ -593,6 +594,42 @@ public partial class AddBackendViewModel : ViewModelBase
     /// <summary>Concrete things to check, chosen for the failure that actually happened.</summary>
     public ObservableCollection<string> FailureHints { get; } = [];
 
+    /// <summary>
+    /// The host whose key is not trusted yet, or null (KON-260). Only ever set for a key nobody has
+    /// seen before — never for one that changed, where there is nothing safe to offer.
+    /// </summary>
+    [ObservableProperty] private RemoteEngine? _untrustedHost;
+
+    public bool CanReviewHostKey => UntrustedHost is not null;
+
+    partial void OnUntrustedHostChanged(RemoteEngine? value) => OnPropertyChanged(nameof(CanReviewHostKey));
+
+    /// <summary>
+    /// Shows the host's fingerprint and, once confirmed, trusts it and tests again — so a first
+    /// connection finishes in the wizard instead of sending the user to a terminal.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReviewHostKeyAsync()
+    {
+        if (UntrustedHost is not { } remote)
+            return;
+
+        try
+        {
+            var request = await SshHostKeyTrust.AskAsync(remote, async () =>
+            {
+                UntrustedHost = null;
+                await TestRemoteAsync();
+            });
+
+            RequestConfirm?.Invoke(request);
+        }
+        catch (Exception ex)
+        {
+            FailureOutput = ex.Message.Trim();
+        }
+    }
+
     private async Task TestRemoteAsync()
     {
         var draft = Draft;
@@ -801,12 +838,18 @@ public partial class AddBackendViewModel : ViewModelBase
         }
     }
 
-    private void Fail(RemoteEngine remote, Exception ex)
+    /// <summary>
+    /// Turns a failed attempt into what the Refused step shows. Internal for tests: which failure gets
+    /// an offer to trust a key and which gets only a warning is the decision this whole change is
+    /// about, and it cannot be checked by reading it back.
+    /// </summary>
+    internal void Fail(RemoteEngine remote, Exception ex)
     {
         // The transport's own words. "Permission denied (publickey)" and "Host key verification failed"
         // name the thing to fix, and nothing written here would name it better.
         FailureOutput = ex.Message.Trim();
         FailureHints.Clear();
+        UntrustedHost = null;                    // a previous attempt's offer must not outlive its failure
 
         var target = remote.User is { Length: > 0 } u ? $"{u}@{remote.Host}" : remote.Host;
         var message = ex.Message;
@@ -820,13 +863,26 @@ public partial class AddBackendViewModel : ViewModelBase
             FailureHints.Add("Check your agent is running: ssh-add -l");
             FailureHints.Add($"Try it yourself: ssh {target} — if that fails, Kontena cannot help");
         }
-        else if (message.Contains("Host key verification", StringComparison.OrdinalIgnoreCase))
+        else if (ex is SshHostKeyException { Problem: SshHostKeyProblem.Unknown })
         {
-            FailureHeadline = "The host key is not known";
+            // Not a hint list: this one has an answer the user can give here (KON-260). It used to say
+            // "connect once by hand", which is a terminal instruction inside a desktop app — and the
+            // reason a first connection to any host had never worked.
+            FailureHeadline = "Kontena has not seen this host before";
             FailureExplanation =
-                "ssh will not connect to a host it has never seen. Kontena does not accept keys on your "
-                + "behalf: that decision is the point of the check.";
-            FailureHints.Add($"Connect once by hand and accept the key: ssh {target}");
+                "ssh will not connect to a host whose key it does not know, and Kontena will not accept "
+                + "one on your behalf. Review the fingerprint and it can go on.";
+            UntrustedHost = remote;
+        }
+        else if (ex is SshHostKeyException { Problem: SshHostKeyProblem.Changed })
+        {
+            FailureHeadline = "The host key has changed";
+            FailureExplanation =
+                "This host answered with a different key than the one already trusted. That is either a "
+                + "rebuilt machine or a connection being intercepted, and only you can know which — so "
+                + "Kontena offers nothing to click here.";
+            FailureHints.Add("Check whether this host was rebuilt or reinstalled");
+            FailureHints.Add($"If it was, remove the old entry: ssh-keygen -R {remote.Host}");
         }
         else if (remote.Transport == RemoteEngineTransport.Tcp)
         {

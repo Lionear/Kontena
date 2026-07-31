@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 
 namespace Kontena.Sdk;
@@ -57,7 +58,7 @@ public sealed class SshTunnel : IAsyncDisposable
 
         try
         {
-            await WaitForSocketAsync(localSocket, process, timeout, ct).ConfigureAwait(false);
+            await WaitForSocketAsync(localSocket, process, remote, timeout, ct).ConfigureAwait(false);
             return tunnel;
         }
         catch (Exception)
@@ -114,7 +115,7 @@ public sealed class SshTunnel : IAsyncDisposable
     }
 
     private static async Task WaitForSocketAsync(
-        string socket, Process process, TimeSpan timeout, CancellationToken ct)
+        string socket, Process process, RemoteEngine remote, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
@@ -128,6 +129,14 @@ public sealed class SshTunnel : IAsyncDisposable
             {
                 // ssh's own message is the useful one — it names the reason.
                 var error = (await process.StandardError.ReadToEndAsync(ct).ConfigureAwait(false)).Trim();
+
+                // Except for one reason, where it is not (KON-260). "Host key verification failed" is
+                // ssh telling a person to go and connect by hand; with BatchMode=yes it is the answer
+                // for every host nobody has connected to yet, and passing it through leaves the user
+                // holding a terminal instruction inside a desktop app.
+                if (SshHostKeys.Classify(error) is var problem && problem != SshHostKeyProblem.None)
+                    throw SshHostKeys.Failure(problem, remote, error);
+
                 throw new InvalidOperationException(
                     error.Length > 0 ? error : $"ssh exited with code {process.ExitCode}.");
             }
