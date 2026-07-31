@@ -145,6 +145,20 @@ public class SshHostKeyTests
     }
 
     [Fact]
+    public async Task Scanning_a_host_that_cannot_be_reached_says_what_ssh_said()
+    {
+        // Port 1 on loopback answers nothing. The point is the shape of the failure: one line, in
+        // ssh's words. The first version shelled out to ssh-keyscan and surfaced its banner five times
+        // over — once per key type it tried — which is what the user actually saw.
+        var unreachable = new RemoteEngine(
+            "r2", "Nowhere", RemoteEngineTransport.Ssh, "127.0.0.1", 1, "deploy");
+
+        var failure = await Assert.ThrowsAsync<EngineException>(() => SshHostKeys.ScanAsync(unreachable));
+
+        Assert.DoesNotContain('\n', failure.Message);
+    }
+
+    [Fact]
     public async Task Trusting_nothing_writes_nothing()
     {
         // A scan that came back empty must not create or touch the file: "no keys" is a failure to

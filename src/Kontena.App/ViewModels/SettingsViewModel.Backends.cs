@@ -202,8 +202,8 @@ public partial class SettingsViewModel
         }
         catch (Exception ex)
         {
-            // Scanning failed — the host went away between the attempt and the question, or it never
-            // answered ssh-keyscan. Nothing to confirm, so say so rather than showing an empty dialog.
+            // The host never got as far as offering a key. ssh's own message says why; there is
+            // nothing to confirm, so show that rather than an empty dialog.
             RemoteError = ex.Message;
         }
         finally

@@ -66,89 +66,115 @@ public static class SshHostKeys
             complaint);
 
     /// <summary>
-    /// The host and port ssh will actually use, after <c>ssh_config</c> has had its say. Asked rather
-    /// than assumed: <see cref="RemoteEngine.Host"/> may be an alias whose <c>HostName</c> and
-    /// <c>Port</c> live in the user's config, and scanning the alias would fetch the wrong host's key —
-    /// or no key at all.
+    /// The key this host offers, with its fingerprint. Trust-on-first-use: the answer is only worth as
+    /// much as the network it came over, which is exactly why it is shown to a person instead of being
+    /// accepted here.
     /// </summary>
-    public static async Task<(string Host, int Port)> ResolveAsync(
+    /// <remarks>
+    /// Fetched by <b>ssh itself</b>, writing to a throwaway <c>known_hosts</c> — not by
+    /// <c>ssh-keyscan</c>, which was the first attempt and was wrong for the same reason a parser test
+    /// is not a request test (KON-75). They are two clients: keyscan can fail to agree a key exchange
+    /// on a host ssh connects to without trouble, and then Kontena refuses to show a fingerprint for a
+    /// host it could otherwise reach. Seen in the field —
+    /// <c>choose_kex: unsupported KEX method sntrup761x25519-sha512@openssh.com</c> from keyscan
+    /// against an OpenSSH 9.2 host that ssh was perfectly happy with.
+    /// <para>
+    /// Using ssh also means <c>ssh_config</c> is honoured for free — aliases, <c>HostName</c>,
+    /// <c>Port</c>, <c>ProxyJump</c> — where keyscan had to be told a resolved host and port and would
+    /// have scanned the wrong machine when it was told wrong.
+    /// </para>
+    /// <para>
+    /// It offers no credentials (<c>PreferredAuthentications=none</c>): the host key is exchanged
+    /// before authentication, so there is nothing to gain from trying, and a failed login on every
+    /// fingerprint check is how a host's own defences start counting.
+    /// </para>
+    /// </remarks>
+    public static async Task<IReadOnlyList<SshHostKey>> ScanAsync(
         RemoteEngine remote, CancellationToken ct = default)
     {
         Guard(remote);
 
-        var arguments = new List<string> { "-G" };
-        if (remote.Port is { } configured)
+        var capture = Path.Combine(Path.GetTempPath(), $"kontena-hostkey-{Guid.NewGuid():N}");
+
+        try
         {
-            arguments.Add("-p");
-            arguments.Add(configured.ToString(CultureInfo.InvariantCulture));
+            var arguments = new List<string>
+            {
+                "-N", "-T",
+                "-o", "BatchMode=yes",
+                "-o", "ConnectTimeout=10",
+
+                // The key arrives before authentication does, so asking to authenticate would only add
+                // a refused login to someone's logs.
+                "-o", "PreferredAuthentications=none",
+
+                // Into a file of ours. accept-new here is capture, not trust: nothing the user has is
+                // touched, and what lands there is only written to known_hosts once they say so.
+                "-o", "StrictHostKeyChecking=accept-new",
+
+                // Quoted, because a temp path can contain spaces — C:\Users\John Doe\AppData\… — and
+                // ssh then takes the value up to the space and writes the file somewhere else. It still
+                // reports "Permanently added", so the failure is entirely silent.
+                "-o", $"UserKnownHostsFile=\"{capture}\"",
+            };
+
+            if (remote.Port is { } port)
+            {
+                arguments.Add("-p");
+                arguments.Add(port.ToString(CultureInfo.InvariantCulture));
+            }
+
+            arguments.Add(remote.User is { Length: > 0 } user ? $"{user}@{remote.Host}" : remote.Host);
+
+            var attempt = await RunAsync("ssh", arguments, input: null, ScanTimeout, ct)
+                .ConfigureAwait(false);
+
+            var lines = File.Exists(capture)
+                ? (await File.ReadAllLinesAsync(capture, ct).ConfigureAwait(false))
+                    .Select(line => line.Trim())
+                    .Where(line => line.Length > 0 && !line.StartsWith('#'))
+                    .ToList()
+                : [];
+
+            if (lines.Count == 0)
+            {
+                // ssh never got as far as a key. Its own message names the reason — refused, timed out,
+                // no route — and nothing written here would name it better.
+                var reason = attempt.Stderr.Trim();
+                throw new EngineException(
+                    reason.Length > 0 ? reason : $"No SSH host key came back from {remote.Host}.");
+            }
+
+            // One ssh-keygen for all of them: it prints a fingerprint per input line, in order.
+            var fingerprints = await RunAsync(
+                "ssh-keygen", ["-l", "-f", "-"], string.Join('\n', lines) + "\n", ScanTimeout, ct)
+                .ConfigureAwait(false);
+
+            var printed = fingerprints.Stdout
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            return lines
+                .Select((line, index) => new SshHostKey(
+                    KeyType: line.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: > 1 } parts
+                        ? parts[1]
+                        : "unknown",
+                    Fingerprint: index < printed.Count ? Fingerprint(printed[index]) : "unavailable",
+                    KnownHostsLine: line))
+                .ToList();
         }
-
-        arguments.Add(remote.User is { Length: > 0 } user ? $"{user}@{remote.Host}" : remote.Host);
-
-        var (exitCode, stdout, _) = await RunAsync("ssh", arguments, input: null, ScanTimeout, ct)
-            .ConfigureAwait(false);
-
-        // ssh -G is a convenience, not a dependency: an older client, or one that dislikes the options,
-        // should not stop the scan. Falling back to what the user typed is what would have happened
-        // anyway when no alias is involved, which is the common case.
-        if (exitCode != 0)
-            return (remote.Host, remote.Port ?? 22);
-
-        var host = Setting(stdout, "hostname") ?? remote.Host;
-        var port = int.TryParse(Setting(stdout, "port"), CultureInfo.InvariantCulture, out var resolved)
-            ? resolved
-            : remote.Port ?? 22;
-
-        return (host, port);
-    }
-
-    /// <summary>
-    /// The keys a host is offering, with their fingerprints. This is trust-on-first-use: the answer is
-    /// only worth as much as the network it came over, which is exactly why it is shown to a person
-    /// instead of being accepted here.
-    /// </summary>
-    public static async Task<IReadOnlyList<SshHostKey>> ScanAsync(
-        RemoteEngine remote, CancellationToken ct = default)
-    {
-        var (host, port) = await ResolveAsync(remote, ct).ConfigureAwait(false);
-
-        var scan = await RunAsync(
-            "ssh-keyscan",
-            ["-T", "5", "-p", port.ToString(CultureInfo.InvariantCulture), host],
-            input: null, ScanTimeout, ct).ConfigureAwait(false);
-
-        var lines = scan.Stdout
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(line => !line.StartsWith('#'))
-            .ToList();
-
-        if (lines.Count == 0)
+        finally
         {
-            // ssh-keyscan says nothing at all when it cannot reach the host — the reason is on stderr.
-            var reason = scan.Stderr.Trim();
-            throw new EngineException(
-                reason.Length > 0
-                    ? reason
-                    : $"No SSH host key came back from {host}:{port.ToString(CultureInfo.InvariantCulture)}.");
+            try
+            {
+                if (File.Exists(capture))
+                    File.Delete(capture);
+            }
+            catch (IOException)
+            {
+                // A stray file in the temp directory, named after a guid. Not worth failing over.
+            }
         }
-
-        // One ssh-keygen for all of them: it prints a fingerprint per input line, in order.
-        var fingerprints = await RunAsync(
-            "ssh-keygen", ["-l", "-f", "-"], string.Join('\n', lines) + "\n", ScanTimeout, ct)
-            .ConfigureAwait(false);
-
-        var printed = fingerprints.Stdout
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList();
-
-        return lines
-            .Select((line, index) => new SshHostKey(
-                KeyType: line.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: > 1 } parts
-                    ? parts[1]
-                    : "unknown",
-                Fingerprint: index < printed.Count ? Fingerprint(printed[index]) : "unavailable",
-                KnownHostsLine: line))
-            .ToList();
     }
 
     /// <summary>
@@ -206,19 +232,6 @@ public static class SshHostKeys
                .FirstOrDefault(part => part.StartsWith("SHA256:", StringComparison.Ordinal))
            ?? printed;
 
-    /// <summary>One setting out of <c>ssh -G</c>, which prints <c>name value</c> per line, lowercased.</summary>
-    private static string? Setting(string output, string name)
-    {
-        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var parts = line.Split(' ', 2, StringSplitOptions.TrimEntries);
-            if (parts.Length == 2 && string.Equals(parts[0], name, StringComparison.OrdinalIgnoreCase))
-                return parts[1];
-        }
-
-        return null;
-    }
-
     private static async Task<bool> EndsWithNewlineAsync(string path, CancellationToken ct)
     {
         await using var stream = File.OpenRead(path);
@@ -231,7 +244,7 @@ public static class SshHostKeys
 
     /// <summary>
     /// The same gate <see cref="SshTunnel.Arguments"/> uses (KON-181): these values reach a command
-    /// line here too, and ssh-keyscan reads a leading "-" as its own option just as ssh does.
+    /// line here too, and the scan runs ssh with the same host and user the tunnel will use.
     /// </summary>
     private static void Guard(RemoteEngine remote)
     {

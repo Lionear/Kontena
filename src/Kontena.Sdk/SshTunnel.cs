@@ -59,27 +59,7 @@ public sealed class SshTunnel : IAsyncDisposable
     {
         var forward = LocalEnd(remote);
         var tunnel = new SshTunnel(forward);
-        var start = new ProcessStartInfo("ssh")
-        {
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-        };
-
-        foreach (var argument in Arguments(remote, forward.Spec))
-            start.ArgumentList.Add(argument);
-
-        if (remote.UsePassword && askpass is { } helper)
-        {
-            start.Environment["SSH_ASKPASS"] = helper.Executable;
-            start.Environment[SshAskpass.SecretVariable] = helper.SecretKey;
-
-            // Without this ssh only consults SSH_ASKPASS when it has no terminal *and* DISPLAY is set,
-            // which is a rule about X11 that has nothing to do with whether this process can type.
-            // Requires OpenSSH 8.4 or newer; on older clients the prompt goes nowhere and the attempt
-            // fails, which is the behaviour we already had.
-            start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
-        }
+        var start = StartInfo(remote, forward.Spec, askpass);
 
         var process = Process.Start(start)
             ?? throw new InvalidOperationException("Could not start ssh. Is an SSH client installed?");
@@ -96,6 +76,43 @@ public sealed class SshTunnel : IAsyncDisposable
             await tunnel.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>
+    /// How ssh is launched. Public for tests: everything decided here is invisible from the outside
+    /// until it is wrong on one platform, which is exactly how the console window got shipped.
+    /// </summary>
+    public static ProcessStartInfo StartInfo(RemoteEngine remote, string localEnd, SshAskpass? askpass = null)
+    {
+        var start = new ProcessStartInfo("ssh")
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+
+            // Kontena is a GUI application and has no console of its own, so Windows makes one for any
+            // console program it starts — a black window appearing next to the app for as long as the
+            // tunnel lives. Harmless and unmistakably wrong to look at. Every other process Kontena
+            // starts already said this; this one did not.
+            CreateNoWindow = true,
+        };
+
+        foreach (var argument in Arguments(remote, localEnd))
+            start.ArgumentList.Add(argument);
+
+        if (remote.UsePassword && askpass is { } helper)
+        {
+            start.Environment["SSH_ASKPASS"] = helper.Executable;
+            start.Environment[SshAskpass.SecretVariable] = helper.SecretKey;
+
+            // Without this ssh only consults SSH_ASKPASS when it has no terminal *and* DISPLAY is set,
+            // which is a rule about X11 that has nothing to do with whether this process can type.
+            // Requires OpenSSH 8.4 or newer; on older clients the prompt goes nowhere and the attempt
+            // fails, which is the behaviour we already had.
+            start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
+        }
+
+        return start;
     }
 
     /// <summary>
