@@ -107,6 +107,32 @@ public sealed class NodeAndNamespaceDetailTests
         Assert.Contains(page.Contents, c => c.Label == "Services");
         Assert.Contains(page.Contents, c => c.Label == "Ingresses");
         Assert.Contains(page.Contents, c => c.Label == "Volume claims");
+        Assert.Contains(page.Contents, c => c.Label == "Config maps" && c.Count > 0);
+        Assert.Contains(page.Contents, c => c.Label == "Secrets" && c.Count > 0);
+    }
+
+    [Fact]
+    public async Task A_namespace_holding_only_secrets_is_not_empty()
+    {
+        // Config maps and secrets were left out of the tally, so a namespace whose only contents
+        // were credentials answered "can I delete this" with yes.
+        var page = await NamespaceDetailAsync();
+
+        Assert.False(page.IsEmptyNamespace);
+        Assert.Equal(3, page.Contents.Single(c => c.Label == "Secrets").Count);
+    }
+
+    [Fact]
+    public async Task What_kubernetes_puts_in_every_namespace_does_not_make_one_look_used()
+    {
+        // kube-system carries kube-root-ca.crt and a service-account token and nothing else. Counting
+        // those would mean no namespace on a real cluster is ever empty, which is the same as not
+        // answering the question at all.
+        var page = await NamespaceDetailAsync("kube-system");
+
+        Assert.True(page.IsEmptyNamespace);
+        Assert.Equal(1, page.Contents.Single(c => c.Label == "Config maps").Count);
+        Assert.Equal(1, page.Contents.Single(c => c.Label == "Secrets").Count);
     }
 
     [Fact]
