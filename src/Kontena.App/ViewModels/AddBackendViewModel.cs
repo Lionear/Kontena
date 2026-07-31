@@ -151,9 +151,18 @@ public partial class AddBackendViewModel : ViewModelBase
     private readonly Func<string?, Task> _onAdded;
     private readonly IReadOnlyList<BackendProbe> _probes;
 
+    private readonly ISecretStore _secrets;
+
     private RemoteEngine? _verified;
     private List<string> _verifiedContexts = [];
     private CancellationTokenSource? _test;
+
+    /// <summary>
+    /// A password written to the keychain so that a connection could be *tested*, before there is an
+    /// engine to own it (KON-259). Removed again if the wizard closes without committing — otherwise an
+    /// abandoned attempt would leave a password behind under an id that no longer exists anywhere.
+    /// </summary>
+    private string? _pendingSecretKey;
 
     /// <param name="store">Settings, written only after a successful test.</param>
     /// <param name="probes">What the shell already knows about, for the detected list.</param>
@@ -170,12 +179,14 @@ public partial class AddBackendViewModel : ViewModelBase
         IReadOnlyList<BackendProbe> probes,
         Action onClose,
         Func<string?, Task> onAdded,
-        AddBackendStep start = AddBackendStep.What)
+        AddBackendStep start = AddBackendStep.What,
+        ISecretStore? secrets = null)
     {
         _store = store;
         _probes = probes;
         _onClose = onClose;
         _onAdded = onAdded;
+        _secrets = secrets ?? SecretStore.Create();
 
         KubeconfigPath = Kubeconfig.DefaultPath;
         LoadDetected();
@@ -335,7 +346,42 @@ public partial class AddBackendViewModel : ViewModelBase
         CertificateDirectory = CertificateDirectory,
         AllowInsecure = AllowInsecure,
         IsSsh = IsSsh,
+        KeyFile = KeyFile,
+        UsePassword = UsePassword && HasKeychain,
     };
+
+    /// <summary>A private key to use instead of whatever the agent offers (KON-261).</summary>
+    [ObservableProperty] private string _keyFile = string.Empty;
+
+    /// <summary>Authenticate with a password from the keychain rather than a key (KON-259).</summary>
+    [ObservableProperty] private bool _usePassword;
+
+    /// <summary>Typed here, stored in the keychain, never written to settings.</summary>
+    [ObservableProperty] private string _password = string.Empty;
+
+    /// <summary>No keychain, no password option — Kontena has no fallback to a file, on purpose.</summary>
+    public bool HasKeychain => _secrets.IsAvailable;
+
+    public bool ShowPasswordOption => IsSsh && HasKeychain;
+    public bool ShowKeyFile => IsSsh && !UsePassword;
+    public bool ShowPasswordBox => ShowPasswordOption && UsePassword;
+
+    partial void OnUsePasswordChanged(bool value)
+    {
+        if (value)
+            KeyFile = string.Empty;
+        else
+            Password = string.Empty;
+
+        NotifyAuthVisibility();
+    }
+
+    private void NotifyAuthVisibility()
+    {
+        OnPropertyChanged(nameof(ShowPasswordOption));
+        OnPropertyChanged(nameof(ShowKeyFile));
+        OnPropertyChanged(nameof(ShowPasswordBox));
+    }
 
     /// <summary>Shown for TCP with no certificates given, which is where the decision is actually made.</summary>
     public bool ShowInsecureWarning => AllowInsecure && IsTcp;
@@ -349,8 +395,11 @@ public partial class AddBackendViewModel : ViewModelBase
         OnPropertyChanged(nameof(CertificatesApply));
         OnPropertyChanged(nameof(PortPlaceholder));
         OnPropertyChanged(nameof(ShowInsecureWarning));
+        NotifyAuthVisibility();
         OnFormChanged();
     }
+
+    partial void OnKeyFileChanged(string value) => OnFormChanged();
 
     partial void OnAllowInsecureChanged(bool value)
     {
@@ -566,7 +615,34 @@ public partial class AddBackendViewModel : ViewModelBase
         _test?.Cancel();
         _test?.Dispose();
         _test = null;
+
+        // Fire and forget: the dialog is going away either way, and a keychain that is slow to answer
+        // must not hold the window open. Nothing later depends on the result.
+        _ = ForgetPendingSecretAsync();
+
         _onClose();
+    }
+
+    /// <summary>
+    /// Removes a password that was stored for a test but never committed. Safe to call when there is
+    /// none: deleting something that is not there is not an error (<see cref="ISecretStore"/>).
+    /// </summary>
+    private async Task ForgetPendingSecretAsync()
+    {
+        if (_pendingSecretKey is not { } key)
+            return;
+
+        _pendingSecretKey = null;
+
+        try
+        {
+            await _secrets.DeleteAsync(key);
+        }
+        catch (Exception)
+        {
+            // The keychain refused or went away. Nothing useful to tell the user while a dialog is
+            // closing, and the entry is identifiable — it carries Kontena's prefix and the engine id.
+        }
     }
 
     // ── Step 3 ──────────────────────────────────────────────────────────────
@@ -642,6 +718,24 @@ public partial class AddBackendViewModel : ViewModelBase
         var remote = draft.Build();
         TestTarget = remote.Endpoint;
 
+        // The test connects for real, so the password has to be somewhere the askpass helper can read
+        // it — and the keychain is the only place Kontena puts one. Written under the id this engine
+        // will be committed with, and dropped again if the wizard closes without committing.
+        if (remote.UsePassword && Password.Length > 0)
+        {
+            await ForgetPendingSecretAsync();
+
+            var key = SecretKeys.Engine(remote.Id);
+            if (!await _secrets.SetAsync(key, Password))
+            {
+                Fail(remote, new InvalidOperationException(
+                    "The keychain refused to store the password, so the connection was not attempted."));
+                return;
+            }
+
+            _pendingSecretKey = key;
+        }
+
         var resolve = new ProbeStepViewModel("Host resolved");
         var connect = new ProbeStepViewModel(
             remote.Transport == RemoteEngineTransport.Ssh ? "SSH tunnel opened" : "TLS connection accepted");
@@ -668,7 +762,8 @@ public partial class AddBackendViewModel : ViewModelBase
                 await RunStepAsync(connect, async () =>
                 {
                     // Creating the backend is what opens the tunnel, so it belongs to this step.
-                    backend = await Task.Run(() => new RemoteDockerEngineProvider(remote).CreateBackend(), ct);
+                    backend = await Task.Run(
+                        () => new RemoteDockerEngineProvider(remote, SshPasswordPrompt.For(remote)).CreateBackend(), ct);
                     await backend.PingAsync(ct);
                 }, ct);
 
@@ -929,6 +1024,10 @@ public partial class AddBackendViewModel : ViewModelBase
 
             _store.Update(s => s with { RemoteEngines = [.. s.RemoteEngines, named] });
             switchTo = named.Backend;
+
+            // The engine now owns the password that was stored to test it, so it is no longer pending
+            // — and must survive this dialog closing.
+            _pendingSecretKey = null;
         }
         else if (_verifiedContexts.Count > 0)
         {

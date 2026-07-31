@@ -1,6 +1,8 @@
 ﻿using Avalonia;
 using System;
 using System.Runtime.InteropServices;
+using Kontena.App.Services;
+using Kontena.Sdk;
 using Velopack;
 
 namespace Kontena.App;
@@ -13,6 +15,15 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Before anything else, including the updater hooks: this run is not the app (KON-259). ssh
+        // started it to be asked for a password, and it has to answer on stdout and go away. Building
+        // Velopack or Avalonia here would put a window — or an update — behind an ssh prompt.
+        if (Environment.GetEnvironmentVariable(SshAskpass.SecretVariable) is { Length: > 0 } secretKey)
+        {
+            Environment.Exit(AnswerAskpass(secretKey));
+            return;
+        }
+
         // Must be the first thing that runs (KON-110). On the runs that install, update or uninstall
         // Kontena, this handles the hook and exits the process — so anything above it would execute
         // during an update, in a window nobody sees. The callbacks below are part of that: they run
@@ -30,6 +41,39 @@ sealed class Program
         velopack.Run();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    /// <summary>
+    /// Prints the stored password for <paramref name="secretKey"/> and nothing else (KON-259).
+    /// </summary>
+    /// <remarks>
+    /// ssh reads one line from this process's stdout and treats it as the password. So: no logging, no
+    /// banner, no diagnostics — anything else written here would be tried as a password and fail in a
+    /// way that looks like the wrong password rather than a bug.
+    /// <para>
+    /// A missing entry exits non-zero without printing. ssh then reports its own failure, which is the
+    /// truthful one: there is no password to give.
+    /// </para>
+    /// </remarks>
+    private static int AnswerAskpass(string secretKey)
+    {
+        try
+        {
+            var secret = SecretStore.Create().GetAsync(secretKey).AsTask().GetAwaiter().GetResult();
+            if (string.IsNullOrEmpty(secret))
+                return 1;
+
+            Console.Out.Write(secret);
+            Console.Out.Write('\n');
+            Console.Out.Flush();
+            return 0;
+        }
+        catch (Exception)
+        {
+            // The keychain refused or is not there. Saying so on stdout would hand ssh the complaint
+            // as a password; the exit code is the only channel this process has.
+            return 1;
+        }
     }
 
     private const int ShcneAssocchanged = 0x08000000;
