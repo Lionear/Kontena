@@ -333,6 +333,57 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         return [.. (list.Items ?? []).Select(K8sMap.ToEvent).OrderByDescending(e => e.LastSeen)];
     }
 
+    public async ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.CoreV1.ListConfigMapForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.CoreV1.ListNamespacedConfigMapAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToConfigMap)];
+    }
+
+    /// <summary>
+    /// List Secrets, keys only.
+    /// <para>
+    /// The values arrive over the wire regardless — the list API has no way to ask for a Secret
+    /// without its data — and <see cref="K8sMap.ToSecret"/> is where they stop. Nothing this method
+    /// returns can render, log or serialise a secret value, and the deserialised response is not
+    /// held beyond the projection.
+    /// </para>
+    /// </summary>
+    public async ValueTask<IReadOnlyList<SecretSummary>> ListSecretsAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.CoreV1.ListSecretForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.CoreV1.ListNamespacedSecretAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToSecret)];
+    }
+
+    public async ValueTask<IReadOnlyList<ConfigEntry>> GetConfigDataAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        var ns = resource.Namespace ?? "default";
+
+        return resource.Kind.Kind switch
+        {
+            "Secret" => K8sMap.ToEntries(
+                await _client.CoreV1.ReadNamespacedSecretAsync(resource.Name, ns, cancellationToken: ct)
+                    .ConfigureAwait(false)),
+
+            "ConfigMap" => K8sMap.ToEntries(
+                await _client.CoreV1.ReadNamespacedConfigMapAsync(resource.Name, ns, cancellationToken: ct)
+                    .ConfigureAwait(false)),
+
+            // Named rather than swallowed: a caller asking a third kind for its data has a bug, and
+            // an empty list would look like an object with no keys.
+            var kind => throw new NotSupportedException(
+                $"{kind} has no configuration data; only ConfigMap and Secret do."),
+        };
+    }
+
     // ── Watch (informer) ─────────────────────────────────────────────────────
 
     public async IAsyncEnumerable<ResourceEvent> WatchAsync(

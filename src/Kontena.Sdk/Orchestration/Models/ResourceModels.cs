@@ -19,6 +19,8 @@ public readonly record struct GroupVersionKind(string Group, string Version, str
     public static GroupVersionKind Service => new(string.Empty, "v1", "Service");
     public static GroupVersionKind Namespace => new(string.Empty, "v1", "Namespace");
     public static GroupVersionKind Node => new(string.Empty, "v1", "Node");
+    public static GroupVersionKind ConfigMap => new(string.Empty, "v1", "ConfigMap");
+    public static GroupVersionKind Secret => new(string.Empty, "v1", "Secret");
     public static GroupVersionKind Deployment => new("apps", "v1", "Deployment");
     public static GroupVersionKind StatefulSet => new("apps", "v1", "StatefulSet");
     public static GroupVersionKind DaemonSet => new("apps", "v1", "DaemonSet");

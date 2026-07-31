@@ -21,6 +21,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     private readonly List<Service> _services;
     private readonly List<Ingress> _ingresses;
     private readonly List<PersistentVolumeClaim> _pvcs;
+    private readonly List<ConfigMapSummary> _configMaps;
+    private readonly List<SecretSummary> _secrets;
     private readonly List<PersistentVolume> _volumes;
     private readonly List<StorageClass> _storageClasses;
     private readonly List<ClusterEvent> _events;
@@ -156,6 +158,42 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             new StorageClass { Name = "retain-ssd", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Retain, BindingMode = VolumeBindingMode.Immediate, AllowsExpansion = true, Age = TimeSpan.FromDays(60) },
         ];
 
+        _configMaps =
+        [
+            new ConfigMapSummary { Name = "web-config", Namespace = "app", Age = TimeSpan.FromDays(4), Keys = [new ConfigKey("nginx.conf", 812), new ConfigKey("LOG_LEVEL", 4)] },
+            new ConfigMapSummary { Name = "kube-root-ca.crt", Namespace = "app", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("ca.crt", 1099)] },
+        ];
+
+        _secrets =
+        [
+            // Three shapes on purpose: an Opaque secret with text values, a TLS secret whose key is
+            // bytes rather than text, and a registry credential.
+            new SecretSummary { Name = "postgres-credentials", Namespace = "app", Type = "Opaque", Age = TimeSpan.FromDays(9), Keys = [new ConfigKey("password", 24), new ConfigKey("username", 8)] },
+            new SecretSummary { Name = "app-tls", Namespace = "app", Type = "kubernetes.io/tls", Age = TimeSpan.FromDays(2), Keys = [new ConfigKey("tls.crt", 1704), new ConfigKey("tls.key", 1675)] },
+            new SecretSummary { Name = "ghcr-pull", Namespace = "app", Type = "kubernetes.io/dockerconfigjson", Age = TimeSpan.FromDays(40), Keys = [new ConfigKey(".dockerconfigjson", 187)] },
+        ];
+
+        _configData = new Dictionary<string, IReadOnlyList<ConfigEntry>>(StringComparer.Ordinal)
+        {
+            ["ConfigMap/app/web-config"] =
+            [
+                new ConfigEntry { Key = "LOG_LEVEL", Text = "info", SizeBytes = 4 },
+                new ConfigEntry { Key = "nginx.conf", Text = "server {\n  listen 80;\n  location / {\n    proxy_pass http://web:8080;\n  }\n}", SizeBytes = 812 },
+            ],
+            ["Secret/app/postgres-credentials"] =
+            [
+                new ConfigEntry { Key = "password", Text = "s3cr3t-but-not-really", SizeBytes = 24 },
+                new ConfigEntry { Key = "username", Text = "postgres", SizeBytes = 8 },
+            ],
+            // Text null is what "these bytes are not text" looks like — the case the reveal path has
+            // to handle without rendering a terminal full of noise.
+            ["Secret/app/app-tls"] =
+            [
+                new ConfigEntry { Key = "tls.crt", Text = null, SizeBytes = 1704 },
+                new ConfigEntry { Key = "tls.key", Text = null, SizeBytes = 1675 },
+            ],
+        };
+
         _events =
         [
             new ClusterEvent { Reason = "BackOff", Message = "Back-off restarting failed container redis", Severity = EventSeverity.Warning, InvolvedObject = new ResourceRef(GroupVersionKind.Pod, "app", "redis-0c1e"), Source = "kubelet", Count = 7, LastSeen = DateTimeOffset.UtcNow.AddMinutes(-1) },
@@ -249,6 +287,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
                 break;
             case "PersistentVolumeClaim":
                 _pvcs.RemoveAll(p => p.Name == name && p.Namespace == ns);
+                break;
+            case "ConfigMap":
+                _configMaps.RemoveAll(c => c.Name == name && c.Namespace == ns);
+                _configData.Remove($"ConfigMap/{ns}/{name}");
+                break;
+            case "Secret":
+                // The values go with the object, which is what makes the delete irreversible and is
+                // therefore the thing a fake has to model rather than merely hide the row (KON-253).
+                _secrets.RemoveAll(x => x.Name == name && x.Namespace == ns);
+                _configData.Remove($"Secret/{ns}/{name}");
                 break;
             case "Namespace":
                 _namespaces.RemoveAll(n => n.Name == name);
@@ -498,6 +546,37 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(
             _events.Where(e => Match(ns, e.InvolvedObject.Namespace)).ToList());
+
+    // ── ConfigMaps and Secrets (KON-249) ─────────────────────────────────────
+
+    /// <summary>
+    /// The fake's config data, keyed by "kind/namespace/name". Held apart from the summaries for the
+    /// same reason the contract splits them: a summary that carried its values would let a page show
+    /// a secret it never asked for, and a fake that allowed it would let that mistake pass its tests.
+    /// </summary>
+    private readonly Dictionary<string, IReadOnlyList<ConfigEntry>> _configData;
+
+    public ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<ConfigMapSummary>>(
+            _configMaps.Where(c => Match(ns, c.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<SecretSummary>> ListSecretsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<SecretSummary>>(
+            _secrets.Where(s => Match(ns, s.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<ConfigEntry>> GetConfigDataAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        if (resource.Kind.Kind is not ("Secret" or "ConfigMap"))
+            throw new NotSupportedException(
+                $"{resource.Kind.Kind} has no configuration data; only ConfigMap and Secret do.");
+
+        var key = $"{resource.Kind.Kind}/{resource.Namespace}/{resource.Name}";
+        return ValueTask.FromResult(
+            _configData.TryGetValue(key, out var entries) ? entries : []);
+    }
 
     public ValueTask ScaleAsync(ResourceRef workload, int replicas, CancellationToken ct = default)
     {

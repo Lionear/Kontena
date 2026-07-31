@@ -112,6 +112,9 @@ public partial class MainWindowViewModel
             new NavItem("pvcs", "Volume claims", "IconDatabase"),
             new NavItem("volumes", "Volumes", "IconLayers"),
             new NavItem("storageclasses", "Storage classes", "IconTag")));
+        NavGroups.Add(Group("Config",
+            new NavItem("configmaps", "Config maps", "IconFolder"),
+            new NavItem("secrets", "Secrets", "IconHash")));
         NavGroups.Add(Group("System",
             new NavItem("events", "Events", "IconActivity"),
             new NavItem("resources", "Resources", "IconBox"),
@@ -170,6 +173,10 @@ public partial class MainWindowViewModel
                 onOpenClass: name => OpenStorage("storageclasses", name)),
             "storageclasses" => new ClusterStorageClassesViewModel(_cluster),
             "portforwards" => new PortForwardsViewModel(_portForwards),
+            // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
+            "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            // Keys and sizes; a value only moves when asked for, one key at a time (KON-249).
+            "secrets" => new ClusterSecretsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
             // The feed you open when you do not yet know which object is the broken one (KON-248).
             "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
@@ -250,6 +257,8 @@ public partial class MainWindowViewModel
 
         SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
         SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
+        SetNavCount("configmaps", (await _cluster.ListConfigMapsAsync(ns)).Count.ToString(ci));
+        SetNavCount("secrets", (await _cluster.ListSecretsAsync(ns)).Count.ToString(ci));
 
         // Warnings, not events (KON-248). Every namespace has events all the time, so a total is a
         // badge that is always lit and therefore says nothing; the count of warnings is the one number
