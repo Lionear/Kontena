@@ -51,19 +51,41 @@ public sealed class VelopackUpdateService : IUpdateService
         }
     }
 
-    public string CurrentVersion { get; } =
-        typeof(VelopackUpdateService).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    public string CurrentVersion { get; } = ReadCurrentVersion();
 
     /// <summary>
-    /// Read from the assembly's informational version, which carries the full string the workflow
-    /// stamped — <c>0.2.0-nightly.20260726.26</c>. The assembly *version* cannot answer this: it is
-    /// numeric only, so the prerelease tag that names the channel is gone by the time it is written.
+    /// Preferably the version in the installed package's manifest, because that is the number
+    /// <see cref="UpdateManager.CheckForUpdatesAsync"/> compares the feed against. Anything else can
+    /// disagree with the updater, and then "it keeps offering the version I just installed" reads as
+    /// a wrong label on the card instead of the mismatch it actually is.
+    /// <para>
+    /// An install the updater does not manage has no manifest to read, so there the build's own
+    /// <see cref="AppVersion.Current"/> is both the honest answer and the only one.
+    /// </para>
     /// </summary>
-    public UpdateChannel BuildChannel { get; } = ReleaseChannel.FromVersion(
-        typeof(VelopackUpdateService).Assembly
-            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
-            .FirstOrDefault()?.InformationalVersion);
+    private static string ReadCurrentVersion()
+    {
+        try
+        {
+            var manager = new UpdateManager(RepositoryUrl);
+            if (manager.IsInstalled && manager.CurrentVersion is { } installed)
+                return installed.ToFullString();
+        }
+        catch (Exception)
+        {
+            // Same reason Probe() swallows: constructing the manager throws in a host that never ran
+            // VelopackApp, and a throwing property inside a binding fails silently.
+        }
+
+        return AppVersion.Current;
+    }
+
+    /// <summary>
+    /// Read from the version this build carries, which is the full string the workflow stamped —
+    /// <c>0.2.0-nightly.20260726.26</c>. The assembly *version* cannot answer this: it is numeric
+    /// only, so the prerelease tag that names the channel is gone by the time it is written.
+    /// </summary>
+    public UpdateChannel BuildChannel { get; } = ReleaseChannel.FromVersion(AppVersion.Current);
 
     public async Task<AvailableUpdate?> CheckAsync(UpdateChannel channel, CancellationToken ct = default)
     {
