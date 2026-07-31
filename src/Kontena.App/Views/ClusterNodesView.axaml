@@ -136,6 +136,16 @@
                                         <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"/>
                                     </StackPanel>
                                 </Grid>
+
+                                <!-- Node maintenance (KON-251). Hidden entirely where the backend cannot do
+                                     it, rather than offered and then refused. Cordon reads Uncordon on a node
+                                     that already is: one button, and the label is the state. -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding CanMaintain}">
+                                    <Button Classes="pill" Command="{Binding CordonCommand}" Content="{Binding CordonLabel}"
+                                            ToolTip.Tip="Stop new pods being scheduled here. Pods already running stay put."/>
+                                    <Button Classes="pill" Command="{Binding DrainCommand}"
+                                            ToolTip.Tip="Cordon, then move the pods off — DaemonSet pods stay, and a disruption budget may refuse">Drain</Button>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>

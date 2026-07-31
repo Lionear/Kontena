@@ -19,9 +19,14 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
 {
     private readonly IClusterEngine _cluster;
 
-    public ClusterNodesViewModel(IClusterEngine cluster)
+    private readonly Action<string>? _onDrain;
+
+    /// <param name="onDrain">Opens the drain modal for a node; the shell owns the dialog because a
+    /// drain outlives the page it was started from.</param>
+    public ClusterNodesViewModel(IClusterEngine cluster, Action<string>? onDrain = null)
     {
         _cluster = cluster;
+        _onDrain = onDrain;
 
         // Plenty of clusters (kind, plain kubeadm) ship without a usage backend. Rather than
         // leaving four dashes unexplained, say so once and say what would fix it.
@@ -68,7 +73,57 @@ public partial class ClusterNodesViewModel : ListPageViewModel<NodeCardRow>
         var info = await _cluster.GetInfoAsync();
         _context = info is ClusterInfo { Context: { Length: > 0 } context } ? context : string.Empty;
 
-        return [.. (await _cluster.ListNodesAsync()).Select(n => new NodeCardRow(n, info.Version))];
+        return
+        [
+            .. (await _cluster.ListNodesAsync())
+                .Select(n => new NodeCardRow(
+                    n, info.Version,
+                    canMaintain: _cluster.Capabilities.NodeMaintenance,
+                    onCordon: ConfirmCordon,
+                    onDrain: node => _onDrain?.Invoke(node.Name))),
+        ];
+    }
+
+    // ── Node maintenance (KON-251) ───────────────────────────────────────────
+
+    /// <summary>
+    /// Cordon asks first, uncordon does not.
+    /// <para>
+    /// They are not opposites in what they risk: cordoning changes where new work can go and is the
+    /// first half of taking a node out of service, while uncordoning only puts a node back to how
+    /// every other node already is. A confirm on the harmless one is what teaches people to dismiss
+    /// the other without reading.
+    /// </para>
+    /// </summary>
+    private void ConfirmCordon(NodeCardRow node)
+    {
+        if (!node.Cordoned)
+        {
+            Confirm(
+                "Cordon node?",
+                $"Nothing new will be scheduled onto {node.Name}. The pods already running there stay"
+                + " where they are — moving them off is a drain, and this is not one.",
+                "Cordon",
+                () => SetCordonAsync(node.Name, cordoned: true),
+                destructive: false);
+            return;
+        }
+
+        _ = SetCordonAsync(node.Name, cordoned: false);
+    }
+
+    private async Task SetCordonAsync(string node, bool cordoned)
+    {
+        try
+        {
+            await _cluster.CordonNodeAsync(node, cordoned);
+            await LoadAsync();
+        }
+        catch (Exception failure)
+        {
+            // The same line the metrics install uses; a node action failing is nearly always RBAC.
+            MetricsInstallStatus = $"Could not {(cordoned ? "cordon" : "uncordon")} {node} — {failure.Message}";
+        }
     }
 
     // Roles and status as well as the name: "worker" and "NotReady" are how you actually go looking
@@ -352,10 +407,21 @@ public partial class ClusterServicesViewModel : ListPageViewModel<ServiceRow>
 
 // ── Row view-models ─────────────────────────────────────────────────────────
 
-public sealed class NodeCardRow
+public sealed partial class NodeCardRow
 {
-    public NodeCardRow(Node n, string? apiServerVersion = null)
+    private readonly Action<NodeCardRow>? _onCordon;
+    private readonly Action<NodeCardRow>? _onDrain;
+
+    public NodeCardRow(
+        Node n, string? apiServerVersion = null, bool canMaintain = false,
+        Action<NodeCardRow>? onCordon = null, Action<NodeCardRow>? onDrain = null)
     {
+        ArgumentNullException.ThrowIfNull(n);
+
+        _onCordon = onCordon;
+        _onDrain = onDrain;
+        CanMaintain = canMaintain && onCordon is not null;
+
         Name = n.Name;
         Roles = n.Roles.Count > 0 ? string.Join(", ", n.Roles) : "—";
         Status = n.Status;
@@ -426,6 +492,24 @@ public sealed class NodeCardRow
         new SolidColorBrush(Color.Parse(Skew.State == VersionSkewState.Ahead ? "#F87171" : "#F5B14C"), 0.13);
 
     public IBrush StatusBrush => new SolidColorBrush(Color.Parse(Status == "Ready" ? "#34D399" : "#F87171"));
+
+    // ── Maintenance (KON-251) ───────────────────────────────────────────────
+
+    /// <summary>Whether this backend can cordon and drain at all; false hides both buttons.</summary>
+    public bool CanMaintain { get; }
+
+    /// <summary>"Uncordon" on a node that is already cordoned — one button, both directions.</summary>
+    public string CordonLabel => Cordoned ? "Uncordon" : "Cordon";
+
+    /// <summary>
+    /// Draining a node that is not cordoned is the ordinary case; draining one that is cordoned is
+    /// how you finish a job you started. Neither is hidden.
+    /// </summary>
+    [RelayCommand]
+    private void Cordon() => _onCordon?.Invoke(this);
+
+    [RelayCommand]
+    private void Drain() => _onDrain?.Invoke(this);
 }
 
 /// <summary>

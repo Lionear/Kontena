@@ -148,6 +148,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     private ClusterCapabilities _capabilities = new()
     {
         Metrics = true, Exec = true, PortForward = true, Apply = true, Helm = true, Watch = true, Crds = true,
+        NodeMaintenance = true,
     };
 
     public ClusterCapabilities Capabilities => _capabilities;
@@ -472,6 +473,76 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(
             _events.Where(e => Match(ns, e.InvolvedObject.Namespace)).ToList());
+
+    // ── Node maintenance (KON-251) ───────────────────────────────────────────
+
+    public ValueTask CordonNodeAsync(string node, bool cordoned, CancellationToken ct = default)
+    {
+        var idx = _nodes.FindIndex(n => n.Name == node);
+        if (idx >= 0)
+            _nodes[idx] = _nodes[idx] with { Unschedulable = cordoned };
+
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// A drain over the seeded pods, applying the same rules the real adapter does — including the
+    /// ones that decide a pod stays put, since those are what the UI has to render honestly.
+    /// </summary>
+    public async IAsyncEnumerable<DrainProgress> DrainNodeAsync(
+        string node, DrainOptions options, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        await CordonNodeAsync(node, cordoned: true, ct);
+        yield return new DrainProgress { Action = DrainAction.Cordoned };
+
+        foreach (var pod in _pods.Where(p => p.Node == node).ToList())
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var owner = pod.ControlledBy;
+
+            if (options.IgnoreDaemonSets && owner.StartsWith("DaemonSet/", StringComparison.Ordinal))
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Skipped, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "managed by a DaemonSet, which would put it straight back",
+                };
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(owner))
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Skipped, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "not managed by a controller, so nothing would recreate it elsewhere",
+                };
+                continue;
+            }
+
+            yield return new DrainProgress { Action = DrainAction.Evicting, Pod = pod.Name, Namespace = pod.Namespace };
+
+            // One pod that a budget refuses, so the blocked path is reachable without a cluster: a
+            // drain where everything succeeds is the one shape that never needed the design.
+            if (pod.Name == "postgres-0")
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Blocked, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "Cannot evict pod as it would violate the pod's disruption budget (postgres-pdb).",
+                };
+                continue;
+            }
+
+            _pods.RemoveAll(p => p.Name == pod.Name && p.Namespace == pod.Namespace);
+            yield return new DrainProgress { Action = DrainAction.Evicted, Pod = pod.Name, Namespace = pod.Namespace };
+        }
+
+        yield return new DrainProgress { Action = DrainAction.Finished };
+    }
 
     public ValueTask ScaleAsync(ResourceRef workload, int replicas, CancellationToken ct = default)
     {
