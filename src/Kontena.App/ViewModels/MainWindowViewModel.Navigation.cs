@@ -127,7 +127,10 @@ public partial class MainWindowViewModel
             return;
 
         DisposeDetail();
-        (CurrentPage as PortForwardsViewModel)?.Dispose();
+        // Any page that holds something running — a port-forward registry, a watch stream (KON-250).
+        // By interface rather than by type: the list of page types that own a resource has grown
+        // twice now, and naming them one at a time is how the third one gets missed.
+        (CurrentPage as IDisposable)?.Dispose();
 
         // Remembered separately from the nav items because the per-kind children are rebuilt as
         // workloads come and go (KON-169); IsSelected on an item that gets replaced is not a record
