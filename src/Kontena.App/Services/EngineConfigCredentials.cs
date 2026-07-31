@@ -264,6 +264,11 @@ public sealed class EngineConfigCredentials
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
+
+                // Same reason as the SSH tunnel: a GUI application with no console of its own gets one
+                // made for it, and a credential helper would flash a black window on every registry
+                // read. Found while fixing the tunnel — the two were the only starts missing it.
+                CreateNoWindow = true,
             });
 
             if (process is null)
