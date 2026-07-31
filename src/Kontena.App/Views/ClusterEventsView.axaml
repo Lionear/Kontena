@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterEventsView"
+             x:DataType="vm:ClusterEventsViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Events" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                <!-- Off by default: hiding the Normal events also hides the rollout that completed
+                     right after the warning, and that sequence is often the whole answer. -->
+                <Button Grid.Column="1" Classes="pill" Classes.on="{Binding WarningsOnly}"
+                        Command="{Binding ToggleWarningsOnlyCommand}" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <TextBlock Text="Warnings only" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding WarningCount}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="0.8*,1.2*,1.6*,3*,0.5*,1*">
+                            <TextBlock Grid.Column="0" Text="TYPE" Classes="colhead"/>
+                            <TextBlock Grid.Column="1" Text="REASON" Classes="colhead"/>
+                            <TextBlock Grid.Column="2" Text="OBJECT" Classes="colhead"/>
+                            <TextBlock Grid.Column="3" Text="MESSAGE" Classes="colhead"/>
+                            <TextBlock Grid.Column="4" Text="COUNT" Classes="colhead"/>
+                            <TextBlock Grid.Column="5" Text="LAST SEEN" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ClusterEventRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                    <Grid ColumnDefinitions="0.8*,1.2*,1.6*,3*,0.5*,1*">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                            <Ellipse Width="7" Height="7" Fill="{Binding SeverityBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Severity}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding Reason}" FontWeight="Medium" Foreground="{DynamicResource Text}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                        <!-- Only kinds with a detail page are links; the rest stay plain text rather
+                                             than offering a click that goes nowhere. -->
+                                        <Button Grid.Column="2" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                Command="{Binding OpenCommand}" IsVisible="{Binding CanOpen}"
+                                                ToolTip.Tip="{Binding ObjectTooltip}">
+                                            <TextBlock Text="{Binding ObjectName}" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
+                                        <TextBlock Grid.Column="2" Text="{Binding ObjectName}" Foreground="{DynamicResource TextDim}"
+                                                   IsVisible="{Binding !CanOpen}" TextTrimming="CharacterEllipsis"
+                                                   Margin="0,0,14,0" VerticalAlignment="Center" ToolTip.Tip="{Binding ObjectTooltip}"/>
+                                        <!-- The message is the one field worth reading in full: it carries the
+                                             registry's, the scheduler's or the kubelet's own words. -->
+                                        <TextBlock Grid.Column="3" Text="{Binding Message}" Foreground="{DynamicResource TextDim}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"
+                                                   ToolTip.Tip="{Binding Message}"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding CountText}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"
+                                                   ToolTip.Tip="How many times this event has fired"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding LastSeen}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- One line for all four reasons the table can be missing: nothing happened, nothing
+                 matched, no warnings, or a link that led to an object which is no longer there. -->
+            <Border IsVisible="{Binding HasNotice}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="{Binding Notice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

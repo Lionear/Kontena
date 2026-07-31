@@ -89,7 +89,41 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List PersistentVolumes — the other half of a claim (KON-254). Cluster-scoped, so no namespace.
+    /// </summary>
+    ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// List StorageClasses. Cluster-scoped. This is where a Pending claim's reason lives: a class
+    /// with no provisioner, a class that does not exist, or a binding mode that is waiting on a pod.
+    /// </summary>
+    ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default);
     ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>List ConfigMaps — keys and sizes, not values (KON-249).</summary>
+    ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List Secrets — keys and sizes, never values.
+    /// <para>
+    /// The list API hands over the values whether or not anyone wants them; an implementation is
+    /// expected to keep the keys and drop the rest, so that nothing downstream of this call is able
+    /// to render or log a secret it was never asked for. Values come from
+    /// <see cref="GetConfigDataAsync"/>, one object at a time and only when asked.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<SecretSummary>> ListSecretsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetch the values of one ConfigMap or Secret, decoded.
+    /// <para>
+    /// Separate from the listers on purpose: a page that shows fifty secrets holds none of their
+    /// values, and asking for one is a deliberate act with a single object's name attached to it.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<ConfigEntry>> GetConfigDataAsync(ResourceRef resource, CancellationToken ct = default);
 
     // ── Actions ──────────────────────────────────────────────────────────────
 
