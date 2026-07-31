@@ -107,6 +107,9 @@ public partial class MainWindowViewModel
         NavGroups.Add(Group("Network",
             new NavItem("services", "Services", "IconNetwork"),
             new NavItem("portforwards", "Port forwards", "IconPlug")));
+        NavGroups.Add(Group("Config",
+            new NavItem("configmaps", "Config maps", "IconFolder"),
+            new NavItem("secrets", "Secrets", "IconHash")));
         NavGroups.Add(Group("System",
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
@@ -151,6 +154,9 @@ public partial class MainWindowViewModel
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
+            "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace),
+            // Keys and sizes; a value only moves when asked for, one key at a time (KON-249).
+            "secrets" => new ClusterSecretsViewModel(_cluster, ActiveNamespace),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
             // because deleting from here is as destructive as anywhere else.
             "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
@@ -229,6 +235,8 @@ public partial class MainWindowViewModel
 
         SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
         SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
+        SetNavCount("configmaps", (await _cluster.ListConfigMapsAsync(ns)).Count.ToString(ci));
+        SetNavCount("secrets", (await _cluster.ListSecretsAsync(ns)).Count.ToString(ci));
         UpdatePortForwardCount();
     }
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>

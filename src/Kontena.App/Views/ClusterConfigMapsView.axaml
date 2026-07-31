@@ -1,0 +1,96 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterConfigMapsView"
+             x:DataType="vm:ClusterConfigMapsViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Config maps" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="24,2.2*,1.2*,0.9*,0.6*">
+                            <TextBlock Grid.Column="1" Text="NAME" Classes="colhead"/>
+                            <TextBlock Grid.Column="2" Text="NAMESPACE" Classes="colhead"/>
+                            <TextBlock Grid.Column="3" Text="KEYS" Classes="colhead"/>
+                            <TextBlock Grid.Column="4" Text="AGE" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ConfigObjectRow">
+                                <StackPanel>
+                                    <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                        <Grid ColumnDefinitions="24,2.2*,1.2*,0.9*,0.6*">
+                                            <Button Grid.Column="0" Classes="ghost" Padding="0" Width="18" Height="18"
+                                                    Command="{Binding ToggleCommand}" IsVisible="{Binding HasKeys}"
+                                                    VerticalAlignment="Center" ToolTip.Tip="Show the keys">
+                                                <Path Classes="icon" Data="{DynamicResource IconChevronRight}"/>
+                                            </Button>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding KeyCount}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- No masking here, and that is the point of the pair: a ConfigMap has
+                                         nothing to protect, and making someone press Show on a LOG_LEVEL of
+                                         "info" teaches them to press it without reading. -->
+                                    <Border IsVisible="{Binding IsExpanded}" Background="{DynamicResource SurfaceRaised}"
+                                            BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="42,10,16,12">
+                                        <ItemsControl ItemsSource="{Binding Keys}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ConfigKeyRow">
+                                                    <StackPanel Margin="0,4">
+                                                        <Grid ColumnDefinitions="1.4*,0.6*,Auto">
+                                                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Size}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                                       Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                                            <Button Grid.Column="2" Classes="pill" Click="CopyValue" Tag="{Binding}">Copy</Button>
+                                                        </Grid>
+
+                                                        <Border IsVisible="{Binding IsRevealed}" Margin="0,6,0,0"
+                                                                Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                                                                BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="10,8">
+                                                            <StackPanel>
+                                                                <SelectableTextBlock Text="{Binding Value}" IsVisible="{Binding !IsBinary}"
+                                                                                     FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                                     Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                                                <TextBlock Text="{Binding BinaryNotice}" IsVisible="{Binding IsBinary}"
+                                                                           FontSize="12.5" FontStyle="Italic" Foreground="{DynamicResource TextDim}"/>
+                                                            </StackPanel>
+                                                        </Border>
+
+                                                        <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}"
+                                                                   Margin="0,6,0,0" FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No config maps in this namespace." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No config maps match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

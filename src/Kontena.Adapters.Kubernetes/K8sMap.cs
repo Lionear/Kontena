@@ -1,3 +1,4 @@
+using System.Text;
 using k8s.Models;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration.Models;
@@ -477,6 +478,113 @@ internal static class K8sMap
             return 0m;
         }
     }
+
+    /// <summary>
+    /// A ConfigMap without its values (KON-249). The client hands over <c>Data</c> and
+    /// <c>BinaryData</c> whether or not anyone wants them; only the key names and their sizes
+    /// survive this method.
+    /// </summary>
+    public static ConfigMapSummary ToConfigMap(V1ConfigMap c) => new()
+    {
+        Name = c.Metadata?.Name ?? "?",
+        Namespace = c.Metadata?.NamespaceProperty ?? "default",
+        Keys =
+        [
+            .. Keys(c.Data, v => Encoding.UTF8.GetByteCount(v ?? string.Empty))
+                .Concat(Keys(c.BinaryData, v => v?.LongLength ?? 0))
+                .OrderBy(k => k.Name, StringComparer.Ordinal),
+        ],
+        Age = AgeOf(c.Metadata),
+    };
+
+    /// <summary>
+    /// A Secret without its values. Same shape as <see cref="ToConfigMap"/> and for a stronger
+    /// reason: this is the seam where the values the list API sent are dropped.
+    /// </summary>
+    public static SecretSummary ToSecret(V1Secret s) => new()
+    {
+        Name = s.Metadata?.Name ?? "?",
+        Namespace = s.Metadata?.NamespaceProperty ?? "default",
+        Type = string.IsNullOrEmpty(s.Type) ? "Opaque" : s.Type,
+        Keys =
+        [
+            .. Keys(s.Data, v => v?.LongLength ?? 0)
+                .OrderBy(k => k.Name, StringComparer.Ordinal),
+        ],
+        Age = AgeOf(s.Metadata),
+    };
+
+    private static IEnumerable<ConfigKey> Keys<T>(IDictionary<string, T>? data, Func<T?, long> size) =>
+        data is null ? [] : data.Select(kv => new ConfigKey(kv.Key, size(kv.Value)));
+
+    /// <summary>
+    /// The entries of one ConfigMap, decoded. A ConfigMap's <c>data</c> is already text; its
+    /// <c>binaryData</c> is bytes and stays bytes.
+    /// </summary>
+    public static IReadOnlyList<ConfigEntry> ToEntries(V1ConfigMap c) =>
+    [
+        .. (c.Data ?? new Dictionary<string, string>())
+            .Select(kv => Entry(kv.Key, Encoding.UTF8.GetBytes(kv.Value ?? string.Empty)))
+            .Concat((c.BinaryData ?? new Dictionary<string, byte[]>()).Select(kv => Entry(kv.Key, kv.Value)))
+            .OrderBy(e => e.Key, StringComparer.Ordinal),
+    ];
+
+    /// <summary>
+    /// The entries of one Secret, decoded. The client has already undone the base64 — <c>Data</c> is
+    /// bytes by the time it reaches here — so the only question left is whether those bytes are text.
+    /// </summary>
+    public static IReadOnlyList<ConfigEntry> ToEntries(V1Secret s) =>
+    [
+        .. (s.Data ?? new Dictionary<string, byte[]>())
+            .Select(kv => Entry(kv.Key, kv.Value))
+            .OrderBy(e => e.Key, StringComparer.Ordinal),
+    ];
+
+    /// <summary>
+    /// One entry from raw bytes. Text only when the bytes decode as UTF-8 without loss: a TLS key
+    /// rendered as characters is noise, and a lossy decode would show something that was never in
+    /// the secret.
+    /// </summary>
+    private static ConfigEntry Entry(string key, byte[]? value)
+    {
+        var bytes = value ?? [];
+
+        string? text = null;
+        try
+        {
+            var decoded = StrictUtf8.GetString(bytes);
+
+            // Decoding is not enough. A PNG's first bytes are 0x00–0x02, which are perfectly valid
+            // single-byte UTF-8 and perfectly unreadable — and a value full of NULs is exactly the
+            // thing that puts a terminal into a state nobody asked for. Text means it decodes *and*
+            // holds no control characters beyond the three that belong in a config file.
+            if (!decoded.Any(IsUnprintable))
+                text = decoded;
+        }
+        catch (DecoderFallbackException)
+        {
+            // Not text. That is an answer, not a failure.
+        }
+
+        return new ConfigEntry
+        {
+            Key = key,
+            Text = text,
+            Base64 = Convert.ToBase64String(bytes),
+            SizeBytes = bytes.LongLength,
+        };
+    }
+
+    /// <summary>
+    /// A character that has no business being rendered: any control character (C0, DEL and C1),
+    /// except the tab, newline and carriage return that a script or an nginx.conf legitimately holds.
+    /// </summary>
+    private static bool IsUnprintable(char c) =>
+        char.IsControl(c) && c is not ('\t' or '\n' or '\r');
+
+    /// <summary>UTF-8 that throws rather than substituting replacement characters.</summary>
+    private static readonly Encoding StrictUtf8 =
+        Encoding.GetEncoding("utf-8", EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
     /// <summary>The client hands back mutable maps; the OAL models expose read-only ones.</summary>
     private static Dictionary<string, string> ReadOnly(IDictionary<string, string>? map) =>
