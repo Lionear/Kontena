@@ -108,6 +108,27 @@ public sealed class SshCredentialFormTests : IDisposable
     }
 
     [Fact]
+    public void The_public_half_is_recognised_and_refused()
+    {
+        // The mistake a file picker makes easiest: both halves sit next to each other in ~/.ssh and
+        // only one is the identity. ssh calls it a rejected key, which reads as a problem on the host.
+        var publicHalf = _keyFile + ".pub";
+        File.WriteAllText(publicHalf, "ssh-ed25519 AAAA");
+
+        try
+        {
+            var form = Form(new RecordingSecrets());
+            form.RemoteKeyFile = publicHalf;
+
+            Assert.False(form.CanAddRemote);
+        }
+        finally
+        {
+            File.Delete(publicHalf);
+        }
+    }
+
+    [Fact]
     public async Task Switching_to_TCP_leaves_the_key_behind()
     {
         // Same rule the socket path already follows: a value typed under one transport must not come

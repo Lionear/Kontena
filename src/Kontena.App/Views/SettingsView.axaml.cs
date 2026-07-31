@@ -17,6 +17,16 @@ public partial class SettingsView : UserControl
         AddHandler(KeyDownEvent, OnKeyDownPreview, RoutingStrategies.Tunnel);
     }
 
+    /// <summary>Picks the private key to authenticate with (KON-261).</summary>
+    private async void OnBrowseKeyFile(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm)
+            return;
+
+        if (await SshKeyPicker.PickAsync(TopLevel.GetTopLevel(this)) is { } path)
+            vm.RemoteKeyFile = path;
+    }
+
     private void OnKeyDownPreview(object? sender, KeyEventArgs e)
     {
         if (DataContext is not SettingsViewModel vm)

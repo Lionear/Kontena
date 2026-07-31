@@ -134,8 +134,18 @@ public sealed record RemoteEngine(
                 // Caught here rather than at connect time, where ssh reports a missing key as
                 // "Permission denied (publickey)" — a message that points at the host while the
                 // problem is on this machine's own disk.
-                if (KeyFile is { Length: > 0 } key && !File.Exists(key))
-                    return $"No key file at {key}.";
+                if (KeyFile is { Length: > 0 } key)
+                {
+                    if (!File.Exists(key))
+                        return $"No key file at {key}.";
+
+                    // The easiest wrong answer, and the one a file picker makes easiest of all: both
+                    // halves sit side by side and only one of them is the identity. ssh reports it as
+                    // a rejected key, which reads as "the host does not have my key" — the opposite of
+                    // what happened.
+                    if (key.EndsWith(".pub", StringComparison.OrdinalIgnoreCase))
+                        return "That is the public half. SSH authenticates with the private key — the same path without .pub.";
+                }
 
                 // Both at once is not a configuration with a meaning: ssh would try the key and then
                 // ask for a password anyway, so the setting that was chosen last would silently win.

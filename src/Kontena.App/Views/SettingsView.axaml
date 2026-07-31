@@ -489,9 +489,13 @@
                                         <TextBlock Text="KEY FILE" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                                         <TextBlock Text="OPTIONAL" FontSize="10" Foreground="{DynamicResource TextFaint}"/>
                                     </StackPanel>
-                                    <TextBox Text="{Binding RemoteKeyFile, Mode=TwoWay}"
-                                             PlaceholderText="leave empty to use your agent and ssh_config"
-                                             FontFamily="{StaticResource Mono}"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBox Grid.Column="0" Text="{Binding RemoteKeyFile, Mode=TwoWay}"
+                                                 PlaceholderText="leave empty to use your agent and ssh_config"
+                                                 FontFamily="{StaticResource Mono}"/>
+                                        <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0"
+                                                Click="OnBrowseKeyFile">Browse…</Button>
+                                    </Grid>
                                 </StackPanel>
 
                                 <CheckBox IsChecked="{Binding RemoteUsePassword, Mode=TwoWay}" FontSize="12.5"

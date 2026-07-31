@@ -191,8 +191,13 @@
                             <!-- Authentication (KON-261 / KON-259) -->
                             <StackPanel Spacing="7" IsVisible="{Binding ShowKeyFile}">
                                 <TextBlock Classes="label" Text="KEY FILE"/>
-                                <TextBox Text="{Binding KeyFile, Mode=TwoWay}" FontFamily="{StaticResource Mono}"
-                                         PlaceholderText="~/.ssh/id_ed25519"/>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox Grid.Column="0" Text="{Binding KeyFile, Mode=TwoWay}"
+                                             FontFamily="{StaticResource Mono}"
+                                             PlaceholderText="~/.ssh/id_ed25519"/>
+                                    <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0"
+                                            Click="OnBrowseKeyFile">Browse…</Button>
+                                </Grid>
                                 <TextBlock Classes="hint"
                                            Text="Leave empty to use your agent and ssh_config, which is usually right. Name a file when the key is not in the agent your ssh_config points at — an IdentityAgent line, 1Password or Secretive, means SSH_AUTH_SOCK is ignored."/>
                             </StackPanel>

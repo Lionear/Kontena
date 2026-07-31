@@ -35,6 +35,16 @@ public partial class AddBackendView : UserControl
             vm.CertificateDirectory = folders[0].Path.LocalPath;
     }
 
+    /// <summary>Picks the private key to authenticate with (KON-261).</summary>
+    private async void OnBrowseKeyFile(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not AddBackendViewModel vm)
+            return;
+
+        if (await SshKeyPicker.PickAsync(TopLevel.GetTopLevel(this)) is { } path)
+            vm.KeyFile = path;
+    }
+
     private async void OnBrowseKubeconfig(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not AddBackendViewModel vm)
