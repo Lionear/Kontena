@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="620"
+             x:Class="Kontena.App.Views.EditManifestDialogView"
+             x:DataType="vm:EditManifestDialogViewModel">
+
+    <Border Width="760" Height="620" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <StackPanel Grid.Row="0" Margin="24,22,24,16" Spacing="4">
+                <TextBlock Text="{Binding Editor.Title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock Text="{Binding Editor.Subtitle}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+            </StackPanel>
+
+            <views:ManifestEditorView Grid.Row="1" Margin="24,0,24,0" DataContext="{Binding Editor}"/>
+
+            <StackPanel Grid.Row="2" Margin="24,16" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Classes="ghost" Command="{Binding CloseCommand}">Close</Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

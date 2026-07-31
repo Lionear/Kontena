@@ -155,9 +155,9 @@ public partial class MainWindowViewModel
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
-            "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm, RequestEdit = ShowManifestEditor },
             // Keys and sizes; a value only moves when asked for, one key at a time (KON-249).
-            "secrets" => new ClusterSecretsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "secrets" => new ClusterSecretsViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm, RequestEdit = ShowManifestEditor },
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
             // because deleting from here is as destructive as anywhere else.
             "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },

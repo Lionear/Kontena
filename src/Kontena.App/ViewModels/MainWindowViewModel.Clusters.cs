@@ -76,6 +76,23 @@ public partial class MainWindowViewModel
             onClose: CloseDialog,
             destructive: true);
     }
+    /// <summary>
+    /// The manifest editor as a modal (KON-252), for the kinds whose page is a list of rows rather
+    /// than a detail page with tabs.
+    /// </summary>
+    private void ShowManifestEditor(ResourceRef reference)
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new EditManifestDialogViewModel(_cluster, reference, CloseDialog, onDone: () =>
+        {
+            // Keys and sizes live on the list behind it, and an apply changes them.
+            ReloadCurrentClusterPage();
+            return Task.CompletedTask;
+        });
+    }
+
     private void ShowServicePortForward(Service service)
     {
         if (_cluster is null)

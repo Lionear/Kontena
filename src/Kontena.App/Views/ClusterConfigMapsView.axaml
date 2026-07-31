@@ -14,12 +14,12 @@
                     IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="24,2.2*,1.2*,0.9*,0.6*,88">
+                        <Grid ColumnDefinitions="24,2.2*,1.2*,0.9*,0.6*,140">
                             <TextBlock Grid.Column="1" Text="NAME" Classes="colhead"/>
                             <TextBlock Grid.Column="2" Text="NAMESPACE" Classes="colhead"/>
                             <TextBlock Grid.Column="3" Text="KEYS" Classes="colhead"/>
                             <TextBlock Grid.Column="4" Text="AGE" Classes="colhead"/>
-                            <TextBlock Grid.Column="5" Text="" Classes="colhead" MinWidth="80"/>
+                            <TextBlock Grid.Column="5" Text="" Classes="colhead" MinWidth="132"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Items}">
@@ -27,7 +27,7 @@
                             <DataTemplate x:DataType="vm:ConfigObjectRow">
                                 <StackPanel>
                                     <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                        <Grid ColumnDefinitions="24,2.2*,1.2*,0.9*,0.6*,88">
+                                        <Grid ColumnDefinitions="24,2.2*,1.2*,0.9*,0.6*,140">
                                             <!-- Same expander as the projects rows in Containers: a bare
                                                  quick-action button and a sized icon, swapped for the open
                                                  state rather than left pointing the wrong way. -->
@@ -46,8 +46,11 @@
                                             <TextBlock Grid.Column="2" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Column="3" Text="{Binding KeyCount}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Column="4" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                                            <Button Grid.Column="5" Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                    Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
+                                            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                <Button Classes="pill" Command="{Binding EditCommand}" IsVisible="{Binding CanEdit}"
+                                                        ToolTip.Tip="Edit the live manifest">Edit</Button>
+                                                <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
 
