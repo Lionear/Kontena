@@ -23,6 +23,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     private readonly List<PersistentVolumeClaim> _pvcs;
     private readonly List<ConfigMapSummary> _configMaps;
     private readonly List<SecretSummary> _secrets;
+    private readonly List<PersistentVolume> _volumes;
+    private readonly List<StorageClass> _storageClasses;
     private readonly List<ClusterEvent> _events;
 
     /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
@@ -136,6 +138,24 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
         _pvcs =
         [
             new PersistentVolumeClaim { Name = "postgres-data", Namespace = "app", Phase = PvcPhase.Bound, Volume = "pvc-8a1f", CapacityBytes = 20L * 1024 * 1024 * 1024, StorageClass = "standard-rwo", AccessModes = ["RWO"], Age = TimeSpan.FromDays(9) },
+            // Pending on purpose, and for the reason that is not a fault: its class waits for a pod.
+            // A seed where every claim is Bound hides the state these pages exist to explain.
+            new PersistentVolumeClaim { Name = "cache-data", Namespace = "app", Phase = PvcPhase.Pending, CapacityBytes = 5L * 1024 * 1024 * 1024, StorageClass = "local-path", AccessModes = ["RWO"], Age = TimeSpan.FromMinutes(3) },
+        ];
+
+        _volumes =
+        [
+            new PersistentVolume { Name = "pvc-8a1f", Phase = VolumePhase.Bound, CapacityBytes = 20L * 1024 * 1024 * 1024, AccessModes = ["RWO"], ReclaimPolicy = ReclaimPolicy.Delete, StorageClass = "standard-rwo", Claim = "app/postgres-data", Driver = "pd.csi.storage.gke.io", Age = TimeSpan.FromDays(9) },
+            // Released with Retain: the claim is gone, the data is not, and nothing will reuse this
+            // volume until someone deals with it. The state that costs money quietly.
+            new PersistentVolume { Name = "pvc-3c02", Phase = VolumePhase.Released, CapacityBytes = 100L * 1024 * 1024 * 1024, AccessModes = ["RWO"], ReclaimPolicy = ReclaimPolicy.Retain, StorageClass = "standard-rwo", Claim = "app/old-postgres-data", Driver = "pd.csi.storage.gke.io", Age = TimeSpan.FromDays(40) },
+        ];
+
+        _storageClasses =
+        [
+            new StorageClass { Name = "standard-rwo", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, IsDefault = true, AllowsExpansion = true, Age = TimeSpan.FromDays(120) },
+            new StorageClass { Name = "local-path", Provisioner = "rancher.io/local-path", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, AllowsExpansion = false, Age = TimeSpan.FromDays(120) },
+            new StorageClass { Name = "retain-ssd", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Retain, BindingMode = VolumeBindingMode.Immediate, AllowsExpansion = true, Age = TimeSpan.FromDays(60) },
         ];
 
         _configMaps =
@@ -516,6 +536,12 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
 
     public ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<PersistentVolumeClaim>>(_pvcs.Where(p => Match(ns, p.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PersistentVolume>>(_volumes);
+
+    public ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<StorageClass>>(_storageClasses);
 
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(

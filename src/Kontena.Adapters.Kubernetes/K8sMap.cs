@@ -412,6 +412,83 @@ internal static class K8sMap
         Age = AgeOf(p.Metadata),
     };
 
+    public static PersistentVolume ToVolume(V1PersistentVolume v) => new()
+    {
+        Name = v.Metadata?.Name ?? "?",
+        Phase = v.Status?.Phase switch
+        {
+            "Available" => VolumePhase.Available,
+            "Bound" => VolumePhase.Bound,
+            "Released" => VolumePhase.Released,
+            "Failed" => VolumePhase.Failed,
+            _ => VolumePhase.Pending,
+        },
+        CapacityBytes = Bytes(v.Spec?.Capacity, "storage"),
+        AccessModes = [.. v.Spec?.AccessModes ?? []],
+        ReclaimPolicy = Reclaim(v.Spec?.PersistentVolumeReclaimPolicy),
+        StorageClass = v.Spec?.StorageClassName ?? string.Empty,
+
+        // "namespace/name", because a claim name on its own is ambiguous across namespaces and this
+        // column exists precisely to be matched against the claims list.
+        Claim = v.Spec?.ClaimRef is { Name: { Length: > 0 } claim } reference
+            ? $"{reference.NamespaceProperty ?? "default"}/{claim}"
+            : string.Empty,
+
+        Driver = DriverOf(v.Spec),
+        Age = AgeOf(v.Metadata),
+    };
+
+    /// <summary>
+    /// What is actually behind the volume. CSI reports its driver; the in-tree sources do not, so
+    /// the source that is set is the answer, and "hostPath" is worth saying out loud on a kind or
+    /// minikube cluster.
+    /// </summary>
+    private static string DriverOf(V1PersistentVolumeSpec? spec) => spec switch
+    {
+        null => string.Empty,
+        { Csi.Driver: { Length: > 0 } driver } => driver,
+        { HostPath: not null } => "hostPath",
+        { Local: not null } => "local",
+        { Nfs: not null } => "nfs",
+        { Iscsi: not null } => "iscsi",
+        _ => string.Empty,
+    };
+
+    public static StorageClass ToStorageClass(V1StorageClass c) => new()
+    {
+        Name = c.Metadata?.Name ?? "?",
+        Provisioner = c.Provisioner ?? string.Empty,
+        ReclaimPolicy = Reclaim(c.ReclaimPolicy),
+        BindingMode = string.Equals(c.VolumeBindingMode, "WaitForFirstConsumer", StringComparison.Ordinal)
+            ? VolumeBindingMode.WaitForFirstConsumer
+            : VolumeBindingMode.Immediate,
+
+        // The default is an annotation, not a field — and there are two spellings of it, the second
+        // left over from the beta API and still in use on clusters that were upgraded rather than
+        // rebuilt.
+        IsDefault = IsTrue(c.Metadata?.Annotations, "storageclass.kubernetes.io/is-default-class")
+            || IsTrue(c.Metadata?.Annotations, "storageclass.beta.kubernetes.io/is-default-class"),
+
+        AllowsExpansion = c.AllowVolumeExpansion ?? false,
+        Age = AgeOf(c.Metadata),
+    };
+
+    private static bool IsTrue(IDictionary<string, string>? annotations, string key) =>
+        annotations is not null
+        && annotations.TryGetValue(key, out var value)
+        && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Default is Delete, matching Kubernetes — and this is a field where guessing wrong is the
+    /// difference between keeping someone's data and not.
+    /// </summary>
+    private static ReclaimPolicy Reclaim(string? policy) => policy switch
+    {
+        "Retain" => ReclaimPolicy.Retain,
+        "Recycle" => ReclaimPolicy.Recycle,
+        _ => ReclaimPolicy.Delete,
+    };
+
     public static ClusterEvent ToEvent(Corev1Event e) => new()
     {
         Reason = e.Reason ?? string.Empty,
