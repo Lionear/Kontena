@@ -106,7 +106,10 @@ public partial class MainWindowViewModel
             new NavItem("pods", "Pods", "IconContainer")));
         NavGroups.Add(Group("Network",
             new NavItem("services", "Services", "IconNetwork"),
+            new NavItem("ingresses", "Ingresses", "IconGlobe"),
             new NavItem("portforwards", "Port forwards", "IconPlug")));
+        NavGroups.Add(Group("Storage",
+            new NavItem("pvcs", "Volume claims", "IconDatabase")));
         NavGroups.Add(Group("System",
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
@@ -150,6 +153,8 @@ public partial class MainWindowViewModel
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail),
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
+            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace),
+            "pvcs" => new ClusterPvcsViewModel(_cluster, ActiveNamespace),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
             // because deleting from here is as destructive as anywhere else.
@@ -229,6 +234,8 @@ public partial class MainWindowViewModel
 
         SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
         SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
+        SetNavCount("ingresses", (await _cluster.ListIngressesAsync(ns)).Count.ToString(ci));
+        SetNavCount("pvcs", (await _cluster.ListPvcsAsync(ns)).Count.ToString(ci));
         UpdatePortForwardCount();
     }
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>

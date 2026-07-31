@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterPvcsView"
+             x:DataType="vm:ClusterPvcsViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Volume claims" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="1.5*,1*,0.9*,1.3*,0.8*,1.1*,0.8*,0.7*">
+                            <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
+                            <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
+                            <TextBlock Grid.Column="2" Text="STATUS" Classes="colhead"/>
+                            <TextBlock Grid.Column="3" Text="VOLUME" Classes="colhead"/>
+                            <TextBlock Grid.Column="4" Text="CAPACITY" Classes="colhead"/>
+                            <TextBlock Grid.Column="5" Text="STORAGECLASS" Classes="colhead"/>
+                            <TextBlock Grid.Column="6" Text="ACCESS" Classes="colhead"/>
+                            <TextBlock Grid.Column="7" Text="AGE" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PvcRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                    <Grid ColumnDefinitions="1.5*,1*,0.9*,1.3*,0.8*,1.1*,0.8*,0.7*">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <!-- A Pending claim is why a pod will not start; the dot carries the same meaning here
+                                             as on the pods page, and the hover says what to go and look at. -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
+                                                    ToolTip.Tip="{Binding PendingHint}">
+                                            <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="3" Text="{Binding Volume}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding Capacity}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding StorageClass}" Foreground="{DynamicResource TextDim}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="6" Text="{Binding AccessModes}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="7" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No volume claims in this namespace." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No volume claims match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

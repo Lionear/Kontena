@@ -350,6 +350,56 @@ public partial class ClusterServicesViewModel : ListPageViewModel<ServiceRow>
         || Contains(row.Type, term) || Contains(row.Ports, term);
 }
 
+/// <summary>Ingresses view — what is reachable from outside, and through which class (KON-247).</summary>
+public partial class ClusterIngressesViewModel : ListPageViewModel<IngressRow>
+{
+    private readonly IClusterEngine _cluster;
+    private readonly string? _namespace;
+
+    public ClusterIngressesViewModel(IClusterEngine cluster, string? @namespace)
+    {
+        _cluster = cluster;
+        _namespace = @namespace;
+        _ = LoadAsync();
+    }
+
+    public override string SearchPlaceholder => "Search ingresses…";
+
+    protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListIngressesAsync(_namespace)).Select(i => new IngressRow(i))];
+
+    // The host is the thing you know: someone reports that app.example.com is down and the ingress is
+    // what you go looking for. The class matters when a cluster runs more than one controller.
+    protected override bool Matches(IngressRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Namespace, term)
+        || Contains(row.Class, term) || Contains(row.Hosts, term);
+}
+
+/// <summary>PersistentVolumeClaims view — what asked for storage, and whether it got any (KON-247).</summary>
+public partial class ClusterPvcsViewModel : ListPageViewModel<PvcRow>
+{
+    private readonly IClusterEngine _cluster;
+    private readonly string? _namespace;
+
+    public ClusterPvcsViewModel(IClusterEngine cluster, string? @namespace)
+    {
+        _cluster = cluster;
+        _namespace = @namespace;
+        _ = LoadAsync();
+    }
+
+    public override string SearchPlaceholder => "Search volume claims…";
+
+    protected override async Task<IReadOnlyList<PvcRow>> LoadRowsAsync() =>
+        [.. (await _cluster.ListPvcsAsync(_namespace)).Select(p => new PvcRow(p))];
+
+    // Status and storage class as well: "what is still Pending" and "what is on the slow class" are
+    // the two questions a claim list gets asked.
+    protected override bool Matches(PvcRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Namespace, term)
+        || Contains(row.Status, term) || Contains(row.StorageClass, term);
+}
+
 // ── Row view-models ─────────────────────────────────────────────────────────
 
 public sealed class NodeCardRow
@@ -451,6 +501,119 @@ public sealed class NodeProblemChip
 }
 
 public sealed record NamespaceRow(string Name, string Status, string Age);
+
+public sealed class IngressRow
+{
+    public IngressRow(Ingress i)
+    {
+        ArgumentNullException.ThrowIfNull(i);
+
+        Name = i.Name;
+        Namespace = i.Namespace;
+        Class = string.IsNullOrEmpty(i.Class) ? "—" : i.Class;
+
+        // A host repeats once per path, and the column is about which names reach this ingress at
+        // all — so the cell is the distinct hosts and the tooltip is every rule in full.
+        var hosts = i.Rules
+            .Select(r => string.IsNullOrEmpty(r.Host) ? "*" : r.Host)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        Hosts = hosts.Count == 0 ? "—" : string.Join("  ", hosts);
+
+        // Same shape as the Services PORTS cell (KON-199): trimmed in the cell, complete on hover.
+        var rules = i.Rules
+            .Select(r =>
+            {
+                var host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
+                var path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
+                return $"{host}{path} → {r.ServiceName}:{r.ServicePort}";
+            })
+            .ToList();
+        HostsTooltip = rules.Count == 0 ? null : string.Join("\n", rules);
+
+        Address = i.Addresses.Count == 0 ? "—" : string.Join("  ", i.Addresses);
+        AddressTooltip = i.Addresses.Count > 1 ? string.Join("\n", i.Addresses) : null;
+
+        // Which hosts TLS covers, not merely that some certificate exists: an ingress with three hosts
+        // and one of them in its TLS block is the case worth seeing, and "TLS ✓" would hide it.
+        HasTls = i.TlsHosts.Count > 0;
+        TlsTooltip = HasTls ? "TLS: " + string.Join(", ", i.TlsHosts) : null;
+
+        // An ingress that routes nothing is a real and common mistake — a rules block that never
+        // matched, or a service name with a typo in it. Nothing else on the row says so.
+        HasNoRules = i.Rules.Count == 0;
+
+        Age = Format.Duration(i.Age);
+    }
+
+    public string Name { get; }
+    public string Namespace { get; }
+    public string Class { get; }
+    public string Hosts { get; }
+    public string? HostsTooltip { get; }
+    public string Address { get; }
+    public string? AddressTooltip { get; }
+
+    /// <summary>Whether any host is covered by TLS — the chip next to the hosts.</summary>
+    public bool HasTls { get; }
+
+    public string? TlsTooltip { get; }
+
+    /// <summary>An ingress with no routing rules at all; worth flagging rather than showing a dash.</summary>
+    public bool HasNoRules { get; }
+
+    public string Age { get; }
+}
+
+public sealed class PvcRow
+{
+    public PvcRow(PersistentVolumeClaim p)
+    {
+        ArgumentNullException.ThrowIfNull(p);
+
+        Name = p.Name;
+        Namespace = p.Namespace;
+        Status = p.Phase.ToString();
+        Volume = string.IsNullOrEmpty(p.Volume) ? "—" : p.Volume;
+        // Binary units, not Format.Size: this column sits next to someone's kubectl output.
+        Capacity = Format.Quantity(p.CapacityBytes);
+        StorageClass = string.IsNullOrEmpty(p.StorageClass) ? "—" : p.StorageClass;
+        AccessModes = p.AccessModes.Count == 0 ? "—" : string.Join(", ", p.AccessModes);
+        Age = Format.Duration(p.Age);
+
+        // Same status palette as pods and workloads, so a colour means the same thing on every page.
+        StatusBrush = new SolidColorBrush(Color.Parse(p.Phase switch
+        {
+            PvcPhase.Bound => "#34D399",
+            PvcPhase.Pending => "#F5B14C",
+            PvcPhase.Lost => "#F87171",
+            _ => "#5C6675",
+        }));
+
+        // A Pending claim is the one that keeps a pod from starting, and the reason is almost always
+        // the storage class — no provisioner, or a class name that does not exist. The row cannot know
+        // which, so it points at the field instead of guessing.
+        PendingHint = p.Phase == PvcPhase.Pending
+            ? "Waiting to be bound. Nothing has provisioned a volume for this claim yet — the storage"
+              + " class is the usual place to look."
+            : null;
+    }
+
+    public string Name { get; }
+    public string Namespace { get; }
+    public string Status { get; }
+    public string Volume { get; }
+    public string Capacity { get; }
+    public string StorageClass { get; }
+    public string AccessModes { get; }
+    public string Age { get; }
+    public IBrush StatusBrush { get; }
+
+    /// <summary>Why a Pending claim is pending, as far as a list row can honestly say.</summary>
+    public string? PendingHint { get; }
+
+    public bool IsPending => PendingHint is not null;
+}
 
 public sealed partial class WorkloadRow
 {
