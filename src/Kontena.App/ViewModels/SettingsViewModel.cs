@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
@@ -266,8 +265,7 @@ public partial class SettingsViewModel : ViewModelBase
     /// <summary>What Kontena opens on launch: last used, first connected, or one named backend.</summary>
     public ObservableCollection<string> StartupOptions { get; }
 
-    public string Version { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    public string Version { get; } = AppVersion.Current;
 
     // ── Category ────────────────────────────────────────────────────────────
 

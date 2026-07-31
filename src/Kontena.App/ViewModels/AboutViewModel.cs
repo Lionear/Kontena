@@ -1,4 +1,3 @@
-using System.Reflection;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
 
@@ -28,8 +27,7 @@ public sealed partial class AboutViewModel : ViewModelBase
             : "No system keychain is reachable on this session, so Kontena cannot store credentials. It will not write them anywhere else instead.";
     }
 
-    public string Version { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    public string Version { get; } = AppVersion.Current;
 
     /// <summary>The repository, without the scheme — it is a label here, not something to type.</summary>
     public string RepositoryLabel { get; } = "github.com/Lionear/Kontena";
