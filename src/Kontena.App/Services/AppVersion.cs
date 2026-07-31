@@ -37,6 +37,13 @@ public static class AppVersion
         ? date
         : null;
 
+    /// <summary>
+    /// The build date as every surface phrases it — <c>built 2026-07-31</c> — or empty for a build
+    /// that has none. One string rather than three, so About, Settings and the update card cannot
+    /// end up wording the same fact differently.
+    /// </summary>
+    public static string BuiltOn { get; } = BuildDate is null ? string.Empty : $"built {BuildDate}";
+
     /// <param name="informational">
     /// The assembly's informational version, which is the string the build workflow stamped.
     /// </param>

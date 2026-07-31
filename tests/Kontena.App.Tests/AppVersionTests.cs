@@ -59,6 +59,10 @@ public sealed class AppVersionTests
     public void A_build_without_a_date_shows_no_dangling_separator()
     {
         Assert.Null(AppVersion.BuildDate);
+
+        // What About, Settings and the update card all branch on, so one assertion covers the
+        // separator in front of it, the line in Settings and the "built …" in the card's header.
+        Assert.Equal(string.Empty, AppVersion.BuiltOn);
         Assert.Equal(string.Empty, new AboutViewModel(new NoKeychain()).BuildDateSuffix);
     }
 
