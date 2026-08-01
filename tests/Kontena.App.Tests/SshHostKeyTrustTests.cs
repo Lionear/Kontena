@@ -41,8 +41,11 @@ public sealed class SshHostKeyTrustTests : IDisposable
 
         return new SettingsViewModel(
             store, settings, [],
-            autostart: new UnsupportedAutostart(),
-            secrets: new UnavailableSecretStore())
+            new SettingsContext
+            {
+                Autostart = new UnsupportedAutostart(),
+                Secrets = new UnavailableSecretStore(),
+            })
         {
             RemoteName = "Build server",
             RemoteHost = "build-01",

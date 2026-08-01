@@ -161,6 +161,58 @@ public partial class ClusterChoiceRow : ViewModelBase
 }
 
 /// <summary>
+/// Everything the Settings page needs beyond the three things every caller has — the store, the
+/// settings and the engine list. Services it leans on, and callbacks it fires when a change has to
+/// reach the shell.
+/// <para>
+/// A record rather than optional constructor parameters (KON-305). The constructor had grown to
+/// fourteen parameters over four separate features, and every branch that added a dependency touched
+/// the same signature lines — the changelog problem in another form: both sides add, the resolution
+/// is always "keep both", and the conflict carries no information. Adding one here is one property,
+/// and no existing call site changes.
+/// </para>
+/// </summary>
+public sealed record SettingsContext
+{
+    /// <summary>Everything that can be pinned — engines and clusters both. Defaults to the engine
+    /// list, so design-time and tests need not supply it.</summary>
+    public IReadOnlyList<EngineListItem>? Backends { get; init; }
+
+    /// <summary>Invoked when the demo toggle flips so the shell can rebuild the backend set.</summary>
+    public Func<bool, Task>? OnDemoBackendsChanged { get; init; }
+
+    /// <summary>The updater, for the Updates category. Null in design-time and tests.</summary>
+    public UpdateViewModel? Update { get; init; }
+
+    /// <summary>Login-item registration; defaults to this platform's mechanism.</summary>
+    public IAutostart? Autostart { get; init; }
+
+    /// <summary>Keychain access; defaults to this platform's mechanism.</summary>
+    public ISecretStore? Secrets { get; init; }
+
+    /// <summary>Resolves registry logins for the Registries category.</summary>
+    public RegistryCredentials? Registries { get; init; }
+
+    /// <summary>The engine to verify a registry login against, read on demand.</summary>
+    public Func<IContainerEngine?>? Engine { get; init; }
+
+    /// <summary>Adding or removing a remote changes the provider list the switcher is built from.</summary>
+    public Func<Task>? OnRemotesChanged { get; init; }
+
+    /// <summary>A rename changes no connection, so it must not cost a re-probe.</summary>
+    public Action? OnNamesChanged { get; init; }
+
+    /// <summary>Every cluster in every kubeconfig, not only the chosen ones (KON-120).</summary>
+    public IReadOnlyList<DiscoveredCluster> Clusters { get; init; } = [];
+
+    /// <summary>Invoked when a cluster is shown or hidden.</summary>
+    public Func<Task>? OnClustersChanged { get; init; }
+
+    /// <summary>The kubeconfigs Kontena reads (KON-122).</summary>
+    public IReadOnlyList<KubeconfigSource> Kubeconfigs { get; init; } = [];
+}
+
+/// <summary>
 /// The Settings page: General (appearance + startup), Engines (auto-detect, default engine, engine
 /// list), Registries, Updates and Local clusters. Every change persists immediately via the
 /// <see cref="SettingsStore"/>; theme changes apply live.
@@ -179,45 +231,32 @@ public partial class SettingsViewModel : ViewModelBase
     private KontenaSettings _settings;
 
     /// <param name="engines">Container engines, for the detected-engines list.</param>
-    /// <param name="backends">Everything that can be pinned — engines and clusters both. Defaults
-    /// to <paramref name="engines"/> so design-time and tests need not supply it.</param>
-    /// <param name="onDemoBackendsChanged">Invoked when the demo toggle flips so the shell can
-    /// rebuild the backend set. Null in design-time and test contexts.</param>
-    /// <param name="update">The updater, for the Updates category. Null in design-time and tests.</param>
-    /// <param name="autostart">Login-item registration; defaults to this platform's mechanism.</param>
+    /// <param name="context">The services and callbacks the page leans on — see
+    /// <see cref="SettingsContext"/>. Optional as a whole: design-time and most tests want none of it.</param>
     public SettingsViewModel(
         SettingsStore store, KontenaSettings settings, IReadOnlyList<EngineListItem> engines,
-        IReadOnlyList<EngineListItem>? backends = null,
-        Func<bool, Task>? onDemoBackendsChanged = null,
-        UpdateViewModel? update = null,
-        IAutostart? autostart = null,
-        ISecretStore? secrets = null,
-        RegistryCredentials? registries = null,
-        Func<IContainerEngine?>? engine = null,
-        Func<Task>? onRemotesChanged = null,
-        Action? onNamesChanged = null,
-        IReadOnlyList<DiscoveredCluster>? clusters = null,
-        Func<Task>? onClustersChanged = null,
-        IReadOnlyList<KubeconfigSource>? kubeconfigs = null)
+        SettingsContext? context = null)
     {
-        _registries = registries;
-        _engineForVerify = engine;
-        _autostart = autostart ?? Autostart.Create();
-        _secrets = secrets ?? SecretStore.Create();
-        _onRemotesChanged = onRemotesChanged;
-        _onNamesChanged = onNamesChanged;
-        _discoveredClusters = clusters ?? [];
-        Kubeconfigs = [.. kubeconfigs ?? []];
-        _onClustersChanged = onClustersChanged;
-        _backends = [.. backends ?? engines];
+        context ??= new SettingsContext();
+
+        _registries = context.Registries;
+        _engineForVerify = context.Engine;
+        _autostart = context.Autostart ?? Autostart.Create();
+        _secrets = context.Secrets ?? SecretStore.Create();
+        _onRemotesChanged = context.OnRemotesChanged;
+        _onNamesChanged = context.OnNamesChanged;
+        _discoveredClusters = context.Clusters;
+        Kubeconfigs = [.. context.Kubeconfigs];
+        _onClustersChanged = context.OnClustersChanged;
+        _backends = [.. context.Backends ?? engines];
         _store = store;
         _settings = settings;
         Engines = [.. engines];
-        _onDemoBackendsChanged = onDemoBackendsChanged;
-        Update = update;
+        _onDemoBackendsChanged = context.OnDemoBackendsChanged;
+        Update = context.Update;
         // Resolved, not raw: the dropdown shows what updates will actually follow. Choosing one in the
         // page then stores it, which is exactly when "not chosen" should become a choice (KON-123).
-        _buildChannel = update?.BuildChannel ?? UpdateChannel.Stable;
+        _buildChannel = context.Update?.BuildChannel ?? UpdateChannel.Stable;
         _updateChannel = settings.ResolvedUpdateChannel(_buildChannel);
         _channelWasChosen = settings.UpdateChannel is not null;
         _autoDownloadUpdates = settings.AutoDownloadUpdates;
