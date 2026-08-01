@@ -523,6 +523,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
 
+    /// <summary>
+    /// Null, honestly: this fake models typed resources for the UI, not raw OpenAPI documents. A
+    /// schema-index built against it should see "unverifiable" (KON-288), the same state a real
+    /// cluster reports for a group/version it does not serve — not a made-up schema.
+    /// </summary>
+    /// <inheritdoc/>
+    public ValueTask<string?> GetOpenApiSchemaAsync(
+        string group, string version, CancellationToken ct = default) =>
+        ValueTask.FromResult<string?>(null);
+
     /// <inheritdoc/>
     public ValueTask<ResourceTable> ListTableAsync(
         GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
