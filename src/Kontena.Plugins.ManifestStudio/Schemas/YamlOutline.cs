@@ -44,13 +44,19 @@ public sealed class YamlOutline
 
             if (isArray)
             {
-                var item = new YamlOutline { Line = lineNumber, Indent = indent, IsArrayItem = true };
+                var rest = YamlLines.StripDash(content);
+                var isBareScalar = rest.Length > 0 && !YamlLines.TryReadKey(rest, out _);
+
+                var item = new YamlOutline
+                {
+                    Line = lineNumber, Indent = indent, IsArrayItem = true,
+                    InlineValue = isBareScalar ? rest : null,
+                };
                 nodes[^1].Children.Add(item);
                 frames.Add(new Frame(indent, null, IsArrayItem: true));
                 nodes.Add(item);
 
-                var rest = YamlLines.StripDash(content);
-                if (rest.Length > 0)
+                if (rest.Length > 0 && !isBareScalar)
                     AddKeyish(rest, indent + 2, lineNumber, frames, nodes);
             }
             else

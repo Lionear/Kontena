@@ -5,7 +5,11 @@ namespace Kontena.Plugins.ManifestStudio.Schemas;
 
 public enum DiagnosticSeverity { Error, Warning, Hint }
 
-public enum DiagnosticAuthority { Schema, ClusterDiscovery, CrossDocument }
+/// <summary><see cref="Policy"/> is KON-297 — deterministic house rules over the rendered bundle
+/// (container resource requests, image tags, required labels, …), evaluated by
+/// <c>Kontena.Plugins.ManifestStudio.Policy.PolicyEngine</c> rather than here: unlike the other three,
+/// it needs no schema at all, so it stays its own pure function the caller runs alongside this one.</summary>
+public enum DiagnosticAuthority { Schema, ClusterDiscovery, CrossDocument, Policy }
 
 /// <summary>What kind of finding this is, structured rather than left for a caller to sniff out of
 /// <see cref="Diagnostic.Message"/> — <c>QuickFixEngine</c> (KON-292) dispatches on this, not on
