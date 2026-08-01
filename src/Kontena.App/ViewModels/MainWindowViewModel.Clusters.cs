@@ -398,11 +398,9 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"pod {pod.Name}", () => ShowPodDetail(pod), pod);
-        DisposeDetail();
-
-        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, CurrentTerminalFont(), ShowPodPortForward);
-        CurrentPage = _podDetail;
+        ShowDetail(
+            new ClusterPodDetailViewModel(_cluster, pod, CurrentTerminalFont(), ShowPodPortForward),
+            $"pod {pod.Name}", pod);
     }
 
     /// <summary>

@@ -36,7 +36,7 @@ public partial class MainWindowViewModel
     /// The drawer's width, dragged by its left edge and remembered across launches. Not a Settings
     /// field: how much of the list you want kept in view depends on the list you are looking at.
     /// </summary>
-    [ObservableProperty] private double _detailWidth = 540;
+    [ObservableProperty] private double _detailWidth = 500;
 
     /// <summary>Narrow enough to leave a list usable, wide enough that a detail header still fits.</summary>
     private const double MinDetailWidth = 460;
@@ -79,6 +79,26 @@ public partial class MainWindowViewModel
     /// <summary>Close the drawer and dispose what it held. The scrim, the ✕ and Escape all land here.</summary>
     [RelayCommand]
     private void CloseDetail() => Detail = null;
+
+    /// <summary>
+    /// A detail asking to be got rid of, from wherever it is being shown — the container it describes
+    /// was removed, or vanished while the page was open (KON-309).
+    /// <para>
+    /// It has to name itself because by then it may have been handed to the full page, and a plain
+    /// "close the drawer" would leave a page describing something that no longer exists. Which was the
+    /// old <c>GoBack</c> callback's whole job, back when a detail could only ever be a page.
+    /// </para>
+    /// </summary>
+    private void DismissDetail(object? detail)
+    {
+        if (detail is null)
+            return;
+
+        if (ReferenceEquals(Detail, detail))
+            Detail = null;
+        else if (ReferenceEquals(CurrentPage, detail) && CanGoBack)
+            GoBack();
+    }
 
     /// <summary>
     /// Take the detail out of the drawer without disposing it, for a host that is taking it over —

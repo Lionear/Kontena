@@ -215,7 +215,7 @@ public partial class MainWindowViewModel
         EngineChip = BackendChipInfo.For(provider);
 
         RebuildEngineList();
-        DisposeDetail();
+        CloseDetail();
         CloseDialog();
 
         if (backend is IClusterEngine cluster)

@@ -242,7 +242,7 @@ public sealed record KontenaSettings
     /// Settings: how much of the list you want to keep in view depends on the list, and the answer
     /// changes between a node grid and a workload table.
     /// </summary>
-    public double DetailDrawerWidth { get; init; } = 540;
+    public double DetailDrawerWidth { get; init; } = 500;
 
     /// <summary>Recently used build-context folders, most-recent first (for the Build modal).</summary>
     public IReadOnlyList<string> RecentBuildContexts { get; init; } = [];

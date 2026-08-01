@@ -53,7 +53,7 @@ public partial class MainWindowViewModel
         if (page is null)
             return;
 
-        DisposeDetail();
+        CloseDetail();
         CurrentPage = page;
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
@@ -126,7 +126,7 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        DisposeDetail();
+        CloseDetail();
         // Any page that holds something running — a port-forward registry, a watch stream (KON-250).
         // By interface rather than by type: the list of page types that own a resource has grown
         // twice now, and naming them one at a time is how the third one gets missed.
@@ -341,7 +341,7 @@ public partial class MainWindowViewModel
             return;
 
         Arrived("Activity", ShowActivity);
-        DisposeDetail();
+        CloseDetail();
         CurrentPage = Activity;
         SearchText = Activity.SearchText;
         foreach (var item in NavItems)
@@ -368,20 +368,21 @@ public partial class MainWindowViewModel
         if (_engine is null)
             return;
 
-        Arrived($"container {summary.Name}", () => ShowContainerDetail(summary), summary);
-        DisposeDetail();
-
         var font = CurrentTerminalFont();
 
-        _containerDetail = new ContainerDetailViewModel(_engine, summary, GoBack, font)
+        // The view model has to be able to name itself when it asks to be dismissed — a removed
+        // container must take its detail with it whether that detail is in the drawer or on the page.
+        ContainerDetailViewModel? detail = null;
+        detail = new ContainerDetailViewModel(_engine, summary, () => DismissDetail(detail), font)
         {
             RequestConfirm = ShowConfirm,
         };
-        CurrentPage = _containerDetail;
+
+        ShowDetail(detail, $"container {summary.Name}", summary);
     }
     private void ShowContainers()
     {
-        DisposeDetail();
+        CloseDetail();
         if (Containers is null)
             return;
 
@@ -391,7 +392,7 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private void ShowSettings()
     {
-        DisposeDetail();
+        CloseDetail();
         CloseDialog();
         if (SettingsPage is null)
             return;
@@ -406,7 +407,7 @@ public partial class MainWindowViewModel
     private void ShowAbout()
     {
         Arrived("About", ShowAbout);
-        DisposeDetail();
+        CloseDetail();
         CloseDialog();
         CurrentPage = About;
         SearchText = string.Empty;

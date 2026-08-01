@@ -2,6 +2,7 @@ using Kontena.App.ViewModels;
 using Kontena.App.Services;
 using Kontena.Core.Orchestration.Fakes;
 using Kontena.Engines;
+using Kontena.Engines.Fakes;
 
 namespace Kontena.App.Tests;
 
@@ -32,6 +33,14 @@ public sealed class DetailDrawerTests
         for (var i = 0; i < 100 && shell.CurrentPage is IListPage { HasLoaded: false }; i++)
             await Task.Delay(5);
     }
+
+    /// <summary>The rows are grouped, so the shell's own hook is the honest way in.</summary>
+    private static void OpenFirstContainer(ContainersViewModel list) =>
+        list.RequestOpenDetail!.Invoke(list.Items.OfType<ContainerRowViewModel>().First().Summary);
+
+    /// <summary>Removing goes through the shell's confirmation, and without one it does not run (KON-126).</summary>
+    private static async Task ConfirmAsync(MainWindowViewModel shell) =>
+        await Assert.IsType<ConfirmViewModel>(shell.Dialog).ConfirmCommand.ExecuteAsync(null);
 
     private static NodeCardRow FirstNode(MainWindowViewModel shell) =>
         Assert.IsType<ClusterNodesViewModel>(shell.CurrentPage).Items[0];
@@ -206,6 +215,96 @@ public sealed class DetailDrawerTests
 
         shell.ResizeDetail(5000);
         Assert.True(shell.DetailWidth <= 1200);
+    }
+
+    // ── The pages that stream (KON-309, KON-310) ──────────────────────────────
+
+    [Fact]
+    public async Task A_container_opens_in_the_drawer_too()
+    {
+        var shell = new MainWindowViewModel();
+        await shell.EnterEngineModeAsync(new FakeEngine());
+        await WaitForRowsAsync(shell);
+
+        var list = Assert.IsType<ContainersViewModel>(shell.CurrentPage);
+        OpenFirstContainer(list);
+
+        Assert.IsType<ContainerDetailViewModel>(shell.Detail);
+        Assert.Same(list, shell.CurrentPage);
+    }
+
+    [Fact]
+    public async Task A_container_that_is_gone_takes_its_detail_with_it()
+    {
+        // The old GoBack callback: a container removed from its own detail page had to leave that
+        // page, or you were reading something that no longer existed. In a drawer that means closing,
+        // and on the full page it means going back — so the detail has to say which one it is.
+        var shell = new MainWindowViewModel();
+        await shell.EnterEngineModeAsync(new FakeEngine());
+        await WaitForRowsAsync(shell);
+
+        var list = Assert.IsType<ContainersViewModel>(shell.CurrentPage);
+        OpenFirstContainer(list);
+
+        Assert.IsType<ContainerDetailViewModel>(shell.Detail).RemoveCommand.Execute(null);
+        await ConfirmAsync(shell);
+
+        Assert.False(shell.IsDetailOpen);
+    }
+
+    [Fact]
+    public async Task And_from_the_full_page_it_goes_back_instead()
+    {
+        var shell = new MainWindowViewModel();
+        await shell.EnterEngineModeAsync(new FakeEngine());
+        await WaitForRowsAsync(shell);
+
+        var list = Assert.IsType<ContainersViewModel>(shell.CurrentPage);
+        OpenFirstContainer(list);
+        shell.OpenDetailAsPageCommand.Execute(null);
+
+        var detail = Assert.IsType<ContainerDetailViewModel>(shell.CurrentPage);
+        detail.RemoveCommand.Execute(null);
+        await ConfirmAsync(shell);
+
+        // Not still on the page describing the container that was just removed.
+        Assert.NotSame(detail, shell.CurrentPage);
+    }
+
+    [Fact]
+    public async Task A_pod_opens_in_the_drawer_over_its_list()
+    {
+        var shell = await ClusterShellAsync("pods");
+        var list = Assert.IsType<ClusterPodsViewModel>(shell.CurrentPage);
+
+        list.Items[0].OpenCommand.Execute(null);
+
+        Assert.IsType<ClusterPodDetailViewModel>(shell.Detail);
+        Assert.Same(list, shell.CurrentPage);
+    }
+
+    [Fact]
+    public async Task Opening_a_pod_from_a_node_replaces_what_the_drawer_holds()
+    {
+        // The interim behaviour from KON-307 — leaving the list for the pod's own page — is gone.
+        // What replaces it is a drawer that swaps its contents, which also disposes the node detail:
+        // two live details in one slot is the leak this ownership rule exists to prevent.
+        var shell = await ClusterShellAsync("nodes");
+
+        // A worker rather than the first row: the control plane runs nothing in the demo cluster, and
+        // this test needs a pod to open.
+        Assert.IsType<ClusterNodesViewModel>(shell.CurrentPage).Items
+            .First(n => n.Name == "gke-prod-worker-1").OpenCommand.Execute(null);
+
+        var node = Assert.IsType<ClusterNodeDetailViewModel>(shell.Detail);
+        node.SelectedTab = "pods";
+        for (var i = 0; i < 100 && node.Pods.Count == 0; i++)
+            await Task.Delay(5);
+
+        node.Pods[0].OpenCommand.Execute(null);
+
+        Assert.IsType<ClusterPodDetailViewModel>(shell.Detail);
+        Assert.IsType<ClusterNodesViewModel>(shell.CurrentPage);
     }
 
     [Fact]

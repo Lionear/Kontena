@@ -30,8 +30,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
-    private ContainerDetailViewModel? _containerDetail;
-    private ClusterPodDetailViewModel? _podDetail;
     private readonly ActivityLog _activityLog = new();
 
     // Port forwards outlive the modal that starts them and belong to the cluster connection, so the
@@ -335,21 +333,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (!ct.IsCancellationRequested && ReferenceEquals(CurrentPage, target))
             target.SearchText = value;
     }
-    private void DisposeDetail()
-    {
-        _containerDetail?.Dispose();
-        _containerDetail = null;
-        _podDetail?.Dispose();
-        _podDetail = null;
-
-        // A drawer belongs to the list it was opened from, so leaving that list takes it with you
-        // (KON-307). Here rather than at each navigation entry point: every one of them already calls
-        // this, and the ones added later will too.
-        CloseDetail();
-    }
     public void Dispose()
     {
-        DisposeDetail();
+        CloseDetail();
         CloseDialog();
         StopPortForwardsAsync().GetAwaiter().GetResult();
         _terminals.DisposeAsync().AsTask().GetAwaiter().GetResult();
