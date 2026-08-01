@@ -600,6 +600,16 @@
                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
                                       Data="{StaticResource IconExpand}"/>
                             </Button>
+                            <!--
+                                KON-308: pull this detail into a window of its own — the same view model, so nothing
+                                reloads. Click, not Command, on purpose: creating and finding Window instances is UI
+                                work, the same reason ClusterTerminalsView.OnDetachClick isn't a command either.
+                            -->
+                            <Button Classes="ghost" Click="OnDetachDetailClick"
+                                    ToolTip.Tip="Open in a new window" Padding="7">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                                      Data="{StaticResource IconExternalLink}"/>
+                            </Button>
                             <Button Classes="ghost" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close (Esc)"
                                     Padding="7">
                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"

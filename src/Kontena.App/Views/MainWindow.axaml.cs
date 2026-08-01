@@ -1,5 +1,7 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -226,6 +228,39 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
             vm.SaveDetailWidth();
     }
+
+    /// <summary>
+    /// Pull the drawer's detail into a window of its own (KON-308). If one is already open for the same
+    /// object, that window comes forward instead of a second one opening — which would also mean a
+    /// second live stream for the same container or pod.
+    /// </summary>
+    private void OnDetachDetailClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        var target = vm.DetailTarget;
+        if (target is not null && FindOpenWindowFor(target) is { } existing)
+        {
+            existing.Activate();
+            vm.CloseDetailCommand.Execute(null);
+            return;
+        }
+
+        var label = vm.DetailLabel;
+        if (vm.DetachDetailForWindow() is { } detail)
+            new DetailWindow(detail, label, target).Show();
+    }
+
+    /// <summary>
+    /// Found by the target object it was opened for rather than by a handle kept here: the drawer is
+    /// rebuilt on every visit, so a page that never detached anything still has to be able to find a
+    /// window a different visit opened (same reasoning as ClusterTerminalsView.WindowFor, KON-217).
+    /// </summary>
+    private static DetailWindow? FindOpenWindowFor(object target) =>
+        (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Windows
+            .OfType<DetailWindow>()
+            .FirstOrDefault(w => ReferenceEquals(w.Target, target));
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
