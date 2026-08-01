@@ -33,8 +33,11 @@ public sealed class RemoteArgumentValidationTests : IDisposable
 
         var vm = new SettingsViewModel(
             store, settings, [],
-            autostart: new UnsupportedAutostart(),
-            secrets: new UnavailableSecretStore());
+            new SettingsContext
+            {
+                Autostart = new UnsupportedAutostart(),
+                Secrets = new UnavailableSecretStore(),
+            });
 
         vm.RemoteName = "Build server";
         vm.RemoteHost = "build-01";
@@ -133,8 +136,11 @@ public sealed class RemoteArgumentValidationTests : IDisposable
 
         var vm = new SettingsViewModel(
             store, settings, [],
-            autostart: new UnsupportedAutostart(),
-            secrets: new UnavailableSecretStore());
+            new SettingsContext
+            {
+                Autostart = new UnsupportedAutostart(),
+                Secrets = new UnavailableSecretStore(),
+            });
 
         var row = Assert.Single(vm.RemoteEngines);
         Assert.True(row.HasProblem);
@@ -157,8 +163,11 @@ public sealed class RemoteArgumentValidationTests : IDisposable
 
         var vm = new SettingsViewModel(
             store, settings, [],
-            autostart: new UnsupportedAutostart(),
-            secrets: new UnavailableSecretStore());
+            new SettingsContext
+            {
+                Autostart = new UnsupportedAutostart(),
+                Secrets = new UnavailableSecretStore(),
+            });
 
         var row = Assert.Single(vm.RemoteEngines);
         Assert.False(row.HasProblem);

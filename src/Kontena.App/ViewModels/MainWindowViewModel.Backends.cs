@@ -436,22 +436,30 @@ public partial class MainWindowViewModel
             .Where(e => _probes.First(p => p.Provider.Backend == e.Backend).Provider.Kind == BackendKind.Engine)
             .ToList();
 
-        SettingsPage = new SettingsViewModel(
-            _store, _settings, engines, all, ReloadBackendsAsync, Update,
-            secrets: _secrets, registries: _registryCredentials, engine: () => _engine,
+        SettingsPage = new SettingsViewModel(_store, _settings, engines, new SettingsContext
+        {
+            Backends = all,
+            OnDemoBackendsChanged = ReloadBackendsAsync,
+            Update = Update,
+            Secrets = _secrets,
+            Registries = _registryCredentials,
+            Engine = () => _engine,
+
             // Adding or removing a remote changes the provider list, which is what the switcher is built
             // from — so the same rebuild the demo toggle uses (KON-46).
-            onRemotesChanged: () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+            OnRemotesChanged = () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+
             // A rename changes no connection, so it must not cost a re-probe: re-read the names and
             // redraw. Probing on every keystroke would make typing a name feel like a reconnect.
-            onNamesChanged: RefreshBackendNames,
+            OnNamesChanged = RefreshBackendNames,
 
             // Every cluster in every kubeconfig, not only the chosen ones — the hidden ones are exactly
             // what this list is for (KON-120).
-            clusters: DiscoveredClusters(),
-            onClustersChanged: () =>
+            Clusters = DiscoveredClusters(),
+            OnClustersChanged = () =>
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
-            kubeconfigs: Kubeconfigs())
+            Kubeconfigs = Kubeconfigs(),
+        })
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
             LocalClusters = _localClusters ??= BuildLocalClustersPage(),

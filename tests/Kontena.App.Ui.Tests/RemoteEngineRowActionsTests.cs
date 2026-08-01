@@ -59,8 +59,11 @@ public sealed class RemoteEngineRowActionsTests(HeadlessSessionFixture headless)
 
             var page = new SettingsViewModel(
                 store, settings, [],
-                autostart: new UnsupportedAutostart(),
-                secrets: new UnavailableSecretStore())
+                new SettingsContext
+                {
+                    Autostart = new UnsupportedAutostart(),
+                    Secrets = new UnavailableSecretStore(),
+                })
             {
                 Category = "engines",
             };
