@@ -20,10 +20,21 @@ public class DockerEngineTests
     private static async Task<DockerEngine> ConnectOrSkipAsync()
     {
         var engine = new DockerEngine();
+        string? osType = null;
         var reachable = true;
         try
         {
             await engine.PingAsync();
+
+            // Reachable is not the same as usable: the tests below run busybox and ask for the
+            // bridge driver, and a daemon in Windows-container mode has neither — it has no linux
+            // images and calls its default network driver "nat". That daemon answers a ping
+            // perfectly well, so pinging alone let the whole suite run and fail on the first linux
+            // assumption it hit. Asked through the raw client because the neutral EngineInfo
+            // carries no OS: which kernel the containers get is a property of the host, not
+            // something the abstraction has any reason to expose.
+            using var client = new DockerClientConfiguration().CreateClient();
+            osType = (await client.System.GetSystemInfoAsync()).OSType;
         }
         catch
         {
@@ -34,6 +45,12 @@ public class DockerEngineTests
         {
             engine.Dispose();
             Skip.If(true, "Docker engine is not reachable on this host.");
+        }
+
+        if (!string.Equals(osType, "linux", StringComparison.OrdinalIgnoreCase))
+        {
+            engine.Dispose();
+            Skip.If(true, $"Docker is running {osType ?? "unknown"} containers; these tests need linux ones.");
         }
 
         return engine;
