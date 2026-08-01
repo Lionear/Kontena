@@ -1,4 +1,6 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Adapters.Podman;
 using Kontena.App.Services;
 using Kontena.Sdk;
 using Kontena.Sdk.Errors;
@@ -89,7 +91,8 @@ public partial class MainWindowViewModel
 
             EnterBackendDown(
                 $"Can't reach {NameOf(wanted.Provider)}",
-                Unreachable(wanted));
+                Unreachable(wanted),
+                wanted);
             return;
         }
 
@@ -100,7 +103,8 @@ public partial class MainWindowViewModel
         {
             EnterBackendDown(
                 "Can't reach a container engine",
-                "No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.");
+                "No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.",
+                UnreachablePodmanProbe());
             return;
         }
 
@@ -110,6 +114,10 @@ public partial class MainWindowViewModel
     private string Unreachable(BackendProbe probe) => probe.Provider.Kind == BackendKind.Cluster
         ? $"The apiserver for {NameOf(probe.Provider)} did not answer. The cluster may be stopped, unreachable from this network, or your credentials may have expired."
         : $"The {NameOf(probe.Provider)} socket did not answer. It may be stopped, still starting, or you may not have permission to access it.";
+    /// <summary>The probe behind a "no engine answered" message, when it was Podman that failed —
+    /// the one case there is a specific fix to check for.</summary>
+    private BackendProbe? UnreachablePodmanProbe() =>
+        _probes.FirstOrDefault(p => p.Provider.Backend == "podman" && !p.Connected);
     /// <summary>What this backend is called here — the user's name for it, or the source's own (KON-119).</summary>
     private string NameOf(IBackendProvider provider) =>
         _settings.NameFor(provider.Backend, provider.DisplayName);
@@ -175,12 +183,18 @@ public partial class MainWindowViewModel
 
         await ConnectPreferredAsync();
     }
-    private void EnterBackendDown(string title, string detail)
+    /// <summary>Which backend the down card is currently about, so a fix suggestion that resolves
+    /// after the user has already moved on (reconnected, switched) knows to keep quiet.</summary>
+    private string? _backendDownFor;
+
+    private void EnterBackendDown(string title, string detail, BackendProbe? probe = null)
     {
         IsReady = false;
         IsBackendDown = true;
         BackendDownTitle = title;
         BackendDownDetail = detail;
+        BackendDownFixCommand = null;
+        _backendDownFor = probe?.Provider.Backend;
         IsClusterMode = false;
         EngineName = "Not connected";
         EngineChip = new BackendChipInfo("!");
@@ -188,6 +202,56 @@ public partial class MainWindowViewModel
         EngineEndpoint = string.Empty;
         CurrentPage = null;
         OnPropertyChanged(nameof(HasAlternatives));
+
+        if (probe is { Connected: false, Provider.Backend: "podman" })
+            _ = SuggestPodmanFixAsync(probe.Provider.Backend);
+    }
+    /// <summary>
+    /// Checked after the down card is already showing — asking systemctl takes a moment, and the
+    /// reason Podman is unreachable should never hold up saying that it is.
+    /// </summary>
+    private async Task SuggestPodmanFixAsync(string backend)
+    {
+        if (!await PodmanSocketFix.IsFixableAsync(_toolRunner))
+            return;
+
+        // The user may have reconnected, or switched to something else, while this was running.
+        if (IsBackendDown && _backendDownFor == backend)
+            BackendDownFixCommand = PodmanSocketFix.EnableSocket.CommandLine;
+    }
+    /// <summary>The suggested fix command for the current down state, or null when there is none —
+    /// binds the "Run it" / "Copy" row in the down card.</summary>
+    [ObservableProperty] private string? _backendDownFixCommand;
+    /// <summary>True while <see cref="ApplyBackendFixAsync"/> is running.</summary>
+    [ObservableProperty] private bool _isFixingBackend;
+    /// <summary>
+    /// Runs the suggested fix on explicit request — never on its own. `systemctl --user enable --now
+    /// podman.socket` needs no elevation (it manages a user unit), so there is no password prompt to
+    /// wire up here; a system-wide fix would need one and does not exist yet.
+    /// </summary>
+    [RelayCommand]
+    private async Task ApplyBackendFixAsync()
+    {
+        if (BackendDownFixCommand is null || IsFixingBackend)
+            return;
+
+        IsFixingBackend = true;
+        try
+        {
+            var result = await _toolRunner.RunAsync(PodmanSocketFix.EnableSocket);
+            if (result.Ok)
+                await ReconnectAsync();
+            else
+                BackendDownDetail = $"{BackendDownDetail} Running the command failed: {result.Complaint}";
+        }
+        catch (Exception ex)
+        {
+            BackendDownDetail = $"{BackendDownDetail} Running the command failed: {ex.Message}";
+        }
+        finally
+        {
+            IsFixingBackend = false;
+        }
     }
     [RelayCommand]
     private async Task ReconnectAsync()
@@ -549,7 +613,10 @@ public partial class MainWindowViewModel
         if (replacement is not null)
             await ActivateAsync(replacement.Provider);
         else
-            EnterBackendDown("No backend is reachable", "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.");
+            EnterBackendDown(
+                "No backend is reachable",
+                "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.",
+                UnreachablePodmanProbe());
     }
     [RelayCommand]
     private async Task SwitchEngineAsync(string backend)
