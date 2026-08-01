@@ -82,15 +82,17 @@
                     </WrapPanel>
                 </StackPanel>
 
-                <!-- Meta strip -->
-                <StackPanel Orientation="Horizontal" Spacing="28" Margin="0,16,0,0">
+                <!-- Meta strip. Wraps, and the image trims: a digest-pinned reference is longer than
+                     any width this panel will ever have. -->
+                <WrapPanel ItemSpacing="28" LineSpacing="10" Margin="0,16,0,0">
                     <StackPanel Spacing="3">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Path Classes="icon" Width="12" Height="12" Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconTag}"/>
                             <TextBlock Text="IMAGE" FontSize="11" Foreground="{DynamicResource TextFaint}"/>
                         </StackPanel>
                         <TextBlock Text="{Binding ImageText}" FontFamily="{StaticResource Mono}" FontSize="12.5"
-                                   Foreground="{DynamicResource Text}" FontWeight="SemiBold"/>
+                                   Foreground="{DynamicResource Text}" FontWeight="SemiBold" MaxWidth="320"
+                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding ImageText}"/>
                     </StackPanel>
                     <StackPanel Spacing="3">
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -113,7 +115,7 @@
                         </StackPanel>
                         <TextBlock Text="{Binding CreatedText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
-                </StackPanel>
+                </WrapPanel>
 
                 <!-- Tabs -->
                 <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
@@ -147,9 +149,8 @@
         </Border>
 
         <!-- Live stat strip -->
-        <WrapPanel Grid.Row="1" Margin="24,16,24,0" ItemWidth="NaN" ItemSpacing="12" LineSpacing="12"
-                   IsVisible="{Binding SupportsStats}">
-            <Border Classes="card" Padding="14,12" MinWidth="170">
+        <UniformGrid Grid.Row="1" Columns="2" Margin="24,16,24,0" IsVisible="{Binding SupportsStats}">
+            <Border Classes="card" Padding="14,12" Margin="0,0,12,12">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Path Classes="icon" Width="20" Height="20" Stroke="{DynamicResource Info}" Data="{StaticResource IconCpu}" VerticalAlignment="Center"/>
                     <StackPanel VerticalAlignment="Center" Spacing="1">
@@ -159,7 +160,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <Border Classes="card" Padding="14,12" MinWidth="170">
+            <Border Classes="card" Padding="14,12" Margin="0,0,12,12">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Path Classes="icon" Width="20" Height="20" Stroke="{DynamicResource Accent}" Data="{StaticResource IconActivity}" VerticalAlignment="Center"/>
                     <StackPanel VerticalAlignment="Center" Spacing="1">
@@ -173,7 +174,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <Border Classes="card" Padding="14,12" MinWidth="170">
+            <Border Classes="card" Padding="14,12" Margin="0,0,12,12">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Path Classes="icon" Width="20" Height="20" Stroke="{DynamicResource Success}" Data="{StaticResource IconDownload}" VerticalAlignment="Center"/>
                     <StackPanel VerticalAlignment="Center" Spacing="1">
@@ -183,7 +184,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <Border Classes="card" Padding="14,12" MinWidth="170">
+            <Border Classes="card" Padding="14,12" Margin="0,0,12,12">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Path Classes="icon" Width="20" Height="20" Stroke="{DynamicResource Warn}" Data="{StaticResource IconDatabase}" VerticalAlignment="Center"/>
                     <StackPanel VerticalAlignment="Center" Spacing="1">
@@ -193,7 +194,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-        </WrapPanel>
+        </UniformGrid>
 
         <!-- Diagnosis (KON-150): shown on every tab, because "why is it not running" is the question
              you arrive with. Absent unless the rules recognised the case — no "unknown" state. -->
