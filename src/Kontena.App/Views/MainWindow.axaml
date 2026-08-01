@@ -598,7 +598,7 @@
                             <Button Classes="ghost" Command="{Binding OpenDetailAsPageCommand}"
                                     ToolTip.Tip="Open as full page" Padding="7">
                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
-                                      Data="{StaticResource IconWindowMaximize}"/>
+                                      Data="{StaticResource IconExpand}"/>
                             </Button>
                             <Button Classes="ghost" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close (Esc)"
                                     Padding="7">
