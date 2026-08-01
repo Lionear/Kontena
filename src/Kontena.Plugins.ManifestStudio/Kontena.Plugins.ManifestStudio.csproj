@@ -27,4 +27,9 @@
     <InternalsVisibleTo Include="Kontena.Plugins.ManifestStudio.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- KON-289's offline schema fallback — see Resources/Schemas/README.md for source and licence. -->
+    <EmbeddedResource Include="Resources/Schemas/**/*.json" />
+  </ItemGroup>
+
 </Project>
