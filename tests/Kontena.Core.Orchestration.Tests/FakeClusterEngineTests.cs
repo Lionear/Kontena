@@ -293,13 +293,24 @@ public class FakeClusterEngineTests
     }
 
     [Fact]
-    public async Task Watch_yields_seeded_pods_then_completes()
+    public async Task Watch_yields_the_seeded_pods_then_stays_open()
     {
         var cluster = NewCluster();
+        using var cts = new CancellationTokenSource();
+        var expected = (await cluster.ListPodsAsync("app")).Count;
         var events = new List<ResourceEvent>();
-        await foreach (var e in cluster.WatchAsync(GroupVersionKind.Pod, "app"))
+
+        await foreach (var e in cluster.WatchAsync(GroupVersionKind.Pod, "app", cts.Token))
+        {
             events.Add(e);
 
+            // The stream does not end on its own any more (KON-308): a real watch stays open past its
+            // initial snapshot, and this fake now does too. Stopping is the caller's job.
+            if (events.Count == expected)
+                break;
+        }
+
+        Assert.Equal(expected, events.Count);
         Assert.NotEmpty(events);
         Assert.All(events, e => Assert.Equal(WatchEventType.Added, e.Type));
         Assert.All(events, e => Assert.Equal("Pod", e.Resource.Kind.Kind));
