@@ -70,19 +70,27 @@ internal static class AppLaunchTarget
     }
 
     /// <summary>The nearest <c>.app</c> directory at or above <paramref name="path"/>, or null.</summary>
+    /// <remarks>
+    /// Walks on <c>/</c> rather than through <see cref="Path"/>. A bundle path is a macOS path
+    /// whatever machine is looking at it, and the <see cref="Path"/> members follow the *host* — so
+    /// on Windows this rewrote <c>/Applications/Kontena.app</c> as <c>\Applications\Kontena.app</c>
+    /// and the tests asserting the rule failed on the one platform that cannot check it for real.
+    /// Testable anywhere was the point of splitting this out; that only holds if it parses the same
+    /// way anywhere.
+    /// </remarks>
     internal static string? BundleFor(string path)
     {
-        var current = path.TrimEnd(Path.DirectorySeparatorChar);
+        var current = path.TrimEnd('/');
         while (!string.IsNullOrEmpty(current))
         {
             if (current.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
                 return current;
 
-            var parent = Path.GetDirectoryName(current);
-            if (parent == current)
+            var slash = current.LastIndexOf('/');
+            if (slash <= 0)
                 break;
 
-            current = parent ?? string.Empty;
+            current = current[..slash];
         }
 
         return null;
