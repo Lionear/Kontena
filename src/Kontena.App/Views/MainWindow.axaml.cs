@@ -239,8 +239,11 @@ public partial class MainWindow : Window
         if (DataContext is not MainWindowViewModel vm)
             return;
 
-        var target = vm.DetailTarget;
-        if (target is not null && FindOpenWindowFor(target) is { } existing)
+        // Read off the detail actually in the drawer, not off a remembered domain object: the list
+        // rebuilds its records on every watch-driven reload, so the second detach of the same pod
+        // carries a different instance and reference identity would open a second window (KON-308).
+        var key = (vm.Detail as IDetachableDetail)?.DetailKey;
+        if (key is { Length: > 0 } && FindOpenWindowFor(key) is { } existing)
         {
             existing.Activate();
             vm.CloseDetailCommand.Execute(null);
@@ -249,18 +252,18 @@ public partial class MainWindow : Window
 
         var label = vm.DetailLabel;
         if (vm.DetachDetailForWindow() is { } detail)
-            new DetailWindow(detail, label, target).Show();
+            new DetailWindow(detail, label, key ?? string.Empty).Show();
     }
 
     /// <summary>
-    /// Found by the target object it was opened for rather than by a handle kept here: the drawer is
-    /// rebuilt on every visit, so a page that never detached anything still has to be able to find a
-    /// window a different visit opened (same reasoning as ClusterTerminalsView.WindowFor, KON-217).
+    /// Found by the key it was opened for rather than by a handle kept here: the drawer is rebuilt on
+    /// every visit, so a page that never detached anything still has to be able to find a window a
+    /// different visit opened (same reasoning as ClusterTerminalsView.WindowFor, KON-217).
     /// </summary>
-    private static DetailWindow? FindOpenWindowFor(object target) =>
+    private static DetailWindow? FindOpenWindowFor(string key) =>
         (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Windows
             .OfType<DetailWindow>()
-            .FirstOrDefault(w => ReferenceEquals(w.Target, target));
+            .FirstOrDefault(w => string.Equals(w.Key, key, StringComparison.Ordinal));
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {

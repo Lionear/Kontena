@@ -96,6 +96,10 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
 
     protected ResourceRef Reference { get; }
 
+    /// <summary>Kind/name(/namespace) — stable across the list reloads that hand this page a brand
+    /// new record for the same object (KON-308). Shared by all four subclasses, like IsSourceGone.</summary>
+    public string DetailKey => Reference.ToString();
+
     // Taken from the reference rather than declared abstract: it is the same fact twice, and a
     // subclass that answered differently from the reference it was constructed with would read its
     // events and manifest for one object while naming another.

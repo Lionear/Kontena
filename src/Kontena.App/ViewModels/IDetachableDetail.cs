@@ -8,4 +8,9 @@ namespace Kontena.App.ViewModels;
 public interface IDetachableDetail
 {
     bool IsSourceGone { get; }
+
+    /// <summary>A stable identity for "the same real-world object" across a rebuild — a list reload
+    /// constructs new record instances for the same pod/node/etc, so reference equality on the domain
+    /// object cannot be used to recognise "already open in a window" (KON-308).</summary>
+    string DetailKey { get; }
 }

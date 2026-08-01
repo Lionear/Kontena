@@ -12,18 +12,19 @@ namespace Kontena.App.Views;
 /// </summary>
 public partial class DetailWindow : Window
 {
-    /// <summary>The domain object this window is about — a Node, KubeNamespace, Pod, Workload,
-    /// Service, or ContainerSummary — so a caller can recognise "the same item" by reference before
-    /// opening a second window for it (KON-308).</summary>
-    public object? Target { get; }
+    /// <summary>What this window is about, as <see cref="IDetachableDetail.DetailKey"/> — a container
+    /// id, or kind/name(/namespace) — so a caller can recognise "the same item" before opening a
+    /// second window for it (KON-308). A key rather than the domain object itself: every list reload
+    /// builds new records for the same object, so reference identity would never match twice.</summary>
+    public string Key { get; } = string.Empty;
 
     public DetailWindow() => InitializeComponent();
 
-    public DetailWindow(ViewModelBase detail, string label, object? target) : this()
+    public DetailWindow(ViewModelBase detail, string label, string key) : this()
     {
         DataContext = detail;
         Title = label;
-        Target = target;
+        Key = key;
     }
 
     private void OnTitleBarPressed(object? sender, PointerPressedEventArgs e)

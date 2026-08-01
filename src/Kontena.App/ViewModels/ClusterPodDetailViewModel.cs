@@ -34,6 +34,10 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     /// FollowForGoneAsync for the same mechanism on the other five kinds.</summary>
     [ObservableProperty] private bool _isSourceGone;
 
+    /// <summary>Pod/name (ns:…) — stable across the list reloads that hand this page a brand new Pod
+    /// record for the same pod (KON-308).</summary>
+    public string DetailKey => _ref.ToString();
+
     private CancellationTokenSource? _cts;         // page lifetime (metrics, watch)
     private CancellationTokenSource? _logCts;      // per-container log stream
 

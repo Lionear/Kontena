@@ -32,6 +32,10 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     /// or removed elsewhere and noticed on a refresh from within this page.</summary>
     [ObservableProperty] private bool _isSourceGone;
 
+    /// <summary>The container id — stable across the list reloads that hand this page a brand new
+    /// ContainerSummary record for the same container (KON-308).</summary>
+    public string DetailKey => _c.Id;
+
     public ContainerDetailViewModel(
         IContainerEngine engine, ContainerSummary container, TerminalFont terminalFont)
     {
