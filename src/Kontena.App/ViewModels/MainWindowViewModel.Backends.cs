@@ -595,7 +595,7 @@ public partial class MainWindowViewModel
         stored = _store.Update(s => s.PruneClusters(known)
             .PruneBackendNames([.. known, .. s.RemoteEngines.Select(r => r.Backend), "docker", "podman"]));
 
-        _registry.Replace(BackendCatalog.Build(
+        _registry.Replace(_buildCatalog(
             BackendCatalog.ShouldIncludeDemo(includeDemo),
             stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
         BackendChips.Learn(_registry.Providers);

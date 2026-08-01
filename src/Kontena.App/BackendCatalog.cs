@@ -17,6 +17,17 @@ namespace Kontena.App;
 public static class BackendCatalog
 {
     /// <summary>
+    /// <see cref="Build"/>'s own signature — the seam a test rebuilds through instead of the real
+    /// Docker/Podman engines. A rebuild-triggering test (KON-306) only needs to reach a settings page
+    /// again, not probe a real socket to do it.
+    /// </summary>
+    public delegate List<IBackendProvider> CatalogBuilder(
+        bool includeDemo,
+        IReadOnlyList<RemoteEngine>? remotes,
+        IReadOnlyList<string>? kubeconfigPaths,
+        Func<string, bool>? showsCluster);
+
+    /// <summary>
     /// Whether demo backends may be offered at all. They exist for development and screenshots and
     /// are never shipped to users: available in a debug build, or opted into from a release build
     /// for demos (<c>KONTENA_FAKE_ENGINE=1</c>).
