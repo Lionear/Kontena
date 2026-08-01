@@ -89,7 +89,7 @@ public sealed class ClusterDetailSourceGoneTests
     [Theory]
     [MemberData(nameof(Kinds))]
     public void Disposing_stops_the_watch(
-        string kind, Func<FakeClusterEngine, IDisposable> build, Func<IDisposable, bool> isGone, ResourceRef reference)
+        string _1, Func<FakeClusterEngine, IDisposable> build, Func<IDisposable, bool> _2, ResourceRef _3)
     {
         // Cluster detail pages are rebuilt on every visit — a watch outliving the page would be a
         // stream nobody reads, held open for the life of the app (same rule as ClusterListPageViewModel).
