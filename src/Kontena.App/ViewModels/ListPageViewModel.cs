@@ -30,9 +30,15 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     [ObservableProperty] private bool _hasLoaded;
 
     /// <summary>
-    /// Set for the duration of a fetch (KON-319). A large cluster's list can take a real, visible
-    /// while to come back — without this the page looks frozen rather than working, and "did it hang"
-    /// is a worse question than a spinner answers for free.
+    /// Set for the duration of the first fetch (KON-319). A large cluster's list can take a real,
+    /// visible while to come back — without this the page looks frozen rather than working, and "did
+    /// it hang" is a worse question than a spinner answers for free.
+    /// <para>
+    /// Only the first fetch, not every one: a live cluster page reloads itself on every settled watch
+    /// event (<see cref="ClusterListPageViewModel{TRow}"/>), which on an active cluster can be every
+    /// few seconds. A spinner on each of those is not "loading", it is noise — the exact flicker
+    /// <see cref="ListSync"/> exists to avoid on the rows themselves.
+    /// </para>
     /// </summary>
     [ObservableProperty] private bool _isLoading;
 
@@ -42,7 +48,10 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 
     public async Task LoadAsync()
     {
-        IsLoading = true;
+        var isFirstLoad = !HasLoaded;
+        if (isFirstLoad)
+            IsLoading = true;
+
         try
         {
             var rows = await LoadRowsAsync();
@@ -57,7 +66,8 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
         }
         finally
         {
-            IsLoading = false;
+            if (isFirstLoad)
+                IsLoading = false;
         }
     }
 

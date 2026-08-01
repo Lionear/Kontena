@@ -9,7 +9,7 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="Nodes" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2" Margin="0,-8,0,0"/>
+            <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
             <!-- Never silent about not being live: a list that has quietly stopped moving looks
                  exactly like a cluster where nothing is happening, and those want opposite
                  reactions (KON-250). -->
