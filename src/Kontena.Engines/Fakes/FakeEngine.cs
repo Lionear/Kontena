@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk;
@@ -19,6 +20,14 @@ public sealed class FakeEngine : IContainerEngine
     private int _idSeed = 1000;
     private readonly string _backend;
     private readonly string _displayName;
+
+    // ponytail: one shared channel, so two simultaneous StreamEventsAsync readers on one engine would
+    // split pushed events between them (a Channel<T> is a queue, not pub/sub). No test needs that yet.
+    private readonly Channel<EngineEvent> _events = Channel.CreateUnbounded<EngineEvent>();
+
+    /// <summary>Test hook (KON-308): push one more event into any event stream already open, after
+    /// its initial snapshot — the container-side twin of FakeClusterEngine.EmitWatchEvent.</summary>
+    public void EmitEvent(EngineEvent ev) => _events.Writer.TryWrite(ev);
 
     public FakeEngine(bool seed = true, string backend = "fake", string displayName = "Fake engine")
     {
@@ -505,8 +514,11 @@ public sealed class FakeEngine : IContainerEngine
         }
 
         // Keep the stream open like a real engine would, instead of completing
-        // (which would make consumers re-subscribe in a tight loop).
-        await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+        // (which would make consumers re-subscribe in a tight loop) — reading whatever a test pushes
+        // via EmitEvent. ReadAllAsync throws OperationCanceledException on ct, which is the same
+        // "open until you stop listening" behaviour the infinite delay had.
+        await foreach (var ev in _events.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            yield return ev;
     }
 
     public async IAsyncEnumerable<ComposeProgress> ComposeUpAsync(

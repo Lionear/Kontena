@@ -359,6 +359,49 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
 
         if (SupportsStats && IsRunning)
             _ = StreamStatsAsync(_cts.Token);
+
+        if (_engine.Capabilities.SupportsEvents)
+            _ = FollowForGoneAsync(_cts.Token);
+    }
+
+    /// <summary>
+    /// The container-side counterpart of ClusterObjectDetailViewModel.FollowForGoneAsync (KON-308).
+    /// Without it this page only learns about a removal it performed itself, so a container killed
+    /// from a terminal, another window or plain <c>docker rm</c> left a detached window silently
+    /// stale — the exact failure the detached window exists to avoid.
+    /// </summary>
+    private async Task FollowForGoneAsync(CancellationToken ct)
+    {
+        // A stream that ends cleanly is re-subscribed rather than read as "gone" the way the cluster
+        // side reads it: this is the engine-wide event stream ActivityLog and the container list
+        // already share, and both treat an end as reconnectable — an engine restart is not a removal.
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await foreach (var ev in _engine.StreamEventsAsync(ct))
+                {
+                    if (ev is { Type: EngineEventType.Removed, ResourceKind: ResourceKind.Container }
+                        && string.Equals(ev.ResourceId, _c.Id, StringComparison.Ordinal))
+                    {
+                        IsSourceGone = true;
+                        return;
+                    }
+                }
+
+                await Task.Delay(1000, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return; // page closed
+            }
+            catch
+            {
+                // Engine hiccup (e.g. restart) — back off, then try to re-subscribe.
+                try { await Task.Delay(2000, ct); }
+                catch (OperationCanceledException) { return; }
+            }
+        }
     }
 
     private async Task StreamLogsAsync(CancellationToken ct)
