@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Kontena.App.Controls.SortableHeader"
+             x:Name="Root">
+    <Button Classes="link" Command="{Binding SortCommand, ElementName=Root}" CommandParameter="{Binding Key, ElementName=Root}">
+        <StackPanel Orientation="Horizontal" Spacing="3">
+            <TextBlock Classes="colhead" Text="{Binding Text, ElementName=Root}"/>
+            <TextBlock Classes="colhead" Text="{Binding Arrow, ElementName=Root}" FontFamily="{StaticResource Mono}"/>
+        </StackPanel>
+    </Button>
+</UserControl>

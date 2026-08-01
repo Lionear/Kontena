@@ -85,8 +85,10 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     }
 
     /// <summary>Stop following. Cluster pages are rebuilt on every visit, so a watch that outlived its
-    /// page would be a stream nobody reads holding a connection open for the life of the app.</summary>
-    public void Dispose()
+    /// page would be a stream nobody reads holding a connection open for the life of the app.
+    /// Virtual so <see cref="ClusterServiceDetailViewModel"/> can drop its own subscription first
+    /// (KON-321).</summary>
+    public virtual void Dispose()
     {
         _watch?.Cancel();
         _watch?.Dispose();
@@ -350,19 +352,27 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
 {
     private readonly Service _service;
     private readonly Action<Service>? _onForward;
+    private readonly PortForwardRegistry? _portForwards;
 
     public ClusterServiceDetailViewModel(
         IClusterEngine cluster, Service service,
-        Action<Pod>? onOpenPod = null, Action<Service>? onForward = null)
+        Action<Pod>? onOpenPod = null, Action<Service>? onForward = null,
+        PortForwardRegistry? portForwards = null)
         : base(cluster, new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name), onOpenPod)
     {
         _service = service;
         _onForward = onForward;
+        _portForwards = portForwards;
 
         foreach (var p in service.Ports)
         {
             Ports.Add(new ServicePortRow(p));
         }
+
+        // KON-321: same reasoning as the pod-detail page — the place a forward was started from is
+        // where someone looks to stop it, not only the global Port forwards page.
+        if (_portForwards is not null)
+            _portForwards.Changed += OnPortForwardsChanged;
 
         _ = LoadPodsAsync();
     }
@@ -377,9 +387,37 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
     public ObservableCollection<ServicePortRow> Ports { get; } = [];
     public bool HasPorts => Ports.Count > 0;
 
-    public bool CanForward => _onForward is not null;
+    public bool CanForward => _onForward is not null && ActiveForward is null;
 
     [RelayCommand] private void Forward() => _onForward?.Invoke(_service);
+
+    /// <summary>The forward this page started, if it is still running (KON-321).</summary>
+    public ActivePortForward? ActiveForward =>
+        _portForwards?.Forwards.FirstOrDefault(f => f.Target == Reference && f.IsActive);
+
+    public bool CanStopForward => ActiveForward is not null;
+
+    [RelayCommand]
+    private async Task StopForward()
+    {
+        if (ActiveForward is { } forward && _portForwards is not null)
+            await _portForwards.StopAsync(forward);
+    }
+
+    private void OnPortForwardsChanged()
+    {
+        OnPropertyChanged(nameof(ActiveForward));
+        OnPropertyChanged(nameof(CanStopForward));
+        OnPropertyChanged(nameof(CanForward));
+    }
+
+    public override void Dispose()
+    {
+        if (_portForwards is not null)
+            _portForwards.Changed -= OnPortForwardsChanged;
+
+        base.Dispose();
+    }
 
     public override string PodsTabLabel => "Endpoints";
 

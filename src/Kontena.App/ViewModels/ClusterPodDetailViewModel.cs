@@ -27,6 +27,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private readonly IClusterEngine _cluster;
     private readonly Pod _pod;
     private readonly Action<Pod>? _onForward;
+    private readonly PortForwardRegistry? _portForwards;
     private readonly ResourceRef _ref;
     private readonly List<LogLineViewModel> _all = [];
 
@@ -42,16 +43,24 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private CancellationTokenSource? _logCts;      // per-container log stream
 
     public ClusterPodDetailViewModel(
-        IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null)
+        IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null,
+        PortForwardRegistry? portForwards = null)
     {
         _cluster = cluster;
         _pod = pod;
         _onForward = onForward;
+        _portForwards = portForwards;
         _ref = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
 
         SupportsExec = cluster.Capabilities.Exec;
         SupportsMetrics = cluster.Capabilities.Metrics;
         SupportsPortForward = cluster.Capabilities.PortForward;
+
+        // KON-321: the modal that starts a forward is not the only place someone looks to stop one —
+        // the page they started it from is where they go first, and until now it had no idea a forward
+        // for this pod even existed.
+        if (_portForwards is not null)
+            _portForwards.Changed += OnPortForwardsChanged;
 
         TerminalFontFamily = $"{terminalFont.Family}, monospace";
         TerminalFontSize = terminalFont.Size;
@@ -570,14 +579,39 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
             Tty = true,
         }, ct);
 
-    /// <summary>Whether a port-forward can be started (a running pod on a cluster that supports it).</summary>
-    public bool CanPortForward => _onForward is not null && SupportsPortForward && IsRunning;
+    /// <summary>Whether a port-forward can be started (a running pod on a cluster that supports it).
+    /// False while one is already active — starting a second one for the same pod is what
+    /// <see cref="StopForward"/> is for.</summary>
+    public bool CanPortForward => _onForward is not null && SupportsPortForward && IsRunning && ActiveForward is null;
 
     [RelayCommand]
     private void PortForward() => _onForward?.Invoke(_pod);
 
+    /// <summary>The forward this page started, if it is still running (KON-321).</summary>
+    public ActivePortForward? ActiveForward =>
+        _portForwards?.Forwards.FirstOrDefault(f => f.Target == _ref && f.IsActive);
+
+    public bool CanStopForward => ActiveForward is not null;
+
+    [RelayCommand]
+    private async Task StopForward()
+    {
+        if (ActiveForward is { } forward && _portForwards is not null)
+            await _portForwards.StopAsync(forward);
+    }
+
+    private void OnPortForwardsChanged()
+    {
+        OnPropertyChanged(nameof(ActiveForward));
+        OnPropertyChanged(nameof(CanStopForward));
+        OnPropertyChanged(nameof(CanPortForward));
+    }
+
     public void Dispose()
     {
+        if (_portForwards is not null)
+            _portForwards.Changed -= OnPortForwardsChanged;
+
         _logCts?.Cancel();
         _logCts?.Dispose();
         _cts?.Cancel();

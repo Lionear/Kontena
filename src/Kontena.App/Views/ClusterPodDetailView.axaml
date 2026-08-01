@@ -44,6 +44,8 @@
                   <!-- Actions -->
                   <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <Button Classes="pill" Command="{Binding PortForwardCommand}" IsVisible="{Binding CanPortForward}">Port forward</Button>
+                    <Button Classes="pill" Command="{Binding StopForwardCommand}" IsVisible="{Binding CanStopForward}"
+                            ToolTip.Tip="{Binding ActiveForward.Address}">Stop forward</Button>
                     <ComboBox ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer, Mode=TwoWay}"
                               MinWidth="150" VerticalAlignment="Center"/>
                   </StackPanel>

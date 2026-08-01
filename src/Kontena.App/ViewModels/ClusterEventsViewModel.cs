@@ -72,6 +72,16 @@ public partial class ClusterEventsViewModel : ListPageViewModel<ClusterEventRow>
         Contains(row.Reason, term) || Contains(row.Message, term)
         || Contains(row.ObjectName, term) || Contains(row.Source, term);
 
+    protected override IReadOnlyDictionary<string, Func<ClusterEventRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<ClusterEventRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["TYPE"] = r => r.Severity,
+            ["REASON"] = r => r.Reason,
+            ["OBJECT"] = r => r.ObjectName,
+            ["COUNT"] = r => r.CountRaw,
+            ["LAST SEEN"] = r => r.LastSeenAt,
+        };
+
     protected override void OnFiltered()
     {
         OnPropertyChanged(nameof(WarningCount));
@@ -156,6 +166,7 @@ public sealed partial class ClusterEventRow
         // count that tells a crash loop from a single bad start.
         CountText = e.Count > 1 ? $"×{e.Count}" : string.Empty;
         IsRepeating = e.Count > 1;
+        CountRaw = e.Count;
 
         LastSeenAt = e.LastSeen;
         LastSeen = Format.Age(e.LastSeen);
@@ -178,6 +189,10 @@ public sealed partial class ClusterEventRow
     public string? ObjectTooltip { get; }
     public string CountText { get; }
     public bool IsRepeating { get; }
+
+    /// <summary>What a column sort orders COUNT by — <see cref="CountText"/> is blank below 2.</summary>
+    public int CountRaw { get; }
+
     public string LastSeen { get; }
 
     /// <summary>The timestamp behind <see cref="LastSeen"/> — what the feed is ordered by.</summary>
