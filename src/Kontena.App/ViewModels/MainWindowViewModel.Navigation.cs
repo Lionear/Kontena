@@ -370,10 +370,7 @@ public partial class MainWindowViewModel
 
         var font = CurrentTerminalFont();
 
-        // The view model has to be able to name itself when it asks to be dismissed — a removed
-        // container must take its detail with it whether that detail is in the drawer or on the page.
-        ContainerDetailViewModel? detail = null;
-        detail = new ContainerDetailViewModel(_engine, summary, () => DismissDetail(detail), font)
+        var detail = new ContainerDetailViewModel(_engine, summary, font)
         {
             RequestConfirm = ShowConfirm,
         };

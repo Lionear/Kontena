@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -42,6 +43,16 @@ public partial class MainWindowViewModel
     private const double MinDetailWidth = 460;
     private const double MaxDetailWidth = 1200;
 
+    /// <summary>The label the drawer's detail would carry onto the full page or a window (KON-308).</summary>
+    public string DetailLabel => _detailLabel;
+
+    /// <summary>
+    /// The object behind the drawer's detail — reference identity, not the view model instance, so a
+    /// caller can recognise "the same item" even across a rebuild (KON-308: detaching the same row
+    /// twice should focus one window, not open a second).
+    /// </summary>
+    public object? DetailTarget => _detailTarget;
+
     partial void OnDetailChanged(ViewModelBase? oldValue, ViewModelBase? newValue)
     {
         // The drawer owns what it shows unless it is handing it over. Opening a second detail without
@@ -73,7 +84,24 @@ public partial class MainWindowViewModel
     {
         _detailLabel = label;
         _detailTarget = target;
+
+        if (detail is IDetachableDetail)
+            detail.PropertyChanged += OnDetailSourceGone;
+
         Detail = detail;
+    }
+
+    /// <summary>
+    /// Reacts to any detail's <see cref="IDetachableDetail.IsSourceGone"/> going true, wherever it is
+    /// currently shown — <see cref="DismissDetail"/> already checks both the drawer and the full page.
+    /// Stays subscribed across a hand-over to the full page (<see cref="OpenDetailAsPage"/>), which is
+    /// still this shell's responsibility to close. <see cref="DetachDetailForWindow"/> is the one hand-
+    /// over that unsubscribes, because a window wants a banner instead of a close.
+    /// </summary>
+    private void OnDetailSourceGone(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IDetachableDetail.IsSourceGone) && sender is IDetachableDetail { IsSourceGone: true })
+            DismissDetail(sender);
     }
 
     /// <summary>Close the drawer and dispose what it held. The scrim, the ✕ and Escape all land here.</summary>
@@ -164,5 +192,21 @@ public partial class MainWindowViewModel
             return;
 
         _store.Update(s => s with { DetailDrawerWidth = width });
+    }
+
+    /// <summary>
+    /// Take the drawer's detail for a window of its own (KON-308). Unlike <see cref="OpenDetailAsPage"/>,
+    /// this shell stops reacting to <see cref="IDetachableDetail.IsSourceGone"/> for it — from here on,
+    /// the window decides what "gone" looks like.
+    /// </summary>
+    public ViewModelBase? DetachDetailForWindow()
+    {
+        if (TakeDetail() is not { } detail)
+            return null;
+
+        if (detail is IDetachableDetail)
+            detail.PropertyChanged -= OnDetailSourceGone;
+
+        return detail;
     }
 }

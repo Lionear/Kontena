@@ -18,27 +18,25 @@ namespace Kontena.App.ViewModels;
 /// (Terminal and Inspect are placeholders pending KON-35 / KON-36). Streams logs
 /// and stats from the active engine over the CEAL for as long as it is on screen.
 /// </summary>
-public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITerminalHost
+public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITerminalHost, IDetachableDetail
 {
     private const int MaxLogLines = 2000;
 
     private readonly IContainerEngine _engine;
-    /// <summary>
-    /// How this page leaves when the container it shows is gone — removed here, or removed elsewhere
-    /// and noticed on a refresh. Not a Back button: Back belongs to the shell's history now (KON-173).
-    /// </summary>
-    private readonly Action _onBack;
     private ContainerSummary _c;
     private CancellationTokenSource? _cts;
 
     private readonly List<LogLineViewModel> _all = [];
 
+    /// <summary>Whether the container this page describes is known to be gone (KON-308) — removed here,
+    /// or removed elsewhere and noticed on a refresh from within this page.</summary>
+    [ObservableProperty] private bool _isSourceGone;
+
     public ContainerDetailViewModel(
-        IContainerEngine engine, ContainerSummary container, Action onBack, TerminalFont terminalFont)
+        IContainerEngine engine, ContainerSummary container, TerminalFont terminalFont)
     {
         _engine = engine;
         _c = container;
-        _onBack = onBack;
 
         SupportsStats = engine.Capabilities.SupportsStats;
         SupportsExec = engine.Capabilities.SupportsExec;
@@ -431,7 +429,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     private async Task RemoveAsync()
     {
         await _engine.RemoveContainerAsync(_c.Id, force: true);
-        _onBack();
+        IsSourceGone = true;
     }
 
     [RelayCommand]
@@ -461,8 +459,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
         var fresh = list.FirstOrDefault(c => c.Id == _c.Id);
         if (fresh is null)
         {
-            // Container vanished (e.g. removed elsewhere) — leave the detail page.
-            _onBack();
+            // Container vanished (e.g. removed elsewhere) — say so; the host decides what that means.
+            IsSourceGone = true;
             return;
         }
 
