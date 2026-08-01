@@ -67,6 +67,19 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// The raw OpenAPI v3 schema document for one API group+version, straight from the API server
+    /// (<c>/openapi/v3/api/{version}</c> for the core group — pass <see cref="string.Empty"/> — or
+    /// <c>/openapi/v3/apis/{group}/{version}</c> otherwise). Null when the cluster serves no such
+    /// group/version.
+    /// <para>
+    /// Null is a distinct, honest answer, not an error: a schema-index built on this (Manifest Studio,
+    /// KON-288) treats "this cluster does not serve it" as unverifiable rather than wrong, the same way
+    /// an unresolved kind gets a <c>?</c> instead of a red squiggle.
+    /// </para>
+    /// </summary>
+    ValueTask<string?> GetOpenApiSchemaAsync(string group, string version, CancellationToken ct = default);
+
+    /// <summary>
     /// List one kind as the server renders it: the columns are its, not ours.
     /// <para>
     /// The counterpart to the typed listers above, and the reason a kind nobody modelled can still be

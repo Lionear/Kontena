@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Kontena.Plugins.ManifestStudio.Views.PlanApplyView"
+             x:CompileBindings="False">
+  <!-- x:CompileBindings off: the root DataContext is PlanApplyViewModel, but the Plan/Apply buttons'
+       CommandParameter reaches past it to this control's own Document property ($parent) — same
+       mixed-context reason as WorkspaceView. -->
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <Button Content="Plan" Command="{Binding PlanCommand}"
+              CommandParameter="{Binding $parent[UserControl].Document}" />
+      <Button Content="Apply" Command="{Binding ApplyCommand}"
+              CommandParameter="{Binding $parent[UserControl].Document}" />
+      <TextBlock Text="Running…" IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
+    </StackPanel>
+
+    <TextBlock DockPanel.Dock="Top" Text="{Binding Error}" Foreground="Crimson" Margin="0,0,0,8" />
+
+    <ListBox ItemsSource="{Binding Results}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Margin="0,4">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="{Binding Action}" FontWeight="Bold" />
+              <TextBlock Text="{Binding Resource.Kind.Kind}" />
+              <TextBlock Text="{Binding Resource.Namespace}" />
+              <TextBlock Text="{Binding Resource.Name}" />
+            </StackPanel>
+            <TextBlock Text="{Binding Diff}" FontFamily="Cascadia Code,Consolas,Menlo,monospace" />
+            <TextBlock Text="{Binding Error}" Foreground="Crimson" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

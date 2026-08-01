@@ -271,6 +271,30 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         new(_resources.DiscoverAllAsync(ct));
 
     /// <inheritdoc/>
+    public async ValueTask<string?> GetOpenApiSchemaAsync(
+        string group, string version, CancellationToken ct = default)
+    {
+        using var response = await _client.HttpClient
+            .GetAsync(OpenApiRequestUri(_client.BaseUri, group, version), ct)
+            .ConfigureAwait(false);
+
+        return response.IsSuccessStatusCode
+            ? await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false)
+            : null;
+    }
+
+    /// <summary>Same core/named-group split, and the same trailing-slash care, as <see cref="ResourceTables.RequestUri"/>.</summary>
+    internal static Uri OpenApiRequestUri(Uri baseUri, string group, string version)
+    {
+        var path = string.IsNullOrEmpty(group) ? $"openapi/v3/api/{version}" : $"openapi/v3/apis/{group}/{version}";
+
+        // A base address without its trailing slash would swallow its last segment when combined.
+        var rootUri = baseUri.AbsoluteUri.EndsWith('/') ? baseUri : new Uri(baseUri.AbsoluteUri + "/");
+
+        return new Uri(rootUri, path);
+    }
+
+    /// <inheritdoc/>
     public async ValueTask<ResourceTable> ListTableAsync(
         GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
     {
