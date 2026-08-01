@@ -75,7 +75,10 @@
                     </StackPanel>
                     <StackPanel Spacing="2">
                         <TextBlock Text="CONTROLLED BY" Classes="colhead"/>
-                        <TextBlock Text="{Binding ControlledBy}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                        <Button Classes="link" Command="{Binding OpenControllerCommand}" IsVisible="{Binding CanOpenController}">
+                            <TextBlock Text="{Binding ControlledBy}" FontFamily="{StaticResource Mono}" FontSize="12.5"/>
+                        </Button>
+                        <TextBlock Text="{Binding ControlledBy}" IsVisible="{Binding !CanOpenController}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
                     <StackPanel Spacing="2">
                         <TextBlock Text="AGE" Classes="colhead"/>

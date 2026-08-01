@@ -28,6 +28,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private readonly Pod _pod;
     private readonly Action<Pod>? _onForward;
     private readonly PortForwardRegistry? _portForwards;
+    private readonly Func<ResourceRef, Task<bool>>? _onOpenController;
     private readonly ResourceRef _ref;
     private readonly List<LogLineViewModel> _all = [];
 
@@ -44,12 +45,13 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     public ClusterPodDetailViewModel(
         IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null,
-        PortForwardRegistry? portForwards = null)
+        PortForwardRegistry? portForwards = null, Func<ResourceRef, Task<bool>>? onOpenController = null)
     {
         _cluster = cluster;
         _pod = pod;
         _onForward = onForward;
         _portForwards = portForwards;
+        _onOpenController = onOpenController;
         _ref = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
 
         SupportsExec = cluster.Capabilities.Exec;
@@ -106,6 +108,24 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     public string RestartsText => _pod.Restarts.ToString(CultureInfo.InvariantCulture);
     public string QosText => _pod.Qos.ToString();
     public string ControlledBy => string.IsNullOrEmpty(_pod.ControlledBy) ? "—" : _pod.ControlledBy;
+
+    /// <summary>The owner as a ref, when its kind is one of the pages that exist to open (KON-322).
+    /// <see cref="Pod.ControlledBy"/> is a plain "Kind/name" string — the adapter already rolls a
+    /// ReplicaSet up to its Deployment, so every kind that reaches here is a workload kind.</summary>
+    private ResourceRef? ControllerRef =>
+        _pod.ControlledBy.Split('/', 2) is [var kind, var name] && name.Length > 0
+        && Enum.TryParse<WorkloadKind>(kind, out var workloadKind)
+            ? new ResourceRef(GroupVersionKind.For(workloadKind), _pod.Namespace, name)
+            : null;
+
+    public bool CanOpenController => _onOpenController is not null && ControllerRef is not null;
+
+    [RelayCommand]
+    private async Task OpenController()
+    {
+        if (ControllerRef is { } target && _onOpenController is not null)
+            await _onOpenController(target);
+    }
     public string AgeText => Format.Duration(_pod.Age);
     /// <summary>Reports the init phase while it runs — "Init:1/2" says what "Pending" cannot.</summary>
     public string PhaseText => _pod.StatusText;

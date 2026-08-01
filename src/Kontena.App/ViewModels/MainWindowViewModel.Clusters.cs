@@ -45,10 +45,16 @@ public partial class MainWindowViewModel
             "Restart",
             onConfirm: async () =>
             {
-                var reference = new ResourceRef(new GroupVersionKind("apps", "v1", workload.Kind.ToString()), workload.Namespace, workload.Name);
-                await _cluster.RolloutRestartAsync(reference);
+                await _cluster.RolloutRestartAsync(workload.Reference);
                 CloseDialog();
-                ReloadCurrentClusterPage();
+
+                // A restart changes the workload's pods, not its identity — if this is the drawer the
+                // user just clicked Restart from, refresh its pods tab in place rather than closing it
+                // out from under them via the blanket page rebuild (KON-323).
+                if (Detail is ClusterWorkloadDetailViewModel detail && detail.DetailKey == workload.Reference.ToString())
+                    _ = detail.RefreshPodsAsync();
+                else
+                    ReloadCurrentClusterPage();
             },
             onClose: CloseDialog);
     }
@@ -399,7 +405,8 @@ public partial class MainWindowViewModel
             return;
 
         ShowDetail(
-            new ClusterPodDetailViewModel(_cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards),
+            new ClusterPodDetailViewModel(
+                _cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards, OpenEventObjectAsync),
             $"pod {pod.Name}", pod);
     }
 

@@ -163,6 +163,13 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     /// <summary>Ready pods out of matched pods — the distinction between "none" and "none working".</summary>
     [ObservableProperty] private string _podsSummary = string.Empty;
 
+    /// <summary>
+    /// Refresh the pods tab in place (KON-323): a restart or a scale changes what is running under
+    /// this object, not the object's own identity, so there is nothing to gain from closing the
+    /// drawer and rebuilding it just to show the new pods arrive.
+    /// </summary>
+    public Task RefreshPodsAsync() => LoadPodsAsync();
+
     protected async Task LoadPodsAsync()
     {
         PodsLoading = true;
