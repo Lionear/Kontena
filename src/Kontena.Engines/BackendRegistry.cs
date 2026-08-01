@@ -31,12 +31,52 @@ public sealed class BackendRegistry
         _providers.AddRange(providers);
     }
 
+    /// <summary>
+    /// How long a single provider gets to answer before it counts as unreachable.
+    /// <para>
+    /// A probe round sits between the user and their Settings page, and the round costs whatever its
+    /// slowest provider costs. The catalog always offers Docker and Podman, installed or not, and an
+    /// engine that is not there is exactly the slow case: a missing unix socket fails at once with
+    /// ENOENT, but connecting to a Windows named pipe that does not exist takes seconds to give up
+    /// (KON-317, found via KON-306). An engine that is actually running answers in milliseconds, so
+    /// this only ever truncates a wait whose answer was going to be "no" anyway.
+    /// </para>
+    /// </summary>
+    public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
+
     /// <summary>Probe every provider concurrently.</summary>
     public async Task<IReadOnlyList<BackendProbe>> ProbeAllAsync(CancellationToken ct = default)
         => await Task.WhenAll(_providers.Select(p => ProbeAsync(p, ct))).ConfigureAwait(false);
 
     /// <summary>Create the provider's engine, ping it, and report whether it answered.</summary>
-    public static async Task<BackendProbe> ProbeAsync(IBackendProvider provider, CancellationToken ct = default)
+    public static Task<BackendProbe> ProbeAsync(IBackendProvider provider, CancellationToken ct = default)
+        => ProbeAsync(provider, ProbeTimeout, ct);
+
+    /// <summary>
+    /// As above, with the deadline spelled out — tests need one they do not have to wait for.
+    /// </summary>
+    public static async Task<BackendProbe> ProbeAsync(
+        IBackendProvider provider, TimeSpan timeout, CancellationToken ct = default)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(timeout);
+
+        var probe = ConnectAsync(provider, deadline.Token);
+
+        // Race the deadline rather than only cancelling on it. Cancellation is cooperative, and the
+        // connect this exists for is the one least likely to cooperate: whether a named pipe honours
+        // the token on the way down is the client library's business, and if it does not, awaiting
+        // the probe would hand the whole round back to the timeout we are trying to escape.
+        var done = await Task.WhenAny(probe, Task.Delay(timeout, CancellationToken.None)).ConfigureAwait(false);
+
+        // The loser keeps running: it owns its backend and disposes it in the finally below. Nothing
+        // reads its result, and it cannot fault unobserved — ConnectAsync catches everything.
+        return done == probe
+            ? await probe.ConfigureAwait(false)
+            : new BackendProbe(provider, false, "Not connected");
+    }
+
+    private static async Task<BackendProbe> ConnectAsync(IBackendProvider provider, CancellationToken ct)
     {
         IBackend? backend = null;
         try
