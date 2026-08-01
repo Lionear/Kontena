@@ -399,7 +399,7 @@ public partial class MainWindowViewModel
             return;
 
         ShowDetail(
-            new ClusterPodDetailViewModel(_cluster, pod, CurrentTerminalFont(), ShowPodPortForward),
+            new ClusterPodDetailViewModel(_cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards),
             $"pod {pod.Name}", pod);
     }
 
@@ -429,7 +429,8 @@ public partial class MainWindowViewModel
         ShowDetail(new ClusterServiceDetailViewModel(
             _cluster, service,
             onOpenPod: ShowPodDetail,
-            onForward: ShowServicePortForward),
+            onForward: ShowServicePortForward,
+            portForwards: _portForwards),
             $"service {service.Name}", service);
     }
 
