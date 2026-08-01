@@ -28,6 +28,17 @@ public partial class MainWindowViewModel
     private string _detailLabel = string.Empty;
     private object? _detailTarget;
 
+    /// <summary>A detail buried under a later one opened from inside it (KON-324) — a Deployment's
+    /// drawer holding a Pod opened from its related-pods list, for instance.</summary>
+    private sealed record DetailStep(ViewModelBase Detail, string Label, object? Target);
+
+    /// <summary>
+    /// Detail-to-detail navigation within the drawer, oldest first. Separate from <see cref="_history"/>
+    /// on purpose — that stack is page navigation and deliberately does not know the drawer exists (see
+    /// <see cref="ShowDetail"/>); this one only knows the drawer.
+    /// </summary>
+    private readonly List<DetailStep> _detailStack = [];
+
     /// <summary>The detail showing in the drawer, or null when it is closed.</summary>
     [ObservableProperty] private ViewModelBase? _detail;
 
@@ -82,13 +93,36 @@ public partial class MainWindowViewModel
     /// <param name="target">The object shown, so the step can be dropped when it is deleted.</param>
     private void ShowDetail(ViewModelBase detail, string label, object? target = null)
     {
+        // Opening a second detail from inside the first — a Pod clicked from a Deployment's
+        // related-pods list — buries the first rather than disposing it (KON-324), so closing back
+        // out returns to the Deployment instead of falling through to whatever page was open before
+        // Deployments existed on the drawer's radar at all.
+        if (Detail is { } current)
+            _detailStack.Add(new DetailStep(current, _detailLabel, _detailTarget));
+
         _detailLabel = label;
         _detailTarget = target;
 
         if (detail is IDetachableDetail)
             detail.PropertyChanged += OnDetailSourceGone;
 
-        Detail = detail;
+        SetDetail(detail);
+        NotifyHistoryChanged();
+    }
+
+    /// <summary>Assign <see cref="Detail"/> without disposing whatever it held — used whenever the old
+    /// value is being kept somewhere (the buried stack, a full page, a window) rather than discarded.</summary>
+    private void SetDetail(ViewModelBase? detail)
+    {
+        _handingOverDetail = true;
+        try
+        {
+            Detail = detail;
+        }
+        finally
+        {
+            _handingOverDetail = false;
+        }
     }
 
     /// <summary>
@@ -104,9 +138,33 @@ public partial class MainWindowViewModel
             DismissDetail(sender);
     }
 
-    /// <summary>Close the drawer and dispose what it held. The scrim, the ✕ and Escape all land here.</summary>
+    /// <summary>
+    /// Close the top of the drawer. The scrim, the ✕ and Escape all land here. With something buried
+    /// underneath (KON-324) this uncovers it instead of closing the whole drawer — the same one-layer-
+    /// at-a-time feel as Escape already has with a confirmation over the drawer.
+    /// </summary>
     [RelayCommand]
-    private void CloseDetail() => Detail = null;
+    private void CloseDetail() => PopDetail();
+
+    /// <summary>Uncover the buried detail, if there is one; otherwise actually close the drawer.</summary>
+    private void PopDetail()
+    {
+        if (_detailStack.Count == 0)
+        {
+            Detail = null;
+            NotifyHistoryChanged();
+            return;
+        }
+
+        var previous = _detailStack[^1];
+        _detailStack.RemoveAt(_detailStack.Count - 1);
+
+        _detailLabel = previous.Label;
+        _detailTarget = previous.Target;
+
+        SetDetail(previous.Detail);
+        NotifyHistoryChanged();
+    }
 
     /// <summary>
     /// A detail asking to be got rid of, from wherever it is being shown — the container it describes
@@ -123,7 +181,7 @@ public partial class MainWindowViewModel
             return;
 
         if (ReferenceEquals(Detail, detail))
-            Detail = null;
+            PopDetail();
         else if (ReferenceEquals(CurrentPage, detail) && CanGoBack)
             GoBack();
     }
@@ -138,16 +196,15 @@ public partial class MainWindowViewModel
         if (detail is null)
             return null;
 
-        _handingOverDetail = true;
-        try
-        {
-            Detail = null;
-        }
-        finally
-        {
-            _handingOverDetail = false;
-        }
+        // Whatever is buried belongs to this drawer session (KON-324) — handing the top layer to a
+        // full page or a window ends that session, and there is nothing left for a buried layer to be
+        // uncovered back onto.
+        foreach (var step in _detailStack)
+            (step.Detail as IDisposable)?.Dispose();
+        _detailStack.Clear();
 
+        SetDetail(null);
+        NotifyHistoryChanged();
         return detail;
     }
 

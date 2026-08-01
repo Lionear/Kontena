@@ -39,9 +39,16 @@ public partial class MainWindowViewModel
     /// <summary>Deeper than this and the oldest entries fall off; nobody navigates back forty pages.</summary>
     private const int MaxHistory = 40;
 
-    public bool CanGoBack => _history.Count > 0;
+    /// <summary>
+    /// Whether Back has anywhere to go — either uncovering a buried detail (KON-324) or a page-level
+    /// step. Checked here rather than left to <see cref="GoBack"/> alone because the Back button's
+    /// enabled state and tooltip both read it.
+    /// </summary>
+    public bool CanGoBack => _detailStack.Count > 0 || _history.Count > 0;
 
-    public string BackTooltip => _history.Count > 0 ? $"Back to {_history[^1].Label}" : "Back";
+    public string BackTooltip => _detailStack.Count > 0
+        ? $"Back to {_detailStack[^1].Label}"
+        : _history.Count > 0 ? $"Back to {_history[^1].Label}" : "Back";
 
     /// <summary>
     /// Record that we have arrived somewhere and how to arrive there again. Called by each navigation
@@ -66,6 +73,15 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private void GoBack()
     {
+        // A buried detail (KON-324) goes first: the mouse/keyboard Back button used to fall straight
+        // through to page history, which on a Deployment → Pod drawer skipped past the Deployment
+        // entirely and landed wherever the user was before opening Deployments at all.
+        if (_detailStack.Count > 0)
+        {
+            PopDetail();
+            return;
+        }
+
         if (_history.Count == 0)
             return;
 
