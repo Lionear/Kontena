@@ -672,6 +672,39 @@ internal static class Program
                 Settle(rounds: 30);
                 break;
 
+            // KON-330: a Secret or ConfigMap opened as a detail, where its keys now live. The list
+            // behind it is the shot's other half — the expander that used to unfold the keys in place
+            // is gone, so the row is a link like every other cluster list.
+            case "cluster-secrets":
+            case "secret-detail":
+            case "secret-detail-used-by":
+            case "configmap-detail":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(scene == "configmap-detail" ? "configmaps" : "secrets");
+                Settle(rounds: 30);
+
+                if (scene != "cluster-secrets")
+                {
+                    // The one the ticket is about: an Opaque secret with two text values, and four
+                    // pods reading it two different ways.
+                    var wanted = scene == "configmap-detail" ? "web-config" : "postgres-credentials";
+                    if (vm.CurrentPage is Kontena.App.ViewModels.ClusterSecretsViewModel secrets)
+                        secrets.Items.FirstOrDefault(r => r.Name == wanted)?.OpenCommand.Execute(null);
+                    else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterConfigMapsViewModel maps)
+                        maps.Items.FirstOrDefault(r => r.Name == wanted)?.OpenCommand.Execute(null);
+
+                    Settle(rounds: 30);
+                }
+
+                if (scene == "secret-detail-used-by" && vm.Detail is Kontena.App.ViewModels.ClusterConfigDetailViewModel used)
+                {
+                    used.SelectTabCommand.Execute("pods");
+                    Settle(rounds: 30);
+                }
+
+                break;
+
             case "pod":
             case "pod-logs":
             case "pod-logs-tail":

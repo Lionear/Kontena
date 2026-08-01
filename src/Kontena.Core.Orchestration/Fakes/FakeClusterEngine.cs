@@ -108,13 +108,13 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
 
         _pods =
         [
-            Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8"),
-            Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8"),
-            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8"),
-            Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine"),
+            Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
+            Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
+            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
+            Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine", WebUses),
             // web is mid-rollout at 2/3, so two pods and not three — the counts and the list have to
             // tell the same story now that the detail page shows them together.
-            Pod1("web-5f2b", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine"),
+            Pod1("web-5f2b", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine", WebUses),
             new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Labels = App("redis"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
             // A pod wedged on its init container, which is the case the whole of KON-168 is about: the
             // container holding the answer is the one that used to be unreachable. Phase alone reports
@@ -130,7 +130,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
                 ],
                 Containers = [new ContainerStatus { Name = "app", Image = "ghcr.io/lionear/api:1.8", Ports = [new ContainerPort("http", 8080, "TCP")], RunState = ContainerRunState.Waiting, Reason = "PodInitializing" }],
             },
-            Pod1("postgres-0", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "StatefulSet/postgres", "postgres:16"),
+            Pod1("postgres-0", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "StatefulSet/postgres", "postgres:16",
+                [Uses(GroupVersionKind.Secret, "postgres-credentials", ConfigUseKind.Volume)]),
             // One per node, as a DaemonSet gives you — and in the monitoring namespace, so the
             // namespace picker has something to do and the DaemonSet's own detail is not empty.
             Pod1("node-exporter-a1b2", "monitoring", PodPhase.Running, 1, 0, "gke-prod-worker-1", "DaemonSet/node-exporter", "prom/node-exporter:v1.8"),
@@ -1055,8 +1056,36 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     private static Dictionary<string, string> App(string name) =>
         new(StringComparer.Ordinal) { ["app"] = name };
 
-    private static Pod Pod1(string name, string ns, PodPhase phase, int containers, int restarts, string node, string owner, string image) => new()
+    private static ConfigUse Uses(GroupVersionKind kind, string name, ConfigUseKind how, string container = "") =>
+        new() { Kind = kind, Name = name, How = how, Container = container };
+
+    /// <summary>The api pods read the database password as environment; the web pods mount their
+    /// config and their certificate. Two different <i>hows</i> on purpose — that column is the point.</summary>
+    private static IReadOnlyList<ConfigUse> ApiUses =>
+    [
+        Uses(GroupVersionKind.Secret, "postgres-credentials", ConfigUseKind.EnvironmentVariable, "c0"),
+
+        // A registry credential is used by the kubelet, not by a container, and it is the one kind of
+        // use that has no container name — the summary has to be able to say so.
+        Uses(GroupVersionKind.Secret, "ghcr-pull", ConfigUseKind.ImagePullSecret),
+    ];
+
+    private static IReadOnlyList<ConfigUse> WebUses =>
+    [
+        Uses(GroupVersionKind.ConfigMap, "web-config", ConfigUseKind.Volume),
+        Uses(GroupVersionKind.Secret, "app-tls", ConfigUseKind.Volume),
+    ];
+
+    /// <param name="uses">
+    /// The ConfigMaps and Secrets this pod reads (KON-330). Seeded because the secret detail's "Used by"
+    /// tab is only worth looking at when something is using something — an empty tab proves nothing
+    /// about whether the matching works.
+    /// </param>
+    private static Pod Pod1(
+        string name, string ns, PodPhase phase, int containers, int restarts, string node, string owner,
+        string image, IReadOnlyList<ConfigUse>? uses = null) => new()
     {
+        ConfigUses = uses ?? [],
         // Pods carry the label their owner selects on, so ownership and selector matching agree —
         // which is what makes the two detail pages tell the same story about the same pod.
         Labels = App(owner.Contains('/', StringComparison.Ordinal) ? owner.Split('/')[1] : owner),
