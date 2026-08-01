@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Kontena.App.Services;
+using Kontena.App.ViewModels;
 using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Views;
@@ -200,6 +201,14 @@ public partial class MainWindow : Window
     // click before the command executes.
     private void OnSwitcherItemClick(object? sender, RoutedEventArgs e) =>
         Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
+
+    // The drawer grows leftwards, so a drag towards the left — a negative X — widens it (KON-307).
+    // The clamp and the saving live in the view model; this only turns a gesture into a delta.
+    private void OnDetailResize(object? sender, VectorEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.ResizeDetail(-e.Vector.X);
+    }
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {

@@ -554,7 +554,7 @@
                 </Button.Styles>
             </Button>
 
-            <Border Width="540" HorizontalAlignment="Right" Background="{DynamicResource Bg}"
+            <Border Width="{Binding DetailWidth}" HorizontalAlignment="Right" Background="{DynamicResource Bg}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
                     BoxShadow="-12 0 40 0 #66000000">
                 <Grid RowDefinitions="Auto,*">
@@ -566,14 +566,42 @@
                         opens this in a window of its own joins it here in KON-308.
                     -->
                     <Border Grid.Row="0" Background="{DynamicResource Surface}" Padding="12,8,12,0">
-                        <Button Classes="ghost" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close (Esc)"
-                                HorizontalAlignment="Right" Padding="7">
-                            <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
-                                  Data="{StaticResource IconClose}"/>
-                        </Button>
+                        <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right">
+                            <!--
+                                The drawer is narrow on purpose, and a YAML tab or a wide events table
+                                wants the window. Same view model, moved — no reload, same tab.
+                            -->
+                            <Button Classes="ghost" Command="{Binding OpenDetailAsPageCommand}"
+                                    ToolTip.Tip="Open as full page" Padding="7">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                                      Data="{StaticResource IconWindowMaximize}"/>
+                            </Button>
+                            <Button Classes="ghost" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close (Esc)"
+                                    Padding="7">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                                      Data="{StaticResource IconClose}"/>
+                            </Button>
+                        </StackPanel>
                     </Border>
 
                     <ContentControl Grid.Row="1" Content="{Binding Detail}"/>
+
+                    <!--
+                        The left edge is the grip. How much of the list you want kept in view depends on
+                        the list, so the width is dragged and remembered rather than chosen once in
+                        Settings. Grid.RowSpan so the whole edge grips, not just the part beside the
+                        content.
+                    -->
+                    <Thumb Grid.Row="0" Grid.RowSpan="2" Name="DetailResizer" Width="6"
+                           HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                           Background="Transparent" Cursor="SizeWestEast"
+                           DragDelta="OnDetailResize">
+                        <Thumb.Template>
+                            <ControlTemplate>
+                                <Border Background="{TemplateBinding Background}"/>
+                            </ControlTemplate>
+                        </Thumb.Template>
+                    </Thumb>
                 </Grid>
             </Border>
         </Panel>

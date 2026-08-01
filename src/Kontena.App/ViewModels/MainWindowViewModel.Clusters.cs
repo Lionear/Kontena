@@ -102,7 +102,8 @@ public partial class MainWindowViewModel
             _cluster, node, apiServer,
             onOpenPod: ShowPodDetail,
             onCordon: (name, cordoned) => _cluster.CordonNodeAsync(name, cordoned).AsTask(),
-            onDrain: ShowDrainNode));
+            onDrain: ShowDrainNode),
+            $"node {node.Name}", node);
     }
 
     /// <summary>
@@ -117,7 +118,8 @@ public partial class MainWindowViewModel
         ShowDetail(new ClusterNamespaceDetailViewModel(
             _cluster, ns,
             onOpenPod: ShowPodDetail,
-            onOpenKind: OpenKindInNamespace));
+            onOpenKind: OpenKindInNamespace),
+            $"namespace {ns.Name}", ns);
     }
 
     /// <summary>
@@ -416,7 +418,8 @@ public partial class MainWindowViewModel
             _cluster, workload,
             onOpenPod: ShowPodDetail,
             onScale: ShowScaleDialog,
-            onRestart: ConfirmRestartWorkload));
+            onRestart: ConfirmRestartWorkload),
+            $"{workload.Kind} {workload.Name}", workload);
     }
 
     /// <summary>Open the service-detail page (KON-167).</summary>
@@ -428,7 +431,8 @@ public partial class MainWindowViewModel
         ShowDetail(new ClusterServiceDetailViewModel(
             _cluster, service,
             onOpenPod: ShowPodDetail,
-            onForward: ShowServicePortForward));
+            onForward: ShowServicePortForward),
+            $"service {service.Name}", service);
     }
 
     /// <summary>

@@ -68,6 +68,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         BackendChips.Learn(registry.Providers);
         _store = store;
         _settings = settings;
+
+        // Clamped on read, not only on drag: the file can carry a width from a wider screen, or one a
+        // hand-edit put outside anything usable (KON-307).
+        _detailWidth = Math.Clamp(settings.DetailDrawerWidth, MinDetailWidth, MaxDetailWidth);
         _updateService = updateService ?? new VelopackUpdateService();
 
         NavGroups = [];

@@ -1,5 +1,7 @@
 using Kontena.App.ViewModels;
+using Kontena.App.Services;
 using Kontena.Core.Orchestration.Fakes;
+using Kontena.Engines;
 
 namespace Kontena.App.Tests;
 
@@ -127,6 +129,70 @@ public sealed class DetailDrawerTests
         // rather than with the pages that stream: the ownership rule has to hold before a live log
         // subscription depends on it (KON-309, KON-310).
         Assert.IsType<ClusterNamespaceDetailViewModel>(shell.Detail);
+    }
+
+    [Fact]
+    public async Task The_drawer_can_hand_its_detail_to_the_full_page()
+    {
+        var shell = await ClusterShellAsync("nodes");
+
+        FirstNode(shell).OpenCommand.Execute(null);
+        var detail = shell.Detail;
+
+        shell.OpenDetailAsPageCommand.Execute(null);
+
+        // The same view model, moved — not rebuilt. A reload here would lose the tab you were on and
+        // ask the cluster again for what is already on the screen.
+        Assert.Same(detail, shell.CurrentPage);
+        Assert.False(shell.IsDetailOpen);
+
+        // And this one *is* a navigation, so Back means the list.
+        Assert.Equal("Back to Nodes", shell.BackTooltip);
+        shell.GoBackCommand.Execute(null);
+
+        // Rebuilt rather than the same instance, and that is the history's rule, not this one's: a
+        // cluster page is a route, because keeping the instance would hand back a page whose streams
+        // were disposed on the way out (KON-173).
+        Assert.IsType<ClusterNodesViewModel>(shell.CurrentPage);
+    }
+
+    [Fact]
+    public async Task Handing_it_over_does_not_dispose_it()
+    {
+        // The drawer disposes what it held on close, which is what makes a second detail safe. The
+        // full page is the one caller that must not get that treatment — it is about to show the
+        // object it would have thrown away.
+        var shell = await ClusterShellAsync("namespaces");
+        Assert.IsType<ClusterNamespacesViewModel>(shell.CurrentPage).Items[0].OpenCommand.Execute(null);
+
+        var detail = Assert.IsType<ClusterNamespaceDetailViewModel>(shell.Detail);
+        shell.OpenDetailAsPageCommand.Execute(null);
+
+        // Still answering, rather than a disposed object rendering as a blank page.
+        Assert.False(string.IsNullOrEmpty(detail.Name));
+        Assert.Same(detail, shell.CurrentPage);
+    }
+
+    [Fact]
+    public void The_dragged_width_is_clamped_and_remembered()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "kontena-drawer-" + Guid.NewGuid().ToString("N"));
+        var store = new SettingsStore(path);
+        var shell = new MainWindowViewModel(new BackendRegistry([]), store, store.Load(), new FakeUpdateService());
+
+        var start = shell.DetailWidth;
+        shell.ResizeDetail(120);
+
+        Assert.Equal(start + 120, shell.DetailWidth);
+        Assert.Equal(start + 120, store.Load().DetailDrawerWidth);
+
+        // Dragged past the edge of the window it would stop being a drawer, and dragged shut it would
+        // be a way to lose the panel without closing it.
+        shell.ResizeDetail(-5000);
+        Assert.True(shell.DetailWidth >= 460);
+
+        shell.ResizeDetail(5000);
+        Assert.True(shell.DetailWidth <= 1200);
     }
 
     [Fact]
