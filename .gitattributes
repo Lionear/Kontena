@@ -1,0 +1,6 @@
+# The embedded metrics-server manifest ships byte-for-byte as upstream published it, and a test
+# checks its SHA-256 against the published checksum. Git's EOL conversion would rewrite those bytes
+# on a Windows checkout — quietly, and only there — so the file that gets embedded into a Windows
+# build would no longer be the release it claims to be. -text says these bytes are an artifact, not
+# text to be normalized.
+src/Kontena.Adapters.Kubernetes/Resources/*.yaml -text
