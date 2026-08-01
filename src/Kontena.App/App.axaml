@@ -40,6 +40,10 @@
                          between Surface and Border that the mockup's soft divider sits at on its own
                          ladder, and it was desaturated with the rest of them under KON-245. -->
                     <SolidColorBrush x:Key="BorderSoft" Color="#27282E"/>
+                    <!-- Outer window edge: Border is too close to Bg to read against an arbitrary
+                         desktop background, so this is white instead of a ladder step — the only
+                         way the frame stays visible in non-maximized mode regardless of wallpaper. -->
+                    <SolidColorBrush x:Key="WindowEdge" Color="#FFFFFF" Opacity="0.30"/>
                     <SolidColorBrush x:Key="Text" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="TextDim" Color="#9AA4B2"/>
                     <SolidColorBrush x:Key="TextFaint" Color="#808B9B"/>
@@ -91,6 +95,9 @@
                     <!-- The light ladder did not move under KON-130, so this is the mockup's own
                          soft divider unchanged. -->
                     <SolidColorBrush x:Key="BorderSoft" Color="#E6EAF0"/>
+                    <!-- Mirror of dark's WindowEdge: black instead of a ladder step, for the same
+                         reason — it has to read against whatever sits behind the window. -->
+                    <SolidColorBrush x:Key="WindowEdge" Color="#000000" Opacity="0.35"/>
                     <SolidColorBrush x:Key="Text" Color="#1B2430"/>
                     <SolidColorBrush x:Key="TextDim" Color="#55606E"/>
                     <SolidColorBrush x:Key="TextFaint" Color="#65707F"/>
