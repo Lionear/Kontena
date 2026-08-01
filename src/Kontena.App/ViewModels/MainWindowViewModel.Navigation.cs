@@ -373,11 +373,11 @@ public partial class MainWindowViewModel
 
         var font = CurrentTerminalFont();
 
-        _detail = new ContainerDetailViewModel(_engine, summary, GoBack, font)
+        _containerDetail = new ContainerDetailViewModel(_engine, summary, GoBack, font)
         {
             RequestConfirm = ShowConfirm,
         };
-        CurrentPage = _detail;
+        CurrentPage = _containerDetail;
     }
     private void ShowContainers()
     {

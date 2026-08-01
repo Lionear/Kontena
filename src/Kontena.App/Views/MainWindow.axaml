@@ -533,6 +533,48 @@
             </Panel>
         </Grid>
 
+        <!--
+            Detail drawer (KON-307): over the list rather than instead of it, so the row you opened
+            stays visible and selected behind the scrim. Below the modal overlay in this file on
+            purpose — a confirmation raised from inside the drawer has to sit over it, not under.
+        -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDetailOpen}">
+            <!-- The scrim is the click target for "close", so it is a button rather than a Border. -->
+            <Button Command="{Binding CloseDetailCommand}" Background="#8C060810" Focusable="False"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    BorderThickness="0" CornerRadius="0" Padding="0">
+                <Button.Styles>
+                    <!-- A scrim that lights up under the pointer reads as a control. It is a dismissal. -->
+                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                        <Setter Property="Background" Value="#8C060810"/>
+                    </Style>
+                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                        <Setter Property="Background" Value="#8C060810"/>
+                    </Style>
+                </Button.Styles>
+            </Button>
+
+            <Border Width="540" HorizontalAlignment="Right" Background="{DynamicResource Bg}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
+                    BoxShadow="-12 0 40 0 #66000000">
+                <Grid RowDefinitions="*">
+                    <ContentControl Content="{Binding Detail}"/>
+
+                    <!--
+                        Floated over the detail's own header instead of adding a row above it: the
+                        header already carries the name and status, and a second bar of chrome would
+                        cost the drawer's narrow width twice. The ⤢ that opens this in its own window
+                        joins it in KON-308.
+                    -->
+                    <Button Classes="ghost" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close (Esc)"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,12,0" Padding="7">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconClose}"/>
+                    </Button>
+                </Grid>
+            </Border>
+        </Panel>
+
         <!-- Modal overlay (Run container, …). Row 1 only: the title bar stays draggable behind it. -->
         <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
             <ContentControl Content="{Binding Dialog}" HorizontalAlignment="Center"

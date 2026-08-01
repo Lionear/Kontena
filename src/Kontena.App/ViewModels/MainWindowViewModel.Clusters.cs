@@ -86,9 +86,6 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"node {node.Name}", () => ShowNodeDetail(node), node);
-        DisposeDetail();
-
         // The apiserver version is what a kubelet version means anything against (KON-95), and a
         // failed lookup costs the warning rather than the page.
         var apiServer = string.Empty;
@@ -101,11 +98,11 @@ public partial class MainWindowViewModel
             // No version, no skew warning; everything else on the page stands.
         }
 
-        CurrentPage = new ClusterNodeDetailViewModel(
+        ShowDetail(new ClusterNodeDetailViewModel(
             _cluster, node, apiServer,
             onOpenPod: ShowPodDetail,
             onCordon: (name, cordoned) => _cluster.CordonNodeAsync(name, cordoned).AsTask(),
-            onDrain: ShowDrainNode);
+            onDrain: ShowDrainNode));
     }
 
     /// <summary>
@@ -117,13 +114,10 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"namespace {ns.Name}", () => ShowNamespaceDetail(ns), ns);
-        DisposeDetail();
-
-        CurrentPage = new ClusterNamespaceDetailViewModel(
+        ShowDetail(new ClusterNamespaceDetailViewModel(
             _cluster, ns,
             onOpenPod: ShowPodDetail,
-            onOpenKind: OpenKindInNamespace);
+            onOpenKind: OpenKindInNamespace));
     }
 
     /// <summary>
@@ -418,14 +412,11 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"{workload.Kind} {workload.Name}", () => ShowWorkloadDetail(workload), workload);
-        DisposeDetail();
-
-        CurrentPage = new ClusterWorkloadDetailViewModel(
+        ShowDetail(new ClusterWorkloadDetailViewModel(
             _cluster, workload,
             onOpenPod: ShowPodDetail,
             onScale: ShowScaleDialog,
-            onRestart: ConfirmRestartWorkload);
+            onRestart: ConfirmRestartWorkload));
     }
 
     /// <summary>Open the service-detail page (KON-167).</summary>
@@ -434,13 +425,10 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"service {service.Name}", () => ShowServiceDetail(service), service);
-        DisposeDetail();
-
-        CurrentPage = new ClusterServiceDetailViewModel(
+        ShowDetail(new ClusterServiceDetailViewModel(
             _cluster, service,
             onOpenPod: ShowPodDetail,
-            onForward: ShowServicePortForward);
+            onForward: ShowServicePortForward));
     }
 
     /// <summary>
