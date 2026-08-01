@@ -37,6 +37,9 @@
         </Style>
     </Window.Styles>
 
+    <!-- 1px app-drawn edge — see MainWindow.axaml for why this is needed on top of
+         WindowDecorations="BorderOnly". -->
+    <Border BorderBrush="{DynamicResource WindowEdge}" BorderThickness="1">
     <Grid RowDefinitions="38,*">
 
         <Border Grid.Row="0" Background="{DynamicResource SidebarBg}" BorderBrush="{DynamicResource Border}"
@@ -66,4 +69,5 @@
 
         <views:ClusterTerminalView Grid.Row="1"/>
     </Grid>
+    </Border>
 </Window>
