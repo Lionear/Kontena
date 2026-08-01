@@ -33,10 +33,10 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
 
@@ -57,6 +57,11 @@ jobs:
       # real cluster skip cleanly when the runner has no kubeconfig.
       - name: Test (Adapters.Kubernetes)
         run: dotnet test tests/Kontena.Adapters.Kubernetes.Tests/Kontena.Adapters.Kubernetes.Tests.csproj -c Release
+
+      # The kind provisioner is driven through the tool seam's fake, so the unit tests need no cluster
+      # tooling; the two read-only tests against a real kind skip cleanly when the runner has none.
+      - name: Test (Adapters.LocalClusters)
+        run: dotnet test tests/Kontena.Adapters.LocalClusters.Tests/Kontena.Adapters.LocalClusters.Tests.csproj -c Release
 
       # Keep THIRD-PARTY-NOTICES.md in sync with the dependency closure.
       - name: Check third-party notices

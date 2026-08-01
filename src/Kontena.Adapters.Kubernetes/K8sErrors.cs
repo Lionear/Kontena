@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using k8s.Autorest;
-using Kontena.Core.Errors;
+using Kontena.Sdk.Errors;
 
 namespace Kontena.Adapters.Kubernetes;
 

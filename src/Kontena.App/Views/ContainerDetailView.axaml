@@ -1,7 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
+             xmlns:behaviors="using:Kontena.App.Behaviors"
              xmlns:vm="using:Kontena.App.ViewModels"
-             xmlns:models="using:Kontena.Core.Models"
+             xmlns:models="using:Kontena.Sdk.Models"
              xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -10,7 +12,7 @@
              x:DataType="vm:ContainerDetailViewModel"
              x:Name="Root">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
 
         <!-- Header -->
         <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
@@ -19,14 +21,11 @@
 
                 <!-- Title row + actions -->
                 <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                    <Button Grid.Column="0" Classes="qa" Width="32" Height="32" Command="{Binding BackCommand}" ToolTip.Tip="Back">
-                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconArrowLeft}"/>
-                    </Button>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="14,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="19" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
-                        <Border Background="#1E232C" CornerRadius="20" Padding="10,4" VerticalAlignment="Center">
+                        <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="10,4" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding StateLabel}" FontSize="11" FontWeight="SemiBold"
@@ -34,10 +33,7 @@
                             </StackPanel>
                         </Border>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Width="17" Height="17" CornerRadius="4" Background="{DynamicResource DockerChip}">
-                                <TextBlock Text="{Binding BackendChip}" FontFamily="{StaticResource Mono}" FontSize="9" FontWeight="Bold"
-                                           Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
+                            <controls:BackendChip Chip="{Binding BackendChip}" ChipSize="17"/>
                             <TextBlock Text="{Binding Backend}" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Border Background="{DynamicResource PrimarySoft}" CornerRadius="20" Padding="10,4" VerticalAlignment="Center"
@@ -146,7 +142,7 @@
         </Border>
 
         <!-- Live stat strip -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" ColumnSpacing="12" Margin="24,16"
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" ColumnSpacing="12" Margin="24,16,24,0"
               IsVisible="{Binding SupportsStats}">
             <Border Grid.Column="0" Classes="card" Padding="14,12">
                 <StackPanel Orientation="Horizontal" Spacing="12">
@@ -194,15 +190,49 @@
             </Border>
         </Grid>
 
+        <!-- Diagnosis (KON-150): shown on every tab, because "why is it not running" is the question
+             you arrive with. Absent unless the rules recognised the case — no "unknown" state. -->
+        <Border Grid.Row="2" Margin="24,16,24,0" IsVisible="{Binding HasDiagnosis}"
+                Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,14">
+            <Grid ColumnDefinitions="Auto,*">
+                <Path Grid.Column="0" Classes="icon" Width="17" Height="17" Margin="0,1,12,0"
+                      Stroke="{DynamicResource Warn}" Data="{StaticResource IconWarning}" VerticalAlignment="Top"/>
+                <StackPanel Grid.Column="1" Spacing="8">
+                    <TextBlock Text="{Binding DiagnosisTitle}" FontSize="13.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding DiagnosisExplanation}" FontSize="12.5"
+                               Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                    <ItemsControl ItemsSource="{Binding DiagnosisEvidence}" Margin="0,2,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                           Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap" Margin="0,0,0,3"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0" IsVisible="{Binding HasDiagnosisSuggestion}">
+                        <TextBlock Grid.Column="0" Text="{Binding DiagnosisSuggestion}" FontSize="12.5"
+                                   Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Button Grid.Column="1" Classes="pill" VerticalAlignment="Center"
+                                IsVisible="{Binding HasDiagnosisAction}"
+                                Content="{Binding DiagnosisActionLabel}"
+                                Command="{Binding FollowDiagnosisCommand}"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- Tab content -->
-        <Panel Grid.Row="2" Margin="24,0,24,24">
+        <Panel Grid.Row="3" Margin="24,16,24,24">
 
             <!-- Logs -->
             <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsLogsSelected}">
                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="0,0,0,12">
                     <Border Grid.Column="0" Height="34" HorizontalAlignment="Stretch" Margin="0,0,8,0"
                             Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                            CornerRadius="8" Padding="11,0">
+                            CornerRadius="{StaticResource RadiusSm}" Padding="11,0">
                         <DockPanel LastChildFill="True">
                             <Path DockPanel.Dock="Left" Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}"
                                   Data="{StaticResource IconSearch}" VerticalAlignment="Center"/>
@@ -220,9 +250,9 @@
                     <Button Grid.Column="4" Classes="pill" Margin="8,0,0,0" Command="{Binding ClearLogsCommand}">Clear</Button>
                 </Grid>
 
-                <Border Grid.Row="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"
+                <Border Grid.Row="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
                         ClipToBounds="True">
-                    <ListBox x:Name="LogList" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
+                    <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
                              SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <ListBox.Styles>
                             <Style Selector="ListBoxItem">
@@ -306,7 +336,7 @@
                 <views:TerminalView IsVisible="{Binding CanOpenTerminal}"/>
                 <StackPanel IsVisible="{Binding !CanOpenTerminal}" VerticalAlignment="Center"
                             HorizontalAlignment="Center" Spacing="12">
-                    <Border Width="52" Height="52" CornerRadius="12" Background="{DynamicResource Surface2}" HorizontalAlignment="Center">
+                    <Border Width="52" Height="52" CornerRadius="{StaticResource Radius}" Background="{DynamicResource Surface2}" HorizontalAlignment="Center">
                         <Path Classes="icon" Width="24" Height="24" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconTerminal}"/>
                     </Border>
                     <TextBlock Text="Start the container to open a shell" FontSize="14.5" FontWeight="SemiBold"

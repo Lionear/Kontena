@@ -1,33 +1,62 @@
 using System.Globalization;
+using Kontena.Core.Models;
 
 namespace Kontena.App.ViewModels;
 
 /// <summary>Small display formatters shared by the list pages.</summary>
 internal static class Format
 {
-    public static string Size(long? bytes)
+    /// <summary>
+    /// The formatting itself lives in <see cref="ByteSize"/> since KON-150: the diagnosis rules quote
+    /// sizes without a UI, and two copies of this would eventually disagree about what a megabyte is.
+    /// </summary>
+    public static string Size(long? bytes) => bytes is null ? "—" : ByteSize.Format(bytes.Value);
+
+    /// <summary>
+    /// A storage quantity the way Kubernetes states it — binary units with the <c>Gi</c> suffix
+    /// (KON-247).
+    /// <para>
+    /// Deliberately not <see cref="Size"/>. That one is decimal, which is right for images and
+    /// container memory and is what every engine reports, but a claim written as <c>20Gi</c> would
+    /// then render as "21.5 GB" — beside a <c>kubectl get pvc</c> saying <c>20Gi</c> that reads as
+    /// Kontena being wrong about the number. The quantity string itself does not survive into the
+    /// model, so this reconstructs the form it was almost certainly written in.
+    /// </para>
+    /// </summary>
+    public static string Quantity(long bytes)
     {
-        if (bytes is null)
+        if (bytes <= 0)
             return "—";
 
-        double b = bytes.Value;
-        string[] units = ["B", "KB", "MB", "GB", "TB"];
-        var u = 0;
-        while (b >= 1000 && u < units.Length - 1)
+        string[] units = ["", "Ki", "Mi", "Gi", "Ti", "Pi"];
+
+        var value = (double)bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
         {
-            b /= 1000;
-            u++;
+            value /= 1024;
+            unit++;
         }
 
-        var value = u == 0 ? b.ToString("0", CultureInfo.InvariantCulture)
-                           : b.ToString("0.#", CultureInfo.InvariantCulture);
-        return $"{value} {units[u]}";
+        // A whole number of Gi is the normal case and deserves "20Gi", not "20.0Gi"; anything else
+        // keeps one decimal so a 1.5Gi claim does not round to its neighbour.
+        var text = Math.Abs(value - Math.Round(value)) < 0.05
+            ? Math.Round(value).ToString("0", CultureInfo.InvariantCulture)
+            : value.ToString("0.#", CultureInfo.InvariantCulture);
+
+        return text + units[unit];
     }
 
-    /// <summary>Human name for a <c>kontena.source</c> label value.</summary>
+    /// <summary>
+    /// Human name for a <c>kontena.source</c> label value. The fallback capitalises the raw value, which
+    /// is right for a one-word tool and wrong for anything else — hence the map. <c>sqlexplorer</c> is
+    /// DataTray's former name and must stay: a container carries the label it was created with for as
+    /// long as it lives, so renaming the product does not relabel what is already running.
+    /// </summary>
     public static string ManagedSource(string? source) => source switch
     {
         null or "" => "another tool",
+        "datatray" => "DataTray",
         "sqlexplorer" => "SQL Explorer",
         _ => char.ToUpperInvariant(source[0]) + source[1..],
     };

@@ -1,0 +1,1 @@
+minikube joins kind as a local-cluster provisioner: pick either one when creating a cluster, set CPUs, memory and the driver where the tool supports them, and stop a cluster you are not using and start it again later without rebuilding it. The form shows exactly what the chosen tool can honour and nothing else.

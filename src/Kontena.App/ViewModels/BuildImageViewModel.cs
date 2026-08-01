@@ -6,8 +6,9 @@ using System.Threading;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
@@ -386,7 +387,7 @@ public partial class BuildStepViewModel(string number, string instruction) : Obs
     {
         "done" => "#34D399",
         "cached" => "#5C6675",
-        "running" => "#22D3AA",
+        "running" => "#00D4A3",
         "failed" => "#F87171",
         _ => "#3A424E",
     }));

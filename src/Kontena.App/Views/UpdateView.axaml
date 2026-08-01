@@ -7,7 +7,7 @@
              x:Class="Kontena.App.Views.UpdateView"
              x:DataType="vm:UpdateViewModel">
     <Border Width="520" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <StackPanel>
 
             <!-- Header: what is on offer, and from which stream -->
@@ -22,6 +22,8 @@
                     <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsUpToDate}">
                         <TextBlock Text="{Binding CurrentVersion}" FontSize="12.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding BuildDate}" FontSize="12.5" IsVisible="{Binding HasBuildDate}"
+                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                         <TextBlock Text="→" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
@@ -30,7 +32,7 @@
                                    Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                     </StackPanel>
 
-                    <TextBlock Text="{Binding CurrentVersion, StringFormat='You are on {0}, the newest release on your channel.'}"
+                    <TextBlock Text="{Binding UpToDateSummary}" TextWrapping="Wrap"
                                FontSize="12.5" Foreground="{DynamicResource TextDim}" IsVisible="{Binding IsUpToDate}"/>
                 </StackPanel>
 
@@ -44,7 +46,7 @@
             <!-- This install cannot replace itself: say where the new version comes from instead -->
             <StackPanel Margin="24,0,24,20" Spacing="12" IsVisible="{Binding !CanSelfUpdate}">
                 <Border Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}"
-                        BorderThickness="1" CornerRadius="10" Padding="14,12">
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="14,12">
                     <StackPanel Orientation="Horizontal" Spacing="11">
                         <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Info}"
                               Data="{StaticResource IconInfo}" VerticalAlignment="Top" Margin="0,2,0,0"/>

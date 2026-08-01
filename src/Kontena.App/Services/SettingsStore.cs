@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
 namespace Kontena.App.Services;
@@ -71,12 +72,49 @@ public sealed class SettingsStore
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+            var directory = Path.GetDirectoryName(_path)!;
+
+            // Only a directory this write created gets its mode set: the path can be pointed elsewhere
+            // (tests, tools), and narrowing a directory somebody else owns is not this method's call.
+            var created = !Directory.Exists(directory);
+            Directory.CreateDirectory(directory);
+            if (created)
+                RestrictToOwner(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            // The mode is set before the content exists, so the fields below are never briefly
+            // world-readable — and a file written by an older version is narrowed on its next save.
+            if (!File.Exists(_path))
+                File.Create(_path).Dispose();
+
+            RestrictToOwner(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
             File.WriteAllText(_path, JsonSerializer.Serialize(settings, Options));
         }
         catch
         {
             // Best-effort persistence; a failed write must not take the app down.
+        }
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="path"/> to its owner on Unix (KON-187). No secret is in here — those live
+    /// in the keychain (KON-52) — but remote engine hosts and users, registry usernames and the
+    /// kubeconfig paths Kontena reads are reconnaissance for anyone else with an account on the machine.
+    /// Windows inherits the user profile's ACL and needs nothing.
+    /// </summary>
+    private static void RestrictToOwner(string path, UnixFileMode mode)
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        try
+        {
+            File.SetUnixFileMode(path, mode);
+        }
+        catch (Exception)
+        {
+            // A filesystem that cannot express this (a mounted share, a container volume) is not a
+            // reason to lose the settings.
         }
     }
 }

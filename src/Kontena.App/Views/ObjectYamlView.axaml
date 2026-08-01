@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="500"
+             x:Class="Kontena.App.Views.ObjectYamlView"
+             x:DataType="vm:ClusterObjectDetailViewModel">
+
+    <!-- Editable since KON-252. It was read-only because a text box that silently did nothing on
+         edit would be worse than none — which was right, and the answer was to build the other half
+         rather than keep the box inert. -->
+    <views:ManifestEditorView DataContext="{Binding Yaml}"/>
+</UserControl>

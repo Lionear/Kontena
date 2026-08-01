@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -8,15 +9,19 @@ using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using System.Collections.Generic;
+using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.App;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Kontena.Engines.Fakes;
 using HostApp = Kontena.App.App;
+using Kontena.Core.Models;
+using Kontena.Core.Orchestration;
+using Kontena.Engines;
 
 namespace Kontena.Screenshots;
 
@@ -25,7 +30,10 @@ namespace Kontena.Screenshots;
 // (the same seed the app ships for dev/demo), so every pixel comes from the real views and styles.
 //
 // Usage:
-//   dotnet run --project tools/Kontena.Screenshots -- --scene containers --theme dark --out shots/containers.png [--size 1180x760]
+//   dotnet run --project tools/Kontena.Screenshots -- --scene containers --theme dark --out shots/containers.png [--size 1180x760] [--scale 2]
+//
+// --size is the window in layout pixels; --scale (1-4, default 1) is the device pixel ratio on top of
+// it, so --scale 2 writes a 2x PNG of the same composition rather than a bigger window.
 //
 // Scenes: containers (list, hero), detail (container logs), inspect (container inspect tab),
 //         images, volumes, networks, projects, run (Run-container modal), settings,
@@ -42,11 +50,19 @@ namespace Kontena.Screenshots;
 //         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
+//         settings-clusters (KON-109/KON-76 — the local-cluster page; reads this machine, so the
+//         shot differs per box by design), settings-clusters-new (the create form, reached by running
+//         the page's own command),
 //         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
 //         confirmation and the deliberately non-destructive one, both reached by running the
 //         row's own command so the shot cannot show a dialog the button does not raise).
 internal static class Program
 {
+    // The demo backends wear the marks of what they stand in for (KON-80): a shot of "Docker" with a
+    // letter badge would show a chip the app no longer draws for a real engine.
+    private static readonly BackendChipStyle Kubernetes =
+        new(KubernetesBrand.Glyph, KubernetesBrand.Accent);
+
     [STAThread]
     public static int Main(string[] args)
     {
@@ -101,20 +117,32 @@ internal static class Program
                     ? ["/srv/kubeconfigs/acme.yaml"]
                     : [],
 
-                // A stored remote, so the list has a row to edit (KON-125).
-                RemoteEngines = opts.Scene == "settings-engines-edit"
-                    ? [new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh,
-                        "build-01.example.com", User: "deploy")]
+                // A stored remote, so the list has a row to edit (KON-125). For the KON-181 shot a
+                // second one that never came from a form — a settings file edited by hand, or synced
+                // from another machine — because that is the row that has to explain itself.
+                RemoteEngines = opts.Scene is "settings-engines-edit" or "settings-engines-badhost"
+                    ? [
+                        new RemoteEngine("r1", "Build server", RemoteEngineTransport.Ssh,
+                            "build-01.example.com", User: "deploy"),
+                        .. opts.Scene == "settings-engines-badhost"
+                            ? new[]
+                            {
+                                new RemoteEngine("r2", "Imported host", RemoteEngineTransport.Ssh,
+                                    "-oProxyCommand=touch /tmp/pwned"),
+                            }
+                            : [],
+                    ]
                     : [],
             };
             // Present the built-in demo seed under Docker's name/chip — the shots read as a real
             // Docker session (the app itself always keeps the honest "Fake engine" identity).
             var providers = new List<IBackendProvider>
             {
-                new FakeEngineProvider("docker", "Docker", "D"),
-                new FakeClusterProvider("prod-eu-west", "GKE"),
-                new FakeClusterProvider("staging", "EKS"),
-                new FakeClusterProvider("minikube", "MK"),
+                new FakeEngineProvider("docker", "Docker", "D",
+                    new BackendChipStyle(DockerBrand.Glyph, DockerBrand.Accent)),
+                new FakeClusterProvider("prod-eu-west", "GKE", Kubernetes),
+                new FakeClusterProvider("staging", "EKS", Kubernetes),
+                new FakeClusterProvider("minikube", "MK", Kubernetes),
             };
 
             // Every other scene stays on the seeded fakes so shots are reproducible; only the
@@ -154,6 +182,12 @@ internal static class Program
                 Width = opts.Width,
                 Height = opts.Height,
             };
+
+            // --size stays in layout pixels so a scene keeps its composition; --scale only raises the
+            // device pixel ratio, the way a HiDPI display would. A 2x capture is what the website wants:
+            // its prose column is narrower than the window, so a 1x shot is downscaled and the app's
+            // text turns to mush.
+            window.SetRenderScaling(opts.Scale);
             window.Show();
 
             // Let the fire-and-forget InitAsync → ConnectPreferred → ActivateAsync settle so the
@@ -297,6 +331,18 @@ internal static class Program
 
                 break;
 
+            // The widest delete in the app, and the one the itemised inventory was built for (KON-162).
+            case "confirm-project-down":
+                Settle(rounds: 20);
+                if (vm.Containers?.Items.OfType<Kontena.App.ViewModels.ComposeGroupRowViewModel>()
+                        .FirstOrDefault() is { } project)
+                {
+                    project.DownCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+
+                break;
+
             case "confirm-remove-kubeconfig":
                 vm.ShowSettingsCommand.Execute(null);
                 Settle(rounds: 20);
@@ -315,13 +361,17 @@ internal static class Program
                 break;
 
             case "settings":
+            case "settings-keyboard":
             case "settings-about":
             case "settings-registries":
             case "settings-engines":
             case "settings-engines-tcp":
+            case "settings-engines-badhost":
             case "settings-engines-edit":
             case "settings-engines-named":
             case "settings-engines-clusters":
+            case "settings-clusters":
+            case "settings-clusters-new":
             case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
@@ -330,13 +380,63 @@ internal static class Program
                     {
                         "settings-about" => "about",
                         "settings-registries" => "registries",
-                        "settings" => "general",
+                        "settings" or "settings-keyboard" => "general",
+                        "settings-clusters" or "settings-clusters-new" => "clusters",
                         _ => "engines",
                     });
+
+                    // The states of the keyboard section that only exist after someone has used it
+                    // (KON-180): a changed row with its reset button, Restore defaults, a row still
+                    // listening, and a refusal. Driven through the page's own methods, so the shot
+                    // cannot show a state the UI does not produce.
+                    if (scene == "settings-keyboard")
+                    {
+                        var rows = s.Shortcuts;
+                        rows.First(r => r.Action.Id == ShellActions.RefreshPage).Offer("Ctrl+Shift+R");
+                        rows.First(r => r.Action.Id == ShellActions.FocusSearch).RecordCommand.Execute(null);
+                        rows.First(r => r.Action.Id == ShellActions.GoBack).Offer("Ctrl+C");
+                        Settle(rounds: 10);
+                    }
+
+                    // Local clusters reads the machine it runs on (KON-109), so this shot shows what
+                    // is actually installed here rather than a posed list — which is the point: a
+                    // scene that faked "kind detected" would render identically whether or not the
+                    // detection works.
+                    if (scene is "settings-clusters" or "settings-clusters-new" && s.LocalClusters is { } clusters)
+                    {
+                        SettleUntil(() => clusters.HasLoaded, maxRounds: 200);
+                        Settle(rounds: 20);
+
+                        // The form is reached by running the page's own command, so the shot cannot show
+                        // a screen the button does not open (the lesson from KON-117).
+                        if (scene == "settings-clusters-new")
+                        {
+                            clusters.NewClusterCommand.Execute(null);
+                            if (clusters.Form is { } form)
+                            {
+                                form.Name = "dev";
+                                form.WorkerNodes = "2";
+                                form.IngressReady = true;
+                                form.Ports[0].HostPort = "8080";
+                                form.Ports[0].NodePort = "80";
+                            }
+
+                            Settle(rounds: 20);
+                        }
+                    }
 
                     // The TCP form is where the security decision lives, so it gets its own shot.
                     if (scene == "settings-engines-tcp")
                         s.SetRemoteTransportCommand.Execute("tcp");
+
+                    // A host ssh would read as one of its own options (KON-181). Typed into the form,
+                    // because the claim worth checking is that the disabled submit button explains
+                    // itself rather than just going grey.
+                    if (scene == "settings-engines-badhost")
+                    {
+                        s.RemoteName = "Build server";
+                        s.RemoteHost = "-oProxyCommand=touch /tmp/pwned";
+                    }
 
                     // Editing is driven through the row's own command (KON-125): the shot has to show
                     // the stored values really loaded, not a form someone filled in to look like it.
@@ -507,12 +607,12 @@ internal static class Program
                 // and restores them closed, KON-105), one is reopened, and a third is dropped (KON-102).
                 {
                     var fake = new Kontena.Core.Orchestration.Fakes.FakeClusterEngine();
-                    var pod = new Kontena.Core.Orchestration.Models.ResourceRef(
-                        Kontena.Core.Orchestration.Models.GroupVersionKind.Pod, "app", "api-7d9c");
-                    var service = new Kontena.Core.Orchestration.Models.ResourceRef(
-                        Kontena.Core.Orchestration.Models.GroupVersionKind.Service, "app", "api");
-                    var postgres = new Kontena.Core.Orchestration.Models.ResourceRef(
-                        Kontena.Core.Orchestration.Models.GroupVersionKind.Service, "app", "postgres");
+                    var pod = new Kontena.Sdk.Orchestration.Models.ResourceRef(
+                        Kontena.Sdk.Orchestration.Models.GroupVersionKind.Pod, "app", "api-7d9c");
+                    var service = new Kontena.Sdk.Orchestration.Models.ResourceRef(
+                        Kontena.Sdk.Orchestration.Models.GroupVersionKind.Service, "app", "api");
+                    var postgres = new Kontena.Sdk.Orchestration.Models.ResourceRef(
+                        Kontena.Sdk.Orchestration.Models.GroupVersionKind.Service, "app", "postgres");
 
                     vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                     SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -558,6 +658,7 @@ internal static class Program
 
             case "pod":
             case "pod-logs":
+            case "pod-logs-tail":
             case "pod-yaml":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -565,15 +666,31 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodsViewModel pods)
                 {
-                    pods.Pods.FirstOrDefault()?.OpenCommand.Execute(null);
+                    pods.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                     Settle(rounds: 30);
                 }
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
                 {
-                    if (scene == "pod-logs")
+                    if (scene is "pod-logs" or "pod-logs-tail")
                     {
                         detailVm.SelectTabCommand.Execute("logs");
                         Settle(rounds: 30);
+
+                        // More lines than fit, so the shot says where the view actually sits (KON-165).
+                        // The fake pod produces four; four cannot show a scroll position at all, which
+                        // is how five views shipped without one.
+                        if (scene == "pod-logs-tail")
+                        {
+                            for (var i = 1; i <= 200; i++)
+                            {
+                                detailVm.Lines.Add(new Kontena.App.ViewModels.LogLineViewModel(
+                                    new Kontena.Sdk.Models.LogEntry(
+                                        DateTimeOffset.UnixEpoch.AddSeconds(i),
+                                        Kontena.Sdk.Models.LogSource.Stdout, $"line {i}")));
+                            }
+
+                            Settle(rounds: 40);
+                        }
                     }
                     else if (scene == "pod-yaml")
                     {
@@ -583,6 +700,62 @@ internal static class Program
                         detailVm.YamlText = detailVm.YamlText.Replace("qosClass: Burstable", "qosClass: Guaranteed", StringComparison.Ordinal);
                         Settle(rounds: 20);
                     }
+                }
+                break;
+
+            // Workloads split per kind (KON-169): the nav group expanded, and one kind's page. Both
+            // reached through the nav, so a scene cannot show a page the sidebar has no way of opening.
+            case "cluster-workloads-expanded":
+            case "cluster-workloads-dashboard":
+            case "cluster-cronjobs":
+            case "cluster-deployments":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                // Clicking Workloads opens the group; it does not load every kind at once (KON-169).
+                vm.NavigateCommand.Execute("overview");
+                SettleUntil(() => vm.NavItems.Any(i => i.Key == "workloads" && i.HasChildren), maxRounds: 60);
+                vm.NavigateCommand.Execute("workloads");
+                SettleUntil(() => vm.NavItems.Any(i => i.IsChild), maxRounds: 60);
+
+                if (scene == "cluster-cronjobs")
+                    vm.NavigateCommand.Execute("workloads:CronJob");
+                else if (scene == "cluster-deployments")
+                    vm.NavigateCommand.Execute("workloads:Deployment");
+
+                Settle(rounds: 30);
+                break;
+
+            // Workload and Service detail (KON-166, KON-167). Reached the way a user reaches them —
+            // by opening a row — so a scene cannot show a page the list has no way of opening.
+            case "workload":
+            case "workload-pods":
+            case "workload-cronjob":
+            case "service":
+            case "service-pods":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(scene.StartsWith("service", StringComparison.Ordinal) ? "services" : "workloads");
+                Settle(rounds: 30);
+
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel workloads)
+                {
+                    var row = scene == "workload-cronjob"
+                        ? workloads.Items.FirstOrDefault(w => w.Kind == "CronJob")
+                        : workloads.Items.FirstOrDefault();
+                    row?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                }
+                else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterServicesViewModel services)
+                {
+                    services.Items.FirstOrDefault()?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                }
+
+                if (scene.EndsWith("-pods", StringComparison.Ordinal)
+                    && vm.CurrentPage is Kontena.App.ViewModels.ClusterObjectDetailViewModel objectDetail)
+                {
+                    objectDetail.SelectTabCommand.Execute("pods");
+                    SettleUntil(() => !objectDetail.PodsLoading, maxRounds: 60);
                 }
                 break;
 
@@ -613,7 +786,7 @@ internal static class Program
                         Settle(rounds: 60);
                         if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodsViewModel livePods)
                         {
-                            livePods.Pods.FirstOrDefault()?.OpenCommand.Execute(null);
+                            livePods.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                             Settle(rounds: 60);
                         }
 
@@ -731,7 +904,7 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel wl)
                 {
-                    wl.Workloads.FirstOrDefault(w => w.CanScale)?.ScaleCommand.Execute(null);
+                    wl.Items.FirstOrDefault(w => w.CanScale)?.ScaleCommand.Execute(null);
                     Settle(rounds: 20);
                 }
                 break;
@@ -743,7 +916,7 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterWorkloadsViewModel wlr)
                 {
-                    wlr.Workloads.FirstOrDefault(w => w.CanRestart)?.RestartCommand.Execute(null);
+                    wlr.Items.FirstOrDefault(w => w.CanRestart)?.RestartCommand.Execute(null);
                     Settle(rounds: 20);
                 }
                 break;
@@ -756,7 +929,7 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterServicesViewModel svc)
                 {
-                    svc.Services.FirstOrDefault(s => s.CanForward)?.ForwardCommand.Execute(null);
+                    svc.Items.FirstOrDefault(s => s.CanForward)?.ForwardCommand.Execute(null);
                     Settle(rounds: 20);
                 }
                 if (scene == "portforward-active" && vm.Dialog is Kontena.App.ViewModels.PortForwardViewModel pf)
@@ -790,8 +963,10 @@ internal static class Program
     // then select the requested tab.
     private static void OpenDetail(MainWindowViewModel vm, string tab)
     {
-        var row = vm.Containers?.Items.FirstOrDefault(c => c.IsRunning)
-                  ?? vm.Containers?.Items.FirstOrDefault();
+        // Containers only — the list holds Compose headings too since KON-159, and a heading has no
+        // detail page to open.
+        var rows = vm.Containers?.Items.OfType<ContainerRowViewModel>().ToList() ?? [];
+        var row = rows.FirstOrDefault(c => c.IsRunning) ?? rows.FirstOrDefault();
         row?.OpenCommand.Execute(null);
         Settle(rounds: 30); // let inspect/logs load
 
@@ -836,12 +1011,13 @@ internal static class Program
         Dispatcher.UIThread.RunJobs();
     }
 
-    private sealed record Options(string Scene, string Theme, string Out, int Width, int Height)
+    private sealed record Options(string Scene, string Theme, string Out, int Width, int Height, double Scale)
     {
         public static Options Parse(string[] args)
         {
             string scene = "containers", theme = "dark", @out = "screenshot.png";
             int width = 1180, height = 760;
+            var scale = 1.0;
 
             for (var i = 0; i < args.Length - 1; i++)
             {
@@ -858,10 +1034,17 @@ internal static class Program
                             height = h;
                         }
                         break;
+                    case "--scale":
+                        if (double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out var s)
+                            && s is > 0 and <= 4)
+                        {
+                            scale = s;
+                        }
+                        break;
                 }
             }
 
-            return new Options(scene, theme, @out, width, height);
+            return new Options(scene, theme, @out, width, height, scale);
         }
     }
 }

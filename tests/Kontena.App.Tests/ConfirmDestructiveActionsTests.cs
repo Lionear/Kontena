@@ -88,7 +88,8 @@ public sealed class ConfirmDestructiveActionsTests
         var page = new ContainersViewModel(engine) { RequestConfirm = asked.Handle };
         await page.LoadAsync();
 
-        var row = page.Items[0];
+        // The list holds Compose headings too now (KON-159); this test is about a container.
+        var row = page.Items.OfType<ContainerRowViewModel>().First();
         row.RemoveCommand.Execute(null);
 
         Assert.NotNull(asked.Request);
@@ -109,7 +110,7 @@ public sealed class ConfirmDestructiveActionsTests
         var page = new ContainersViewModel(engine) { RequestConfirm = asked.Handle };
         await page.LoadAsync();
 
-        page.Items.First(c => c.IsRunning).RemoveCommand.Execute(null);
+        page.Items.OfType<ContainerRowViewModel>().First(c => c.IsRunning).RemoveCommand.Execute(null);
 
         Assert.NotNull(asked.Request);
         Assert.Contains("killed", asked.Request.Message, StringComparison.OrdinalIgnoreCase);
@@ -161,10 +162,14 @@ public sealed class ConfirmDestructiveActionsTests
 
         Assert.NotEmpty(page.Items);
         var project = page.Items[0];
-        project.DownCommand.Execute(null);
+        await page.ConfirmDownAsync(project);
 
         Assert.NotNull(asked.Request);
-        Assert.Contains(project.Name, asked.Request.Message, StringComparison.Ordinal);
+
+        // The name is in the title and the inventory is a list, not a sentence (KON-162).
+        Assert.Contains(project.Name, asked.Request.Title, StringComparison.Ordinal);
+        Assert.Contains("Volumes and images stay", asked.Request.Message, StringComparison.Ordinal);
+        Assert.Contains(asked.Request.Details!, d => d.Headline.EndsWith("containers", StringComparison.Ordinal));
 
         var before = await engine.ListContainersAsync();
         Assert.Contains(before, c => c.Id == project.ContainerIds[0]);

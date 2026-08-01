@@ -5,8 +5,11 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using Kontena.Core.Diagnostics;
 using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
@@ -20,6 +23,10 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     private const int MaxLogLines = 2000;
 
     private readonly IContainerEngine _engine;
+    /// <summary>
+    /// How this page leaves when the container it shows is gone — removed here, or removed elsewhere
+    /// and noticed on a refresh. Not a Back button: Back belongs to the shell's history now (KON-173).
+    /// </summary>
     private readonly Action _onBack;
     private ContainerSummary _c;
     private CancellationTokenSource? _cts;
@@ -44,6 +51,12 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     }
 
     /// <summary>Terminal font (from settings), consumed by the Terminal tab.</summary>
+    /// <summary>The session belongs to this page: it opened it, and it ends with it.</summary>
+    public ValueTask ReleaseExecSessionAsync(IExecSession session, bool discard) => session.DisposeAsync();
+
+    /// <summary>The shell this page execs — see the ExecRequest below.</summary>
+    public string ShellLabel => "/bin/sh";
+
     public string TerminalFontFamily { get; }
     public double TerminalFontSize { get; }
     public bool TerminalLigatures { get; }
@@ -52,14 +65,14 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
 
     public string Name => _c.Name;
     public string Backend => _c.Backend;
-    public string BackendChip => _c.Backend.Length > 0 ? _c.Backend[..1].ToUpperInvariant() : "?";
+    public BackendChipInfo BackendChip => BackendChips.For(_c.Backend);
     public string ImageText => _c.Image;
     public string ShortId => _c.Id.Length > 12 ? _c.Id[..12] : _c.Id;
     public string CreatedText => Format.Age(_c.CreatedAt);
 
     public string PortsText => _c.Ports.Count == 0
         ? "—"
-        : string.Join("  ", _c.Ports.Select(p => $":{p.HostPort}→{p.ContainerPort}/{p.Protocol}"));
+        : string.Join("  ", _c.Ports.Select(p => $"{p.HostPort}→{p.ContainerPort}/{p.Protocol}"));
 
     public bool IsRunning => _c.State == ContainerState.Running;
     public bool IsNotRunning => !IsRunning;
@@ -186,8 +199,54 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
         finally
         {
             InspectLoading = false;
+            Diagnose();
         }
     }
+
+    // ── Diagnosis (KON-150) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Why this container is not running, when the rules recognise the case. Null means no block is
+    /// shown at all: an explanation that might be wrong is worse than none.
+    /// </summary>
+    [ObservableProperty] private Diagnosis? _diagnosis;
+
+    private ContainerStats? _lastStats;
+
+    public bool HasDiagnosis => Diagnosis is not null;
+    public string DiagnosisTitle => Diagnosis?.Title ?? string.Empty;
+    public string DiagnosisExplanation => Diagnosis?.Explanation ?? string.Empty;
+    public IReadOnlyList<string> DiagnosisEvidence => Diagnosis?.Evidence ?? [];
+    public string DiagnosisSuggestion => Diagnosis?.Suggestion ?? string.Empty;
+    public bool HasDiagnosisSuggestion => Diagnosis?.Suggestion is { Length: > 0 };
+
+    /// <summary>Only the destinations this page has. Anything else leaves the suggestion as text.</summary>
+    public string DiagnosisActionLabel => Diagnosis?.Action switch
+    {
+        DiagnosisAction.Logs or DiagnosisAction.PreviousLogs => "Logs",
+        DiagnosisAction.Inspect => "Inspect",
+        _ => string.Empty,
+    };
+
+    public bool HasDiagnosisAction => DiagnosisActionLabel.Length > 0;
+
+    partial void OnDiagnosisChanged(Diagnosis? value)
+    {
+        OnPropertyChanged(nameof(HasDiagnosis));
+        OnPropertyChanged(nameof(DiagnosisTitle));
+        OnPropertyChanged(nameof(DiagnosisExplanation));
+        OnPropertyChanged(nameof(DiagnosisEvidence));
+        OnPropertyChanged(nameof(DiagnosisSuggestion));
+        OnPropertyChanged(nameof(HasDiagnosisSuggestion));
+        OnPropertyChanged(nameof(DiagnosisActionLabel));
+        OnPropertyChanged(nameof(HasDiagnosisAction));
+    }
+
+    private void Diagnose() => Diagnosis = ContainerDiagnosis.Diagnose(_c, Inspect, _lastStats);
+
+    [RelayCommand]
+    private void FollowDiagnosis() =>
+        SelectedTab = Diagnosis?.Action == DiagnosisAction.Inspect ? "inspect" : "logs";
 
     // ── Live stats strip ──────────────────────────────────────────────────────
 
@@ -201,6 +260,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
 
     private void ApplyStats(ContainerStats s)
     {
+        _lastStats = s;
         CpuText = $"{s.CpuPercent:0.0}%";
         CpuPercent = Math.Clamp(s.CpuPercent, 0, 100);
         MemUsedText = Format.Size(s.MemoryUsedBytes);
@@ -290,6 +350,11 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     {
         _cts = new CancellationTokenSource();
         _ = StreamLogsAsync(_cts.Token);
+
+        // Not lazy like the Inspect tab any more: the exit code and the OOM flag live in the same
+        // payload, and they are what the diagnosis is read from (KON-150).
+        _ = LoadInspectAsync();
+
         if (SupportsStats && IsRunning)
             _ = StreamStatsAsync(_cts.Token);
     }
@@ -329,9 +394,6 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     }
 
     // ── Header actions ────────────────────────────────────────────────────────
-
-    [RelayCommand]
-    private void Back() => _onBack();
 
     [RelayCommand]
     private async Task RestartAsync()
@@ -452,9 +514,9 @@ public sealed partial class PortItem
 
     public PortItem(PortBinding binding) => _p = binding;
 
-    /// <summary>Display text, e.g. <c>:8080 → 80/tcp</c> or <c>80/tcp</c> when unpublished.</summary>
+    /// <summary>Display text, e.g. <c>8080 → 80/tcp</c> or <c>80/tcp</c> when unpublished.</summary>
     public string Text => _p.HostPort is { } host
-        ? $":{host} → {_p.ContainerPort}/{_p.Protocol}"
+        ? $"{host} → {_p.ContainerPort}/{_p.Protocol}"
         : $"{_p.ContainerPort}/{_p.Protocol} (not published)";
 
     /// <summary>Only published TCP ports can be opened in a browser.</summary>

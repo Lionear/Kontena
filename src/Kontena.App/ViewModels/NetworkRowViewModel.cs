@@ -1,7 +1,8 @@
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
@@ -42,7 +43,7 @@ public sealed partial class NetworkRowViewModel : ObservableObject
     {
         "bridge" => "#5AB8FF",
         "host" => "#F5B14C",
-        "overlay" => "#7C6BF5",
+        "overlay" => "#A273F2",
         _ => "#5C6675",
     }));
 

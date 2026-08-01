@@ -1,8 +1,8 @@
 using System.Linq;
-using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Kontena.Engines;
+using Kontena.Sdk;
+using Kontena.Core.Models;
 
 namespace Kontena.App.ViewModels;
 
@@ -11,7 +11,8 @@ public sealed partial class OnboardingEngine : ObservableObject
 {
     public required string Backend { get; init; }
     public required string Name { get; init; }
-    public required string Chip { get; init; }
+    /// <summary>The engine's mark, or a letter (KON-80).</summary>
+    public required BackendChipInfo Chip { get; init; }
     public required string Detail { get; init; }
 
     /// <summary>The backend answered a ping and can be picked.</summary>
@@ -19,9 +20,6 @@ public sealed partial class OnboardingEngine : ObservableObject
 
     /// <summary>A roadmap backend that isn't shippable yet (e.g. Apple container).</summary>
     public bool ComingSoon { get; init; }
-
-    /// <summary>Brand accent used for the chip.</summary>
-    public required IBrush Accent { get; init; }
 
     /// <summary>Only connected, shippable engines can be selected.</summary>
     public bool Selectable => IsConnected && !ComingSoon;
@@ -74,10 +72,9 @@ public sealed partial class OnboardingViewModel : ViewModelBase
             {
                 Backend = p.Provider.Backend,
                 Name = nameOf(p.Provider),
-                Chip = p.Provider.Chip,
+                Chip = BackendChipInfo.For(p.Provider),
                 Detail = p.Detail ?? string.Empty,
                 IsConnected = p.Connected,
-                Accent = AccentFor(p.Provider.Backend),
             });
         }
 
@@ -86,11 +83,12 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         {
             Backend = "apple",
             Name = "Apple container",
-            Chip = "",
+            // The mark as path data rather than U+F8FF: the private-use Apple glyph only renders on
+            // Apple's own systems, so on Windows and Linux this row showed a tofu box (KON-80).
+            Chip = new BackendChipInfo("A", AppleBrand.Glyph, AppleBrand.Accent),
             Detail = "Native macOS runtime · planned backend",
             IsConnected = false,
             ComingSoon = true,
-            Accent = AccentFor("apple"),
         });
 
         Engines = items;
@@ -142,12 +140,4 @@ public sealed partial class OnboardingViewModel : ViewModelBase
 
     [RelayCommand]
     private void InstallPodman() => _onInstallPodman();
-
-    private static SolidColorBrush AccentFor(string backend) => new(Color.Parse(backend switch
-    {
-        "docker" => "#2496ED",
-        "podman" => "#B96FD0",
-        "apple" => "#C7C7CC",
-        _ => "#22D3AA",
-    }));
 }

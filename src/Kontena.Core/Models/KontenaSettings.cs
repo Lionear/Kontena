@@ -1,3 +1,4 @@
+using Kontena.Sdk.Models;
 namespace Kontena.Core.Models;
 
 /// <summary>How Kontena picks its light/dark appearance.</summary>
@@ -203,6 +204,29 @@ public sealed record KontenaSettings
     /// </summary>
     public IReadOnlyDictionary<string, bool> KnownClusters { get; init; } =
         new Dictionary<string, bool>();
+
+    /// <summary>
+    /// Whether the Containers list groups Compose projects into one row, per backend id (KON-159).
+    /// <para>
+    /// Per backend rather than global: a machine full of stacks and one with none are different rooms,
+    /// and the answer that suits a laptop running four compose files is not the one that suits a
+    /// cluster node. Absent means on — grouping is the default, and a flat list is the opt-out.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, bool> ContainerGrouping { get; init; } =
+        new Dictionary<string, bool>();
+
+    /// <summary>
+    /// Keyboard shortcuts the user changed, keyed by action id (KON-180). Absent means "use the
+    /// default", following <see cref="BackendNames"/> and <see cref="ContainerGrouping"/>.
+    /// <para>
+    /// Only deviations, deliberately. Writing the full set out would freeze today's defaults into every
+    /// installation, so a shortcut improved in a later release would reach nobody who had ever opened
+    /// this page — and the defaults differ per platform, which a stored copy cannot follow.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Shortcuts { get; init; } =
+        new Dictionary<string, string>();
 
     /// <summary>Primary monospace family for the container terminal.</summary>
     public string TerminalFontFamily { get; init; } = "JetBrains Mono";

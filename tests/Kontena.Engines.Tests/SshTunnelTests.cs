@@ -1,5 +1,5 @@
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 
 namespace Kontena.Engines.Tests;
 
@@ -77,5 +77,53 @@ public class SshTunnelTests
         Assert.Contains("-p", arguments, StringComparer.Ordinal);
         Assert.Contains("2222", arguments, StringComparer.Ordinal);
         Assert.Equal("deploy@build-01", arguments[^1]);
+    }
+
+    // ── Arguments ssh would read as its own options (KON-181) ─────────────────
+
+    [Fact]
+    public void A_host_that_is_really_an_ssh_option_never_reaches_the_command_line()
+    {
+        // An argument list stops a shell interpreting anything; it does not stop ssh reading an
+        // argument as an option. ProxyCommand is a command ssh runs, as this user, and ssh has no --
+        // terminator for its destination to hide behind.
+        var attack = Remote(host: "-oProxyCommand=touch /tmp/pwned");
+
+        Assert.Throws<ArgumentException>(() => SshTunnel.Arguments(attack, "/tmp/s.sock"));
+    }
+
+    [Fact]
+    public void A_user_that_is_really_an_ssh_option_never_reaches_the_command_line() =>
+        Assert.Throws<ArgumentException>(
+            () => SshTunnel.Arguments(Remote(user: "-oProxyCommand=id"), "/tmp/s.sock"));
+
+    [Fact]
+    public void A_socket_path_cannot_rewrite_where_the_tunnel_forwards_to()
+    {
+        // -L takes local:host:port. A colon in the remote path adds fields to that spec, so the tunnel
+        // would carry traffic somewhere other than the socket it claims to.
+        var attack = Remote(socket: "evil.example:22");
+
+        Assert.Throws<ArgumentException>(() => SshTunnel.Arguments(attack, "/tmp/s.sock"));
+    }
+
+    [Fact]
+    public void A_hyphen_inside_a_name_is_still_an_ordinary_host()
+    {
+        // The rule is about the first character, not about hyphens: build-01 and ssh_config aliases
+        // like my-jump-host are the normal case and must keep working.
+        Assert.Equal("deploy@my-jump-host", SshTunnel.Arguments(Remote(host: "my-jump-host"), "/tmp/s.sock")[^1]);
+    }
+
+    [Fact]
+    public void The_same_rule_stops_it_one_layer_earlier()
+    {
+        // Where the user actually sees it: the add wizard and the Settings page both read Problem, and
+        // so does the provider that opens the connection — which is what covers a remote that arrived
+        // from a synced settings file rather than from a form.
+        Assert.NotNull(Remote(host: "-oProxyCommand=id").Problem);
+        Assert.NotNull(Remote(user: "-x").Problem);
+        Assert.NotNull(Remote(socket: "a:b").Problem);
+        Assert.Null(Remote().Problem);
     }
 }

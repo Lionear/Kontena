@@ -1,5 +1,5 @@
-using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -95,7 +95,7 @@ internal sealed class ClusterMetrics(IMetricsSource metricsServer, INodeDiskSour
             : new Dictionary<string, long>();
     }
 
-    public async ValueTask<IReadOnlyList<Core.Orchestration.Models.PodMetrics>> GetPodUsageAsync(
+    public async ValueTask<IReadOnlyList<Kontena.Sdk.Orchestration.Models.PodMetrics>> GetPodUsageAsync(
         string? ns = null, CancellationToken ct = default)
     {
         await EnsureProbedAsync(ct).ConfigureAwait(false);

@@ -1,5 +1,4 @@
-using Kontena.Core;
-using Kontena.Engines;
+using Kontena.Sdk;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -41,6 +40,13 @@ public sealed class KubernetesClusterProvider : IBackendProvider
     /// </summary>
     public string? KubeconfigPath => _kubeconfigPath;
     public string Chip { get; }
+
+    /// <summary>
+    /// Every context wears the same mark: what the letters used to carry — which context this is — is
+    /// the name right next to it, and a chip cannot say "prod-eu-west" in 26 pixels anyway (KON-80).
+    /// </summary>
+    public BackendChipStyle? ChipStyle => new(KubernetesBrand.Glyph, KubernetesBrand.Accent);
+
     public BackendKind Kind => BackendKind.Cluster;
 
     public IBackend CreateBackend() => new KubernetesClusterEngine(_context, _kubeconfigPath);

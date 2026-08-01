@@ -1,15 +1,16 @@
-using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
-public sealed partial class ImagesViewModel : ViewModelBase, IListPage
+public sealed partial class ImagesViewModel : ListPageViewModel<ImageRowViewModel>
 {
+    public override string SearchPlaceholder => "Search images…";
+
     private readonly IContainerEngine _engine;
-    private readonly List<ImageRowViewModel> _all = [];
 
     public ImagesViewModel(IContainerEngine engine) => _engine = engine;
 
@@ -25,27 +26,14 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
     [RelayCommand]
     private void BuildImage() => RequestBuildImage?.Invoke();
 
-    public ObservableCollection<ImageRowViewModel> Items { get; } = [];
-
-    [ObservableProperty] private string _searchText = string.Empty;
-    [ObservableProperty] private bool _hasLoaded;
     [ObservableProperty] private string _summary = string.Empty;
     [ObservableProperty] private bool _hasUnused;
     [ObservableProperty] private bool _pruneArmed;
     [ObservableProperty] private string _pruneSummary = string.Empty;
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
-
-    [RelayCommand]
-    public async Task LoadAsync()
+    protected override async Task<IReadOnlyList<ImageRowViewModel>> LoadRowsAsync()
     {
         var list = await _engine.ListImagesAsync();
-        _all.Clear();
-        foreach (var image in list.OrderBy(i => i.Repository, StringComparer.OrdinalIgnoreCase)
-                                   .ThenBy(i => i.Tag, StringComparer.OrdinalIgnoreCase))
-        {
-            _all.Add(new ImageRowViewModel(image, this));
-        }
 
         var total = list.Sum(i => i.SizeBytes);
         var unused = list.Where(i => !i.InUse).ToList();
@@ -57,8 +45,10 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
         if (!HasUnused)
             PruneArmed = false;
 
-        HasLoaded = true;
-        ApplyFilter();
+        return [.. list
+            .OrderBy(i => i.Repository, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(i => i.Tag, StringComparer.OrdinalIgnoreCase)
+            .Select(i => new ImageRowViewModel(i, this))];
     }
 
     [RelayCommand]
@@ -101,21 +91,6 @@ public sealed partial class ImagesViewModel : ViewModelBase, IListPage
         await LoadAsync();
     }
 
-    private void ApplyFilter()
-    {
-        Items.Clear();
-        foreach (var row in _all.Where(Matches))
-            Items.Add(row);
-    }
-
-    private bool Matches(ImageRowViewModel row)
-    {
-        if (string.IsNullOrWhiteSpace(SearchText))
-            return true;
-
-        var q = SearchText.Trim();
-        return row.RepoName.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || row.RepoNamespace.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || row.Tag.Contains(q, StringComparison.OrdinalIgnoreCase);
-    }
+    protected override bool Matches(ImageRowViewModel row, string term) =>
+        Contains(row.RepoName, term) || Contains(row.RepoNamespace, term) || Contains(row.Tag, term);
 }

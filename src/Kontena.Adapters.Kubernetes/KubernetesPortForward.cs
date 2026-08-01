@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using k8s;
-using Kontena.Core.Orchestration;
+using Kontena.Sdk.Orchestration;
 
 namespace Kontena.Adapters.Kubernetes;
 

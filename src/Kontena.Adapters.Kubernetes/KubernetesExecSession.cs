@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using k8s;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 

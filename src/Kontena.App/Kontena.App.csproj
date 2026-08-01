@@ -12,11 +12,16 @@
     <!-- The autostart rules (which path, what to write) are implementation details, not API — but they
          are the part that fails silently, so the tests reach them here rather than by widening them. -->
     <InternalsVisibleTo Include="Kontena.App.Tests" />
+    <InternalsVisibleTo Include="Kontena.App.Ui.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
+    <!-- icon.svg is the design source for icon.png/.ico and the KontenaLogo drawing in
+         Icons.axaml — nothing loads it at runtime, so keep it out of the resource blob. -->
+    <AvaloniaResource Remove="Assets\icon.svg" />
+    <None Include="Assets\icon.svg" />
   </ItemGroup>
 
   <ItemGroup>
@@ -40,5 +45,6 @@
     <ProjectReference Include="..\Kontena.Adapters.Docker\Kontena.Adapters.Docker.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Podman\Kontena.Adapters.Podman.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Kubernetes\Kontena.Adapters.Kubernetes.csproj" />
+    <ProjectReference Include="..\Kontena.Adapters.LocalClusters\Kontena.Adapters.LocalClusters.csproj" />
   </ItemGroup>
 </Project>

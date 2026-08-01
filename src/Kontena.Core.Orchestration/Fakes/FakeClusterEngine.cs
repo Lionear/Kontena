@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
-using Kontena.Core.Models;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration.Models;
+using Kontena.Sdk.Orchestration;
 
 namespace Kontena.Core.Orchestration.Fakes;
 
@@ -10,7 +11,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -20,6 +21,10 @@ public sealed class FakeClusterEngine : IClusterEngine
     private readonly List<Service> _services;
     private readonly List<Ingress> _ingresses;
     private readonly List<PersistentVolumeClaim> _pvcs;
+    private readonly List<ConfigMapSummary> _configMaps;
+    private readonly List<SecretSummary> _secrets;
+    private readonly List<PersistentVolume> _volumes;
+    private readonly List<StorageClass> _storageClasses;
     private readonly List<ClusterEvent> _events;
 
     /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
@@ -28,8 +33,19 @@ public sealed class FakeClusterEngine : IClusterEngine
     private string _activeContext;
 
     /// <param name="context">Which seeded context to start on; defaults to the first.</param>
-    public FakeClusterEngine(string? context = null)
+    /// <param name="metrics">
+    /// Whether a usage backend answers. False is the shape of a fresh kind cluster (KON-93): gauges
+    /// unavailable until something installs a metrics-server — which applying its manifest here does,
+    /// so the install flow can be driven end to end without a cluster.
+    /// </param>
+    /// <param name="watch">
+    /// Whether this cluster supports watch streams. False is a real backend and not a broken one —
+    /// the shape the UI has to degrade to rather than go quietly stale (KON-250).
+    /// </param>
+    public FakeClusterEngine(string? context = null, bool metrics = true, bool watch = true)
     {
+        _capabilities = _capabilities with { Metrics = metrics, Watch = watch };
+
         _contexts =
         [
             new KubeContext { Name = "prod-eu-west", Cluster = "gke_prod", User = "gke-user", Namespace = "default" },
@@ -56,23 +72,59 @@ public sealed class FakeClusterEngine : IClusterEngine
             Ns("default"), Ns("kube-system"), Ns("ingress-nginx"), Ns("monitoring"), Ns("app"),
         ];
 
+        // Labels and selectors are seeded so the detail pages have something true to show: without
+        // them a workload detail lists no pods and a service detail cannot answer "what does this
+        // selector reach", which is the one question it exists for (KON-166/167).
         _workloads =
         [
-            new Workload { Name = "api", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["ghcr.io/lionear/api:1.8"], RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromHours(30) },
-            new Workload { Name = "web", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 2, Desired = 3, UpToDate = 2, Available = 2, Images = ["nginx:1.27-alpine"], RolloutStatus = RolloutStatus.Progressing, Age = TimeSpan.FromHours(30) },
-            new Workload { Name = "redis", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 0, Desired = 1, UpToDate = 1, Available = 0, Images = ["redis:7-alpine"], RolloutStatus = RolloutStatus.Degraded, Age = TimeSpan.FromHours(6) },
-            new Workload { Name = "postgres", Namespace = "app", Kind = WorkloadKind.StatefulSet, Ready = 1, Desired = 1, UpToDate = 1, Available = 1, Images = ["postgres:16"], RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromDays(9) },
-            new Workload { Name = "node-exporter", Namespace = "monitoring", Kind = WorkloadKind.DaemonSet, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["prom/node-exporter:v1.8"], RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromDays(9) },
-            new Workload { Name = "backup", Namespace = "app", Kind = WorkloadKind.CronJob, Ready = 0, Desired = 0, Images = ["ghcr.io/lionear/backup:2"], Schedule = "0 3 * * *", RolloutStatus = RolloutStatus.Complete, Age = TimeSpan.FromDays(9) },
+            // Replica counts agree with the seeded pods on purpose. The workload detail shows the
+            // breakdown and the matching pods on the same page (KON-166), so a header claiming three
+            // above a list of two reads as a bug in Kontena rather than a shortcut in the fake.
+            // Deliberately not "all ready everywhere": web is mid-rollout and redis is down, because a
+            // healthy-only seed hides the states these pages exist to explain.
+            new Workload { Name = "api", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["ghcr.io/lionear/api:1.8"], RolloutStatus = RolloutStatus.Complete, Labels = App("api"), Selector = App("api"), Strategy = "RollingUpdate (max surge 25%, max unavailable 25%)", Age = TimeSpan.FromHours(30) },
+            new Workload { Name = "web", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 2, Desired = 3, UpToDate = 2, Available = 2, Images = ["nginx:1.27-alpine"], RolloutStatus = RolloutStatus.Progressing, Labels = App("web"), Selector = App("web"), Strategy = "RollingUpdate (max surge 25%, max unavailable 25%)", Age = TimeSpan.FromHours(30) },
+            new Workload { Name = "redis", Namespace = "app", Kind = WorkloadKind.Deployment, Ready = 0, Desired = 1, UpToDate = 1, Available = 0, Images = ["redis:7-alpine"], RolloutStatus = RolloutStatus.Degraded, Labels = App("redis"), Selector = App("redis"), Strategy = "RollingUpdate (max surge 25%, max unavailable 25%)", Age = TimeSpan.FromHours(6) },
+            new Workload { Name = "postgres", Namespace = "app", Kind = WorkloadKind.StatefulSet, Ready = 1, Desired = 1, UpToDate = 1, Available = 1, Images = ["postgres:16"], RolloutStatus = RolloutStatus.Complete, Labels = App("postgres"), Selector = App("postgres"), Strategy = "RollingUpdate", Age = TimeSpan.FromDays(9) },
+            new Workload { Name = "node-exporter", Namespace = "monitoring", Kind = WorkloadKind.DaemonSet, Ready = 3, Desired = 3, UpToDate = 3, Available = 3, Images = ["prom/node-exporter:v1.8"], RolloutStatus = RolloutStatus.Complete, Labels = App("node-exporter"), Selector = App("node-exporter"), Strategy = "RollingUpdate", Age = TimeSpan.FromDays(9) },
+            // The owner of the wedged migrate pod. Without it that pod is controlled by something that
+            // does not appear in the workloads list, and the trail from pod to owner dead-ends.
+            new Workload { Name = "migrate", Namespace = "app", Kind = WorkloadKind.Job, Ready = 0, Desired = 1, UpToDate = 0, Available = 0, Images = ["ghcr.io/lionear/migrate:2.1"], RolloutStatus = RolloutStatus.Degraded, Labels = App("migrate"), Selector = App("migrate"), Age = TimeSpan.FromMinutes(6) },
+            // No selector: a CronJob owns Jobs, not pods. The detail page says so rather than showing
+            // an empty pod list that reads as "none running".
+            new Workload { Name = "backup", Namespace = "app", Kind = WorkloadKind.CronJob, Ready = 0, Desired = 0, Images = ["ghcr.io/lionear/backup:2"], Schedule = "0 3 * * *", RolloutStatus = RolloutStatus.Complete, Labels = App("backup"), Age = TimeSpan.FromDays(9) },
         ];
 
         _pods =
         [
             Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8"),
             Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8"),
+            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8"),
             Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine"),
-            new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, State = "Waiting: CrashLoopBackOff" }] },
+            // web is mid-rollout at 2/3, so two pods and not three — the counts and the list have to
+            // tell the same story now that the detail page shows them together.
+            Pod1("web-5f2b", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine"),
+            new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Labels = App("redis"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
+            // A pod wedged on its init container, which is the case the whole of KON-168 is about: the
+            // container holding the answer is the one that used to be unreachable. Phase alone reports
+            // "Pending" here, indistinguishable from a pod that is merely starting.
+            new Pod
+            {
+                Name = "migrate-9b4f", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-1",
+                Restarts = 4, ControlledBy = "Job/migrate", Labels = App("migrate"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(6),
+                InitContainers =
+                [
+                    new ContainerStatus { Name = "wait-for-db", Image = "busybox:1.36", Kind = ContainerKind.Init, Ready = true, RunState = ContainerRunState.Terminated, Reason = "Completed", ExitCode = 0 },
+                    new ContainerStatus { Name = "run-migrations", Image = "ghcr.io/lionear/migrate:2.1", Kind = ContainerKind.Init, Restarts = 4, RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" },
+                ],
+                Containers = [new ContainerStatus { Name = "app", Image = "ghcr.io/lionear/api:1.8", Ports = [new ContainerPort("http", 8080, "TCP")], RunState = ContainerRunState.Waiting, Reason = "PodInitializing" }],
+            },
             Pod1("postgres-0", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "StatefulSet/postgres", "postgres:16"),
+            // One per node, as a DaemonSet gives you — and in the monitoring namespace, so the
+            // namespace picker has something to do and the DaemonSet's own detail is not empty.
+            Pod1("node-exporter-a1b2", "monitoring", PodPhase.Running, 1, 0, "gke-prod-worker-1", "DaemonSet/node-exporter", "prom/node-exporter:v1.8"),
+            Pod1("node-exporter-c3d4", "monitoring", PodPhase.Running, 1, 0, "gke-prod-worker-2", "DaemonSet/node-exporter", "prom/node-exporter:v1.8"),
+            Pod1("node-exporter-e5f6", "monitoring", PodPhase.Running, 1, 0, "gke-prod-control", "DaemonSet/node-exporter", "prom/node-exporter:v1.8"),
         ];
 
         _services =
@@ -90,7 +142,66 @@ public sealed class FakeClusterEngine : IClusterEngine
         _pvcs =
         [
             new PersistentVolumeClaim { Name = "postgres-data", Namespace = "app", Phase = PvcPhase.Bound, Volume = "pvc-8a1f", CapacityBytes = 20L * 1024 * 1024 * 1024, StorageClass = "standard-rwo", AccessModes = ["RWO"], Age = TimeSpan.FromDays(9) },
+            // Pending on purpose, and for the reason that is not a fault: its class waits for a pod.
+            // A seed where every claim is Bound hides the state these pages exist to explain.
+            new PersistentVolumeClaim { Name = "cache-data", Namespace = "app", Phase = PvcPhase.Pending, CapacityBytes = 5L * 1024 * 1024 * 1024, StorageClass = "local-path", AccessModes = ["RWO"], Age = TimeSpan.FromMinutes(3) },
         ];
+
+        _volumes =
+        [
+            new PersistentVolume { Name = "pvc-8a1f", Phase = VolumePhase.Bound, CapacityBytes = 20L * 1024 * 1024 * 1024, AccessModes = ["RWO"], ReclaimPolicy = ReclaimPolicy.Delete, StorageClass = "standard-rwo", Claim = "app/postgres-data", Driver = "pd.csi.storage.gke.io", Age = TimeSpan.FromDays(9) },
+            // Released with Retain: the claim is gone, the data is not, and nothing will reuse this
+            // volume until someone deals with it. The state that costs money quietly.
+            new PersistentVolume { Name = "pvc-3c02", Phase = VolumePhase.Released, CapacityBytes = 100L * 1024 * 1024 * 1024, AccessModes = ["RWO"], ReclaimPolicy = ReclaimPolicy.Retain, StorageClass = "standard-rwo", Claim = "app/old-postgres-data", Driver = "pd.csi.storage.gke.io", Age = TimeSpan.FromDays(40) },
+        ];
+
+        _storageClasses =
+        [
+            new StorageClass { Name = "standard-rwo", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, IsDefault = true, AllowsExpansion = true, Age = TimeSpan.FromDays(120) },
+            new StorageClass { Name = "local-path", Provisioner = "rancher.io/local-path", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, AllowsExpansion = false, Age = TimeSpan.FromDays(120) },
+            new StorageClass { Name = "retain-ssd", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Retain, BindingMode = VolumeBindingMode.Immediate, AllowsExpansion = true, Age = TimeSpan.FromDays(60) },
+        ];
+
+        _configMaps =
+        [
+            new ConfigMapSummary { Name = "web-config", Namespace = "app", Age = TimeSpan.FromDays(4), Keys = [new ConfigKey("nginx.conf", 812), new ConfigKey("LOG_LEVEL", 4)] },
+            new ConfigMapSummary { Name = "kube-root-ca.crt", Namespace = "app", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("ca.crt", 1099)] },
+            // Kubernetes writes this one into *every* namespace, so a fake where only one namespace
+            // has it lets "this namespace is empty" pass a test it would fail on a real cluster.
+            new ConfigMapSummary { Name = "kube-root-ca.crt", Namespace = "kube-system", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("ca.crt", 1099)] },
+        ];
+
+        _secrets =
+        [
+            // Three shapes on purpose: an Opaque secret with text values, a TLS secret whose key is
+            // bytes rather than text, and a registry credential.
+            new SecretSummary { Name = "postgres-credentials", Namespace = "app", Type = "Opaque", Age = TimeSpan.FromDays(9), Keys = [new ConfigKey("password", 24), new ConfigKey("username", 8)] },
+            new SecretSummary { Name = "app-tls", Namespace = "app", Type = "kubernetes.io/tls", Age = TimeSpan.FromDays(2), Keys = [new ConfigKey("tls.crt", 1704), new ConfigKey("tls.key", 1675)] },
+            new SecretSummary { Name = "ghcr-pull", Namespace = "app", Type = "kubernetes.io/dockerconfigjson", Age = TimeSpan.FromDays(40), Keys = [new ConfigKey(".dockerconfigjson", 187)] },
+            // Minted beside a service account rather than by anyone; same reason as kube-root-ca.crt.
+            new SecretSummary { Name = "default-token-x9f2q", Namespace = "kube-system", Type = "kubernetes.io/service-account-token", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("token", 1024)] },
+        ];
+
+        _configData = new Dictionary<string, IReadOnlyList<ConfigEntry>>(StringComparer.Ordinal)
+        {
+            ["ConfigMap/app/web-config"] =
+            [
+                new ConfigEntry { Key = "LOG_LEVEL", Text = "info", SizeBytes = 4 },
+                new ConfigEntry { Key = "nginx.conf", Text = "server {\n  listen 80;\n  location / {\n    proxy_pass http://web:8080;\n  }\n}", SizeBytes = 812 },
+            ],
+            ["Secret/app/postgres-credentials"] =
+            [
+                new ConfigEntry { Key = "password", Text = "s3cr3t-but-not-really", SizeBytes = 24 },
+                new ConfigEntry { Key = "username", Text = "postgres", SizeBytes = 8 },
+            ],
+            // Text null is what "these bytes are not text" looks like — the case the reveal path has
+            // to handle without rendering a terminal full of noise.
+            ["Secret/app/app-tls"] =
+            [
+                new ConfigEntry { Key = "tls.crt", Text = null, SizeBytes = 1704 },
+                new ConfigEntry { Key = "tls.key", Text = null, SizeBytes = 1675 },
+            ],
+        };
 
         _events =
         [
@@ -101,10 +212,16 @@ public sealed class FakeClusterEngine : IClusterEngine
 
     public string Backend => "kubernetes";
 
-    public ClusterCapabilities Capabilities { get; } = new()
+    private ClusterCapabilities _capabilities = new()
     {
         Metrics = true, Exec = true, PortForward = true, Apply = true, Helm = true, Watch = true, Crds = true,
+        NodeMaintenance = true,
     };
+
+    public ClusterCapabilities Capabilities => _capabilities;
+
+    /// <summary>What answers for usage, so the UI can explain the gauges it is not drawing.</summary>
+    public IMetricsSource Metrics => _capabilities.Metrics ? FakeMetricsSource.Instance : NoMetricsSource.Instance;
 
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<BackendInfo>(new ClusterInfo
@@ -143,6 +260,15 @@ public sealed class FakeClusterEngine : IClusterEngine
             ct.ThrowIfCancellationRequested();
             await Task.Yield();
             yield return ApplyOne(desired, bundle.DryRun);
+
+            // The install this models is only real once metrics.k8s.io is registered, so that is what
+            // flips the capability — not the presence of a Deployment called metrics-server.
+            if (!bundle.DryRun
+                && desired.Kind == "APIService"
+                && desired.Name.Contains("metrics.k8s.io", StringComparison.Ordinal))
+            {
+                _capabilities = _capabilities with { Metrics = true };
+            }
         }
     }
 
@@ -171,6 +297,16 @@ public sealed class FakeClusterEngine : IClusterEngine
                 break;
             case "PersistentVolumeClaim":
                 _pvcs.RemoveAll(p => p.Name == name && p.Namespace == ns);
+                break;
+            case "ConfigMap":
+                _configMaps.RemoveAll(c => c.Name == name && c.Namespace == ns);
+                _configData.Remove($"ConfigMap/{ns}/{name}");
+                break;
+            case "Secret":
+                // The values go with the object, which is what makes the delete irreversible and is
+                // therefore the thing a fake has to model rather than merely hide the row (KON-253).
+                _secrets.RemoveAll(x => x.Name == name && x.Namespace == ns);
+                _configData.Remove($"Secret/{ns}/{name}");
                 break;
             case "Namespace":
                 _namespaces.RemoveAll(n => n.Name == name);
@@ -303,6 +439,13 @@ public sealed class FakeClusterEngine : IClusterEngine
             "Service" => _services.Where(s => Match(ns, s.Namespace)).Select(s => new ResourceRef(kind, s.Namespace, s.Name)),
             "Node" => _nodes.Select(n => new ResourceRef(kind, null, n.Name)),
             "Namespace" => _namespaces.Select(n => new ResourceRef(kind, null, n.Name)),
+            "Ingress" => _ingresses.Where(i => Match(ns, i.Namespace)).Select(i => new ResourceRef(kind, i.Namespace, i.Name)),
+            "PersistentVolumeClaim" => _pvcs.Where(p => Match(ns, p.Namespace)).Select(p => new ResourceRef(kind, p.Namespace, p.Name)),
+            "PersistentVolume" => _volumes.Select(v => new ResourceRef(kind, null, v.Name)),
+            "StorageClass" => _storageClasses.Select(c => new ResourceRef(kind, null, c.Name)),
+            // Everything left is a workload kind. Spelled as the fallthrough rather than five cases,
+            // but it is a fallthrough over a known set — a kind the fake does not model would come out
+            // of here carrying workload names, which is worse than nothing.
             _ => _workloads.Where(w => Match(ns, w.Namespace)).Select(w => new ResourceRef(kind, w.Namespace, w.Name)),
         };
 
@@ -328,6 +471,80 @@ public sealed class FakeClusterEngine : IClusterEngine
     public ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Pod>>(_pods.Where(p => Match(ns, p.Namespace)).ToList());
 
+    // ── Generic resources (KON-75) ───────────────────────────────────────────
+
+    /// <summary>
+    /// A handful of built-in kinds plus a custom one, because the point of the browser is the kinds
+    /// nobody modelled: a fake that only served built-ins would let a UI that cannot show a CRD pass.
+    /// </summary>
+    private static readonly ApiResource[] Resources =
+        [
+            new() { Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"] },
+            new() { Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true, Verbs = ["list", "delete"] },
+            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"] },
+            new()
+            {
+                Kind = new GroupVersionKind(string.Empty, "v1", "ConfigMap"),
+                Plural = "configmaps", Namespaced = true, Verbs = ["list", "delete"],
+            },
+            new()
+            {
+                Kind = new GroupVersionKind("networking.k8s.io", "v1", "Ingress"),
+                Plural = "ingresses", Namespaced = true, Verbs = ["list", "delete"],
+            },
+            new()
+            {
+                Kind = new GroupVersionKind("cert-manager.io", "v1", "Certificate"),
+                Plural = "certificates", Namespaced = true, Verbs = ["list", "delete"], IsCustom = true,
+            },
+        ];
+
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
+
+    /// <inheritdoc/>
+    public ValueTask<ResourceTable> ListTableAsync(
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+    {
+        // Columns per kind, the way a server renders them: a browser that drew the same three columns
+        // for everything would look right against a fake and wrong against a cluster.
+        if (kind.Kind == "Certificate")
+        {
+            return ValueTask.FromResult(new ResourceTable
+            {
+                Columns = [new("Name", 0), new("Ready", 0), new("Secret", 0), new("Age", 0)],
+                Rows =
+                [
+                    new(new ResourceRef(kind, ns ?? "default", "kontena-app-tls"),
+                        ["kontena-app-tls", "True", "kontena-app-tls", "12d"]),
+                    new(new ResourceRef(kind, ns ?? "default", "kontena-api-tls"),
+                        ["kontena-api-tls", "False", "kontena-api-tls", "3m"]),
+                ],
+            });
+        }
+
+        var names = kind.Kind switch
+        {
+            "Pod" => _pods.Where(p => Match(ns, p.Namespace)).Select(p => (p.Name, p.Namespace)).ToArray(),
+            "Service" => _services.Where(s => Match(ns, s.Namespace)).Select(s => (s.Name, s.Namespace)).ToArray(),
+            "Ingress" => _ingresses.Where(i => Match(ns, i.Namespace)).Select(i => (i.Name, i.Namespace)).ToArray(),
+            "Node" => _nodes.Select(n => (n.Name, string.Empty)).ToArray(),
+            _ => [],
+        };
+
+        return ValueTask.FromResult(new ResourceTable
+        {
+            Columns = [new("Name", 0), new("Age", 0)],
+            Rows =
+            [
+                .. names.Select(n => new ResourceRow(
+                    new ResourceRef(kind, string.IsNullOrEmpty(n.Item2) ? null : n.Item2, n.Item1),
+                    [n.Item1, "5d"])),
+            ],
+        });
+    }
+
     public ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Service>>(_services.Where(s => Match(ns, s.Namespace)).ToList());
 
@@ -337,9 +554,116 @@ public sealed class FakeClusterEngine : IClusterEngine
     public ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<PersistentVolumeClaim>>(_pvcs.Where(p => Match(ns, p.Namespace)).ToList());
 
+    public ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PersistentVolume>>(_volumes);
+
+    public ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<StorageClass>>(_storageClasses);
+
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(
             _events.Where(e => Match(ns, e.InvolvedObject.Namespace)).ToList());
+
+    // ── Node maintenance (KON-251) ───────────────────────────────────────────
+
+    public ValueTask CordonNodeAsync(string node, bool cordoned, CancellationToken ct = default)
+    {
+        var idx = _nodes.FindIndex(n => n.Name == node);
+        if (idx >= 0)
+            _nodes[idx] = _nodes[idx] with { Unschedulable = cordoned };
+
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// A drain over the seeded pods, applying the same rules the real adapter does — including the
+    /// ones that decide a pod stays put, since those are what the UI has to render honestly.
+    /// </summary>
+    public async IAsyncEnumerable<DrainProgress> DrainNodeAsync(
+        string node, DrainOptions options, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        await CordonNodeAsync(node, cordoned: true, ct);
+        yield return new DrainProgress { Action = DrainAction.Cordoned };
+
+        foreach (var pod in _pods.Where(p => p.Node == node).ToList())
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var owner = pod.ControlledBy;
+
+            if (options.IgnoreDaemonSets && owner.StartsWith("DaemonSet/", StringComparison.Ordinal))
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Skipped, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "managed by a DaemonSet, which would put it straight back",
+                };
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(owner))
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Skipped, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "not managed by a controller, so nothing would recreate it elsewhere",
+                };
+                continue;
+            }
+
+            yield return new DrainProgress { Action = DrainAction.Evicting, Pod = pod.Name, Namespace = pod.Namespace };
+
+            // One pod that a budget refuses, so the blocked path is reachable without a cluster: a
+            // drain where everything succeeds is the one shape that never needed the design.
+            if (pod.Name == "postgres-0")
+            {
+                yield return new DrainProgress
+                {
+                    Action = DrainAction.Blocked, Pod = pod.Name, Namespace = pod.Namespace,
+                    Reason = "Cannot evict pod as it would violate the pod's disruption budget (postgres-pdb).",
+                };
+                continue;
+            }
+
+            _pods.RemoveAll(p => p.Name == pod.Name && p.Namespace == pod.Namespace);
+            yield return new DrainProgress { Action = DrainAction.Evicted, Pod = pod.Name, Namespace = pod.Namespace };
+        }
+
+        yield return new DrainProgress { Action = DrainAction.Finished };
+    }
+
+    // ── ConfigMaps and Secrets (KON-249) ─────────────────────────────────────
+
+    /// <summary>
+    /// The fake's config data, keyed by "kind/namespace/name". Held apart from the summaries for the
+    /// same reason the contract splits them: a summary that carried its values would let a page show
+    /// a secret it never asked for, and a fake that allowed it would let that mistake pass its tests.
+    /// </summary>
+    private readonly Dictionary<string, IReadOnlyList<ConfigEntry>> _configData;
+
+    public ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<ConfigMapSummary>>(
+            _configMaps.Where(c => Match(ns, c.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<SecretSummary>> ListSecretsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<SecretSummary>>(
+            _secrets.Where(s => Match(ns, s.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<ConfigEntry>> GetConfigDataAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        if (resource.Kind.Kind is not ("Secret" or "ConfigMap"))
+            throw new NotSupportedException(
+                $"{resource.Kind.Kind} has no configuration data; only ConfigMap and Secret do.");
+
+        var key = $"{resource.Kind.Kind}/{resource.Namespace}/{resource.Name}";
+        return ValueTask.FromResult(
+            _configData.TryGetValue(key, out var entries) ? entries : []);
+    }
 
     public ValueTask ScaleAsync(ResourceRef workload, int replicas, CancellationToken ct = default)
     {
@@ -373,15 +697,25 @@ public sealed class FakeClusterEngine : IClusterEngine
     }
 
     public async IAsyncEnumerable<LogEntry> StreamLogsAsync(
-        ResourceRef pod, string container, bool follow = true, [EnumeratorCancellation] CancellationToken ct = default)
+        ResourceRef pod, string container, bool follow = true, bool previous = false,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        string[] lines =
-        [
-            "INFO  starting {container} in {pod}",
-            "INFO  listening on :8080",
-            "INFO  ready",
-            "WARN  slow upstream response (412ms)",
-        ];
+        // The run that ended is a different story from the one running — that is the whole point of
+        // asking for it, so the fake must not answer both with the same lines.
+        string[] lines = previous
+            ?
+            [
+                "INFO  starting {container} in {pod}",
+                "ERROR could not open database: connection refused",
+                "FATAL exiting",
+            ]
+            :
+            [
+                "INFO  starting {container} in {pod}",
+                "INFO  listening on :8080",
+                "INFO  ready",
+                "WARN  slow upstream response (412ms)",
+            ];
         foreach (var line in lines)
         {
             ct.ThrowIfCancellationRequested();
@@ -477,7 +811,7 @@ public sealed class FakeClusterEngine : IClusterEngine
             {
                 var i = _pods.FindIndex(p => p.Name == doc.Name && p.Namespace == ns);
                 var containers = doc.Containers
-                    .Select(c => new ContainerStatus { Name = c.Name, Image = c.Image, Ready = true, State = "Running" })
+                    .Select(c => new ContainerStatus { Name = c.Name, Image = c.Image, Ready = true, RunState = ContainerRunState.Running })
                     .ToList();
                 var pod = i >= 0
                     ? _pods[i] with { Node = doc.NodeName ?? _pods[i].Node, Containers = containers.Count > 0 ? containers : _pods[i].Containers }
@@ -674,8 +1008,28 @@ public sealed class FakeClusterEngine : IClusterEngine
         Age = TimeSpan.FromDays(9),
     };
 
+    /// <summary>
+    /// The port a fake container declares. Real workloads declare one and the port-forward dialog reads
+    /// them (KON-170); a fake that declares none would show an empty picker and quietly suggest that
+    /// pods do not have ports.
+    /// </summary>
+    private static IReadOnlyList<ContainerPort> PortsFor(string image) => image switch
+    {
+        var i when i.Contains("nginx", StringComparison.Ordinal) => [new ContainerPort("http", 80, "TCP")],
+        var i when i.Contains("postgres", StringComparison.Ordinal) => [new ContainerPort("pg", 5432, "TCP")],
+        var i when i.Contains("redis", StringComparison.Ordinal) => [new ContainerPort("redis", 6379, "TCP")],
+        _ => [new ContainerPort("http", 8080, "TCP"), new ContainerPort("metrics", 9090, "TCP")],
+    };
+
+    /// <summary>The one-label convention the seeded workloads and services agree on: <c>app=&lt;name&gt;</c>.</summary>
+    private static Dictionary<string, string> App(string name) =>
+        new(StringComparer.Ordinal) { ["app"] = name };
+
     private static Pod Pod1(string name, string ns, PodPhase phase, int containers, int restarts, string node, string owner, string image) => new()
     {
+        // Pods carry the label their owner selects on, so ownership and selector matching agree —
+        // which is what makes the two detail pages tell the same story about the same pod.
+        Labels = App(owner.Contains('/', StringComparison.Ordinal) ? owner.Split('/')[1] : owner),
         Name = name,
         Namespace = ns,
         Phase = phase,
@@ -686,8 +1040,32 @@ public sealed class FakeClusterEngine : IClusterEngine
         Qos = QosClass.Burstable,
         Age = TimeSpan.FromHours(30),
         Containers = Enumerable.Range(0, containers)
-            .Select(i => new ContainerStatus { Name = containers == 1 ? name.Split('-')[0] : $"c{i}", Image = image, Ready = phase == PodPhase.Running, Restarts = restarts, State = phase == PodPhase.Running ? "Running" : phase.ToString() })
+            .Select(i => new ContainerStatus
+            {
+                Name = containers == 1 ? name.Split('-')[0] : $"c{i}",
+                Image = image,
+                Ready = phase == PodPhase.Running,
+                Restarts = restarts,
+                Ports = PortsFor(image),
+                RunState = phase == PodPhase.Running ? ContainerRunState.Running : ContainerRunState.Waiting,
+                Reason = phase == PodPhase.Running ? string.Empty : phase.ToString(),
+            })
             .ToList(),
+        // Every one of these pods ran an init container to get here, and a fake that leaves them out
+        // makes the container picker look like a list of one thing (KON-168).
+        InitContainers =
+        [
+            new ContainerStatus
+            {
+                Name = "wait-for-db",
+                Image = "busybox:1.36",
+                Kind = ContainerKind.Init,
+                Ready = true,
+                RunState = ContainerRunState.Terminated,
+                Reason = "Completed",
+                ExitCode = 0,
+            },
+        ],
     };
 }
 
@@ -719,4 +1097,25 @@ public sealed class FakePortForward(int localPort, int remotePort) : IPortForwar
         IsActive = false;
         return ValueTask.CompletedTask;
     }
+}
+
+/// <summary>
+/// A usage backend that answers, for the fake cluster. Only its name matters here — the numbers the
+/// gauges draw come from <see cref="FakeClusterEngine"/>'s own node and pod listings.
+/// </summary>
+internal sealed class FakeMetricsSource : IMetricsSource
+{
+    public static readonly FakeMetricsSource Instance = new();
+
+    public string Name => "metrics-server";
+
+    public bool IsAvailable => true;
+
+    public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(true);
+
+    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(new Dictionary<string, NodeUsage>());
+
+    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PodMetrics>>([]);
 }

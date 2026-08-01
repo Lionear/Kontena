@@ -1,7 +1,6 @@
-using Kontena.Core;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
 
 namespace Kontena.Adapters.Docker;
 
@@ -16,8 +15,19 @@ namespace Kontena.Adapters.Docker;
 public sealed class RemoteDockerEngineProvider : IBackendProvider
 {
     private readonly RemoteEngine _remote;
+    private readonly SshAskpass? _askpass;
 
-    public RemoteDockerEngineProvider(RemoteEngine remote) => _remote = remote;
+    /// <param name="remote">The engine as the user configured it.</param>
+    /// <param name="askpass">
+    /// How to answer a password prompt, for an engine set to use one (KON-259). Supplied by the app,
+    /// which is the layer that knows both where Kontena's executable is and what its keychain entries
+    /// are called — neither of which an adapter should have an opinion about.
+    /// </param>
+    public RemoteDockerEngineProvider(RemoteEngine remote, SshAskpass? askpass = null)
+    {
+        _remote = remote;
+        _askpass = askpass;
+    }
 
     public string Backend => _remote.Backend;
     public string DisplayName => _remote.Name;
@@ -25,6 +35,10 @@ public sealed class RemoteDockerEngineProvider : IBackendProvider
     /// <summary>
     /// "R" rather than Docker's "D": in a switcher holding both, which entry is the one on the server is
     /// the thing worth being able to tell at a glance.
+    /// <para>
+    /// And no logo, for the same reason (KON-80): a remote engine *is* Docker, so the whale would say
+    /// something true and lose the only thing that told it apart from the socket next to it.
+    /// </para>
     /// </summary>
     public string Chip => "R";
 
@@ -37,7 +51,7 @@ public sealed class RemoteDockerEngineProvider : IBackendProvider
 
         return _remote.Transport switch
         {
-            RemoteEngineTransport.Ssh => SshEngineFactory.Create(_remote),
+            RemoteEngineTransport.Ssh => SshEngineFactory.Create(_remote, _askpass),
             _ => new DockerEngine(
                 new Uri($"tcp://{_remote.Host}:{_remote.Port ?? RemoteEngine.DefaultTlsPort}"),
                 _remote.Backend,
@@ -58,9 +72,9 @@ public sealed class RemoteDockerEngineProvider : IBackendProvider
 /// </summary>
 internal static class SshEngineFactory
 {
-    public static IBackend Create(RemoteEngine remote)
+    public static IBackend Create(RemoteEngine remote, SshAskpass? askpass = null)
     {
-        var tunnel = SshTunnel.OpenAsync(remote, TimeSpan.FromSeconds(10))
+        var tunnel = SshTunnel.OpenAsync(remote, TimeSpan.FromSeconds(10), askpass)
             .GetAwaiter()
             .GetResult();
 

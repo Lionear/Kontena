@@ -8,35 +8,59 @@
              x:DataType="vm:ClusterWorkloadsViewModel">
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
-            <TextBlock Text="Workloads" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+            <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <!-- Never silent about not being live: a list that has quietly stopped moving looks
+                 exactly like a cluster where nothing is happening, and those want opposite
+                 reactions (KON-250). -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="2*,1.2*,1*,0.8*,1.1*,0.7*,168">
+                        <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,168">
                             <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
                             <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
-                            <TextBlock Grid.Column="2" Text="KIND" Classes="colhead"/>
-                            <TextBlock Grid.Column="3" Text="READY" Classes="colhead"/>
-                            <TextBlock Grid.Column="4" Text="STATUS" Classes="colhead"/>
-                            <TextBlock Grid.Column="5" Text="AGE" Classes="colhead"/>
-                            <TextBlock Grid.Column="6" Text="" Classes="colhead" MinWidth="150"/>
+                            <!-- On a single-kind page the KIND column repeats the heading on every row;
+                                 that space goes to the columns the kind actually has (KON-169). -->
+                            <!-- Auto rather than star: a star column reserves its width even when its
+                                 content is hidden, which left a gap where KIND and SCHEDULE used to be. -->
+                            <TextBlock Grid.Column="2" Text="KIND" Classes="colhead" MinWidth="110" IsVisible="{Binding ShowKindColumn}"/>
+                            <TextBlock Grid.Column="3" Text="SCHEDULE" Classes="colhead" MinWidth="130" IsVisible="{Binding ShowScheduleColumn}"/>
+                            <TextBlock Grid.Column="4" Text="{Binding ReadyHeader}" Classes="colhead"/>
+                            <TextBlock Grid.Column="5" Text="STATUS" Classes="colhead"/>
+                            <TextBlock Grid.Column="6" Text="AGE" Classes="colhead"/>
+                            <TextBlock Grid.Column="7" Text="" Classes="colhead" MinWidth="150"/>
                         </Grid>
                     </Border>
-                    <ItemsControl ItemsSource="{Binding Workloads}">
+                    <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:WorkloadRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="2*,1.2*,1*,0.8*,1.1*,0.7*,168">
-                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,168">
+                                        <!-- Same link affordance the pods grid uses, so the two lists
+                                             behave the same way (KON-166). -->
+                                        <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}"
+                                                IsEnabled="{Binding CanOpen}" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
                                         <TextBlock Grid.Column="1" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding Kind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="3" Text="{Binding Ready}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                                            <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}"/>
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="5" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <TextBlock Grid.Column="2" Text="{Binding Kind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" MinWidth="110"
+                                                   IsVisible="{Binding $parent[ItemsControl].((vm:ClusterWorkloadsViewModel)DataContext).ShowKindColumn}"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding Schedule}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" MinWidth="130"
+                                                   IsVisible="{Binding $parent[ItemsControl].((vm:ClusterWorkloadsViewModel)DataContext).ShowScheduleColumn}"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding Ready}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <Grid Grid.Column="5" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                                            <Ellipse Grid.Column="0" Width="7" Height="7" Margin="0,0,7,0" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{DynamicResource TextDim}"
+                                                       Margin="0,0,10,0" TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+                                        <TextBlock Grid.Column="6" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
                                             <Button Classes="pill" Command="{Binding ScaleCommand}" IsVisible="{Binding CanScale}">Scale</Button>
                                             <Button Classes="pill" Command="{Binding RestartCommand}" IsVisible="{Binding CanRestart}">Restart</Button>
                                         </StackPanel>
@@ -46,6 +70,20 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
+            </Border>
+
+            <!-- Named per kind, so an empty Jobs page reads as "there are none" rather than as a load
+                 that failed. -->
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="{Binding EmptyText}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+
+            <!-- Typing something with no hits leaves an empty page, which reads as a page that failed
+                 to load rather than a search that found nothing (KON-164). -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No workloads match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
             </Border>
         </StackPanel>
     </ScrollViewer>

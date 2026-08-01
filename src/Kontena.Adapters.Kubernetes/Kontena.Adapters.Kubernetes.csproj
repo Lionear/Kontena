@@ -1,13 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Kontena.Core\Kontena.Core.csproj" />
-    <ProjectReference Include="..\Kontena.Core.Orchestration\Kontena.Core.Orchestration.csproj" />
-    <ProjectReference Include="..\Kontena.Engines\Kontena.Engines.csproj" />
+    <ProjectReference Include="..\Kontena.Sdk\Kontena.Sdk.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="KubernetesClient" Version="19.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The upstream metrics-server manifest, embedded rather than downloaded (KON-93): a cluster
+         install must not depend on reaching GitHub at that moment, and a pinned file is one a reviewer
+         can read. MetricsServerInstallTests checks its checksum, so the version it claims to be is the
+         version it is. -->
+    <EmbeddedResource Include="Resources\metrics-server-v0.9.0.yaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Table parser is an implementation detail and the one worth testing directly: it turns the
+         API server's answer into the grid, and a cluster is not something a test can lean on. -->
+    <InternalsVisibleTo Include="Kontena.Adapters.Kubernetes.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

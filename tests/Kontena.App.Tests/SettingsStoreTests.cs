@@ -1,6 +1,8 @@
+using System.Runtime.Versioning;
 using Kontena.App.Services;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 using Xunit;
+using Kontena.Core.Models;
 
 namespace Kontena.App.Tests;
 
@@ -20,6 +22,48 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     private SettingsStore Store() => new(_path);
+
+    // The analyzer cannot see that Skip.If already keeps this off Windows, so it is told here.
+    [SkippableFact, UnsupportedOSPlatform("windows")]
+    public void A_saved_file_is_readable_only_by_its_owner()
+    {
+        // No secret is in here, but the hosts, usernames and kubeconfig paths are worth nothing to
+        // another account on this machine — and 0644 is what the usual umask gives.
+        Skip.If(OperatingSystem.IsWindows(), "Unix file modes only.");
+
+        Store().Save(new KontenaSettings());
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(_path));
+    }
+
+    [SkippableFact, UnsupportedOSPlatform("windows")]
+    public void A_file_left_wide_open_by_an_older_version_is_narrowed_on_the_next_save()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Unix file modes only.");
+
+        File.WriteAllText(_path, "{}");
+        File.SetUnixFileMode(
+            _path,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        Store().Save(new KontenaSettings());
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(_path));
+    }
+
+    [SkippableFact, UnsupportedOSPlatform("windows")]
+    public void A_directory_this_write_did_not_create_is_left_alone()
+    {
+        // The path is not always the app's own config directory, and narrowing someone else's is not
+        // this method's call — the temp directory every other test writes into is the obvious case.
+        Skip.If(OperatingSystem.IsWindows(), "Unix file modes only.");
+
+        var before = File.GetUnixFileMode(Path.GetDirectoryName(_path)!);
+
+        Store().Save(new KontenaSettings());
+
+        Assert.Equal(before, File.GetUnixFileMode(Path.GetDirectoryName(_path)!));
+    }
 
     [Fact]
     public void Update_keeps_what_another_writer_stored_after_this_copy_was_taken()

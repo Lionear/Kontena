@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              x:Class="Kontena.App.Views.OnboardingView"
              x:DataType="vm:OnboardingViewModel"
@@ -10,7 +11,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="Padding" Value="16"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -30,7 +31,7 @@
         <Style Selector="Border.radio">
             <Setter Property="Width" Value="20"/>
             <Setter Property="Height" Value="20"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="BorderThickness" Value="2"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -43,7 +44,7 @@
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="18,11"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Button.ob.ghost">
@@ -63,7 +64,7 @@
 
     <Border Width="640" MaxWidth="640"
             Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True">
         <StackPanel>
 
             <!-- Header -->
@@ -100,12 +101,7 @@
                                     Command="{Binding #Root.((vm:OnboardingViewModel)DataContext).SelectCommand}"
                                     CommandParameter="{Binding}">
                                 <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                                    <Panel Grid.Column="0" Width="44" Height="44">
-                                        <Border Background="{Binding Accent}" Opacity="0.16" CornerRadius="10"/>
-                                        <TextBlock Text="{Binding Chip}" Foreground="{Binding Accent}"
-                                                   FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="18"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Panel>
+                                    <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="44"/>
 
                                     <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center" Spacing="3">
                                         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -141,7 +137,7 @@
                 </ItemsControl>
 
                 <!-- Install assist -->
-                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"
+                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
                         Background="{DynamicResource SurfaceRaised}" Padding="16,14">
                     <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                         <TextBlock Grid.Column="0" FontSize="12.5" Foreground="{DynamicResource TextDim}"

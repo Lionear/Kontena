@@ -7,9 +7,10 @@ using CommunityToolkit.Mvvm.Input;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.App.Services;
-using Kontena.Core;
+using Kontena.Sdk;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
 using Kontena.Core.Models;
-using Kontena.Engines;
 
 namespace Kontena.App.ViewModels;
 
@@ -67,7 +68,7 @@ public partial class ProbeStepViewModel : ViewModelBase
 /// <param name="Detail">Endpoint or source file.</param>
 /// <param name="Chip">Switcher chip, so the row is recognisable.</param>
 /// <param name="Connected">Whether it answered the last probe.</param>
-public sealed record DetectedBackend(string Name, string Detail, string Chip, bool Connected)
+public sealed record DetectedBackend(string Name, string Detail, BackendChipInfo Chip, bool Connected)
 {
     public string Status => Connected ? "in your switcher" : "not answering";
 }
@@ -150,9 +151,18 @@ public partial class AddBackendViewModel : ViewModelBase
     private readonly Func<string?, Task> _onAdded;
     private readonly IReadOnlyList<BackendProbe> _probes;
 
+    private readonly ISecretStore _secrets;
+
     private RemoteEngine? _verified;
     private List<string> _verifiedContexts = [];
     private CancellationTokenSource? _test;
+
+    /// <summary>
+    /// A password written to the keychain so that a connection could be *tested*, before there is an
+    /// engine to own it (KON-259). Removed again if the wizard closes without committing — otherwise an
+    /// abandoned attempt would leave a password behind under an id that no longer exists anywhere.
+    /// </summary>
+    private string? _pendingSecretKey;
 
     /// <param name="store">Settings, written only after a successful test.</param>
     /// <param name="probes">What the shell already knows about, for the detected list.</param>
@@ -169,12 +179,14 @@ public partial class AddBackendViewModel : ViewModelBase
         IReadOnlyList<BackendProbe> probes,
         Action onClose,
         Func<string?, Task> onAdded,
-        AddBackendStep start = AddBackendStep.What)
+        AddBackendStep start = AddBackendStep.What,
+        ISecretStore? secrets = null)
     {
         _store = store;
         _probes = probes;
         _onClose = onClose;
         _onAdded = onAdded;
+        _secrets = secrets ?? SecretStore.Create();
 
         KubeconfigPath = Kubeconfig.DefaultPath;
         LoadDetected();
@@ -289,7 +301,7 @@ public partial class AddBackendViewModel : ViewModelBase
             Detected.Add(new DetectedBackend(
                 probe.Provider.DisplayName,
                 probe.Detail ?? string.Empty,
-                probe.Provider.Chip,
+                BackendChipInfo.For(probe.Provider),
                 probe.Connected));
         }
 
@@ -334,7 +346,42 @@ public partial class AddBackendViewModel : ViewModelBase
         CertificateDirectory = CertificateDirectory,
         AllowInsecure = AllowInsecure,
         IsSsh = IsSsh,
+        KeyFile = KeyFile,
+        UsePassword = UsePassword && HasKeychain,
     };
+
+    /// <summary>A private key to use instead of whatever the agent offers (KON-261).</summary>
+    [ObservableProperty] private string _keyFile = string.Empty;
+
+    /// <summary>Authenticate with a password from the keychain rather than a key (KON-259).</summary>
+    [ObservableProperty] private bool _usePassword;
+
+    /// <summary>Typed here, stored in the keychain, never written to settings.</summary>
+    [ObservableProperty] private string _password = string.Empty;
+
+    /// <summary>No keychain, no password option — Kontena has no fallback to a file, on purpose.</summary>
+    public bool HasKeychain => _secrets.IsAvailable;
+
+    public bool ShowPasswordOption => IsSsh && HasKeychain;
+    public bool ShowKeyFile => IsSsh && !UsePassword;
+    public bool ShowPasswordBox => ShowPasswordOption && UsePassword;
+
+    partial void OnUsePasswordChanged(bool value)
+    {
+        if (value)
+            KeyFile = string.Empty;
+        else
+            Password = string.Empty;
+
+        NotifyAuthVisibility();
+    }
+
+    private void NotifyAuthVisibility()
+    {
+        OnPropertyChanged(nameof(ShowPasswordOption));
+        OnPropertyChanged(nameof(ShowKeyFile));
+        OnPropertyChanged(nameof(ShowPasswordBox));
+    }
 
     /// <summary>Shown for TCP with no certificates given, which is where the decision is actually made.</summary>
     public bool ShowInsecureWarning => AllowInsecure && IsTcp;
@@ -348,8 +395,11 @@ public partial class AddBackendViewModel : ViewModelBase
         OnPropertyChanged(nameof(CertificatesApply));
         OnPropertyChanged(nameof(PortPlaceholder));
         OnPropertyChanged(nameof(ShowInsecureWarning));
+        NotifyAuthVisibility();
         OnFormChanged();
     }
+
+    partial void OnKeyFileChanged(string value) => OnFormChanged();
 
     partial void OnAllowInsecureChanged(bool value)
     {
@@ -565,7 +615,34 @@ public partial class AddBackendViewModel : ViewModelBase
         _test?.Cancel();
         _test?.Dispose();
         _test = null;
+
+        // Fire and forget: the dialog is going away either way, and a keychain that is slow to answer
+        // must not hold the window open. Nothing later depends on the result.
+        _ = ForgetPendingSecretAsync();
+
         _onClose();
+    }
+
+    /// <summary>
+    /// Removes a password that was stored for a test but never committed. Safe to call when there is
+    /// none: deleting something that is not there is not an error (<see cref="ISecretStore"/>).
+    /// </summary>
+    private async Task ForgetPendingSecretAsync()
+    {
+        if (_pendingSecretKey is not { } key)
+            return;
+
+        _pendingSecretKey = null;
+
+        try
+        {
+            await _secrets.DeleteAsync(key);
+        }
+        catch (Exception)
+        {
+            // The keychain refused or went away. Nothing useful to tell the user while a dialog is
+            // closing, and the entry is identifiable — it carries Kontena's prefix and the engine id.
+        }
     }
 
     // ── Step 3 ──────────────────────────────────────────────────────────────
@@ -593,6 +670,42 @@ public partial class AddBackendViewModel : ViewModelBase
     /// <summary>Concrete things to check, chosen for the failure that actually happened.</summary>
     public ObservableCollection<string> FailureHints { get; } = [];
 
+    /// <summary>
+    /// The host whose key is not trusted yet, or null (KON-260). Only ever set for a key nobody has
+    /// seen before — never for one that changed, where there is nothing safe to offer.
+    /// </summary>
+    [ObservableProperty] private RemoteEngine? _untrustedHost;
+
+    public bool CanReviewHostKey => UntrustedHost is not null;
+
+    partial void OnUntrustedHostChanged(RemoteEngine? value) => OnPropertyChanged(nameof(CanReviewHostKey));
+
+    /// <summary>
+    /// Shows the host's fingerprint and, once confirmed, trusts it and tests again — so a first
+    /// connection finishes in the wizard instead of sending the user to a terminal.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReviewHostKeyAsync()
+    {
+        if (UntrustedHost is not { } remote)
+            return;
+
+        try
+        {
+            var request = await SshHostKeyTrust.AskAsync(remote, async () =>
+            {
+                UntrustedHost = null;
+                await TestRemoteAsync();
+            });
+
+            RequestConfirm?.Invoke(request);
+        }
+        catch (Exception ex)
+        {
+            FailureOutput = ex.Message.Trim();
+        }
+    }
+
     private async Task TestRemoteAsync()
     {
         var draft = Draft;
@@ -604,6 +717,24 @@ public partial class AddBackendViewModel : ViewModelBase
 
         var remote = draft.Build();
         TestTarget = remote.Endpoint;
+
+        // The test connects for real, so the password has to be somewhere the askpass helper can read
+        // it — and the keychain is the only place Kontena puts one. Written under the id this engine
+        // will be committed with, and dropped again if the wizard closes without committing.
+        if (remote.UsePassword && Password.Length > 0)
+        {
+            await ForgetPendingSecretAsync();
+
+            var key = SecretKeys.Engine(remote.Id);
+            if (!await _secrets.SetAsync(key, Password))
+            {
+                Fail(remote, new InvalidOperationException(
+                    "The keychain refused to store the password, so the connection was not attempted."));
+                return;
+            }
+
+            _pendingSecretKey = key;
+        }
 
         var resolve = new ProbeStepViewModel("Host resolved");
         var connect = new ProbeStepViewModel(
@@ -631,7 +762,8 @@ public partial class AddBackendViewModel : ViewModelBase
                 await RunStepAsync(connect, async () =>
                 {
                     // Creating the backend is what opens the tunnel, so it belongs to this step.
-                    backend = await Task.Run(() => new RemoteDockerEngineProvider(remote).CreateBackend(), ct);
+                    backend = await Task.Run(
+                        () => new RemoteDockerEngineProvider(remote, SshPasswordPrompt.For(remote)).CreateBackend(), ct);
                     await backend.PingAsync(ct);
                 }, ct);
 
@@ -801,12 +933,18 @@ public partial class AddBackendViewModel : ViewModelBase
         }
     }
 
-    private void Fail(RemoteEngine remote, Exception ex)
+    /// <summary>
+    /// Turns a failed attempt into what the Refused step shows. Internal for tests: which failure gets
+    /// an offer to trust a key and which gets only a warning is the decision this whole change is
+    /// about, and it cannot be checked by reading it back.
+    /// </summary>
+    internal void Fail(RemoteEngine remote, Exception ex)
     {
         // The transport's own words. "Permission denied (publickey)" and "Host key verification failed"
         // name the thing to fix, and nothing written here would name it better.
         FailureOutput = ex.Message.Trim();
         FailureHints.Clear();
+        UntrustedHost = null;                    // a previous attempt's offer must not outlive its failure
 
         var target = remote.User is { Length: > 0 } u ? $"{u}@{remote.Host}" : remote.Host;
         var message = ex.Message;
@@ -820,13 +958,26 @@ public partial class AddBackendViewModel : ViewModelBase
             FailureHints.Add("Check your agent is running: ssh-add -l");
             FailureHints.Add($"Try it yourself: ssh {target} — if that fails, Kontena cannot help");
         }
-        else if (message.Contains("Host key verification", StringComparison.OrdinalIgnoreCase))
+        else if (ex is SshHostKeyException { Problem: SshHostKeyProblem.Unknown })
         {
-            FailureHeadline = "The host key is not known";
+            // Not a hint list: this one has an answer the user can give here (KON-260). It used to say
+            // "connect once by hand", which is a terminal instruction inside a desktop app — and the
+            // reason a first connection to any host had never worked.
+            FailureHeadline = "Kontena has not seen this host before";
             FailureExplanation =
-                "ssh will not connect to a host it has never seen. Kontena does not accept keys on your "
-                + "behalf: that decision is the point of the check.";
-            FailureHints.Add($"Connect once by hand and accept the key: ssh {target}");
+                "ssh will not connect to a host whose key it does not know, and Kontena will not accept "
+                + "one on your behalf. Review the fingerprint and it can go on.";
+            UntrustedHost = remote;
+        }
+        else if (ex is SshHostKeyException { Problem: SshHostKeyProblem.Changed })
+        {
+            FailureHeadline = "The host key has changed";
+            FailureExplanation =
+                "This host answered with a different key than the one already trusted. That is either a "
+                + "rebuilt machine or a connection being intercepted, and only you can know which — so "
+                + "Kontena offers nothing to click here.";
+            FailureHints.Add("Check whether this host was rebuilt or reinstalled");
+            FailureHints.Add($"If it was, remove the old entry: ssh-keygen -R {remote.Host}");
         }
         else if (remote.Transport == RemoteEngineTransport.Tcp)
         {
@@ -873,6 +1024,10 @@ public partial class AddBackendViewModel : ViewModelBase
 
             _store.Update(s => s with { RemoteEngines = [.. s.RemoteEngines, named] });
             switchTo = named.Backend;
+
+            // The engine now owns the password that was stored to test it, so it is no longer pending
+            // — and must survive this dialog closing.
+            _pendingSecretKey = null;
         }
         else if (_verifiedContexts.Count > 0)
         {

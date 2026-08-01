@@ -2,7 +2,7 @@ using System.Net.Http;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using Docker.DotNet;
-using Kontena.Core.Errors;
+using Kontena.Sdk.Errors;
 
 namespace Kontena.Adapters.Docker;
 

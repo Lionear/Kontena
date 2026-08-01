@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 
 namespace Kontena.Engines.Fakes;
 
@@ -624,6 +625,16 @@ public sealed class FakeEngine : IContainerEngine
 
         AddNetwork("kontena_default", "bridge", "172.20.0.0/16", builtIn: false,
             ["api-gateway", "postgres-main", "redis-cache"]);
+
+        // Compose makes a <project>_default per stack, and a Down removes it along with the
+        // containers. Without these the fake looks like a machine where taking a project down costs
+        // nothing but containers, which is not what happens (KON-162).
+        AddNetwork("ashenmoon-stack_default", "bridge", "172.21.0.0/16", builtIn: false,
+            ["ashenmoon-stack-gateway-1", "ashenmoon-stack-api-1", "ashenmoon-stack-db-1",
+             "ashenmoon-stack-redis-1"]);
+        AddNetwork("monitoring_default", "bridge", "172.22.0.0/16", builtIn: false,
+            ["monitoring-prometheus-1", "monitoring-grafana-1"]);
+
         AddNetwork("bridge", "bridge", "172.17.0.0/16", builtIn: true, []);
         AddNetwork("host", "host", null, builtIn: true, []);
         AddNetwork("none", "null", null, builtIn: true, []);

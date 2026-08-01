@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:behaviors="using:Kontena.App.Behaviors"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -12,7 +13,7 @@
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="MinHeight" Value="0"/>
             <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
@@ -37,12 +38,12 @@
     </UserControl.Styles>
 
     <Border Width="720" MaxHeight="720" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <Grid RowDefinitions="Auto,*,Auto">
 
             <!-- Header -->
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="24,20">
-                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="9" Background="{DynamicResource PrimarySoft}">
+                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="{StaticResource RadiusSm}" Background="{DynamicResource PrimarySoft}">
                     <Path Classes="icon" Width="19" Height="19" Stroke="{DynamicResource Primary}" Data="{StaticResource IconLayers}"/>
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
@@ -103,7 +104,7 @@
 
                 <!-- Console -->
                 <Border IsVisible="{Binding HasOutput}" Background="{DynamicResource Console}">
-                    <ListBox x:Name="ConsoleList" ItemsSource="{Binding Console}" Background="Transparent" Padding="20,16"
+                    <ListBox x:Name="ConsoleList" behaviors:AutoScroll.Enabled="True" ItemsSource="{Binding Console}" Background="Transparent" Padding="20,16"
                              SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <ListBox.Styles>
                             <Style Selector="ListBoxItem">

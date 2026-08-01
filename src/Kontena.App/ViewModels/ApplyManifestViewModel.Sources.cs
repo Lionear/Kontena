@@ -8,6 +8,7 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Orchestration.Rendering;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
@@ -152,6 +153,15 @@ public partial class ApplyManifestViewModel
     [RelayCommand]
     private async Task SearchChartsAsync()
     {
+        // A refused term returns nothing either way; without this the panel would blame a stale
+        // index for a value helm was never given.
+        if (HelmArguments.SearchProblem(ChartSearch) is { } problem)
+        {
+            Charts.Clear();
+            RepoStatus = problem;
+            return;
+        }
+
         IsBrowsingCharts = true;
         try
         {

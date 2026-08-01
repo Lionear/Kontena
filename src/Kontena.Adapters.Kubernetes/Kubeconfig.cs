@@ -1,5 +1,5 @@
 using k8s;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -59,6 +59,13 @@ public static class Kubeconfig
     /// Resolves <c>~</c>, because a path the user typed is far more likely to start with it than one the
     /// system handed us, and the Kubernetes client does not expand it.
     /// </summary>
+    /// <remarks>
+    /// The separators in the tail are rewritten too. <c>Path.Combine</c> only joins — it leaves the
+    /// slashes inside what it is given alone — so <c>~/.kube/config</c> on Windows came out as
+    /// <c>C:\Users\me\.kube/config</c>. That opens the file perfectly well, which is why it went
+    /// unnoticed, but the string is what the Settings page shows and what identifies a kubeconfig:
+    /// two spellings of one file would be two entries.
+    /// </remarks>
     public static string Expand(string path)
     {
         var trimmed = path.Trim();
@@ -66,7 +73,10 @@ public static class Kubeconfig
             return trimmed;
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, trimmed.TrimStart('~').TrimStart('/', '\\'));
+        var tail = trimmed.TrimStart('~').TrimStart('/', '\\')
+            .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
+        return Path.Combine(home, tail);
     }
 
     /// <summary>The default kubeconfig Kontena reads without being told to, for showing in the UI.</summary>

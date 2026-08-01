@@ -1,6 +1,7 @@
 using k8s.Models;
 using Kontena.Adapters.Kubernetes;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
+using Kontena.Core.Models;
 
 namespace Kontena.Adapters.Kubernetes.Tests;
 
@@ -174,6 +175,191 @@ public class K8sMapTests
         Assert.Equal("Waiting: CrashLoopBackOff", pod.Containers[1].State);
     }
 
+    /// <summary>
+    /// A pod part-way through its init containers: the first finished, the second is looping, and the
+    /// app container is waiting on both. This is the shape the whole of KON-168 is about.
+    /// </summary>
+    private static V1Pod InitialisingPod() => new()
+    {
+        Metadata = new V1ObjectMeta { Name = "migrate-9b4f", NamespaceProperty = "app", CreationTimestamp = DateTime.UtcNow.AddMinutes(-6) },
+        Spec = new V1PodSpec
+        {
+            NodeName = "worker-1",
+            InitContainers =
+            [
+                new V1Container { Name = "wait-for-db", Image = "busybox:1.36" },
+                new V1Container { Name = "run-migrations", Image = "migrate:2.1" },
+            ],
+            Containers =
+            [
+                new V1Container
+                {
+                    Name = "app", Image = "api:1.8",
+                    Ports =
+                    [
+                        new V1ContainerPort { ContainerPort = 8080, Name = "http", Protocol = "TCP" },
+                        new V1ContainerPort { ContainerPort = 9090, Name = "metrics", Protocol = "TCP" },
+                    ],
+                },
+            ],
+        },
+        Status = new V1PodStatus
+        {
+            Phase = "Pending",
+            InitContainerStatuses =
+            [
+                new V1ContainerStatus
+                {
+                    Name = "wait-for-db", Image = "busybox:1.36", Ready = true, RestartCount = 0,
+                    State = new V1ContainerState { Terminated = new V1ContainerStateTerminated { Reason = "Completed", ExitCode = 0 } },
+                },
+                new V1ContainerStatus
+                {
+                    Name = "run-migrations", Image = "migrate:2.1", Ready = false, RestartCount = 4,
+                    State = new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "CrashLoopBackOff" } },
+                },
+            ],
+            ContainerStatuses =
+            [
+                new V1ContainerStatus
+                {
+                    Name = "app", Image = "api:1.8", Ready = false, RestartCount = 0,
+                    State = new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "PodInitializing" } },
+                },
+            ],
+        },
+    };
+
+    [Fact]
+    public void Init_containers_are_mapped_separately_from_app_containers()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.Equal(["wait-for-db", "run-migrations"], pod.InitContainers.Select(c => c.Name));
+        Assert.Equal(["app"], pod.Containers.Select(c => c.Name));
+        Assert.All(pod.InitContainers, c => Assert.Equal(ContainerKind.Init, c.Kind));
+
+        // Containers keeps meaning "app containers" so the x/y column still counts what kubectl counts.
+        Assert.Single(pod.Containers);
+    }
+
+    [Fact]
+    public void All_containers_lists_init_first_because_that_is_the_order_they_run()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.Equal(["wait-for-db", "run-migrations", "app"], pod.AllContainers.Select(c => c.Name));
+    }
+
+    [Fact]
+    public void Init_restarts_count_towards_the_pod_total()
+    {
+        // Four attempts at an init container is four restarts. Reporting 0 is the reading that hides
+        // exactly the pod you went looking for.
+        Assert.Equal(4, K8sMap.ToPod(InitialisingPod()).Restarts);
+    }
+
+    [Fact]
+    public void A_pod_stuck_in_init_reports_the_reason_rather_than_Pending()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.True(pod.IsInitialising);
+        Assert.Equal(1, pod.CompletedInitContainers);
+        Assert.Equal("Init:CrashLoopBackOff", pod.StatusText);
+    }
+
+    [Fact]
+    public void A_pod_merely_starting_up_counts_its_init_containers()
+    {
+        // PodInitializing is the kubelet saying "not yet", which the x/y count says better. Only a
+        // reason that names a problem should replace it.
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].State =
+            new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "PodInitializing" } };
+
+        Assert.Equal("Init:1/2", K8sMap.ToPod(source).StatusText);
+    }
+
+    [Fact]
+    public void A_pod_past_its_init_containers_reports_its_phase()
+    {
+        var source = InitialisingPod();
+        source.Status.Phase = "Running";
+        source.Status.InitContainerStatuses[1].State =
+            new V1ContainerState { Terminated = new V1ContainerStateTerminated { Reason = "Completed", ExitCode = 0 } };
+
+        var pod = K8sMap.ToPod(source);
+
+        Assert.False(pod.IsInitialising);
+        Assert.Equal("Running", pod.StatusText);
+    }
+
+    [Fact]
+    public void The_previous_runs_ending_is_carried_over_because_the_current_state_cannot_hold_it()
+    {
+        // A looping container is Waiting, so how it died is nowhere in its current state. lastState is
+        // the only field that says it, and the diagnosis (KON-150) is read off exactly that.
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].LastState = new V1ContainerState
+        {
+            Terminated = new V1ContainerStateTerminated { Reason = "OOMKilled", ExitCode = 137 },
+        };
+
+        var migrations = K8sMap.ToPod(source).InitContainers[1];
+
+        Assert.Equal("OOMKilled", migrations.LastTerminationReason);
+        Assert.Equal(137, migrations.LastExitCode);
+    }
+
+    [Fact]
+    public void A_declared_memory_limit_reaches_the_container_status()
+    {
+        var source = InitialisingPod();
+        source.Spec.Containers[0].Resources = new V1ResourceRequirements
+        {
+            Limits = new Dictionary<string, ResourceQuantity> { ["memory"] = new("512Mi") },
+        };
+
+        Assert.Equal(512 * 1024 * 1024, K8sMap.ToPod(source).Containers[0].MemoryLimitBytes);
+    }
+
+    [Fact]
+    public void A_container_without_a_limit_reports_none_rather_than_zero()
+    {
+        // "No limit" and "a limit of nothing" are opposite facts, and only the first is true of a
+        // container that may use what the node has.
+        Assert.Null(K8sMap.ToPod(InitialisingPod()).Containers[0].MemoryLimitBytes);
+    }
+
+    [Fact]
+    public void Declared_container_ports_reach_the_model()
+    {
+        // The port-forward dialog had nothing to offer for a pod because these were never read (KON-170).
+        var app = K8sMap.ToPod(InitialisingPod()).Containers[0];
+
+        Assert.Equal([8080, 9090], app.Ports.Select(p => p.Number));
+        Assert.Equal("http", app.Ports[0].Name);
+        Assert.Equal("TCP", app.Ports[0].Protocol);
+    }
+
+    [Fact]
+    public void A_container_that_declares_no_ports_gets_an_empty_list()
+    {
+        // Empty means "declared nothing", never "listening on nothing" — containerPort is documentation
+        // in Kubernetes, so inventing a default here would be inventing a fact.
+        Assert.Empty(K8sMap.ToPod(InitialisingPod()).InitContainers[0].Ports);
+    }
+
+    [Fact]
+    public void A_finished_init_container_cannot_be_exec_into()
+    {
+        var pod = K8sMap.ToPod(InitialisingPod());
+
+        Assert.True(pod.InitContainers[0].CompletedSuccessfully);
+        Assert.False(pod.InitContainers[0].CanExec);
+    }
+
     [Fact]
     public void Pod_owned_by_a_ReplicaSet_rolls_up_to_its_Deployment()
     {
@@ -230,6 +416,61 @@ public class K8sMapTests
         int desired, int ready, int updated, RolloutStatus expected)
     {
         Assert.Equal(expected, K8sMap.ToWorkload(Deployment(desired, ready, updated)).RolloutStatus);
+    }
+
+    [Fact]
+    public void Deployment_maps_labels_selector_and_strategy()
+    {
+        // The three fields the detail page needs to say what this workload is and what it reaches
+        // (KON-166); none of them were read before it existed.
+        var source = Deployment(3, 3, 3);
+        source.Metadata.Labels = new Dictionary<string, string> { ["app"] = "api", ["tier"] = "backend" };
+        source.Spec.Selector = new V1LabelSelector { MatchLabels = new Dictionary<string, string> { ["app"] = "api" } };
+        source.Spec.Strategy = new V1DeploymentStrategy
+        {
+            Type = "RollingUpdate",
+            RollingUpdate = new V1RollingUpdateDeployment { MaxSurge = (IntOrString)"50%", MaxUnavailable = (IntOrString)"0" },
+        };
+
+        var workload = K8sMap.ToWorkload(source);
+
+        Assert.Equal("api", workload.Labels["app"]);
+        Assert.Equal("backend", workload.Labels["tier"]);
+        Assert.Equal(new Dictionary<string, string> { ["app"] = "api" }, workload.Selector);
+
+        // The numbers are the point of showing the strategy: they decide how the rollout behaves.
+        Assert.Equal("RollingUpdate (max surge 50%, max unavailable 0)", workload.Strategy);
+    }
+
+    [Fact]
+    public void A_workload_without_labels_or_a_selector_maps_to_empty_rather_than_null()
+    {
+        var workload = K8sMap.ToWorkload(Deployment(3, 3, 3));
+
+        Assert.Empty(workload.Labels);
+        Assert.Empty(workload.Selector);
+    }
+
+    [Fact]
+    public void Every_workload_kind_addresses_its_own_group()
+    {
+        // A fallback to Deployment here would point a Job's manifest read at apps/v1 instead of
+        // batch/v1 — the wrong resource rather than a loud failure.
+        Assert.Equal("batch", GroupVersionKind.For(WorkloadKind.Job).Group);
+        Assert.Equal("batch", GroupVersionKind.For(WorkloadKind.CronJob).Group);
+        Assert.Equal("apps", GroupVersionKind.For(WorkloadKind.DaemonSet).Group);
+        Assert.Equal("DaemonSet", GroupVersionKind.For(WorkloadKind.DaemonSet).Kind);
+        Assert.Equal("StatefulSet", GroupVersionKind.For(WorkloadKind.StatefulSet).Kind);
+    }
+
+    [Fact]
+    public void Pod_labels_reach_the_model()
+    {
+        // Without these a Service detail cannot say which pods its selector reaches (KON-167).
+        var source = Pod();
+        source.Metadata.Labels = new Dictionary<string, string> { ["app"] = "web" };
+
+        Assert.Equal("web", K8sMap.ToPod(source).Labels["app"]);
     }
 
     [Fact]

@@ -1,20 +1,58 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:conv="using:Kontena.App.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="220"
+             mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="260"
              x:Class="Kontena.App.Views.ConfirmView"
              x:DataType="vm:ConfirmViewModel">
-    <Border Width="480" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-            BorderThickness="1" CornerRadius="14" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+    <Border Width="520" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
         <StackPanel>
-            <StackPanel Margin="24,22,24,20" Spacing="10">
-                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                <TextBlock Text="{Binding Message}" FontSize="13" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" LineHeight="19"/>
-                <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
-                           Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
-            </StackPanel>
+            <Grid Margin="24,22,24,20" ColumnDefinitions="Auto,*">
+
+                <!-- Only where something is actually destroyed. Signing out of a registry does not
+                     deserve a warning mark, and a mark that appears everywhere stops meaning anything. -->
+                <Border Grid.Column="0" Width="38" Height="38" CornerRadius="{StaticResource Radius}" Margin="0,0,15,0"
+                        VerticalAlignment="Top" Background="{DynamicResource DangerSoft}"
+                        IsVisible="{Binding Destructive}">
+                    <Path Classes="icon" Width="19" Height="19" Stroke="{DynamicResource Danger}"
+                          Data="{StaticResource IconWarning}"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="10">
+                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="{Binding Message}" FontSize="13" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" LineHeight="19"/>
+
+                    <!-- What goes, counted. Prose is the wrong shape for an inventory: a sentence makes
+                         you parse it to find out what you lose, a list lets you count it. -->
+                    <Border IsVisible="{Binding HasDetails}" Background="{DynamicResource Surface2}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusSm}" Padding="13,11">
+                        <ItemsControl ItemsSource="{Binding Details}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ConfirmDetail">
+                                    <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,5">
+                                        <Path Classes="icon" Width="14" Height="14" VerticalAlignment="Center"
+                                              Stroke="{DynamicResource TextFaint}"
+                                              Data="{Binding Icon, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
+                                        <TextBlock Text="{Binding Headline}" FontSize="12.5" FontWeight="SemiBold"
+                                                   FontFamily="{StaticResource Mono}" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource Text}"/>
+                                        <TextBlock Text="{Binding Detail}" FontSize="12.5" VerticalAlignment="Center"
+                                                   IsVisible="{Binding HasDetail}" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource TextDim}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+
+                    <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Grid>
             <Border Height="1" Background="{DynamicResource Border}"/>
             <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
                 <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CancelCommand}">Cancel</Button>

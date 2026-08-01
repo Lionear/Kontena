@@ -1,11 +1,11 @@
 using System.Text;
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using ContainerState = Kontena.Core.Models.ContainerState;
+using ContainerState = Kontena.Sdk.Models.ContainerState;
 using Kontena.Adapters.Docker;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
 using Xunit;
 
 namespace Kontena.Adapters.Docker.Tests;
@@ -20,10 +20,21 @@ public class DockerEngineTests
     private static async Task<DockerEngine> ConnectOrSkipAsync()
     {
         var engine = new DockerEngine();
+        string? osType = null;
         var reachable = true;
         try
         {
             await engine.PingAsync();
+
+            // Reachable is not the same as usable: the tests below run busybox and ask for the
+            // bridge driver, and a daemon in Windows-container mode has neither — it has no linux
+            // images and calls its default network driver "nat". That daemon answers a ping
+            // perfectly well, so pinging alone let the whole suite run and fail on the first linux
+            // assumption it hit. Asked through the raw client because the neutral EngineInfo
+            // carries no OS: which kernel the containers get is a property of the host, not
+            // something the abstraction has any reason to expose.
+            using var client = new DockerClientConfiguration().CreateClient();
+            osType = (await client.System.GetSystemInfoAsync()).OSType;
         }
         catch
         {
@@ -34,6 +45,12 @@ public class DockerEngineTests
         {
             engine.Dispose();
             Skip.If(true, "Docker engine is not reachable on this host.");
+        }
+
+        if (!string.Equals(osType, "linux", StringComparison.OrdinalIgnoreCase))
+        {
+            engine.Dispose();
+            Skip.If(true, $"Docker is running {osType ?? "unknown"} containers; these tests need linux ones.");
         }
 
         return engine;
@@ -369,6 +386,53 @@ public class DockerEngineTests
             }
 
             Assert.True(lines >= 1, "expected at least one log line from hello-world");
+        }
+        finally
+        {
+            await engine.RemoveContainerAsync(id, force: true);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Log_lines_carry_the_time_they_were_written_not_the_time_they_were_read()
+    {
+        // The reported bug (KON-203): the adapter asked for no timestamps and stamped every line with
+        // DateTimeOffset.UtcNow, so a whole backlog read in one go shared a single millisecond. Two
+        // lines a second apart are the smallest case that tells the two apart.
+        using var engine = await ConnectOrSkipAsync();
+
+        var id = await engine.CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "hello-world:latest",
+            Name = $"kontena-stamps-{Guid.NewGuid():N}"[..24],
+            Start = true,
+        });
+
+        try
+        {
+            // The container writes everything and exits. Waiting puts a measurable gap between when the
+            // lines were written and when they are read, which is the whole distinction under test.
+            await Task.Delay(TimeSpan.FromSeconds(3));
+
+            var read = DateTimeOffset.UtcNow;
+            var stamps = new List<DateTimeOffset>();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            await foreach (var entry in engine.StreamLogsAsync(id, follow: false, cts.Token))
+            {
+                stamps.Add(entry.Timestamp);
+
+                // And the prefix is off: the first word is the container's, not an RFC3339 stamp. It
+                // is asked for now, so leaving it in the text would be the new way to get this wrong.
+                var first = entry.Message.Split(' ')[0];
+                Assert.False(
+                    DateTimeOffset.TryParse(first, out _),
+                    $"the engine's timestamp is still in the message: {entry.Message}");
+            }
+
+            Skip.If(stamps.Count == 0, "hello-world produced no log lines on this host");
+            Assert.All(stamps, stamp => Assert.True(
+                read - stamp >= TimeSpan.FromSeconds(2),
+                $"line stamped {stamp:O} but read at {read:O} — that is the read time, not the log time"));
         }
         finally
         {

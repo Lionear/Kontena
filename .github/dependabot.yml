@@ -1,0 +1,13 @@
+version: 2
+
+# The workflows pin actions to a commit SHA rather than a tag (KON-186), because a tag can be moved
+# under us and the release job publishes with contents: write. A pin only stays a good idea if
+# something keeps it current, so Dependabot does: it opens a PR that bumps the SHA and rewrites the
+# trailing version comment.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(ci)

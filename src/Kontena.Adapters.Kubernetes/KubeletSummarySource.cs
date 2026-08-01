@@ -2,8 +2,8 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using k8s;
-using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -93,13 +93,13 @@ internal sealed class KubeletSummarySource(IKubernetes client, Func<Cancellation
         return capacity;
     }
 
-    public async ValueTask<IReadOnlyList<Core.Orchestration.Models.PodMetrics>> GetPodUsageAsync(
+    public async ValueTask<IReadOnlyList<Kontena.Sdk.Orchestration.Models.PodMetrics>> GetPodUsageAsync(
         string? ns = null, CancellationToken ct = default)
     {
         if (!IsAvailable)
             return [];
 
-        var pods = new List<Core.Orchestration.Models.PodMetrics>();
+        var pods = new List<Kontena.Sdk.Orchestration.Models.PodMetrics>();
         foreach (var summary in await ReadAllAsync(ct).ConfigureAwait(false))
         {
             foreach (var pod in summary.Pods ?? [])
@@ -109,7 +109,7 @@ internal sealed class KubeletSummarySource(IKubernetes client, Func<Cancellation
                 if (ns is not null && podNamespace != ns)
                     continue;
 
-                pods.Add(new Core.Orchestration.Models.PodMetrics
+                pods.Add(new Kontena.Sdk.Orchestration.Models.PodMetrics
                 {
                     Pod = name,
                     Namespace = podNamespace,

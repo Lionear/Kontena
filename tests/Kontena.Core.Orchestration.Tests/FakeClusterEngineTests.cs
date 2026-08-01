@@ -1,9 +1,9 @@
 using System.Text;
-using Kontena.Core;
-using Kontena.Core.Models;
-using Kontena.Core.Orchestration;
+using Kontena.Sdk;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
 using Kontena.Core.Orchestration.Fakes;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Orchestration.Models;
 using Xunit;
 
 namespace Kontena.Core.Orchestration.Tests;

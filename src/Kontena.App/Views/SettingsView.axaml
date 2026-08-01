@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
@@ -12,7 +14,7 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
             <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="FontSize" Value="13.5"/>
@@ -31,7 +33,7 @@
         <Style Selector="Button.seg">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
-            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="FontSize" Value="12.5"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -46,6 +48,27 @@
             <Setter Property="MinWidth" Value="0"/>
             <Setter Property="OnContent" Value="{x:Null}"/>
             <Setter Property="OffContent" Value="{x:Null}"/>
+        </Style>
+
+        <!-- The gesture button (KON-180): a field that shows keys and takes keys, so it reads as
+             mono like every other literal value in the app. -->
+        <Style Selector="Button.gesture">
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="MinWidth" Value="128"/>
+            <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.gesture:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Button.gesture.recording">
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
         </Style>
 
         <Style Selector="TextBlock.gh">
@@ -89,10 +112,11 @@
                         <TextBlock Grid.Column="1" Text="Updates" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
-                <Button Classes="snav" Classes.on="{Binding IsAbout}" Command="{Binding SelectCategoryCommand}" CommandParameter="about">
+                <Button Classes="snav" Classes.on="{Binding IsClusters}" Command="{Binding SelectCategoryCommand}"
+                        CommandParameter="clusters" IsVisible="{Binding LocalClusters, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <Grid ColumnDefinitions="Auto,*">
-                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
-                        <TextBlock Grid.Column="1" Text="About" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconCluster}"/>
+                        <TextBlock Grid.Column="1" Text="Local clusters" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
             </StackPanel>
@@ -105,7 +129,7 @@
                 <!-- General -->
                 <StackPanel IsVisible="{Binding IsGeneral}" Spacing="0">
                     <TextBlock Text="General" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                    <TextBlock Text="Appearance and terminal." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+                    <TextBlock Text="Appearance, terminal and keyboard." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
 
                     <TextBlock Classes="gh" Text="APPEARANCE"/>
                     <Border Classes="card" Padding="0" Margin="0,0,0,30">
@@ -116,7 +140,7 @@
                                 <TextBlock Text="Kontena follows your OS by default. Override it here." FontSize="12" Foreground="{DynamicResource TextDim}"/>
                             </StackPanel>
                             <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                    BorderThickness="1" CornerRadius="8" Padding="3" VerticalAlignment="Center">
+                                    BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="2">
                                     <Button Classes="seg" Classes.on="{Binding IsLightTheme}" Command="{Binding SetThemeCommand}" CommandParameter="light">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -200,6 +224,63 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- Keyboard (KON-180). Under General because there are five of these; a list of
+                         thirty would want its own page, the way Registries and Updates have one. -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,30,0,12">
+                        <TextBlock Grid.Column="0" Classes="gh" Text="KEYBOARD" Margin="0"/>
+                        <Button Grid.Column="1" Classes="ghost" Padding="8,3" FontSize="12"
+                                IsVisible="{Binding HasCustomShortcuts}"
+                                Command="{Binding ResetAllShortcutsCommand}"
+                                Content="Restore defaults"/>
+                    </Grid>
+                    <Border Classes="card" Padding="0">
+                        <ItemsControl ItemsSource="{Binding Shortcuts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ShortcutRow">
+                                    <StackPanel>
+                                        <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="{Binding Label}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                                <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextDim}"/>
+                                                <TextBlock Text="{Binding Problem}" FontSize="12" TextWrapping="Wrap"
+                                                           IsVisible="{Binding HasProblem}"
+                                                           Foreground="{DynamicResource Danger}"/>
+                                            </StackPanel>
+                                            <!-- The reset slot is reserved rather than added: a column
+                                                 that only exists on changed rows walks the gesture
+                                                 buttons out of line down the list. -->
+                                            <Grid Grid.Column="1" ColumnDefinitions="Auto,8,30" VerticalAlignment="Center">
+                                                <!-- The gesture is pressed, not typed: KeyGesture.Parse throws on
+                                                     anything that is not one, and the keys are what people know. -->
+                                                <Button Grid.Column="0" Classes="gesture" Classes.recording="{Binding IsRecording}"
+                                                        Command="{Binding RecordCommand}"
+                                                        ToolTip.Tip="Press the keys you want. Escape cancels.">
+                                                    <Panel>
+                                                        <TextBlock Text="{Binding DisplayGesture}" IsVisible="{Binding !IsRecording}"/>
+                                                        <TextBlock Text="Press keys…" IsVisible="{Binding IsRecording}"
+                                                                   Foreground="{DynamicResource Primary}"/>
+                                                    </Panel>
+                                                </Button>
+                                                <Button Grid.Column="2" Classes="qa" Width="30" Height="30"
+                                                        IsVisible="{Binding !IsDefault}"
+                                                        Command="{Binding ResetCommand}"
+                                                        ToolTip.Tip="Restore the default">
+                                                    <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
+                                                          Data="{StaticResource IconRefresh}"/>
+                                                </Button>
+                                            </Grid>
+                                        </Grid>
+                                        <Border Height="1" Background="{DynamicResource Border}"
+                                                IsVisible="{Binding !IsLast}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" Margin="2,10,0,0" Foreground="{DynamicResource TextDim}"
+                               Text="A terminal gets the keys first, so Ctrl-C and the other shell keys keep working while one has focus."/>
                 </StackPanel>
 
                 <!-- Engines -->
@@ -251,10 +332,7 @@
                                 <DataTemplate x:DataType="vm:EngineListItem">
                                     <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                         <Grid Margin="18,14" ColumnDefinitions="Auto,*">
-                                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9" Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="16"
-                                                           Foreground="{DynamicResource Info}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Border>
+                                            <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="38" VerticalAlignment="Center"/>
                                             <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Spacing="3">
                                                 <StackPanel Orientation="Horizontal" Spacing="9">
                                                     <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
@@ -340,12 +418,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:BackendNameRow">
                                         <Grid Margin="0,0,0,9" ColumnDefinitions="Auto,*">
-                                            <Border Grid.Column="0" Width="32" Height="32" CornerRadius="8"
-                                                    Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}"
-                                                           FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Info}"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Border>
+                                            <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="32" VerticalAlignment="Center"/>
                                             <TextBox Grid.Column="1" Margin="12,0,0,0"
                                                      Text="{Binding Name, Mode=TwoWay}"
                                                      PlaceholderText="{Binding SourceName}"/>
@@ -364,7 +437,7 @@
                                        Text="An engine on another host appears in the switcher like a local one. Over SSH Kontena forwards the remote socket using your existing keys and agent; over TCP it needs TLS certificates."/>
 
                             <Border Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                    BorderThickness="1" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                                    BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" HorizontalAlignment="Left">
                                 <StackPanel Orientation="Horizontal" Spacing="2">
                                     <Button Classes="seg" Classes.on="{Binding RemoteIsSsh}"
                                             Command="{Binding SetRemoteTransportCommand}" CommandParameter="ssh">
@@ -408,6 +481,37 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- How to authenticate (KON-261 / KON-259). Empty is still the normal
+                                 case: an agent and an ssh_config that already work keep working. -->
+                            <StackPanel Spacing="9" IsVisible="{Binding RemoteIsSsh}">
+                                <StackPanel Spacing="7" IsVisible="{Binding ShowKeyFile}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="KEY FILE" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                        <TextBlock Text="OPTIONAL" FontSize="10" Foreground="{DynamicResource TextFaint}"/>
+                                    </StackPanel>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBox Grid.Column="0" Text="{Binding RemoteKeyFile, Mode=TwoWay}"
+                                                 PlaceholderText="leave empty to use your agent and ssh_config"
+                                                 FontFamily="{StaticResource Mono}"/>
+                                        <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0"
+                                                Click="OnBrowseKeyFile">Browse…</Button>
+                                    </Grid>
+                                </StackPanel>
+
+                                <CheckBox IsChecked="{Binding RemoteUsePassword, Mode=TwoWay}" FontSize="12.5"
+                                          IsVisible="{Binding ShowPasswordOption}"
+                                          Content="Use a password instead of a key"/>
+
+                                <StackPanel Spacing="7" IsVisible="{Binding ShowPasswordBox}">
+                                    <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBox Text="{Binding RemotePassword, Mode=TwoWay}" PasswordChar="•"
+                                             PlaceholderText="stored in your keychain, never in your settings"/>
+                                    <TextBlock FontSize="12.5" TextWrapping="Wrap" MaxWidth="560"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"
+                                               Text="A key is the better route where you have one — it cannot be reused elsewhere and it does not travel. This exists for hosts where you have no choice."/>
+                                </StackPanel>
+                            </StackPanel>
+
                             <!-- TCP -->
                             <StackPanel Spacing="7" IsVisible="{Binding RemoteIsTcp}">
                                 <TextBlock Text="CERTIFICATE DIRECTORY" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
@@ -447,10 +551,23 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- Live, as it is typed: the submit button is disabled by this, so it has
+                                 to say so rather than just go grey (KON-181). -->
+                            <TextBlock Text="{Binding RemoteProblem}" FontSize="12.5" TextWrapping="Wrap"
+                                       HorizontalAlignment="Left" MaxWidth="620"
+                                       IsVisible="{Binding RemoteProblem, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       Foreground="{DynamicResource Danger}"/>
                             <TextBlock Text="{Binding RemoteError}" FontSize="12.5" TextWrapping="Wrap"
                                        HorizontalAlignment="Left" MaxWidth="620"
                                        IsVisible="{Binding RemoteError, Converter={x:Static ObjectConverters.IsNotNull}}"
                                        Foreground="{DynamicResource Danger}"/>
+                            <!-- Shown only when the test failed because nobody has trusted this host
+                                 yet (KON-260). The one failure with an answer the user can give here. -->
+                            <Button Classes="ghost" Command="{Binding ReviewHostKeyCommand}"
+                                    HorizontalAlignment="Left"
+                                    IsVisible="{Binding CanReviewHostKey}"
+                                    IsEnabled="{Binding CanReviewHostKey}"
+                                    Content="Review fingerprint…"/>
                             <TextBlock Text="{Binding RemoteNotice}" FontSize="12.5"
                                        IsVisible="{Binding RemoteNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
                                        Foreground="{DynamicResource Success}"/>
@@ -480,6 +597,12 @@
                                                 <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
                                                 <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
                                             </StackPanel>
+                                            <!-- The switcher skips a remote it cannot use, so this is
+                                                 the only place that can say why (KON-181). -->
+                                            <TextBlock Text="{Binding Problem}" FontSize="12" TextWrapping="Wrap"
+                                                       MaxWidth="560" HorizontalAlignment="Left"
+                                                       IsVisible="{Binding HasProblem}"
+                                                       Foreground="{DynamicResource Danger}"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
                                                     VerticalAlignment="Center">
@@ -604,7 +727,7 @@
                                                    HorizontalAlignment="Left"/>
                                     </StackPanel>
                                     <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                            BorderThickness="1" CornerRadius="8" Padding="3" VerticalAlignment="Center">
+                                            BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal" Spacing="2">
                                             <Button Classes="seg" Classes.on="{Binding IsStableChannel}"
                                                     Command="{Binding SetUpdateChannelCommand}" CommandParameter="stable">
@@ -624,7 +747,7 @@
 
                                 <!-- Why the channel is what it is, when nobody picked it (KON-123). -->
                                 <Border Background="{DynamicResource InfoSoft}" Margin="18,0,18,15" Padding="12,10"
-                                        CornerRadius="9" IsVisible="{Binding IsFollowingBuildChannel}">
+                                        CornerRadius="{StaticResource RadiusSm}" IsVisible="{Binding IsFollowingBuildChannel}">
                                     <TextBlock Text="{Binding FollowingBuildNote}" FontSize="12.5"
                                                TextWrapping="Wrap" LineHeight="19" MaxWidth="620"
                                                HorizontalAlignment="Left" Foreground="{DynamicResource Text}"/>
@@ -650,6 +773,9 @@
                                     <TextBlock FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}">
                                         <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
                                     </TextBlock>
+                                    <TextBlock Text="{Binding BuildDate}" FontSize="12"
+                                               IsVisible="{Binding HasBuildDate}"
+                                               Foreground="{DynamicResource TextDim}"/>
                                     <TextBlock Text="{Binding Update.SidebarLabel}" FontSize="12"
                                                Foreground="{DynamicResource Primary}" IsVisible="{Binding Update.HasSidebarEntry}"/>
                                 </StackPanel>
@@ -660,41 +786,8 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- About -->
-                <StackPanel IsVisible="{Binding IsAbout}" Spacing="0">
-                    <TextBlock Text="About" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                    <TextBlock Text="One UI. Any engine. Zero friction." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
-
-                    <Border Classes="card">
-                        <StackPanel Spacing="16">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <Image Source="{StaticResource KontenaLogo}" Width="36" Height="36" VerticalAlignment="Center"/>
-                                <StackPanel VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock Text="Kontena" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                    <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}">
-                                        <Run Text="Version"/><Run Text=" "/><Run Text="{Binding Version}" FontFamily="{StaticResource Mono}"/>
-                                        <Run Text="  ·  source-available"/>
-                                    </TextBlock>
-                                </StackPanel>
-                            </StackPanel>
-                            <Border Height="1" Background="{DynamicResource Border}"/>
-                            <TextBlock FontSize="12.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
-                                       Text="A cross-platform desktop app to manage containers through one UI, regardless of the underlying runtime engine — Docker, Podman, and (later) Apple container."/>
-                            <TextBlock FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"
-                                       Text="github.com/Lionear/Kontena  ·  kontena.app"/>
-                            <Border Height="1" Background="{DynamicResource Border}"/>
-
-                            <!-- Says whether the guarantee in CONTRIBUTING actually holds here (KON-52). -->
-                            <StackPanel Orientation="Horizontal" Spacing="11">
-                                <Path Classes="icon" Width="15" Height="15" VerticalAlignment="Top" Margin="0,2,0,0"
-                                      Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}"/>
-                                <TextBlock Text="{Binding KeychainStatus}" FontSize="12.5" TextWrapping="Wrap"
-                                           LineHeight="19" HorizontalAlignment="Left" MaxWidth="620"
-                                           Foreground="{DynamicResource TextFaint}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                <!-- Local clusters (KON-109 + KON-76) — its own view, so this file does not grow a sixth page. -->
+                <views:LocalClustersView DataContext="{Binding LocalClusters}" IsVisible="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).IsClusters}"/>
 
             </StackPanel>
         </ScrollViewer>

@@ -1,5 +1,4 @@
-using Kontena.Core;
-using Kontena.Engines;
+using Kontena.Sdk;
 
 namespace Kontena.Adapters.Docker;
 
@@ -9,6 +8,7 @@ public sealed class DockerEngineProvider : IBackendProvider
     public string Backend => "docker";
     public string DisplayName => "Docker";
     public string Chip => "D";
+    public BackendChipStyle? ChipStyle => new(DockerBrand.Glyph, DockerBrand.Accent);
     public BackendKind Kind => BackendKind.Engine;
     public IBackend CreateBackend() => new DockerEngine();
 }

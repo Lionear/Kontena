@@ -1,7 +1,8 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Kontena.App.App"
-             xmlns:local="using:Kontena.App">
+             xmlns:local="using:Kontena.App"
+             xmlns:sys="using:System">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
@@ -16,18 +17,41 @@
             <!-- Kontena palette — light + dark variants, resolved via DynamicResource -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="Bg" Color="#0E1116"/>
-                    <SolidColorBrush x:Key="Surface" Color="#171B22"/>
-                    <SolidColorBrush x:Key="Surface2" Color="#1E232C"/>
-                    <SolidColorBrush x:Key="SidebarBg" Color="#10141A"/>
-                    <SolidColorBrush x:Key="Border" Color="#272E39"/>
+                    <!-- The dark surfaces are one ladder, derived rather than picked. KON-130 built it
+                         on hue 229 (navy); KON-245 takes three quarters of that saturation back out,
+                         because the result read as blue rather than as a dark ground with a cool cast.
+                         What did not change is the method, and that is the point: each token keeps its
+                         hue and its *relative luminance*, with only the saturation scaled and the
+                         lightness solved to match. So the ladder's order and spacing are identical, no
+                         screen shifts in perceived depth, and every contrast ratio in
+                         PaletteContrastTests holds by construction rather than by luck. -->
+                    <SolidColorBrush x:Key="Bg" Color="#111116"/>
+                    <SolidColorBrush x:Key="Surface" Color="#1A1A1F"/>
+                    <SolidColorBrush x:Key="Surface2" Color="#202226"/>
+                    <SolidColorBrush x:Key="SidebarBg" Color="#131318"/>
+                    <!-- Deliberately lighter than the old #272E39: a hairline at that luminance
+                         disappears against this Bg. WCAG sets no bar for purely decorative dividers, so
+                         this is a legibility call rather than a contrast one — and it survives KON-245
+                         unchanged in luminance, which is why it still reads the same. -->
+                    <SolidColorBrush x:Key="Border" Color="#33343A"/>
+                    <!-- Row dividers *inside* a card, where the card's own Border is too loud: ten
+                         views asked for this and it existed nowhere, so those hairlines rendered as
+                         nothing at all (KON-218). Derived, not picked: it sits at the same fraction
+                         between Surface and Border that the mockup's soft divider sits at on its own
+                         ladder, and it was desaturated with the rest of them under KON-245. -->
+                    <SolidColorBrush x:Key="BorderSoft" Color="#27282E"/>
                     <SolidColorBrush x:Key="Text" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="TextDim" Color="#9AA4B2"/>
-                    <SolidColorBrush x:Key="TextFaint" Color="#5C6675"/>
-                    <SolidColorBrush x:Key="Primary" Color="#22D3AA"/>
+                    <SolidColorBrush x:Key="TextFaint" Color="#808B9B"/>
+                    <SolidColorBrush x:Key="Primary" Color="#00D4A3"/>
                     <SolidColorBrush x:Key="PrimaryInk" Color="#08201A"/>
-                    <SolidColorBrush x:Key="PrimaryDim" Color="#0F9E7E"/>
-                    <SolidColorBrush x:Key="Accent" Color="#7C6BF5"/>
+                    <SolidColorBrush x:Key="PrimaryDim" Color="#00A37D"/>
+                    <!-- Accent is a pair, like Podman's chip. The brand violet #7C3AED is the light
+                         value; on dark it drops to 2.79:1 against Surface2, missing even the 3:1 bar
+                         for UI parts — and a raised panel is exactly where an accent tends to land.
+                         #A273F2 is the same hue and saturation, lifted until it clears AA there. -->
+                    <SolidColorBrush x:Key="Accent" Color="#A273F2"/>
+                    <SolidColorBrush x:Key="AccentSoft" Color="#A273F2" Opacity="0.12"/>
                     <SolidColorBrush x:Key="Success" Color="#34D399"/>
                     <SolidColorBrush x:Key="Info" Color="#5AB8FF"/>
                     <SolidColorBrush x:Key="Warn" Color="#F5B14C"/>
@@ -35,10 +59,19 @@
                     <!-- Ink for text sitting on Danger. Dark's red is the light one, so the label has
                          to go dark here and white in the light theme — the mirror of PrimaryInk. -->
                     <SolidColorBrush x:Key="DangerInk" Color="#2A0A0A"/>
-                    <SolidColorBrush x:Key="PrimarySoft" Color="#22D3AA" Opacity="0.10"/>
-                    <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
-                    <SolidColorBrush x:Key="Console" Color="#0A0D12"/>
-                    <SolidColorBrush x:Key="SurfaceRaised" Color="#141821"/>
+                    <SolidColorBrush x:Key="PrimarySoft" Color="#00D4A3" Opacity="0.10"/>
+                    <SolidColorBrush x:Key="Console" Color="#0C0C10"/>
+                    <!-- A document, not a stream (KON-196). Console is a terminal and stays dark in
+                         both themes; a manifest or a command preview is text you read next to the rest
+                         of the page, and a black plate in the middle of a white screen is what got
+                         reported. Still lifted off Console in dark so the two do not read as one panel —
+                         the gap between them is a luminance gap, so KON-245 left it intact. -->
+                    <SolidColorBrush x:Key="CodeSurface" Color="#141519"/>
+                    <SolidColorBrush x:Key="SurfaceRaised" Color="#17181D"/>
+                    <!-- The warn and danger washes stay warm against the ground on purpose. They are
+                         alert blocks, not neutral surfaces; tinting them to the ladder's hue would make
+                         them agree with the page and stop reading as an interruption. They were left
+                         out of the KON-245 desaturation for the same reason. -->
                     <SolidColorBrush x:Key="WarnSoft" Color="#1C1810"/>
                     <SolidColorBrush x:Key="WarnSoftBorder" Color="#3A3320"/>
                     <SolidColorBrush x:Key="WarnText" Color="#E8CF9A"/>
@@ -55,21 +88,38 @@
                     <SolidColorBrush x:Key="Surface2" Color="#F0F3F6"/>
                     <SolidColorBrush x:Key="SidebarBg" Color="#FBFCFD"/>
                     <SolidColorBrush x:Key="Border" Color="#DCE1E8"/>
+                    <!-- The light ladder did not move under KON-130, so this is the mockup's own
+                         soft divider unchanged. -->
+                    <SolidColorBrush x:Key="BorderSoft" Color="#E6EAF0"/>
                     <SolidColorBrush x:Key="Text" Color="#1B2430"/>
                     <SolidColorBrush x:Key="TextDim" Color="#55606E"/>
-                    <SolidColorBrush x:Key="TextFaint" Color="#8A94A2"/>
-                    <SolidColorBrush x:Key="Primary" Color="#0F9E7E"/>
+                    <SolidColorBrush x:Key="TextFaint" Color="#65707F"/>
+                    <!-- Emerald is unusable on white (1.92:1), so light carries a deeper one on the same
+                         hue. It replaces #0F9E7E, which missed AA at 3.38:1 and was excused as a status
+                         colour — including under the white button label, where it was never a status
+                         colour at all. That exception is gone rather than restated. -->
+                    <SolidColorBrush x:Key="Primary" Color="#007A5E"/>
                     <SolidColorBrush x:Key="PrimaryInk" Color="#FFFFFF"/>
-                    <SolidColorBrush x:Key="PrimaryDim" Color="#0B7D63"/>
-                    <SolidColorBrush x:Key="Accent" Color="#6D5CE0"/>
+                    <SolidColorBrush x:Key="PrimaryDim" Color="#00654E"/>
+                    <SolidColorBrush x:Key="Accent" Color="#7C3AED"/>
+                    <SolidColorBrush x:Key="AccentSoft" Color="#7C3AED" Opacity="0.11"/>
                     <SolidColorBrush x:Key="Success" Color="#0E9F6E"/>
                     <SolidColorBrush x:Key="Info" Color="#2F7FE0"/>
-                    <SolidColorBrush x:Key="Warn" Color="#C7841A"/>
-                    <SolidColorBrush x:Key="Danger" Color="#E5484D"/>
+                    <SolidColorBrush x:Key="Warn" Color="#956314"/>
+                    <!-- Deepened from #E5484D, which carried its own white button label at 3.91:1 —
+                         every destructive button in the light theme. Same hue and saturation, eleven
+                         points darker: the label now clears AA at 5.16:1, and the colour clears it as
+                         text too, so light's Danger leaves the exception list along with it. -->
+                    <SolidColorBrush x:Key="Danger" Color="#D61E24"/>
                     <SolidColorBrush x:Key="DangerInk" Color="#FFFFFF"/>
-                    <SolidColorBrush x:Key="PrimarySoft" Color="#0F9E7E" Opacity="0.10"/>
-                    <SolidColorBrush x:Key="DockerChip" Color="#2496ED" Opacity="0.16"/>
-                    <SolidColorBrush x:Key="Console" Color="#0F141B"/>
+                    <SolidColorBrush x:Key="PrimarySoft" Color="#007A5E" Opacity="0.10"/>
+                    <!-- The console stays dark in both themes; moved onto hue 229 so a light-theme
+                         terminal does not read as a panel borrowed from another product. -->
+                    <SolidColorBrush x:Key="Console" Color="#0C122B"/>
+                    <!-- ...and the code surface does follow, which is the whole point of splitting them
+                         (KON-196): the YAML tab and the command previews are white here, with TextDim
+                         on them like any other panel. -->
+                    <SolidColorBrush x:Key="CodeSurface" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="SurfaceRaised" Color="#F0F3F6"/>
                     <SolidColorBrush x:Key="WarnSoft" Color="#FBF2DD"/>
                     <SolidColorBrush x:Key="WarnSoftBorder" Color="#ECD9A8"/>
@@ -85,11 +135,52 @@
 
             <!-- List-row content margin; swapped live by DensityApplier for compact density. -->
             <Thickness x:Key="RowMargin">18,11</Thickness>
+
+            <!-- The radius scale (KON-220). Three steps, not a collection: small things that sit
+                 inside something else, panels, and surfaces that float above the page. Values that
+                 stay off the scale on purpose: 0 where a shape is deliberately square; 2, 3, 4 and 5
+                 on elements only a few pixels tall, where 6 reads as a lozenge; 16 and 18 on the
+                 64–72px empty-state tiles, whose radius tracks the box rather than the scale; and
+                 20/999 where the shape is a capsule and not a rounded rectangle. -->
+            <CornerRadius x:Key="RadiusSm">6</CornerRadius>
+            <CornerRadius x:Key="Radius">10</CornerRadius>
+            <CornerRadius x:Key="RadiusLg">14</CornerRadius>
+
+            <!-- One duration and one curve for the whole app, so hover states settle instead of
+                 snapping. Applied to the sidebar and to buttons only: animating rows and tables makes
+                 a list feel slow rather than considered.
+                 Avalonia 12.1 exposes no reduced-motion signal — there is no platform setting to read
+                 and no media query, checked against the assembly rather than assumed (KON-230). The
+                 answer until there is one is a duration short enough that it cannot induce discomfort,
+                 which is what the design system asks for when the signal is missing. -->
+            <sys:TimeSpan x:Key="EaseDuration">0:0:0.18</sys:TimeSpan>
+            <SplineEasing x:Key="Ease" X1="0.4" Y1="0" X2="0.2" Y2="1"/>
         </ResourceDictionary>
     </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
+
+        <!-- The app's only motion (KON-220). On the ContentPresenter because that is the part these
+             styles colour, and on Background alone: fading the label as well makes the text look out
+             of focus for a fifth of a second, which is the opposite of the point. Deliberately not on
+             list rows or table cells — hover animation on a dense grid reads as lag, not polish. -->
+        <Style Selector="Button.nav /template/ ContentPresenter">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="{StaticResource EaseDuration}"
+                                     Easing="{StaticResource Ease}"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.primary /template/ ContentPresenter, Button.pill /template/ ContentPresenter, Button.ghost /template/ ContentPresenter">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="{StaticResource EaseDuration}"
+                                     Easing="{StaticResource Ease}"/>
+                </Transitions>
+            </Setter>
+        </Style>
 
         <!-- Sidebar nav button -->
         <Style Selector="Button.nav">
@@ -98,7 +189,7 @@
             <Setter Property="Padding" Value="11,9"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="FontSize" Value="13.5"/>
             <Setter Property="FontWeight" Value="Medium"/>
         </Style>
@@ -118,7 +209,7 @@
             <Setter Property="Background" Value="{DynamicResource Primary}"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryInk}"/>
             <Setter Property="Padding" Value="15,9"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <!-- The confirm button of a destructive dialog. Until KON-126 it rendered as .primary, so the
@@ -131,18 +222,59 @@
             <Setter Property="Background" Value="{DynamicResource Surface2}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
             <Setter Property="Padding" Value="15,9"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
+        <!-- A tile you pick one of (KON-77). A button rather than a bordered panel with a click
+             handler, so keyboard focus, Enter and the disabled state all come for free — and a
+             provisioner whose tool is missing is disabled, not merely dimmed. -->
+        <Style Selector="Button.pick">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+        <Style Selector="Button.pick.on">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Button.pick:disabled">
+            <Setter Property="Opacity" Value="0.55"/>
+        </Style>
+
+        <!-- A card that is also a way in (KON-174). Same surface as a panel so it reads as content
+             rather than as a control, but it takes a hover so it does not look inert — a card you can
+             click and a card you cannot must not look identical. -->
+        <Style Selector="Button.kindcard">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
+            <Setter Property="Padding" Value="17,16"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Button.kindcard:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryDim}"/>
+        </Style>
+
         <!-- Small icon action button -->
+        <!-- An icon-only button has no text, so a screen reader announces "button" and nothing more.
+             Every one of these already carries a tooltip saying what it does, so that is the name —
+             taken from the tooltip rather than repeated in a second attribute, which would be one
+             more thing to keep in step and the first to fall out of it (KON-56). -->
         <Style Selector="Button.qa">
+            <Setter Property="AutomationProperties.Name" Value="{Binding $self.(ToolTip.Tip)}"/>
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Width" Value="30"/>
             <Setter Property="Height" Value="30"/>
             <Setter Property="Padding" Value="0"/>
@@ -153,6 +285,41 @@
         </Style>
         <Style Selector="Button.qa.danger:pointerover /template/ ContentPresenter">
             <Setter Property="TextElement.Foreground" Value="{DynamicResource Danger}"/>
+        </Style>
+        <!-- A quick action that is a toggle has to look switched on, or it reads as a button that did
+             nothing (KON-117). Border and fill together, never colour alone. -->
+        <Style Selector="Button.qa.on">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Button.qa.on /template/ ContentPresenter">
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource Primary}"/>
+        </Style>
+        <!-- A quick action that is only a chevron: no plate, no border. In a list row the box reads
+             as a control in its own right, when all it does is fold the row below it. Hover still
+             lightens the icon, so it is not a dead glyph. -->
+        <Style Selector="Button.qa.bare">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <!-- An icon whose Stroke is set inline keeps that value, so a toggle that wants to change
+             colour leaves the stroke to these two rules instead. -->
+        <Style Selector="Button.qa Path.icon">
+            <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="Button.qa.on Path.icon">
+            <Setter Property="Stroke" Value="{DynamicResource Primary}"/>
+        </Style>
+
+        <!-- Status dots and the icon glyphs inside buttons are decoration: every one of them sits
+             next to a label that already says the same thing, so announcing them again adds a
+             nameless element between the user and the text. Raw keeps them out of the tree a screen
+             reader walks, without touching how anything looks (KON-56). -->
+        <Style Selector="Ellipse">
+            <Setter Property="AutomationProperties.AccessibilityView" Value="Raw"/>
+        </Style>
+        <Style Selector="Button Path.icon">
+            <Setter Property="AutomationProperties.AccessibilityView" Value="Raw"/>
         </Style>
 
         <!-- Stroke-rendered Lucide icon (fill would turn outlines into blobs) -->
@@ -169,7 +336,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="Padding" Value="16,14"/>
         </Style>
 
@@ -242,7 +409,7 @@
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="11,7"/>
             <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
             <Setter Property="FontSize" Value="12.5"/>

@@ -5,8 +5,9 @@ using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
@@ -26,7 +27,7 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
     public RunContainerViewModel(
         IContainerEngine engine,
         string backendName,
-        string backendChip,
+        BackendChipInfo backendChip,
         IReadOnlyList<string> networks,
         IReadOnlySet<string> localImages,
         Action onClose,
@@ -57,7 +58,7 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
     }
 
     public string BackendName { get; }
-    public string BackendChip { get; }
+    public BackendChipInfo BackendChip { get; }
 
     public ObservableCollection<string> Networks { get; }
     public string[] RestartPolicies { get; }

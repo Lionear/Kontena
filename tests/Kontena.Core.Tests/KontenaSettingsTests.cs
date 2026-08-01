@@ -1,7 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Kontena.Core.Models;
+using Kontena.Sdk.Models;
 using Xunit;
+using Kontena.Core.Models;
 
 namespace Kontena.Core.Tests;
 
@@ -113,6 +114,15 @@ public class KontenaSettingsTests
                 ["kubernetes:kind-kind"] = false,
             },
             TerminalLigatures = true,
+            ContainerGrouping = new Dictionary<string, bool>
+            {
+                ["docker"] = false,
+                ["docker-remote:r1"] = true,
+            },
+            Shortcuts = new Dictionary<string, string>
+            {
+                ["page.refresh"] = "Ctrl+Shift+R",
+            },
             RecentBuildContexts = ["/srv/build/app", "/srv/build/api"],
             PortForwards = new Dictionary<string, IReadOnlyList<RememberedPortForward>>
             {
@@ -145,6 +155,12 @@ public class KontenaSettingsTests
 
         // Declined clusters survive as false, which is what stops them being offered again.
         Assert.Equal(original.KnownClusters, restored.KnownClusters);
+
+        // Grouping turned off survives as false — absent means on, so the two must stay tellable apart.
+        Assert.Equal(original.ContainerGrouping, restored.ContainerGrouping);
+
+        // Only the shortcuts that were changed are in here; the rest follow the defaults (KON-180).
+        Assert.Equal(original.Shortcuts, restored.Shortcuts);
         Assert.Equal(
             original.PortForwards["kubernetes:kind-kind"],
             restored.PortForwards["kubernetes:kind-kind"]);
@@ -158,6 +174,8 @@ public class KontenaSettingsTests
                 KubeconfigPaths = restored.KubeconfigPaths,
                 BackendNames = restored.BackendNames,
                 KnownClusters = restored.KnownClusters,
+                ContainerGrouping = restored.ContainerGrouping,
+                Shortcuts = restored.Shortcuts,
             },
             restored);
     }

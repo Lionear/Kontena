@@ -1,6 +1,5 @@
-using Kontena.Core;
+using Kontena.Sdk;
 using Kontena.Core.Orchestration.Fakes;
-using Kontena.Engines;
 
 namespace Kontena.App;
 
@@ -11,7 +10,8 @@ namespace Kontena.App;
 /// build the cluster UI against before <c>Kontena.Adapters.Kubernetes</c> exists. Lives in the
 /// app, not in the OAL project, so the two backend axes never reference each other.
 /// </summary>
-public sealed class FakeClusterProvider(string context, string chip) : IBackendProvider
+public sealed class FakeClusterProvider(string context, string chip, BackendChipStyle? chipStyle = null)
+    : IBackendProvider
 {
     /// <summary>
     /// Its own id namespace, deliberately not "kubernetes": the real adapter registers one backend
@@ -23,6 +23,12 @@ public sealed class FakeClusterProvider(string context, string chip) : IBackendP
     public string Backend => $"{FakeBackendPrefix}:{context}";
     public string DisplayName => context;
     public string Chip => chip;
+
+    /// <summary>
+    /// Null in the app — a seeded cluster is not a real one and does not wear Kubernetes' helm (KON-80).
+    /// The screenshot renderer passes one, because its shots stand in for real clusters.
+    /// </summary>
+    public BackendChipStyle? ChipStyle => chipStyle;
     public BackendKind Kind => BackendKind.Cluster;
     public IBackend CreateBackend() => new FakeClusterEngine(context);
 }

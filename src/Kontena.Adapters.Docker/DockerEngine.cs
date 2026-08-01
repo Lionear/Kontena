@@ -8,11 +8,11 @@ using System.Text;
 using System.Threading.Channels;
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using Kontena.Core.Errors;
-using Kontena.Core.Models;
-using Kontena.Engines;
-using KontenaState = Kontena.Core.Models.ContainerState;
-using KontenaPort = Kontena.Core.Models.PortBinding;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using KontenaState = Kontena.Sdk.Models.ContainerState;
+using KontenaPort = Kontena.Sdk.Models.PortBinding;
 using DockerPortBinding = Docker.DotNet.Models.PortBinding;
 using DockerRestartPolicy = Docker.DotNet.Models.RestartPolicy;
 
@@ -248,7 +248,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                         Repository = repo,
                         Tag = tag,
                         SizeBytes = img.Size,
-                        CreatedAt = img.Created,
+                        CreatedAt = EngineTimestamp.From(img.Created),
                         InUse = img.Containers > 0,
                     });
                 }
@@ -705,7 +705,10 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             ShowStdout = true,
             ShowStderr = true,
             Follow = follow,
-            Timestamps = false,
+            // Asked for, and parsed off each line below (KON-203). Without them every line carried the
+            // moment Kontena read it, so a backlog of forty lines from four different days all showed
+            // the same millisecond.
+            Timestamps = true,
             Tail = follow ? "200" : "all",
         }, ct)).ConfigureAwait(false);
 
@@ -741,7 +744,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 sb.Append(Encoding.UTF8.GetString(buffer, 0, read.Count));
 
                 foreach (var line in DrainLines(sb))
-                    yield return new LogEntry(DateTimeOffset.UtcNow, source, line);
+                    yield return LogLine.Parse(line, source, DateTimeOffset.UtcNow);
             }
         }
         finally
@@ -971,7 +974,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Labels = c.Labels is { Count: > 0 }
             ? new Dictionary<string, string>(c.Labels)
             : new Dictionary<string, string>(),
-        CreatedAt = c.Created,
+        CreatedAt = EngineTimestamp.From(c.Created),
         Backend = Backend,
     };
 
@@ -1081,20 +1084,20 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         m.Actor?.ID ?? m.ID ?? string.Empty,
         DateTimeOffset.FromUnixTimeSeconds(m.Time));
 
-    private static RestartPolicyKind MapRestart(Core.Models.RestartPolicy policy) => policy switch
+    private static RestartPolicyKind MapRestart(Kontena.Sdk.Models.RestartPolicy policy) => policy switch
     {
-        Core.Models.RestartPolicy.Always => RestartPolicyKind.Always,
-        Core.Models.RestartPolicy.OnFailure => RestartPolicyKind.OnFailure,
-        Core.Models.RestartPolicy.UnlessStopped => RestartPolicyKind.UnlessStopped,
+        Kontena.Sdk.Models.RestartPolicy.Always => RestartPolicyKind.Always,
+        Kontena.Sdk.Models.RestartPolicy.OnFailure => RestartPolicyKind.OnFailure,
+        Kontena.Sdk.Models.RestartPolicy.UnlessStopped => RestartPolicyKind.UnlessStopped,
         _ => RestartPolicyKind.No,
     };
 
-    private static Core.Models.RestartPolicy MapRestart(RestartPolicyKind? kind) => kind switch
+    private static Kontena.Sdk.Models.RestartPolicy MapRestart(RestartPolicyKind? kind) => kind switch
     {
-        RestartPolicyKind.Always => Core.Models.RestartPolicy.Always,
-        RestartPolicyKind.OnFailure => Core.Models.RestartPolicy.OnFailure,
-        RestartPolicyKind.UnlessStopped => Core.Models.RestartPolicy.UnlessStopped,
-        _ => Core.Models.RestartPolicy.No,
+        RestartPolicyKind.Always => Kontena.Sdk.Models.RestartPolicy.Always,
+        RestartPolicyKind.OnFailure => Kontena.Sdk.Models.RestartPolicy.OnFailure,
+        RestartPolicyKind.UnlessStopped => Kontena.Sdk.Models.RestartPolicy.UnlessStopped,
+        _ => Kontena.Sdk.Models.RestartPolicy.No,
     };
 
     private static ContainerInspect MapInspect(ContainerInspectResponse r)
@@ -1133,11 +1136,17 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             ImageId = r.Image ?? string.Empty,
             State = MapState(r.State?.Status),
             Status = r.State?.Status ?? string.Empty,
-            CreatedAt = r.Created,
+            CreatedAt = EngineTimestamp.From(r.Created),
             StartedAt = ParseDockerDate(r.State?.StartedAt),
             FinishedAt = ParseDockerDate(r.State?.FinishedAt),
             ExitCode = (int)(r.State?.ExitCode ?? 0),
             Pid = (int)(r.State?.Pid ?? 0),
+            OomKilled = r.State?.OOMKilled ?? false,
+            RestartCount = (int)r.RestartCount,
+            // Zero means "no limit" to the engine, and null means the same to us — reporting a limit
+            // of nothing would turn an unlimited container into one that may use no memory at all.
+            MemoryLimitBytes = r.HostConfig?.Memory is > 0 and var memory ? memory : null,
+            Error = r.State?.Error ?? string.Empty,
             RestartPolicy = MapRestart(r.HostConfig?.RestartPolicy?.Name),
             Command = string.Join(" ", command),
             WorkingDirectory = r.Config?.WorkingDir ?? string.Empty,

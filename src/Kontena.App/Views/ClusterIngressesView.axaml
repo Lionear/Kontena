@@ -1,0 +1,83 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterIngressesView"
+             x:DataType="vm:ClusterIngressesViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Ingresses" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <!-- Never silent about not being live: a list that has quietly stopped moving looks
+                 exactly like a cluster where nothing is happening, and those want opposite
+                 reactions (KON-250). -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="1.5*,1*,0.9*,2*,1.2*,0.7*">
+                            <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
+                            <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
+                            <TextBlock Grid.Column="2" Text="CLASS" Classes="colhead"/>
+                            <TextBlock Grid.Column="3" Text="HOSTS" Classes="colhead"/>
+                            <TextBlock Grid.Column="4" Text="ADDRESS" Classes="colhead"/>
+                            <TextBlock Grid.Column="5" Text="AGE" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:IngressRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                    <Grid ColumnDefinitions="1.5*,1*,0.9*,2*,1.2*,0.7*">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Class}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <!-- Hosts trim like the Services PORTS cell: the full set of rules, each with its
+                                             path and backend, is on hover (KON-199). -->
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,14,0">
+                                            <TextBlock Text="{Binding Hosts}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding HostsTooltip}"/>
+                                            <!-- Which hosts TLS covers is in the tooltip; the chip only says that some do. -->
+                                            <Border IsVisible="{Binding HasTls}" Background="{DynamicResource SurfaceRaised}"
+                                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                    CornerRadius="{StaticResource RadiusSm}" Padding="6,1" VerticalAlignment="Center"
+                                                    ToolTip.Tip="{Binding TlsTooltip}">
+                                                <TextBlock Text="TLS" FontSize="10.5" FontWeight="Medium" Foreground="{DynamicResource TextDim}"/>
+                                            </Border>
+                                            <TextBlock IsVisible="{Binding HasNoRules}" Text="no rules" FontSize="11.5" FontStyle="Italic"
+                                                       Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"
+                                                       ToolTip.Tip="This ingress defines no host or path rules, so it routes nothing."/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="4" Text="{Binding Address}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding AddressTooltip}"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- An empty page and a search with no hits look identical unless they are told apart
+                 (KON-164). -->
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No ingresses in this namespace." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No ingresses match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

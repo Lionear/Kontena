@@ -11,4 +11,22 @@ public interface IListPage
 
     /// <summary>Load (or reload) the page's data.</summary>
     Task LoadAsync();
+
+    /// <summary>
+    /// Whether this page does anything with <see cref="SearchText"/>.
+    /// <para>
+    /// Separate from the interface itself because reloading and searching are different capabilities:
+    /// the Workloads dashboard wants Refresh but is cards rather than a list, and a search box that
+    /// accepts text and ignores it is the dead-control problem (KON-117) in written form — worse than
+    /// no box, because it looks like searching happened and found nothing (KON-164).
+    /// </para>
+    /// </summary>
+    bool SupportsSearch => true;
+
+    /// <summary>
+    /// What the search box says when empty. Per page rather than one string for the whole app: the
+    /// shared placeholder read "Search containers, images, volumes…" on a Kubernetes cluster, which
+    /// names three things that do not exist there.
+    /// </summary>
+    string SearchPlaceholder => "Search…";
 }

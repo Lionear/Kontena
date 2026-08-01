@@ -1,5 +1,5 @@
-using System.Diagnostics;
-using System.Text;
+using Kontena.Sdk.Tooling;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.Core.Orchestration.Rendering;
 
@@ -12,23 +12,19 @@ internal readonly record struct CliResult(int ExitCode, string StdOut, string St
     public string Complaint => StdErr.Length > 0 ? StdErr.Trim() : StdOut.Trim();
 }
 
-/// <summary>Raised when the tool a renderer drives is not installed.</summary>
-public sealed class ToolNotFoundException(string tool)
-    : Exception($"'{tool}' was not found on PATH.")
-{
-    public string Tool { get; } = tool;
-}
-
 /// <summary>
-/// Runs the render tools (kustomize, kubectl, helm) out of process. These are CLIs by nature —
-/// there is no library form worth binding to — so the invocation lives in one place: no shell,
-/// an argument list rather than a command string (nothing to quote, nothing to inject), and both
-/// streams captured so a failure can be reported in the tool's own words.
+/// The renderers' view of running a tool: they already hold a resolved path, so they keep a
+/// path-shaped call.
 /// </summary>
+/// <remarks>
+/// Everything below this line is <see cref="Kontena.Sdk.Tooling"/> (KON-129). Process handling used
+/// to live here in full, which was fine while rendering was the only thing shelling out — but cluster
+/// provisioning, the metrics install and the engine install-assist all need the same three steps, and
+/// the second copy is where they start to differ. One implementation, two shapes of call.
+/// </remarks>
 internal static class Cli
 {
-    /// <summary>A render that hasn't finished by now is stuck, not slow.</summary>
-    private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
+    private static readonly ToolRunner Runner = new();
 
     public static async Task<CliResult> RunAsync(
         string exe,
@@ -36,97 +32,23 @@ internal static class Cli
         string? workingDirectory = null,
         CancellationToken ct = default)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = exe,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
+        var result = await Runner.RunAsync(
+            new ToolInvocation(Describing(exe), args) { WorkingDirectory = workingDirectory }, ct);
 
-        if (!string.IsNullOrEmpty(workingDirectory))
-            psi.WorkingDirectory = workingDirectory;
-
-        foreach (var arg in args)
-            psi.ArgumentList.Add(arg);
-
-        using var process = new Process { StartInfo = psi };
-
-        try
-        {
-            process.Start();
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
-        {
-            throw new ToolNotFoundException(exe);
-        }
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(Timeout);
-
-        // Read both streams concurrently: a tool that fills one pipe while we drain the other
-        // would otherwise deadlock on a chatty render.
-        var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-            return new CliResult(process.ExitCode, await stdout, await stderr);
-        }
-        catch (OperationCanceledException)
-        {
-            Kill(process);
-            throw;
-        }
+        return new CliResult(result.ExitCode, result.StandardOutput, result.StandardError);
     }
 
-    /// <summary>The absolute path of <paramref name="exe"/> on PATH, or null when it isn't there.</summary>
-    public static string? Locate(string exe)
-    {
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrEmpty(path))
-            return null;
-
-        var names = OperatingSystem.IsWindows() ? new[] { exe + ".exe", exe + ".cmd", exe } : [exe];
-
-        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            foreach (var name in names)
-            {
-                var candidate = Path.Combine(dir, name);
-                if (File.Exists(candidate))
-                    return candidate;
-            }
-        }
-
-        return null;
-    }
+    /// <summary>The absolute path of <paramref name="exe"/>, or null when it isn't installed.</summary>
+    public static string? Locate(string exe) => ToolLocator.Locate(exe);
 
     /// <summary>Render an invocation the way a user would type it, so a render can be reproduced.</summary>
-    public static string Describe(string exe, IReadOnlyList<string> args)
-    {
-        var text = new StringBuilder(Path.GetFileNameWithoutExtension(exe));
-        foreach (var arg in args)
-        {
-            text.Append(' ');
-            text.Append(arg.Length == 0 || arg.Any(char.IsWhiteSpace) ? $"\"{arg}\"" : arg);
-        }
+    public static string Describe(string exe, IReadOnlyList<string> args) => ToolCommand.Describe(exe, args);
 
-        return text.ToString();
-    }
-
-    private static void Kill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-                process.Kill(entireProcessTree: true);
-        }
-        catch (InvalidOperationException)
-        {
-            // Exited between the check and the kill — nothing to clean up.
-        }
-    }
+    /// <summary>
+    /// A resolved path in <see cref="ExternalTool"/> clothing. No install hints: by the time a
+    /// renderer runs something it has already established the tool is there, and a renderer is the
+    /// wrong place to advise on installing one.
+    /// </summary>
+    private static ExternalTool Describing(string exe)
+        => new(Path.GetFileNameWithoutExtension(exe), exe, [], []);
 }

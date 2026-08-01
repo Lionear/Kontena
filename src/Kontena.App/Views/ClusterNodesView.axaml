@@ -9,12 +9,20 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="Nodes" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <!-- Never silent about not being live: a list that has quietly stopped moving looks
+                 exactly like a cluster where nothing is happening, and those want opposite
+                 reactions (KON-250). -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
 
             <!-- No usage backend: explain the empty gauges instead of leaving dashes unexplained -->
             <Border IsVisible="{Binding ShowMetricsNotice}" Background="{DynamicResource Surface}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="16,13">
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,13">
                 <Grid ColumnDefinitions="Auto,*">
-                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="8" VerticalAlignment="Top"
+                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="{StaticResource RadiusSm}" VerticalAlignment="Top"
                             Background="{DynamicResource Surface2}">
                         <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Info}"
                               Data="{StaticResource IconGauge}" HorizontalAlignment="Center"/>
@@ -26,11 +34,24 @@
                                    Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding MetricsNoticeAction}" FontSize="12.5"
                                    Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+
+                        <!-- The action half of the notice (KON-93). Hidden where the backend cannot
+                             write to the cluster: an install button that cannot install is the dead
+                             button from KON-117. -->
+                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,7,0,0"
+                                    IsVisible="{Binding CanInstallMetrics}">
+                            <Button Classes="primary" Command="{Binding InstallMetricsCommand}"
+                                    IsEnabled="{Binding !IsInstallingMetrics}"
+                                    Content="Install metrics-server"/>
+                            <TextBlock Text="{Binding MetricsInstallStatus}" FontSize="12.5" MaxWidth="420"
+                                       Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <ItemsControl ItemsSource="{Binding Nodes}">
+            <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel Orientation="Horizontal"/>
@@ -39,11 +60,14 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:NodeCardRow">
                         <Border Width="340" Margin="0,0,14,14" Background="{DynamicResource Surface}"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="12" Padding="18,16">
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
                             <StackPanel Spacing="14">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0" Spacing="3">
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                        <Button Classes="link" Padding="0" HorizontalAlignment="Left"
+                                                Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
                                         <TextBlock Text="{Binding Roles}" FontSize="11.5" Foreground="{DynamicResource TextFaint}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
@@ -123,11 +147,28 @@
                                         <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"/>
                                     </StackPanel>
                                 </Grid>
+
+                                <!-- Node maintenance (KON-251). Hidden entirely where the backend cannot do
+                                     it, rather than offered and then refused. Cordon reads Uncordon on a node
+                                     that already is: one button, and the label is the state. -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding CanMaintain}">
+                                    <Button Classes="pill" Command="{Binding CordonCommand}" Content="{Binding CordonLabel}"
+                                            ToolTip.Tip="Stop new pods being scheduled here. Pods already running stay put."/>
+                                    <Button Classes="pill" Command="{Binding DrainCommand}"
+                                            ToolTip.Tip="Cordon, then move the pods off — DaemonSet pods stay, and a disruption budget may refuse">Drain</Button>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Typing something with no hits leaves an empty page, which reads as a page that failed
+                 to load rather than a search that found nothing (KON-164). -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No nodes match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

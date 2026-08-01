@@ -7,6 +7,13 @@ namespace Kontena.Core.Orchestration.Tests;
 /// The renderers drive real CLIs, so these drive them too — a mocked <c>helm template</c> would
 /// only prove that the mock agrees with itself. Where the tool is missing the test skips, the way
 /// the cluster tests do.
+/// <para>
+/// That includes the tests asserting a request is rejected <em>before</em> the tool runs: both
+/// renderers look for their executable first, so a machine without one answers "install kustomize"
+/// rather than "this directory has no kustomization.yaml". The order is deliberate — a missing tool
+/// is the blocker the user has to clear either way — so these skip too rather than assert a message
+/// they cannot reach.
+/// </para>
 /// </summary>
 public class RendererTests : IDisposable
 {
@@ -27,18 +34,22 @@ public class RendererTests : IDisposable
 
     // ── Kustomize (KON-88) ───────────────────────────────────────────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task A_directory_without_a_kustomization_fails_before_the_tool_runs()
     {
+        SkipIfMissing(new KustomizeRenderer());
+
         var result = await new KustomizeRenderer().RenderAsync(new KustomizeRequest { Path = _root });
 
         Assert.False(result.Ok);
         Assert.Contains(result.Diagnostics, d => d.Message.Contains("no kustomization.yaml", StringComparison.Ordinal));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_path_that_is_not_there_fails_with_the_path_in_the_message()
     {
+        SkipIfMissing(new KustomizeRenderer());
+
         var missing = Path.Combine(_root, "nope");
 
         var result = await new KustomizeRenderer().RenderAsync(new KustomizeRequest { Path = missing });
@@ -100,18 +111,22 @@ public class RendererTests : IDisposable
 
     // ── Helm (KON-89) ────────────────────────────────────────────────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task A_render_without_a_release_name_says_why_it_needs_one()
     {
+        SkipIfMissing(new HelmRenderer());
+
         var result = await new HelmRenderer().RenderAsync(new HelmRequest { Chart = _root, ReleaseName = "  " });
 
         Assert.False(result.Ok);
         Assert.Contains(result.Diagnostics, d => d.Message.Contains("release name", StringComparison.Ordinal));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_values_file_that_is_not_there_is_caught_before_helm_runs()
     {
+        SkipIfMissing(new HelmRenderer());
+
         var result = await new HelmRenderer().RenderAsync(new HelmRequest
         {
             Chart = _root,

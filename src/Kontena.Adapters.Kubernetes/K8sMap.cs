@@ -1,5 +1,7 @@
+using System.Text;
 using k8s.Models;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -67,6 +69,13 @@ internal static class K8sMap
     public static Pod ToPod(V1Pod p)
     {
         var statuses = p.Status?.ContainerStatuses ?? [];
+        var initStatuses = p.Status?.InitContainerStatuses ?? [];
+        var ephemeralStatuses = p.Status?.EphemeralContainerStatuses ?? [];
+
+        // Declared ports live on the spec, the rest of the story on the status, and the two are only
+        // joined by container name. Building the lookup once keeps that join in one place.
+        var ports = PortsByContainer(p.Spec);
+        var limits = MemoryLimitsByContainer(p.Spec);
 
         return new Pod
         {
@@ -80,8 +89,12 @@ internal static class K8sMap
                 "Failed" => PodPhase.Failed,
                 _ => PodPhase.Unknown,
             },
-            Containers = [.. statuses.Select(ToContainerStatus)],
-            Restarts = statuses.Sum(c => c.RestartCount),
+            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports, limits))],
+            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports, limits))],
+            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports, limits))],
+            // Init restarts are counted too: a pod that has retried its init container seven times has
+            // restarted seven times, and reporting 0 there is the reading that hides the problem.
+            Restarts = statuses.Sum(c => c.RestartCount) + initStatuses.Sum(c => c.RestartCount),
             Node = p.Spec?.NodeName ?? string.Empty,
             Ip = p.Status?.PodIP ?? string.Empty,
             Qos = p.Status?.QosClass switch
@@ -91,31 +104,83 @@ internal static class K8sMap
                 _ => QosClass.BestEffort,
             },
             ControlledBy = OwnerOf(p.Metadata),
+            Labels = Labels(p.Metadata?.Labels),
             Age = AgeOf(p.Metadata),
         };
     }
 
-    private static Core.Orchestration.Models.ContainerStatus ToContainerStatus(V1ContainerStatus c) => new()
+    private static Kontena.Sdk.Orchestration.Models.ContainerStatus ToContainerStatus(
+        V1ContainerStatus c, ContainerKind kind,
+        Dictionary<string, IReadOnlyList<ContainerPort>> ports,
+        Dictionary<string, long> memoryLimits) => new()
     {
         Name = c.Name,
         Image = c.Image ?? string.Empty,
         Ready = c.Ready,
         Restarts = c.RestartCount,
-        State = DescribeState(c.State),
+        Kind = kind,
+        Ports = ports.TryGetValue(c.Name, out var declared) ? declared : [],
+        RunState = RunStateOf(c.State),
+        Reason = ReasonOf(c.State),
+        ExitCode = c.State?.Terminated?.ExitCode,
+        // A looping container is *waiting*, so its current state holds nothing about how it died.
+        // lastState is the only place that says whether it was killed or exited on its own (KON-150).
+        LastTerminationReason = c.LastState?.Terminated?.Reason ?? string.Empty,
+        LastExitCode = c.LastState?.Terminated?.ExitCode,
+        MemoryLimitBytes = memoryLimits.TryGetValue(c.Name, out var limit) ? limit : null,
     };
 
-    /// <summary>"Running", "Waiting: CrashLoopBackOff", "Terminated: Error" — what the grid shows.</summary>
-    private static string DescribeState(V1ContainerState? s)
+    private static ContainerRunState RunStateOf(V1ContainerState? s) => s switch
     {
-        if (s?.Running is not null)
-            return "Running";
-        if (s?.Waiting is not null)
-            return string.IsNullOrEmpty(s.Waiting.Reason) ? "Waiting" : $"Waiting: {s.Waiting.Reason}";
-        if (s?.Terminated is not null)
-            return string.IsNullOrEmpty(s.Terminated.Reason) ? "Terminated" : $"Terminated: {s.Terminated.Reason}";
+        { Running: not null } => ContainerRunState.Running,
+        { Waiting: not null } => ContainerRunState.Waiting,
+        { Terminated: not null } => ContainerRunState.Terminated,
+        _ => ContainerRunState.Unknown,
+    };
 
-        return string.Empty;
+    private static string ReasonOf(V1ContainerState? s) =>
+        s?.Waiting?.Reason ?? s?.Terminated?.Reason ?? string.Empty;
+
+    /// <summary>
+    /// Declared ports per container name, across init, app and ephemeral containers alike.
+    /// <para>
+    /// A container may declare none — <c>containerPort</c> is documentation in Kubernetes, not a
+    /// binding — so a missing entry means nothing was declared rather than nothing is listening.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<ContainerPort>> PortsByContainer(V1PodSpec? spec)
+    {
+        var map = new Dictionary<string, IReadOnlyList<ContainerPort>>(StringComparer.Ordinal);
+
+        foreach (var c in (spec?.InitContainers ?? []).Concat(spec?.Containers ?? []))
+            if (c.Ports is { Count: > 0 })
+                map[c.Name] = [.. c.Ports.Select(ToContainerPort)];
+
+        foreach (var c in spec?.EphemeralContainers ?? [])
+            if (c.Ports is { Count: > 0 })
+                map[c.Name] = [.. c.Ports.Select(ToContainerPort)];
+
+        return map;
     }
+
+    /// <summary>
+    /// Declared memory limits per container name. A container without one is absent from the map
+    /// rather than present with zero: "no limit" and "a limit of nothing" are different answers, and
+    /// only the first one is true of an unlimited container.
+    /// </summary>
+    private static Dictionary<string, long> MemoryLimitsByContainer(V1PodSpec? spec)
+    {
+        var map = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        foreach (var c in (spec?.InitContainers ?? []).Concat(spec?.Containers ?? []))
+            if (c.Resources?.Limits is { } limits && limits.TryGetValue("memory", out var quantity))
+                map[c.Name] = (long)quantity.ToDouble();
+
+        return map;
+    }
+
+    private static ContainerPort ToContainerPort(V1ContainerPort p) =>
+        new(p.Name ?? string.Empty, p.ContainerPort, p.Protocol ?? "TCP");
 
     /// <summary>The controlling owner as "Kind/name" — a ReplicaSet is rolled up to its Deployment.</summary>
     private static string OwnerOf(V1ObjectMeta? meta)
@@ -145,7 +210,9 @@ internal static class K8sMap
         var s = d.Status;
         return Workload(d.Metadata, WorkloadKind.Deployment, desired,
             ready: s?.ReadyReplicas ?? 0, upToDate: s?.UpdatedReplicas ?? 0, available: s?.AvailableReplicas ?? 0,
-            images: ImagesOf(d.Spec?.Template));
+            images: ImagesOf(d.Spec?.Template),
+            selector: Labels(d.Spec?.Selector?.MatchLabels),
+            strategy: DeploymentStrategy(d.Spec?.Strategy));
     }
 
     public static Workload ToWorkload(V1StatefulSet s)
@@ -154,7 +221,9 @@ internal static class K8sMap
         var st = s.Status;
         return Workload(s.Metadata, WorkloadKind.StatefulSet, desired,
             ready: st?.ReadyReplicas ?? 0, upToDate: st?.UpdatedReplicas ?? 0, available: st?.AvailableReplicas ?? 0,
-            images: ImagesOf(s.Spec?.Template));
+            images: ImagesOf(s.Spec?.Template),
+            selector: Labels(s.Spec?.Selector?.MatchLabels),
+            strategy: s.Spec?.UpdateStrategy?.Type ?? string.Empty);
     }
 
     public static Workload ToWorkload(V1DaemonSet d)
@@ -162,7 +231,9 @@ internal static class K8sMap
         var st = d.Status;
         return Workload(d.Metadata, WorkloadKind.DaemonSet, st?.DesiredNumberScheduled ?? 0,
             ready: st?.NumberReady ?? 0, upToDate: st?.UpdatedNumberScheduled ?? 0, available: st?.NumberAvailable ?? 0,
-            images: ImagesOf(d.Spec?.Template));
+            images: ImagesOf(d.Spec?.Template),
+            selector: Labels(d.Spec?.Selector?.MatchLabels),
+            strategy: d.Spec?.UpdateStrategy?.Type ?? string.Empty);
     }
 
     public static Workload ToWorkload(V1Job j)
@@ -171,18 +242,24 @@ internal static class K8sMap
         var st = j.Status;
         return Workload(j.Metadata, WorkloadKind.Job, completions,
             ready: st?.Succeeded ?? 0, upToDate: st?.Succeeded ?? 0, available: st?.Ready ?? 0,
-            images: ImagesOf(j.Spec?.Template));
+            images: ImagesOf(j.Spec?.Template),
+            // A Job's selector is generated by the controller (controller-uid), so it is a real
+            // selector but never one a user wrote.
+            selector: Labels(j.Spec?.Selector?.MatchLabels));
     }
 
     public static Workload ToWorkload(V1CronJob c) =>
         Workload(c.Metadata, WorkloadKind.CronJob, desired: 0, ready: 0, upToDate: 0, available: 0,
             images: ImagesOf(c.Spec?.JobTemplate?.Spec?.Template),
             schedule: c.Spec?.Schedule ?? string.Empty,
-            suspended: c.Spec?.Suspend ?? false);
+            suspended: c.Spec?.Suspend ?? false,
+            // No selector on purpose: a CronJob owns Jobs, not pods. See PodMatching.OwnsPodsDirectly.
+            selector: null);
 
     private static Workload Workload(
         V1ObjectMeta? meta, WorkloadKind kind, int desired, int ready, int upToDate, int available,
-        IReadOnlyList<string> images, string schedule = "", bool suspended = false) => new()
+        IReadOnlyList<string> images, string schedule = "", bool suspended = false,
+        IReadOnlyDictionary<string, string>? selector = null, string strategy = "") => new()
     {
         Name = meta?.Name ?? "?",
         Namespace = meta?.NamespaceProperty ?? "default",
@@ -193,9 +270,34 @@ internal static class K8sMap
         Available = available,
         Images = images,
         Schedule = schedule,
+        Labels = Labels(meta?.Labels),
+        Selector = selector ?? new Dictionary<string, string>(StringComparer.Ordinal),
+        Strategy = strategy,
         RolloutStatus = Rollout(kind, desired, ready, upToDate, suspended),
         Age = AgeOf(meta),
     };
+
+    /// <summary>Copies a label map defensively; a null one becomes empty rather than a null reference.</summary>
+    private static Dictionary<string, string> Labels(IDictionary<string, string>? source) =>
+        source is null ? new Dictionary<string, string>(StringComparer.Ordinal)
+                       : new Dictionary<string, string>(source, StringComparer.Ordinal);
+
+    /// <summary>
+    /// "RollingUpdate (max surge 25%, max unavailable 25%)" — the numbers are the point of showing
+    /// the strategy at all, since they are what decides how a rollout behaves under pressure.
+    /// </summary>
+    private static string DeploymentStrategy(V1DeploymentStrategy? s)
+    {
+        if (s?.Type is not "RollingUpdate")
+            return s?.Type ?? string.Empty;
+
+        var surge = s.RollingUpdate?.MaxSurge?.Value;
+        var unavailable = s.RollingUpdate?.MaxUnavailable?.Value;
+
+        return surge is null && unavailable is null
+            ? "RollingUpdate"
+            : $"RollingUpdate (max surge {surge ?? "25%"}, max unavailable {unavailable ?? "25%"})";
+    }
 
     /// <summary>
     /// Summarise rollout health from the replica counts — the same reading <c>kubectl rollout
@@ -310,6 +412,83 @@ internal static class K8sMap
         Age = AgeOf(p.Metadata),
     };
 
+    public static PersistentVolume ToVolume(V1PersistentVolume v) => new()
+    {
+        Name = v.Metadata?.Name ?? "?",
+        Phase = v.Status?.Phase switch
+        {
+            "Available" => VolumePhase.Available,
+            "Bound" => VolumePhase.Bound,
+            "Released" => VolumePhase.Released,
+            "Failed" => VolumePhase.Failed,
+            _ => VolumePhase.Pending,
+        },
+        CapacityBytes = Bytes(v.Spec?.Capacity, "storage"),
+        AccessModes = [.. v.Spec?.AccessModes ?? []],
+        ReclaimPolicy = Reclaim(v.Spec?.PersistentVolumeReclaimPolicy),
+        StorageClass = v.Spec?.StorageClassName ?? string.Empty,
+
+        // "namespace/name", because a claim name on its own is ambiguous across namespaces and this
+        // column exists precisely to be matched against the claims list.
+        Claim = v.Spec?.ClaimRef is { Name: { Length: > 0 } claim } reference
+            ? $"{reference.NamespaceProperty ?? "default"}/{claim}"
+            : string.Empty,
+
+        Driver = DriverOf(v.Spec),
+        Age = AgeOf(v.Metadata),
+    };
+
+    /// <summary>
+    /// What is actually behind the volume. CSI reports its driver; the in-tree sources do not, so
+    /// the source that is set is the answer, and "hostPath" is worth saying out loud on a kind or
+    /// minikube cluster.
+    /// </summary>
+    private static string DriverOf(V1PersistentVolumeSpec? spec) => spec switch
+    {
+        null => string.Empty,
+        { Csi.Driver: { Length: > 0 } driver } => driver,
+        { HostPath: not null } => "hostPath",
+        { Local: not null } => "local",
+        { Nfs: not null } => "nfs",
+        { Iscsi: not null } => "iscsi",
+        _ => string.Empty,
+    };
+
+    public static StorageClass ToStorageClass(V1StorageClass c) => new()
+    {
+        Name = c.Metadata?.Name ?? "?",
+        Provisioner = c.Provisioner ?? string.Empty,
+        ReclaimPolicy = Reclaim(c.ReclaimPolicy),
+        BindingMode = string.Equals(c.VolumeBindingMode, "WaitForFirstConsumer", StringComparison.Ordinal)
+            ? VolumeBindingMode.WaitForFirstConsumer
+            : VolumeBindingMode.Immediate,
+
+        // The default is an annotation, not a field — and there are two spellings of it, the second
+        // left over from the beta API and still in use on clusters that were upgraded rather than
+        // rebuilt.
+        IsDefault = IsTrue(c.Metadata?.Annotations, "storageclass.kubernetes.io/is-default-class")
+            || IsTrue(c.Metadata?.Annotations, "storageclass.beta.kubernetes.io/is-default-class"),
+
+        AllowsExpansion = c.AllowVolumeExpansion ?? false,
+        Age = AgeOf(c.Metadata),
+    };
+
+    private static bool IsTrue(IDictionary<string, string>? annotations, string key) =>
+        annotations is not null
+        && annotations.TryGetValue(key, out var value)
+        && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Default is Delete, matching Kubernetes — and this is a field where guessing wrong is the
+    /// difference between keeping someone's data and not.
+    /// </summary>
+    private static ReclaimPolicy Reclaim(string? policy) => policy switch
+    {
+        "Retain" => ReclaimPolicy.Retain,
+        "Recycle" => ReclaimPolicy.Recycle,
+        _ => ReclaimPolicy.Delete,
+    };
+
     public static ClusterEvent ToEvent(Corev1Event e) => new()
     {
         Reason = e.Reason ?? string.Empty,
@@ -318,7 +497,8 @@ internal static class K8sMap
         InvolvedObject = ToRef(e.InvolvedObject),
         Source = e.Source?.Component ?? e.ReportingComponent ?? string.Empty,
         Count = e.Count ?? 1,
-        LastSeen = e.LastTimestamp ?? e.EventTime ?? e.FirstTimestamp ?? DateTime.UtcNow,
+        LastSeen = EngineTimestamp.From(
+            e.LastTimestamp ?? e.EventTime ?? e.FirstTimestamp ?? DateTime.UtcNow),
     };
 
     private static ResourceRef ToRef(V1ObjectReference? o)
@@ -343,13 +523,13 @@ internal static class K8sMap
         MemoryBytes = Bytes(m.Usage, "memory"),
     };
 
-    public static Core.Orchestration.Models.PodMetrics ToPodMetrics(k8s.Models.PodMetrics m) => new()
+    public static Kontena.Sdk.Orchestration.Models.PodMetrics ToPodMetrics(k8s.Models.PodMetrics m) => new()
     {
         Pod = m.Metadata?.Name ?? "?",
         Namespace = m.Metadata?.NamespaceProperty ?? "default",
         CpuMillicores = m.Containers?.Sum(c => Millicores(c.Usage, "cpu")) ?? 0,
         MemoryBytes = m.Containers?.Sum(c => Bytes(c.Usage, "memory")) ?? 0,
-        Timestamp = m.Timestamp ?? DateTime.UtcNow,
+        Timestamp = EngineTimestamp.From(m.Timestamp ?? DateTime.UtcNow),
     };
 
     // ── Quantities & ages ────────────────────────────────────────────────────
@@ -375,6 +555,113 @@ internal static class K8sMap
             return 0m;
         }
     }
+
+    /// <summary>
+    /// A ConfigMap without its values (KON-249). The client hands over <c>Data</c> and
+    /// <c>BinaryData</c> whether or not anyone wants them; only the key names and their sizes
+    /// survive this method.
+    /// </summary>
+    public static ConfigMapSummary ToConfigMap(V1ConfigMap c) => new()
+    {
+        Name = c.Metadata?.Name ?? "?",
+        Namespace = c.Metadata?.NamespaceProperty ?? "default",
+        Keys =
+        [
+            .. Keys(c.Data, v => Encoding.UTF8.GetByteCount(v ?? string.Empty))
+                .Concat(Keys(c.BinaryData, v => v?.LongLength ?? 0))
+                .OrderBy(k => k.Name, StringComparer.Ordinal),
+        ],
+        Age = AgeOf(c.Metadata),
+    };
+
+    /// <summary>
+    /// A Secret without its values. Same shape as <see cref="ToConfigMap"/> and for a stronger
+    /// reason: this is the seam where the values the list API sent are dropped.
+    /// </summary>
+    public static SecretSummary ToSecret(V1Secret s) => new()
+    {
+        Name = s.Metadata?.Name ?? "?",
+        Namespace = s.Metadata?.NamespaceProperty ?? "default",
+        Type = string.IsNullOrEmpty(s.Type) ? "Opaque" : s.Type,
+        Keys =
+        [
+            .. Keys(s.Data, v => v?.LongLength ?? 0)
+                .OrderBy(k => k.Name, StringComparer.Ordinal),
+        ],
+        Age = AgeOf(s.Metadata),
+    };
+
+    private static IEnumerable<ConfigKey> Keys<T>(IDictionary<string, T>? data, Func<T?, long> size) =>
+        data is null ? [] : data.Select(kv => new ConfigKey(kv.Key, size(kv.Value)));
+
+    /// <summary>
+    /// The entries of one ConfigMap, decoded. A ConfigMap's <c>data</c> is already text; its
+    /// <c>binaryData</c> is bytes and stays bytes.
+    /// </summary>
+    public static IReadOnlyList<ConfigEntry> ToEntries(V1ConfigMap c) =>
+    [
+        .. (c.Data ?? new Dictionary<string, string>())
+            .Select(kv => Entry(kv.Key, Encoding.UTF8.GetBytes(kv.Value ?? string.Empty)))
+            .Concat((c.BinaryData ?? new Dictionary<string, byte[]>()).Select(kv => Entry(kv.Key, kv.Value)))
+            .OrderBy(e => e.Key, StringComparer.Ordinal),
+    ];
+
+    /// <summary>
+    /// The entries of one Secret, decoded. The client has already undone the base64 — <c>Data</c> is
+    /// bytes by the time it reaches here — so the only question left is whether those bytes are text.
+    /// </summary>
+    public static IReadOnlyList<ConfigEntry> ToEntries(V1Secret s) =>
+    [
+        .. (s.Data ?? new Dictionary<string, byte[]>())
+            .Select(kv => Entry(kv.Key, kv.Value))
+            .OrderBy(e => e.Key, StringComparer.Ordinal),
+    ];
+
+    /// <summary>
+    /// One entry from raw bytes. Text only when the bytes decode as UTF-8 without loss: a TLS key
+    /// rendered as characters is noise, and a lossy decode would show something that was never in
+    /// the secret.
+    /// </summary>
+    private static ConfigEntry Entry(string key, byte[]? value)
+    {
+        var bytes = value ?? [];
+
+        string? text = null;
+        try
+        {
+            var decoded = StrictUtf8.GetString(bytes);
+
+            // Decoding is not enough. A PNG's first bytes are 0x00–0x02, which are perfectly valid
+            // single-byte UTF-8 and perfectly unreadable — and a value full of NULs is exactly the
+            // thing that puts a terminal into a state nobody asked for. Text means it decodes *and*
+            // holds no control characters beyond the three that belong in a config file.
+            if (!decoded.Any(IsUnprintable))
+                text = decoded;
+        }
+        catch (DecoderFallbackException)
+        {
+            // Not text. That is an answer, not a failure.
+        }
+
+        return new ConfigEntry
+        {
+            Key = key,
+            Text = text,
+            Base64 = Convert.ToBase64String(bytes),
+            SizeBytes = bytes.LongLength,
+        };
+    }
+
+    /// <summary>
+    /// A character that has no business being rendered: any control character (C0, DEL and C1),
+    /// except the tab, newline and carriage return that a script or an nginx.conf legitimately holds.
+    /// </summary>
+    private static bool IsUnprintable(char c) =>
+        char.IsControl(c) && c is not ('\t' or '\n' or '\r');
+
+    /// <summary>UTF-8 that throws rather than substituting replacement characters.</summary>
+    private static readonly Encoding StrictUtf8 =
+        Encoding.GetEncoding("utf-8", EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
     /// <summary>The client hands back mutable maps; the OAL models expose read-only ones.</summary>
     private static Dictionary<string, string> ReadOnly(IDictionary<string, string>? map) =>

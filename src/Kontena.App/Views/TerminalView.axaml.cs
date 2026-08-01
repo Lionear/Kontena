@@ -9,8 +9,9 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Exclr8.Terminal;
 using Kontena.App.ViewModels;
-using Kontena.Core.Models;
-using Kontena.Engines;
+using Kontena.Sdk.Models;
+using Kontena.Sdk;
+using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Views;
 
@@ -52,6 +53,7 @@ public partial class TerminalView : UserControl
             Term.FontFamily = _vm.TerminalFontFamily;
             Term.FontSize = _vm.TerminalFontSize;
             Term.EnableLigatures = _vm.TerminalLigatures;
+            ShellLabel.Text = _vm.ShellLabel;
         }
 
         MaybeStart();
@@ -155,13 +157,16 @@ public partial class TerminalView : UserControl
 
     private void OnReconnectClick(object? sender, RoutedEventArgs e)
     {
-        Teardown();
+        // Reconnect means "give me a new one", so this is the case that ends a session the page would
+        // otherwise keep.
+        Teardown(discard: true);
+        Term.PrepareForNewSession();
         _started = false;
         SetStatus("connecting…", ok: false);
         MaybeStart();
     }
 
-    private void Teardown()
+    private void Teardown(bool discard = false)
     {
         _cts?.Cancel();
         _cts?.Dispose();
@@ -171,9 +176,13 @@ public partial class TerminalView : UserControl
         Term.Resized -= OnResized;
 
         var session = _session;
+        var vm = _vm;
         _session = null;
-        if (session is not null)
-            _ = session.DisposeAsync().AsTask();
+
+        // Handed back rather than disposed here: whether a session outlives its view is the page's
+        // decision, not the view's. A container shell ends; a shell on this machine keeps running.
+        if (session is not null && vm is not null)
+            _ = vm.ReleaseExecSessionAsync(session, discard).AsTask();
     }
 
     private void SetStatus(string text, bool ok)

@@ -1,0 +1,491 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="900"
+             x:Class="Kontena.App.Views.LocalClustersView"
+             x:DataType="vm:LocalClustersViewModel">
+
+    <StackPanel Spacing="0">
+
+        <!-- ── List, running and failed all share this heading; the form has its own. ── -->
+        <StackPanel Spacing="0" IsVisible="{Binding !IsForm}">
+            <TextBlock FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                       Text="Local clusters" IsVisible="{Binding !IsRunning}"/>
+            <TextBlock FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                       IsVisible="{Binding IsRunning}">
+                <Run Text="Creating"/><Run Text=" "/><Run Text="{Binding CreatingName}" FontFamily="{StaticResource Mono}"/>
+            </TextBlock>
+            <TextBlock Text="Kontena drives kind or minikube to build a Kubernetes cluster on this machine. A cluster you create here writes its own kubeconfig context, so it turns up in the backend switcher by itself."
+                       FontSize="13.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" MaxWidth="620"
+                       HorizontalAlignment="Left" Margin="0,4,0,26"/>
+        </StackPanel>
+
+        <!-- ── Cluster tooling: one line once it is settled, the whole page behind a button. ── -->
+        <Border Classes="card" IsVisible="{Binding !IsForm}">
+            <StackPanel Spacing="0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                        <TextBlock Text="CLUSTER TOOLING" FontSize="11.5" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ToolSummary}" FontSize="12.5" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="ghost" Command="{Binding ToggleToolingCommand}"
+                            Content="Manage tooling"/>
+                </Grid>
+
+                <views:ClusterToolingView DataContext="{Binding Tooling}" Margin="0,18,0,0"
+                                          IsVisible="{Binding $parent[UserControl].((vm:LocalClustersViewModel)DataContext).IsToolingShown}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ══ Just created ══════════════════════════════════════════════════════ -->
+        <Border Classes="card" Margin="0,16,0,0" IsVisible="{Binding HasCreated}"
+                Background="{DynamicResource PrimarySoft}" BorderBrush="{DynamicResource Border}">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="14">
+                <Border Grid.Column="0" Width="34" Height="34" CornerRadius="{StaticResource Radius}" VerticalAlignment="Top"
+                        Background="{DynamicResource Primary}">
+                    <Path Classes="icon" Width="16" Height="16"
+                          Data="{StaticResource IconCheck}" Stroke="{DynamicResource PrimaryInk}"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                    <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Text}">
+                        <Run Text="{Binding Created.Name}" FontFamily="{StaticResource Mono}"/><Run Text=" is ready"/>
+                    </TextBlock>
+                    <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap">
+                        <Run Text="Context"/><Run Text=" "/>
+                        <Run Text="{Binding Created.Context}" FontFamily="{StaticResource Mono}"/><Run Text=" "/>
+                        <Run Text="— already in the switcher, under Clusters."/>
+                    </TextBlock>
+                </StackPanel>
+
+                <Button Grid.Column="2" Classes="ghost" Content="Dismiss" VerticalAlignment="Center"
+                        Command="{Binding DismissCreatedCommand}"/>
+                <Button Grid.Column="3" Classes="primary" Content="Switch to it" VerticalAlignment="Center"
+                        Command="{Binding UseCreatedCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- ══ 1 · The clusters ══════════════════════════════════════════════════ -->
+        <Border Classes="card" Margin="0,16,0,0" IsVisible="{Binding IsList}">
+            <StackPanel Spacing="0">
+                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,14">
+                    <TextBlock Grid.Column="0" Text="CLUSTERS" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Classes="ghost" Content="Re-check" Margin="0,0,8,0"
+                            Command="{Binding LoadCommand}" IsEnabled="{Binding !IsLoading}"/>
+                    <Button Grid.Column="2" Classes="primary" Content="New cluster"
+                            Command="{Binding NewClusterCommand}" IsEnabled="{Binding CanProvision}"/>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Clusters}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LocalClusterRowViewModel">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+                                <StackPanel Grid.Column="0" Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="9">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                   FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Context}" FontSize="12"
+                                                   FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        <Border Background="{DynamicResource PrimarySoft}" CornerRadius="999"
+                                                Padding="8,2" IsVisible="{Binding IsActive}" VerticalAlignment="Center">
+                                            <TextBlock Text="Active backend" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Primary}"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="9">
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    IsVisible="{Binding HasState}" VerticalAlignment="Center">
+                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource Success}" IsVisible="{Binding IsRunning}"/>
+                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource TextFaint}" IsVisible="{Binding !IsRunning}"/>
+                                            <TextBlock Text="{Binding StateText}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextDim}"/>
+                                            <TextBlock Text="·" FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Facts}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextFaint}"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                            VerticalAlignment="Center" Margin="16,0,0,0">
+                                    <Button Classes="primary" Content="Start" Command="{Binding StartCommand}"
+                                            IsVisible="{Binding CanStart}"/>
+                                    <Button Classes="ghost" Content="Stop" Command="{Binding StopCommand}"
+                                            IsVisible="{Binding CanStop}"/>
+                                    <Button Classes="ghost" Content="Use" Command="{Binding UseCommand}"
+                                            IsVisible="{Binding CanUse}"/>
+                                    <Button Classes="ghost" Content="Delete" Command="{Binding DeleteCommand}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Nothing built yet, but the tool is here. -->
+                <StackPanel Spacing="8" Margin="0,20,0,20" IsVisible="{Binding IsEmpty}"
+                            HorizontalAlignment="Center">
+                    <TextBlock Text="No local clusters yet" FontSize="15" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="A local cluster is a real Kubernetes, built from containers on the engine you already have. Make one, use it, throw it away."
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
+                               MaxWidth="430" TextAlignment="Center" HorizontalAlignment="Center"/>
+                    <Button Classes="primary" Content="New cluster" HorizontalAlignment="Center"
+                            Margin="0,6,0,0" Command="{Binding NewClusterCommand}"/>
+                </StackPanel>
+
+                <!-- No tool, so nothing can be made. Says where to go rather than showing a dead button. -->
+                <Border Background="{DynamicResource InfoSoft}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" IsVisible="{Binding NeedsTooling}">
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"
+                               Text="Kontena needs kind or minikube to build a cluster here. Open Manage tooling above to install one, or fetch the official release."/>
+                </Border>
+
+                <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerSoftBorder}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" Margin="0,10,0,0"
+                        IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text}"/>
+                </Border>
+
+                <TextBlock Margin="0,14,0,0" FontSize="12" TextWrapping="Wrap" MaxWidth="560"
+                           HorizontalAlignment="Left" Foreground="{DynamicResource TextFaint}"
+                           IsVisible="{Binding HasClusters}"
+                           Text="These are the clusters kind and minikube own on this machine. Clusters from anywhere else — a kubeconfig you added, a remote cluster — live under Engines › Clusters."/>
+            </StackPanel>
+        </Border>
+
+        <!-- ══ 2 · The form ══════════════════════════════════════════════════════ -->
+        <StackPanel Spacing="16" IsVisible="{Binding IsForm}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="New cluster" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <TextBlock Text="Everything here has a default that builds a working single-node cluster. The only thing you have to decide is the name."
+                           FontSize="13.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" MaxWidth="620"
+                           HorizontalAlignment="Left" Margin="0,0,0,6"/>
+            </StackPanel>
+
+            <!-- The provisioner. A tool that is not on this machine is visibly unavailable rather
+                 than a tile that does nothing when you press it. -->
+            <Border Classes="card" DataContext="{Binding Form}" x:DataType="vm:NewClusterViewModel"
+                    IsVisible="{Binding ShowProvisioners}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="PROVISIONER" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+
+                    <ItemsControl ItemsSource="{Binding Provisioners}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="2"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProvisionerChoiceViewModel">
+                                <Button Classes="pick" Margin="0,0,10,0" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Classes.on="{Binding IsSelected}"
+                                        IsEnabled="{Binding IsUsable}"
+                                        Command="{Binding $parent[ItemsControl].((vm:NewClusterViewModel)DataContext).SelectProvisionerCommand}"
+                                        CommandParameter="{Binding}">
+                                    <StackPanel Spacing="5">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Text}"/>
+                                            <TextBlock Text="{Binding State}" FontSize="12"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFaint}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Purpose}" FontSize="12.5" TextWrapping="Wrap"
+                                                   MaxWidth="280" Foreground="{DynamicResource TextDim}"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card" DataContext="{Binding Form}" x:DataType="vm:NewClusterViewModel">
+                <StackPanel Spacing="16">
+
+                    <TextBlock Text="CLUSTER" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                        <StackPanel Grid.Column="0" Spacing="6">
+                            <TextBlock Text="Name" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <TextBox Text="{Binding Name, Mode=TwoWay}" FontFamily="{StaticResource Mono}"
+                                     PlaceholderText="dev"/>
+                            <TextBlock Text="{Binding NameProblem}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Danger}" IsVisible="{Binding HasNameProblem}"/>
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextFaint}"
+                                       IsVisible="{Binding HasContextPreview}" TextWrapping="Wrap">
+                                <Run Text="Becomes the kubeconfig context"/><Run Text=" "/>
+                                <Run Text="{Binding ContextPreview}" FontFamily="{StaticResource Mono}"/>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowVersion}">
+                            <TextBlock Text="Kubernetes version" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding Version, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"/>
+                            <TextBlock Text="The default is the version this release of the tool was tested against."
+                                       FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="6" IsVisible="{Binding ShowNodeImage}">
+                        <TextBlock Text="Node image (optional)" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <TextBox Text="{Binding NodeImage, Mode=TwoWay}" FontFamily="{StaticResource Mono}"
+                                 PlaceholderText="kindest/node:v1.36.1"/>
+                        <TextBlock Text="For a version that is not in the list. kind boots a prebuilt image, and which ones exist is not something it can be asked — so this is the way to name one yourself. Overrides the version above."
+                                   FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                        <StackPanel Grid.Column="0" Spacing="6" IsVisible="{Binding ShowHighAvailability}">
+                            <TextBlock Text="Control-plane nodes" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <ComboBox ItemsSource="{Binding ControlPlaneChoices}" HorizontalAlignment="Stretch"
+                                      SelectedItem="{Binding ControlPlaneNodes, Mode=TwoWay}"/>
+                            <TextBlock Text="Three gives a stacked control plane — for rehearsing a failure, not for capacity."
+                                       FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="6" IsVisible="{Binding ShowMultiNode}">
+                            <TextBlock Text="Worker nodes" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <TextBox Text="{Binding WorkerNodes, Mode=TwoWay}"/>
+                            <TextBlock Text="Zero is fine: a single node schedules pods too."
+                                       FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="6" IsVisible="{Binding ShowRuntimes}">
+                        <TextBlock Text="Driver" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <RadioButton GroupName="runtime" Content="Automatic"
+                                         IsChecked="{Binding IsDefaultRuntime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Default"/>
+                            <RadioButton GroupName="runtime" Content="Docker" IsVisible="{Binding HasDocker}"
+                                         IsChecked="{Binding IsDockerRuntime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Docker"/>
+                            <RadioButton GroupName="runtime" Content="Podman" IsVisible="{Binding HasPodman}"
+                                         IsChecked="{Binding IsPodmanRuntime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Podman"/>
+                            <RadioButton GroupName="runtime" Content="KVM" IsVisible="{Binding HasKvm2}"
+                                         IsChecked="{Binding IsKvm2Runtime}"
+                                         Command="{Binding SelectRuntimeCommand}" CommandParameter="Kvm2"/>
+                        </StackPanel>
+                        <TextBlock Text="What hosts the nodes. Automatic lets the tool pick what it prefers on this machine, which is usually right."
+                                   FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- Resources: only meaningful where the nodes are a VM with a fixed size. -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="14" IsVisible="{Binding ShowResources}">
+                        <StackPanel Grid.Column="0" Spacing="6">
+                            <TextBlock Text="CPUs" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <TextBox Text="{Binding Cpus, Mode=TwoWay}" PlaceholderText="the tool's default"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <TextBlock Text="Memory (MB)" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <TextBox Text="{Binding MemoryMb, Mode=TwoWay}" PlaceholderText="the tool's default"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="Leave both empty to let the tool decide. It sizes a cluster it can actually start on this machine, which a number typed once does not."
+                               FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
+                               MaxWidth="560" HorizontalAlignment="Left" IsVisible="{Binding ShowResources}"/>
+
+                    <TextBlock Text="Give CPUs and memory as whole numbers, or leave them empty." FontSize="12"
+                               Foreground="{DynamicResource Danger}" TextWrapping="Wrap"
+                               IsVisible="{Binding HasResourceProblem}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card" DataContext="{Binding Form}" x:DataType="vm:NewClusterViewModel"
+                    IsVisible="{Binding ShowPorts}">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="PORTS AND INGRESS" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+
+                    <ItemsControl ItemsSource="{Binding Ports}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PortMappingRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto,*,120,Auto" ColumnSpacing="8" Margin="0,0,0,8">
+                                    <TextBox Grid.Column="0" Text="{Binding HostPort, Mode=TwoWay}"
+                                             PlaceholderText="Host port"/>
+                                    <TextBlock Grid.Column="1" Text="→" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBox Grid.Column="2" Text="{Binding NodePort, Mode=TwoWay}"
+                                             PlaceholderText="Node port"/>
+                                    <ComboBox Grid.Column="3" ItemsSource="{Binding Protocols}"
+                                              SelectedItem="{Binding Protocol, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"/>
+                                    <Button Grid.Column="4" Classes="ghost qa" Padding="9,8"
+                                            ToolTip.Tip="Remove this port mapping"
+                                            Command="{Binding RemoveCommand}">
+                                        <Path Classes="icon" Width="13" Height="13"
+                                              Data="{StaticResource IconClose}"
+                                              Stroke="{Binding $parent[Button].Foreground}"/>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Classes="ghost" Content="Add port" Command="{Binding AddPortCommand}"/>
+                        <TextBlock Text="Fill in both ports, or leave the row empty." FontSize="12"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource Danger}"
+                                   IsVisible="{Binding HasPortProblem}"/>
+                    </StackPanel>
+
+                    <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                            BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="11,9" MaxWidth="560"
+                            HorizontalAlignment="Left">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource WarnText}"
+                                   Text="Only now. The nodes are containers, and a container's published ports are fixed when it starts — adding one later means building the cluster again."/>
+                    </Border>
+
+                    <CheckBox IsChecked="{Binding IngressReady, Mode=TwoWay}" IsVisible="{Binding ShowIngress}"
+                              Content="Prepare the first node for an ingress controller"/>
+                    <TextBlock FontSize="12" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left"
+                               Margin="0,-8,0,0" Foreground="{DynamicResource TextFaint}"
+                               IsVisible="{Binding ShowIngress}"
+                               Text="Adds the ingress-ready=true label that ingress manifests select on. Kontena does not install a controller — that is a workload, and you pick which one."/>
+
+                    <CheckBox IsChecked="{Binding WaitForReady, Mode=TwoWay}"
+                              Content="Wait until the control plane is ready"/>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card" DataContext="{Binding Form}" x:DataType="vm:NewClusterViewModel">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="WHAT KONTENA WILL RUN" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+
+                    <Border Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="11,9">
+                        <SelectableTextBlock Text="{Binding CommandPreview}" FontFamily="{StaticResource Mono}"
+                                             FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding HasConfigPreview}">
+                        <Button Classes="ghost" Content="Show config" Command="{Binding ToggleConfigCommand}"/>
+                        <TextBlock FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="430"
+                                   Foreground="{DynamicResource TextFaint}"
+                                   Text="Extra nodes, ports or the ingress label need a config file; kind cannot take those as flags."/>
+                    </StackPanel>
+
+                    <Border Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="11,9" MaxHeight="230"
+                            IsVisible="{Binding IsConfigShown}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <SelectableTextBlock Text="{Binding ConfigPreview}" FontFamily="{StaticResource Mono}"
+                                                 FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Classes="ghost" Content="Cancel" Command="{Binding CancelFormCommand}"/>
+                <Button Grid.Column="2" Classes="primary" Content="Create cluster"
+                        Command="{Binding CreateCommand}" IsEnabled="{Binding Form.CanCreate}"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- ══ 3 · Running, and 4 · failed — the same console, a different ending. ══ -->
+        <Border Classes="card" Margin="0,16,0,0" IsVisible="{Binding IsRunning}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="This takes a few minutes the first time — kind pulls a node image of about a gigabyte. You can leave this page; it keeps running."
+                           FontSize="12.5" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left"
+                           Foreground="{DynamicResource TextDim}"/>
+
+                <ProgressBar IsIndeterminate="True" Height="6" CornerRadius="999"
+                             Background="{DynamicResource Surface2}" Foreground="{DynamicResource Primary}"/>
+
+                <Border Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" MaxHeight="240">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Output}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                               Foreground="#C9D3DF" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <Grid ColumnDefinitions="Auto,*">
+                    <Button Grid.Column="0" Classes="ghost" Content="Cancel" Command="{Binding CancelRunCommand}"/>
+                    <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
+                               Text="Cancelling stops kind, which removes what it had already made."/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card" Margin="0,16,0,0" IsVisible="{Binding IsFailed}">
+            <StackPanel Spacing="12">
+                <TextBlock FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Danger}">
+                    <Run Text="Could not create"/><Run Text=" "/>
+                    <Run Text="{Binding CreatingName}" FontFamily="{StaticResource Mono}"/>
+                </TextBlock>
+
+                <Border Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" MaxHeight="240">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Output}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                               Foreground="#C9D3DF" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerSoftBorder}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11"
+                        IsVisible="{Binding FailureHint, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="{Binding FailureHint}" FontSize="12.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text}"/>
+                </Border>
+
+                <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerSoftBorder}"
+                        BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11"
+                        IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <SelectableTextBlock Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap"
+                                         Foreground="{DynamicResource TextDim}"/>
+                </Border>
+
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Button Grid.Column="0" Classes="ghost" Content="Back to clusters"
+                            Command="{Binding BackToListCommand}"/>
+                    <Button Grid.Column="2" Classes="primary" Content="Edit and retry"
+                            Command="{Binding EditAndRetryCommand}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

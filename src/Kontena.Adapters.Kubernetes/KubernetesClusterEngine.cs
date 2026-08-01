@@ -2,14 +2,14 @@ using System.Runtime.CompilerServices;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
-using Kontena.Core;
-using Kontena.Core.Models;
-using Kontena.Core.Orchestration;
-using Kontena.Core.Orchestration.Models;
+using Kontena.Sdk;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 
 // Both sides name their watch enum WatchEventType and both namespaces are imported, so name each.
 using K8sWatch = k8s.WatchEventType;
-using WatchEvent = Kontena.Core.Orchestration.Models.WatchEventType;
+using WatchEvent = Kontena.Sdk.Orchestration.Models.WatchEventType;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -31,6 +31,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
     private readonly KubernetesApply _apply;
+    private readonly ApiResourceResolver _resources;
     private readonly List<KubeContext> _contexts;
 
     private string _context;
@@ -49,7 +50,8 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         _metrics = new ClusterMetrics(
             new MetricsServerSource(_client),
             new KubeletSummarySource(_client, NodeNamesAsync));
-        _apply = new KubernetesApply(_client, new ApiResourceResolver(_client));
+        _resources = new ApiResourceResolver(_client);
+        _apply = new KubernetesApply(_client, _resources);
 
         // Metrics start off; PingAsync probes for a source and turns the gauges on if one answers.
         _capabilities = BaseCapabilities with { Metrics = false };
@@ -66,6 +68,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         Apply = true,
         Exec = true,
         PortForward = true,
+        NodeMaintenance = true,
         Metrics = false,
         Helm = false,
     };
@@ -261,6 +264,26 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         return [.. (list.Items ?? []).Select(K8sMap.ToPod)];
     }
 
+    // ── Generic resources (KON-75) ───────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
+        new(_resources.DiscoverAllAsync(ct));
+
+    /// <inheritdoc/>
+    public async ValueTask<ResourceTable> ListTableAsync(
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+    {
+        // Discovery decides the path, because the plural is the server's to name and a cluster-scoped
+        // kind must not be asked for inside a namespace.
+        if (await _resources.ResolveAsync(kind, ct).ConfigureAwait(false) is not { } resource)
+            return ResourceTable.Empty;
+
+        return await ResourceTables
+            .ListAsync(_client.HttpClient, _client.BaseUri, resource, kind, ns, ct)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default)
     {
         var list = ns is null
@@ -289,6 +312,18 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         return [.. (list.Items ?? []).Select(K8sMap.ToPvc)];
     }
 
+    public async ValueTask<IReadOnlyList<PersistentVolume>> ListVolumesAsync(CancellationToken ct = default)
+    {
+        var list = await _client.CoreV1.ListPersistentVolumeAsync(cancellationToken: ct).ConfigureAwait(false);
+        return [.. (list.Items ?? []).Select(K8sMap.ToVolume)];
+    }
+
+    public async ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default)
+    {
+        var list = await _client.StorageV1.ListStorageClassAsync(cancellationToken: ct).ConfigureAwait(false);
+        return [.. (list.Items ?? []).Select(K8sMap.ToStorageClass)];
+    }
+
     public async ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(
         string? ns = null, CancellationToken ct = default)
     {
@@ -297,6 +332,75 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
             : await _client.CoreV1.ListNamespacedEventAsync(ns, cancellationToken: ct).ConfigureAwait(false);
 
         return [.. (list.Items ?? []).Select(K8sMap.ToEvent).OrderByDescending(e => e.LastSeen)];
+    }
+
+    // ── Node maintenance (KON-251) ───────────────────────────────────────────
+
+    public async ValueTask CordonNodeAsync(string node, bool cordoned, CancellationToken ct = default)
+    {
+        try
+        {
+            await NodeMaintenance.CordonAsync(_client, node, cordoned, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw K8sErrors.Map(ex, _context);
+        }
+    }
+
+    public IAsyncEnumerable<DrainProgress> DrainNodeAsync(
+        string node, DrainOptions options, CancellationToken ct = default) =>
+        NodeMaintenance.DrainAsync(_client, node, options, ct);
+
+    public async ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.CoreV1.ListConfigMapForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.CoreV1.ListNamespacedConfigMapAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToConfigMap)];
+    }
+
+    /// <summary>
+    /// List Secrets, keys only.
+    /// <para>
+    /// The values arrive over the wire regardless — the list API has no way to ask for a Secret
+    /// without its data — and <see cref="K8sMap.ToSecret"/> is where they stop. Nothing this method
+    /// returns can render, log or serialise a secret value, and the deserialised response is not
+    /// held beyond the projection.
+    /// </para>
+    /// </summary>
+    public async ValueTask<IReadOnlyList<SecretSummary>> ListSecretsAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.CoreV1.ListSecretForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.CoreV1.ListNamespacedSecretAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToSecret)];
+    }
+
+    public async ValueTask<IReadOnlyList<ConfigEntry>> GetConfigDataAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        var ns = resource.Namespace ?? "default";
+
+        return resource.Kind.Kind switch
+        {
+            "Secret" => K8sMap.ToEntries(
+                await _client.CoreV1.ReadNamespacedSecretAsync(resource.Name, ns, cancellationToken: ct)
+                    .ConfigureAwait(false)),
+
+            "ConfigMap" => K8sMap.ToEntries(
+                await _client.CoreV1.ReadNamespacedConfigMapAsync(resource.Name, ns, cancellationToken: ct)
+                    .ConfigureAwait(false)),
+
+            // Named rather than swallowed: a caller asking a third kind for its data has a bug, and
+            // an empty list would look like an object with no keys.
+            var kind => throw new NotSupportedException(
+                $"{kind} has no configuration data; only ConfigMap and Secret do."),
+        };
     }
 
     // ── Watch (informer) ─────────────────────────────────────────────────────
@@ -328,6 +432,24 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     }
 
     /// <summary>
+    /// The kinds <see cref="WatchStream"/> has a typed watcher for, as data.
+    /// <para>
+    /// A page that follows a kind this adapter cannot watch gets an empty stream, which the page
+    /// reads as "the cluster closed the stream" — a confident, wrong explanation of a mistake made
+    /// here. Stated separately so that claim can be checked without a cluster to check it against.
+    /// Keep in step with the switch below; they are five lines apart for that reason.
+    /// </para>
+    /// </summary>
+    public static bool CanWatch(GroupVersionKind kind) => WatchableKinds.Contains(kind.Kind);
+
+    private static readonly HashSet<string> WatchableKinds = new(StringComparer.Ordinal)
+    {
+        "Pod", "Service", "Node", "Namespace",
+        "Deployment", "StatefulSet", "DaemonSet",
+        "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
+    };
+
+    /// <summary>
     /// The watch stream for a kind, or null when this adapter has no typed watcher for it. Bookmarks
     /// are off: Kontena rebuilds from the typed listers on reconnect rather than tracking revisions.
     /// </summary>
@@ -351,6 +473,15 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "DaemonSet" => Box(ns is null
             ? _client.AppsV1.WatchListDaemonSetForAllNamespacesAsync(cancellationToken: ct)
             : _client.AppsV1.WatchListNamespacedDaemonSetAsync(ns, cancellationToken: ct)),
+        "Ingress" => Box(ns is null
+            ? _client.NetworkingV1.WatchListIngressForAllNamespacesAsync(cancellationToken: ct)
+            : _client.NetworkingV1.WatchListNamespacedIngressAsync(ns, cancellationToken: ct)),
+        "PersistentVolumeClaim" => Box(ns is null
+            ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),
+        // Cluster-scoped, so no namespaced variant to choose between.
+        "PersistentVolume" => Box(_client.CoreV1.WatchListPersistentVolumeAsync(cancellationToken: ct)),
+        "StorageClass" => Box(_client.StorageV1.WatchListStorageClassAsync(cancellationToken: ct)),
         _ => null,
     };
 
@@ -393,13 +524,17 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     // ── Streams ──────────────────────────────────────────────────────────────
 
     public async IAsyncEnumerable<LogEntry> StreamLogsAsync(
-        ResourceRef pod, string container, bool follow = true, [EnumeratorCancellation] CancellationToken ct = default)
+        ResourceRef pod, string container, bool follow = true, bool previous = false,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         HttpOperationResponse<Stream>? response = null;
         try
         {
             response = await _client.CoreV1.ReadNamespacedPodLogWithHttpMessagesAsync(
-                pod.Name, pod.Namespace, container: container, follow: follow,
+                pod.Name, pod.Namespace, container: container,
+                // The previous run is finished, so there is nothing left to follow: asking the API to
+                // follow it as well returns an error rather than a closed stream.
+                follow: follow && !previous, previous: previous,
                 tailLines: 500, timestamps: true, cancellationToken: ct).ConfigureAwait(false);
         }
         catch (Exception) when (!ct.IsCancellationRequested)
@@ -426,17 +561,16 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     /// <summary>
     /// Split the RFC3339 timestamp kubelet prefixes onto each line. Everything a pod writes is one
     /// stream, so the source is always <see cref="LogSource.Stdout"/>.
+    /// <para>
+    /// The splitting itself is <see cref="LogLine.Parse"/>, shared with the Docker adapter since
+    /// KON-203 — this used to be the only place that did it, and the other one had drifted into
+    /// stamping the read time onto every line.
+    /// </para>
     /// </summary>
-    private static LogEntry ParseLogLine(string line)
-    {
-        var space = line.IndexOf(' ', StringComparison.Ordinal);
-        if (space > 0 && DateTimeOffset.TryParse(line[..space], out var stamp))
-            return new LogEntry(stamp, LogSource.Stdout, line[(space + 1)..]);
+    private static LogEntry ParseLogLine(string line) =>
+        LogLine.Parse(line, LogSource.Stdout, DateTimeOffset.UtcNow);
 
-        return new LogEntry(DateTimeOffset.UtcNow, LogSource.Stdout, line);
-    }
-
-    public async IAsyncEnumerable<Core.Orchestration.Models.PodMetrics> StreamMetricsAsync(
+    public async IAsyncEnumerable<Kontena.Sdk.Orchestration.Models.PodMetrics> StreamMetricsAsync(
         ResourceRef pod, [EnumeratorCancellation] CancellationToken ct = default)
     {
         if (!_metrics.IsAvailable)

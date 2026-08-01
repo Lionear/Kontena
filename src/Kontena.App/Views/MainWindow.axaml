@@ -1,7 +1,9 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
         xmlns:vm="using:Kontena.App.ViewModels"
         xmlns:conv="using:Kontena.App.Converters"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1180" d:DesignHeight="760"
@@ -11,11 +13,20 @@
         Background="{DynamicResource Bg}"
         TransparencyLevelHint="None"
         Icon="/Assets/icon.ico"
-        Title="Kontena">
+        Title="Kontena"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="38"
+        WindowDecorations="BorderOnly">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>
+
+    <!-- Keyboard (KON-172, configurable since KON-180). The bindings are filled in code from
+         ShellActions plus whatever the user changed — see MainWindow.axaml.cs. They are not listed
+         here because a gesture named in XAML is one nobody can change, show or check. Bindings live
+         on the window, so a control that handles a key first — the terminal, which must keep Ctrl-C
+         and Ctrl-R for the process — still wins over them. -->
 
     <Window.Resources>
         <!-- One switcher row — shared by the Engines and Clusters groups in the popover. -->
@@ -25,11 +36,7 @@
                     Click="OnSwitcherItemClick"
                     Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
-                            Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold"
-                                   FontSize="12" Foreground="#2496ED" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="30" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
@@ -51,12 +58,7 @@
             <Button Classes="engineitem" IsEnabled="{Binding IsConnected}" Margin="0,0,0,2"
                     Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="7"
-                            Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Chip}" FontFamily="{StaticResource Mono}" FontWeight="Bold"
-                                   FontSize="13" Foreground="{DynamicResource Info}"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="30" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
@@ -84,6 +86,11 @@
             <Setter Property="Foreground" Value="{DynamicResource Text}"/>
             <Setter Property="CaretBrush" Value="{DynamicResource Primary}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <!-- Without this the placeholder takes Fluent's own colour, which knows nothing about this
+                 palette: on light's Bg there was not enough of it left to read (KON-196). TextFaint is
+                 the token for text that is present but quiet, and it is measured against every
+                 surface in PaletteContrastTests. -->
+            <Setter Property="PlaceholderForeground" Value="{DynamicResource TextFaint}"/>
         </Style>
         <Style Selector="TextBox.bare /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>
@@ -98,12 +105,34 @@
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
 
+        <!-- Caption buttons. Square and full-height so the hit target reaches the window's top
+             edge, where a thrown pointer lands (KON-138). -->
+        <Style Selector="Button.caption">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.caption:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Button.caption.danger:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Danger}"/>
+        </Style>
+        <Style Selector="Button.caption.danger:pointerover Path.icon">
+            <Setter Property="Stroke" Value="#FFFFFF"/>
+        </Style>
+
         <!-- Backend switcher pill — full-width, lives at the top of the sidebar -->
         <Style Selector="Button.bkpill">
             <Setter Property="Background" Value="{DynamicResource Bg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -122,7 +151,7 @@
         <Style Selector="Button.engineitem">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
             <Setter Property="Padding" Value="10,9"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -138,24 +167,94 @@
         </Style>
     </Window.Styles>
 
-    <Grid ColumnDefinitions="248,*">
+    <!-- OffScreenMargin is what keeps a maximized window from bleeding past the work area: with the
+         client area extended, the frame the OS used to subtract is ours to subtract (KON-134). -->
+    <Grid RowDefinitions="38,*" ColumnDefinitions="248,*"
+          Margin="{Binding $parent[Window].OffScreenMargin}">
+
+        <!--
+            Our own title bar (KON-134, reworked in KON-138). `WindowDecorations="BorderOnly"` means
+            nobody else draws one — Avalonia keeps the border, shadow and resize grips, we supply
+            the bar. `ElementRole="TitleBar"` is what makes it a title bar rather than a strip that
+            looks like one: the platform treats it as non-client area, so dragging and double-click
+            are its behaviour, not ours to reimplement.
+
+            The buttons are `DecorationsElement` rather than the CloseButton/MinimizeButton roles.
+            Those roles hand the button to the platform — HTCLOSE and friends on Win32 — which is
+            exactly the per-platform divergence this window is trying not to have. They stay
+            ordinary buttons with ordinary handlers, and the role only keeps them out of the drag
+            area.
+
+            Dragging really is the platform's. Double-click is not, whatever the paragraph above
+            used to claim (KON-195): with the client area extended, the window manager never sees a
+            click on non-client area, so the maximise-on-double-click it would normally do never
+            happens. Hence a handler, for the same reason the three buttons have one.
+        -->
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Background="{DynamicResource SidebarBg}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                DoubleTapped="OnTitleBarDoubleTapped"
+                chrome:WindowDecorationProperties.ElementRole="TitleBar">
+            <Panel>
+                <!-- "Where am I" belongs here: the space is already reserved and the question is asked
+                     often (KON-219). The trail is the app, then the backend that is open and what it
+                     is — the same two strings the switcher shows, so the two cannot disagree. -->
+                <StackPanel Orientation="Horizontal" Spacing="9"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image Source="{StaticResource KontenaLogo}" Width="18" Height="18"/>
+                    <TextBlock Text="Kontena" FontSize="13" FontWeight="SemiBold" LetterSpacing="-0.13"
+                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    <TextBlock Text="/" FontSize="12.5" Foreground="{DynamicResource TextFaint}"
+                               VerticalAlignment="Center" IsVisible="{Binding HasBackendCrumb}"/>
+                    <TextBlock Text="{Binding EngineName}" FontSize="12.5" FontWeight="Medium"
+                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"
+                               IsVisible="{Binding HasBackendCrumb}" TextTrimming="CharacterEllipsis" MaxWidth="220"/>
+                    <TextBlock Text="·" FontSize="12.5" Foreground="{DynamicResource TextFaint}"
+                               VerticalAlignment="Center" IsVisible="{Binding HasBackendCrumb}"/>
+                    <TextBlock Text="{Binding EngineDetail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"
+                               IsVisible="{Binding HasBackendCrumb}" TextTrimming="CharacterEllipsis" MaxWidth="260"/>
+                </StackPanel>
+
+                <StackPanel x:Name="CaptionButtons" Orientation="Horizontal" HorizontalAlignment="Right"
+                            VerticalAlignment="Stretch"
+                            chrome:WindowDecorationProperties.ElementRole="DecorationsElement">
+                    <Button Classes="caption" Click="OnMinimiseClick" ToolTip.Tip="Minimise">
+                        <Path Classes="icon" Width="14" Height="14" Stretch="None"
+                              Stroke="{DynamicResource TextDim}" Data="{StaticResource IconWindowMinimize}"/>
+                    </Button>
+                    <!-- Glyph and tooltip follow WindowState from code-behind: it is the window's
+                         own state, and routing it through the view model to bind to would be a
+                         longer way round to the same two values. -->
+                    <Button x:Name="MaximiseButton" Classes="caption" Click="OnMaximiseClick">
+                        <Path x:Name="MaximiseGlyph" Classes="icon" Width="13" Height="13"
+                              Stroke="{DynamicResource TextDim}" Data="{StaticResource IconWindowMaximize}"/>
+                    </Button>
+                    <Button Classes="caption danger" Click="OnCloseClick" ToolTip.Tip="Close">
+                        <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconClose}"/>
+                    </Button>
+                </StackPanel>
+            </Panel>
+        </Border>
 
         <!-- Sidebar -->
-        <Border Grid.Column="0" Background="{DynamicResource SidebarBg}"
+        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource SidebarBg}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,16">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="6,4,0,14">
-                    <Image Source="{StaticResource KontenaLogo}" Width="26" Height="26"/>
-                    <TextBlock Text="Kontena" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                <!-- Brand lockup (KON-133). At 26px next to a 17px wordmark the mark read as one
+                     more nav glyph; at 34/20 it reads as the brand. The rule below stops it from
+                     forming one block with the backend switcher. -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12" Margin="6,4,0,16">
+                    <Image Source="{StaticResource KontenaLogo}" Width="34" Height="34"/>
+                    <TextBlock Text="Kontena" FontSize="20" FontWeight="SemiBold" LetterSpacing="-0.4"
+                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                 </StackPanel>
+                <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Border}" Margin="4,0,4,14"/>
 
                 <!-- Backend switcher — engines &amp; clusters, grouped -->
                 <Button x:Name="BackendPill" DockPanel.Dock="Top" Classes="bkpill" Margin="2,0,2,16">
                     <Grid ColumnDefinitions="Auto,*,Auto">
-                        <Border Grid.Column="0" Width="26" Height="26" CornerRadius="7" Background="{DynamicResource DockerChip}" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding EngineChip}" FontFamily="{StaticResource Mono}" FontWeight="Bold" FontSize="11"
-                                       Foreground="#2496ED" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
+                        <controls:BackendChip Grid.Column="0" Chip="{Binding EngineChip}" ChipSize="26" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center" Spacing="1">
                             <TextBlock Text="{Binding EngineName}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
                             <StackPanel Orientation="Horizontal" Spacing="5">
@@ -178,7 +277,7 @@
                     <Button.Flyout>
                         <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="flat">
                             <Border Width="280" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                                    BorderThickness="1" CornerRadius="12" Padding="6" BoxShadow="0 12 40 0 #66000000">
+                                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="6" BoxShadow="0 12 40 0 #66000000">
                                 <StackPanel Spacing="2">
                                     <StackPanel Orientation="Horizontal" Spacing="7" Margin="10,8,10,5">
                                         <TextBlock Text="CONTAINER ENGINES" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
@@ -239,7 +338,7 @@
                                   Stroke="{DynamicResource Primary}" Data="{StaticResource IconDownload}"/>
                             <TextBlock Grid.Column="1" Text="{Binding Update.SidebarLabel}" Margin="11,0,0,0"
                                        Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
-                            <Border Grid.Column="2" Background="{DynamicResource PrimarySoft}" CornerRadius="10"
+                            <Border Grid.Column="2" Background="{DynamicResource PrimarySoft}" CornerRadius="{StaticResource Radius}"
                                     Padding="7,1" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Update.SidebarPill}" FontSize="11"
                                            FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Primary}"/>
@@ -260,13 +359,37 @@
                             <TextBlock Grid.Column="1" Text="Settings" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
+                    <!-- About is its own screen, not a Settings category (KON-135). -->
+                    <Button Classes="nav" Classes.selected="{Binding IsAboutSelected}" Command="{Binding ShowAboutCommand}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
+                                  Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconInfo}"/>
+                            <TextBlock Grid.Column="1" Text="About" Margin="11,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Button>
                 </StackPanel>
 
                 <!-- Nothing to navigate to while no backend is open; a dead nav is worse than none. -->
-                <ItemsControl ItemsSource="{Binding NavItems}" DockPanel.Dock="Top"
+                <!-- Scrolls because the nav is no longer a fixed height: expanding Workloads adds up to
+                     five entries (KON-169), and without this they slide behind the Activity/Settings
+                     block pinned to the bottom. -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               IsVisible="{Binding !IsBackendDown}">
+                <ItemsControl ItemsSource="{Binding NavGroups}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:NavItem">
+                        <DataTemplate x:DataType="vm:NavGroup">
+                          <StackPanel Margin="0,0,0,10">
+                            <!-- A heading only where a group has one: the engine nav is a single
+                                 unlabelled run, and a lone heading over the whole list says nothing. -->
+                            <TextBlock Text="{Binding Label}" IsVisible="{Binding HasLabel}"
+                                       FontSize="10.5" FontWeight="SemiBold" LetterSpacing="0.7"
+                                       Foreground="{DynamicResource TextFaint}" Margin="10,4,0,5"/>
+                            <ItemsControl ItemsSource="{Binding Items}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:NavItem">
+                            <!-- One shape for every entry. The per-kind rows under Workloads used to be
+                                 indented behind a chevron; the group heading is the grouping now, so an
+                                 indent would be a second way of saying the same thing (KON-219). -->
                             <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
                                     Command="{Binding Command}" CommandParameter="{Binding Key}">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
@@ -281,39 +404,64 @@
                                              VerticalAlignment="Center" Fill="{DynamicResource Warn}"
                                              IsVisible="{Binding NeedsAttention}"
                                              ToolTip.Tip="{Binding AttentionTip}"/>
-                                    <Border Grid.Column="3" Background="{DynamicResource Surface2}" CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
+                                    <!-- Only where there is something to count: an empty pill on every
+                                         other row is noise that reads as a control (KON-219). -->
+                                    <Border Grid.Column="3" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
+                                            Padding="7,1" VerticalAlignment="Center" IsVisible="{Binding HasCount}">
                                         <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>
                                 </Grid>
                             </Button>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                </ScrollViewer>
             </DockPanel>
         </Border>
 
         <!-- Main area -->
-        <Grid Grid.Column="1" RowDefinitions="56,*">
+        <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="56,*">
 
             <!-- Command bar -->
             <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                <Grid Margin="20,0" ColumnDefinitions="*,Auto">
-                    <Border Grid.Column="0" Width="420" Height="34" Background="{DynamicResource Bg}"
+                <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto">
+                    <!-- Back, and the only one there is: Settings, Activity and About had no way back
+                         at all before this (KON-173). Hidden rather than disabled when there is no
+                         history, because an always-present greyed arrow is chrome nobody reads. -->
+                    <Button Grid.Column="0" Classes="qa" Width="30" Height="30" Margin="0,0,12,0"
+                            IsVisible="{Binding CanGoBack}" Command="{Binding GoBackCommand}"
+                            ToolTip.Tip="{Binding BackTooltipWithHint}">
+                        <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconArrowLeft}"/>
+                    </Button>
+
+                    <!-- Dimmed where the page has nothing to search, so "you cannot type here" is
+                         visible before you try rather than after. -->
+                    <Border Grid.Column="1" Width="420" Height="34" Background="{DynamicResource Bg}"
                             BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                            CornerRadius="8" Padding="12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
+                            Opacity="{Binding IsSearchEnabled, Converter={x:Static conv:BoolToSearchOpacityConverter.Instance}}"
+                            CornerRadius="{StaticResource RadiusSm}" Padding="12,0" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <DockPanel LastChildFill="True">
                             <Path DockPanel.Dock="Left" Classes="icon" Width="15" Height="15"
                                   Stroke="{DynamicResource TextFaint}" Data="{StaticResource IconSearch}" VerticalAlignment="Center"/>
-                            <TextBox Classes="bare" Margin="9,0,0,0"
-                                     PlaceholderText="Search containers, images, volumes…"
+                            <!-- Placeholder and enabled state follow the page (KON-164). The fixed
+                                 string used to name containers, images and volumes on a Kubernetes
+                                 cluster, where none of the three exist. -->
+                            <TextBox x:Name="SearchBox" Classes="bare" Margin="9,0,0,0"
+                                     PlaceholderText="{Binding SearchPlaceholder}"
+                                     IsEnabled="{Binding IsSearchEnabled}"
                                      Text="{Binding SearchText, Mode=TwoWay}"/>
                         </DockPanel>
                     </Border>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <!-- Namespace picker — only in cluster mode -->
                         <Border IsVisible="{Binding IsClusterMode}" Background="{DynamicResource Bg}"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="8"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource RadiusSm}"
                                 Height="34" Padding="10,0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                 <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}"
@@ -322,7 +470,7 @@
                                           MinWidth="150" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
-                        <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="Refresh">
+                        <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="{Binding RefreshTooltip}">
                             <Path Classes="icon" Width="17" Height="17" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconRefresh}"/>
                         </Button>
                         <Button Classes="qa" Width="34" Height="34" Command="{Binding ToggleThemeCommand}"
@@ -336,7 +484,7 @@
 
             <!-- Content: the active page, a connecting state, or the engine-down state -->
             <Panel Grid.Row="1">
-                <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsReady}"/>
+                <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsPageVisible}"/>
 
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding IsConnecting}">
                     <ProgressBar IsIndeterminate="True" Width="220" Height="4"
@@ -344,11 +492,12 @@
                     <TextBlock Text="Connecting to your container engine…" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Engine-down -->
-                <ScrollViewer IsVisible="{Binding IsBackendDown}" VerticalAlignment="Center">
+                <!-- Engine-down. Yields to Activity, Settings and About: those are the pages you
+                     want when nothing else works, so they show instead of this (KON-137). -->
+                <ScrollViewer IsVisible="{Binding IsBackendDownVisible}" VerticalAlignment="Center">
                     <Border Classes="card" MaxWidth="520" Padding="34,30" Margin="24" HorizontalAlignment="Center">
                         <StackPanel Spacing="16" HorizontalAlignment="Center">
-                            <Border Width="60" Height="60" CornerRadius="15" Background="#F8717118" HorizontalAlignment="Center">
+                            <Border Width="60" Height="60" CornerRadius="{StaticResource RadiusLg}" Background="#F8717118" HorizontalAlignment="Center">
                                 <Path Classes="icon" Width="28" Height="28" Stroke="{DynamicResource Danger}" Data="{StaticResource IconPlug}"/>
                             </Border>
                             <TextBlock Text="{Binding BackendDownTitle}" FontSize="18" FontWeight="SemiBold"
@@ -384,17 +533,17 @@
             </Panel>
         </Grid>
 
-        <!-- Modal overlay (Run container, …) -->
-        <Panel Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
+        <!-- Modal overlay (Run container, …). Row 1 only: the title bar stays draggable behind it. -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
             <ContentControl Content="{Binding Dialog}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Margin="32"/>
         </Panel>
 
         <!-- Update toast: bottom-right, once per version, never in the way of the content (KON-110) -->
-        <Border Grid.Column="1" IsVisible="{Binding Update.IsToastVisible}" Width="360"
+        <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding Update.IsToastVisible}" Width="360"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,24"
                 Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                BorderThickness="1" CornerRadius="12" Padding="16,14" BoxShadow="0 12 40 0 #66000000">
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,14" BoxShadow="0 12 40 0 #66000000">
             <StackPanel Spacing="11">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
@@ -412,8 +561,8 @@
             </StackPanel>
         </Border>
 
-        <!-- First-run onboarding: full-window, opaque, covers the whole shell -->
-        <Panel Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsOnboarding}" Background="{DynamicResource Bg}">
+        <!-- First-run onboarding: opaque, covers the whole shell below the title bar -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsOnboarding}" Background="{DynamicResource Bg}">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <ContentControl Content="{Binding Onboarding}" HorizontalAlignment="Center"
                                 VerticalAlignment="Center" Margin="24,32"/>

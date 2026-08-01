@@ -42,13 +42,13 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:ComposeProjectViewModel">
                         <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="10" ClipToBounds="True" Margin="0,0,0,14">
+                                BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True" Margin="0,0,0,14">
                             <StackPanel>
 
                                 <!-- Project header -->
                                 <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                     <Grid Margin="16,13" ColumnDefinitions="Auto,*,Auto">
-                                        <Border Grid.Column="0" Width="34" Height="34" CornerRadius="8" Background="{DynamicResource PrimarySoft}" VerticalAlignment="Center">
+                                        <Border Grid.Column="0" Width="34" Height="34" CornerRadius="{StaticResource RadiusSm}" Background="{DynamicResource PrimarySoft}" VerticalAlignment="Center">
                                             <Path Classes="icon" Width="18" Height="18" Stroke="{DynamicResource Primary}" Data="{StaticResource IconBox}"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="3">
@@ -127,6 +127,14 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- A search with no hits is not the same nothing as a host without projects (KON-189):
+                 the empty state above invites you to start a stack, which is unhelpful advice when you
+                 have five and mistyped one. -->
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No projects match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

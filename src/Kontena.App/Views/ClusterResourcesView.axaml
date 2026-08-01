@@ -1,0 +1,142 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterResourcesView"
+             x:DataType="vm:ClusterResourcesViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Button.kind">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+        <Style Selector="Button.kind:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Button.kind.on /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="28,24" RowDefinitions="Auto,*" ColumnDefinitions="260,*">
+
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Resources" FontSize="22" FontWeight="SemiBold"
+                   Foreground="{DynamicResource Text}" Margin="0,0,0,16"/>
+
+        <!-- The kinds the cluster serves, asked for rather than assumed. -->
+        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource Surface}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
+                Padding="10" Margin="0,0,16,0">
+            <Grid RowDefinitions="Auto,*">
+                <TextBox Grid.Row="0" Text="{Binding KindSearch}" PlaceholderText="Filter kinds…" Margin="0,0,0,10"/>
+
+                <TextBlock Grid.Row="1" IsVisible="{Binding IsLoadingKinds}" Text="Asking the cluster…"
+                           FontSize="12.5" Foreground="{DynamicResource TextFaint}" Margin="10,6"/>
+
+                <ScrollViewer Grid.Row="1" IsVisible="{Binding !IsLoadingKinds}">
+                    <ItemsControl ItemsSource="{Binding Groups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ApiResourceGroup">
+                                <StackPanel Margin="0,0,0,12">
+                                    <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFaint}" Margin="10,4,0,6"/>
+                                    <ItemsControl ItemsSource="{Binding Items}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ApiResourceItem">
+                                                <Button Classes="kind" Classes.on="{Binding IsSelected}"
+                                                        Click="OnKindClick">
+                                                    <StackPanel Spacing="1">
+                                                        <TextBlock Text="{Binding Kind}" FontSize="13"
+                                                                   Foreground="{DynamicResource Text}"/>
+                                                        <TextBlock Text="{Binding Group}" FontSize="10.5"
+                                                                   FontFamily="{StaticResource Mono}"
+                                                                   Foreground="{DynamicResource TextFaint}"/>
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- The listing, with the columns the API server chose. -->
+        <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto">
+
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Selected.Kind}" FontSize="15" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="{Binding Selected.Group}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button Grid.Column="1" Classes="ghost" Command="{Binding RefreshCommand}">Refresh</Button>
+            </Grid>
+
+            <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="4" ClipToBounds="True">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                    <!-- Built in code: the number of columns is the server's answer, not something a
+                         template can be written against. -->
+                    <Grid x:Name="TableGrid" Margin="8,6"/>
+                </ScrollViewer>
+            </Border>
+
+            <StackPanel Grid.Row="1" IsVisible="{Binding IsLoading}" VerticalAlignment="Center"
+                        HorizontalAlignment="Center">
+                <TextBlock Text="Loading…" FontSize="13" Foreground="{DynamicResource TextDim}"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" IsVisible="{Binding IsEmpty}" VerticalAlignment="Center"
+                        HorizontalAlignment="Center" Spacing="8">
+                <TextBlock Text="Nothing of this kind here" FontSize="15" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="The cluster serves it, there just are none in view."
+                           FontSize="12.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Margin="0,10,0,0" Spacing="8">
+                <Border IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource Danger}"
+                        BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="14,10">
+                    <TextBlock Text="{Binding Error}" FontSize="12.5" Foreground="{DynamicResource Danger}"
+                               TextWrapping="Wrap"/>
+                </Border>
+
+                <TextBlock IsVisible="{Binding IsTruncated}" Text="{Binding TruncatedNote}"
+                           FontSize="12" Foreground="{DynamicResource TextFaint}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- One object's manifest. The same for every kind, which is why it needs no model. -->
+        <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding Manifest, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="1" CornerRadius="{StaticResource Radius}">
+            <Grid RowDefinitions="Auto,*">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="14,10">
+                    <TextBlock Grid.Column="0" Text="{Binding ManifestTitle}" FontSize="13.5" FontWeight="SemiBold"
+                               FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"
+                               VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Classes="ghost" Command="{Binding CloseManifestCommand}">Close</Button>
+                </Grid>
+                <Border Grid.Row="1" Background="{DynamicResource CodeSurface}" CornerRadius="0,0,10,10"
+                        Padding="14" ClipToBounds="True">
+                    <ScrollViewer>
+                        <SelectableTextBlock Text="{Binding Manifest}" FontFamily="{StaticResource Mono}"
+                                             FontSize="12" Foreground="{DynamicResource Text}"/>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
