@@ -4,6 +4,7 @@ using Kontena.App.Services;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
 using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
@@ -23,6 +24,7 @@ namespace Kontena.App.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly BackendRegistry _registry;
+    private readonly IToolRunner _toolRunner;
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
     private IReadOnlyList<BackendProbe> _probes = [];
@@ -58,9 +60,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// — which a development run never is.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
-        IUpdateService? updateService = null)
+        IUpdateService? updateService = null, IToolRunner? toolRunner = null)
     {
         _registry = registry;
+        _toolRunner = toolRunner ?? new ToolRunner();
         // Rows carry a backend id, not a provider, so the logos the providers declare are remembered
         // here and again whenever the set changes (KON-80).
         BackendChips.Learn(registry.Providers);

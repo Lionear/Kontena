@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
@@ -14,6 +15,14 @@ namespace Kontena.App.Views;
 public partial class MainWindow : Window
 {
     private readonly SettingsStore _store = new();
+
+    /// <summary>Copy the suggested fix command from the engine-down card. Same reasoning as the port
+    /// forward copy button: the clipboard hangs off the window, so this stays in the view.</summary>
+    private async void OnCopyFixCommandClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string command } && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+            await clipboard.SetValueAsync(DataFormat.Text, command);
+    }
 
     private void OnPointerPressedPreview(object? sender, PointerPressedEventArgs e)
     {
