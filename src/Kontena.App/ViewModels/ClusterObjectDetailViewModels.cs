@@ -23,10 +23,11 @@ namespace Kontena.App.ViewModels;
 /// that here for two pages that need none of it.
 /// </para>
 /// </summary>
-public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
+public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDisposable, IDetachableDetail
 {
     private readonly IClusterEngine _cluster;
     private readonly Action<Pod>? _onOpenPod;
+    private CancellationTokenSource? _watch;
 
     // No onBack: Back is the shell's history now, and a page that carried its own would be a second
     // way out that has to be kept in step with the first (KON-173).
@@ -36,6 +37,61 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
         _cluster = cluster;
         _onOpenPod = onOpenPod;
         Reference = reference;
+
+        if (cluster.Capabilities.Watch)
+        {
+            _watch = new CancellationTokenSource();
+            _ = FollowForGoneAsync(_watch.Token);
+        }
+    }
+
+    /// <summary>
+    /// Whether this object is known to be gone (KON-308) — a Deleted event for it on the same watch
+    /// the list pages already follow (KON-250), or that watch ending on its own. A cluster this fake
+    /// or the real Kubernetes adapter can't watch never sets this; there is simply no signal.
+    /// </summary>
+    [ObservableProperty] private bool _isSourceGone;
+
+    private async Task FollowForGoneAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var e in _cluster.WatchAsync(Reference.Kind, Reference.Namespace, ct))
+            {
+                if (e.Resource.Name != Reference.Name)
+                    continue;
+
+                if (e.Type == WatchEventType.Deleted)
+                {
+                    IsSourceGone = true;
+                    return;
+                }
+            }
+
+            // The stream ended without being cancelled. An apiserver closes a watch on its own
+            // schedule, and there is no more specific answer left than "this can no longer be checked".
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
+        catch (OperationCanceledException)
+        {
+            // Page closed.
+        }
+        catch (Exception)
+        {
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
+    }
+
+    /// <summary>Stop following. Cluster pages are rebuilt on every visit, so a watch that outlived its
+    /// page would be a stream nobody reads holding a connection open for the life of the app.</summary>
+    public void Dispose()
+    {
+        _watch?.Cancel();
+        _watch?.Dispose();
+        _watch = null;
+        GC.SuppressFinalize(this);
     }
 
     protected ResourceRef Reference { get; }
