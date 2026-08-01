@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # Playwright MCP screenshot/session scratch
 .playwright-mcp/
+
+# Subagent-driven-development scratch (ledgers, briefs, review packages)
+.superpowers/

@@ -3,6 +3,7 @@ using Kontena.App.Services;
 using Kontena.Core.Orchestration.Fakes;
 using Kontena.Engines;
 using Kontena.Engines.Fakes;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.Tests;
 
@@ -180,6 +181,47 @@ public sealed class DetailDrawerTests
         // Still answering, rather than a disposed object rendering as a blank page.
         Assert.False(string.IsNullOrEmpty(detail.Name));
         Assert.Same(detail, shell.CurrentPage);
+    }
+
+    [Fact]
+    public async Task The_drawer_can_hand_its_detail_to_a_window_and_stops_owning_it()
+    {
+        // The window hand-over (KON-308) is the page hand-over plus one thing: the shell also stops
+        // reacting to the detail going gone, because a window wants a banner where the drawer wants
+        // a close. Nothing proved that second half until this test.
+        var engine = new FakeClusterEngine();
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(engine));
+
+        shell.NavigateCommand.Execute("namespaces");
+        await WaitForRowsAsync(shell);
+
+        var list = Assert.IsType<ClusterNamespacesViewModel>(shell.CurrentPage);
+        list.Items[0].OpenCommand.Execute(null);
+        var detail = Assert.IsType<ClusterNamespaceDetailViewModel>(shell.Detail);
+
+        Assert.Same(detail, shell.DetachDetailForWindow());
+
+        // Ownership left the drawer — but, as with the full page, it was not disposed on the way out.
+        Assert.Null(shell.Detail);
+        Assert.False(shell.IsDetailOpen);
+        Assert.False(string.IsNullOrEmpty(detail.Name));
+        Assert.Same(list, shell.CurrentPage);
+
+        // Now delete it out from under the window. The detail still notices — that is what puts the
+        // banner up — and the shell, which would have closed the drawer for it, does nothing.
+        engine.EmitWatchEvent(new ResourceEvent
+        {
+            Type = WatchEventType.Deleted,
+            Resource = new ResourceRef(GroupVersionKind.Namespace, null, detail.Name),
+        });
+
+        for (var i = 0; i < 200 && !detail.IsSourceGone; i++)
+            await Task.Delay(5);
+
+        Assert.True(detail.IsSourceGone);
+        Assert.Null(shell.Detail);
+        Assert.Same(list, shell.CurrentPage);
     }
 
     [Fact]

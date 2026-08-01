@@ -167,6 +167,11 @@
         </Style>
     </Window.Styles>
 
+    <!-- 1px app-drawn edge: WindowDecorations="BorderOnly" leaves the frame to the OS, and on Linux
+         compositors that frame is often invisible in non-maximized mode — nothing marks where the
+         window ends. Colour is theme-aware rather than the internal Border token because it has to
+         read against an arbitrary desktop background, not against Bg. -->
+    <Border BorderBrush="{DynamicResource WindowEdge}" BorderThickness="1">
     <!-- OffScreenMargin is what keeps a maximized window from bleeding past the work area: with the
          client area extended, the frame the OS used to subtract is ours to subtract (KON-134). -->
     <Grid RowDefinitions="38,*" ColumnDefinitions="248,*"
@@ -598,7 +603,17 @@
                             <Button Classes="ghost" Command="{Binding OpenDetailAsPageCommand}"
                                     ToolTip.Tip="Open as full page" Padding="7">
                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
-                                      Data="{StaticResource IconWindowMaximize}"/>
+                                      Data="{StaticResource IconExpand}"/>
+                            </Button>
+                            <!--
+                                KON-308: pull this detail into a window of its own — the same view model, so nothing
+                                reloads. Click, not Command, on purpose: creating and finding Window instances is UI
+                                work, the same reason ClusterTerminalsView.OnDetachClick isn't a command either.
+                            -->
+                            <Button Classes="ghost" Click="OnDetachDetailClick"
+                                    ToolTip.Tip="Open in a new window" Padding="7">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                                      Data="{StaticResource IconExternalLink}"/>
                             </Button>
                             <Button Classes="ghost" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close (Esc)"
                                     Padding="7">
@@ -666,4 +681,5 @@
             </ScrollViewer>
         </Panel>
     </Grid>
+    </Border>
 </Window>

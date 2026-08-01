@@ -1,13 +1,11 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:Kontena.App.ViewModels"
-        xmlns:views="using:Kontena.App.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="560"
-        x:Class="Kontena.App.Views.TerminalWindow"
-        x:DataType="vm:ClusterTerminalViewModel"
-        Width="880" Height="560" MinWidth="480" MinHeight="280"
+        mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="570"
+        x:Class="Kontena.App.Views.DetailWindow"
+        x:CompileBindings="False"
+        Width="880" Height="570" MinWidth="460" MinHeight="360"
         Background="{DynamicResource Bg}"
         TransparencyLevelHint="None"
         Icon="/Assets/icon.ico"
@@ -16,9 +14,8 @@
         WindowDecorations="BorderOnly">
 
     <Window.Styles>
-        <!-- The same caption buttons as the main window. A terminal that opened with the window
-             manager's own chrome next to an app that draws its own would read as someone else's
-             window (KON-138). -->
+        <!-- The same caption button as TerminalWindow (KON-217) and the main window (KON-138) — a
+             detached detail with the window manager's own chrome would read as someone else's window. -->
         <Style Selector="Button.caption">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -40,26 +37,15 @@
     <!-- 1px app-drawn edge — see MainWindow.axaml for why this is needed on top of
          WindowDecorations="BorderOnly". -->
     <Border BorderBrush="{DynamicResource WindowEdge}" BorderThickness="1">
-    <Grid RowDefinitions="38,*">
+    <Grid RowDefinitions="38,Auto,*">
 
         <Border Grid.Row="0" Background="{DynamicResource SidebarBg}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="0,0,0,1" PointerPressed="OnTitleBarPressed">
             <Panel>
-                <StackPanel Orientation="Horizontal" Spacing="9" Margin="14,0" VerticalAlignment="Center">
-                    <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
-                          Data="{StaticResource IconTerminal}"/>
-                    <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding Context}" FontSize="11.5" FontFamily="{StaticResource Mono}"
-                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                </StackPanel>
-
+                <TextBlock Text="{Binding $parent[Window].Title}" FontSize="12.5" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center" Margin="14,0"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <!-- Close puts it back on the page rather than ending it: navigating away has never
-                         ended a shell, and a window button that quietly killed a running build would be
-                         the one exception nobody expects. -->
-                    <Button Classes="caption danger" Click="OnCloseClick"
-                            ToolTip.Tip="Put this terminal back on the Terminal page">
+                    <Button Classes="caption danger" Click="OnCloseClick" ToolTip.Tip="Close">
                         <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
                               Data="{StaticResource IconClose}"/>
                     </Button>
@@ -67,7 +53,24 @@
             </Panel>
         </Border>
 
-        <views:ClusterTerminalView Grid.Row="1"/>
+        <!--
+            KON-308: the banner a detail's source being gone raises. Bound loosely (no x:DataType)
+            because DataContext is whichever of the six detail view models this window was built for
+            — IsSourceGone is the one member IDetachableDetail guarantees all of them have. The window
+            does not close itself when this appears: a quietly stale screen is worse than an honest
+            one that says so (decided in KON-257, point 3).
+        -->
+        <Border Grid.Row="1" Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource Danger}"
+                BorderThickness="0,0,0,1" Padding="12,10" IsVisible="{Binding IsSourceGone}">
+            <StackPanel Orientation="Horizontal" Spacing="9">
+                <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Danger}"
+                      Data="{StaticResource IconWarning}" VerticalAlignment="Top" Margin="0,1,0,0"/>
+                <TextBlock Text="This can no longer be tracked — it may have been deleted."
+                           FontSize="12.5" Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <ContentControl Grid.Row="2" Content="{Binding}"/>
     </Grid>
     </Border>
 </Window>

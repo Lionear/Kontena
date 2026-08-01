@@ -20,7 +20,7 @@ namespace Kontena.App.ViewModels;
 /// active cluster over the OAL, and opens an interactive shell reusing the CEAL's
 /// <see cref="IExecSession"/>. The container picker chooses which container the logs and shell target.
 /// </summary>
-public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITerminalHost
+public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITerminalHost, IDetachableDetail
 {
     private const int MaxLogLines = 2000;
 
@@ -30,7 +30,15 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private readonly ResourceRef _ref;
     private readonly List<LogLineViewModel> _all = [];
 
-    private CancellationTokenSource? _cts;         // page lifetime (metrics)
+    /// <summary>Whether this pod is known to be gone (KON-308) — see ClusterObjectDetailViewModel's
+    /// FollowForGoneAsync for the same mechanism on the other five kinds.</summary>
+    [ObservableProperty] private bool _isSourceGone;
+
+    /// <summary>Pod/name (ns:…) — stable across the list reloads that hand this page a brand new Pod
+    /// record for the same pod (KON-308).</summary>
+    public string DetailKey => _ref.ToString();
+
+    private CancellationTokenSource? _cts;         // page lifetime (metrics, watch)
     private CancellationTokenSource? _logCts;      // per-container log stream
 
     public ClusterPodDetailViewModel(
@@ -475,6 +483,38 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
         if (SupportsMetrics && IsRunning)
             _ = StreamMetricsAsync(_cts.Token);
+
+        if (_cluster.Capabilities.Watch)
+            _ = FollowForGoneAsync(_cts.Token);
+    }
+
+    /// <summary>Same mechanism as ClusterObjectDetailViewModel's FollowForGoneAsync (KON-308): a
+    /// Deleted event for this pod on the watch, or that watch ending on its own.</summary>
+    private async Task FollowForGoneAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var e in _cluster.WatchAsync(_ref.Kind, _ref.Namespace, ct))
+            {
+                if (e.Resource.Name != _ref.Name)
+                    continue;
+
+                if (e.Type == WatchEventType.Deleted)
+                {
+                    IsSourceGone = true;
+                    return;
+                }
+            }
+
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
+        catch (OperationCanceledException) { /* page closed */ }
+        catch (Exception)
+        {
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
     }
 
     private void RestartLogs()

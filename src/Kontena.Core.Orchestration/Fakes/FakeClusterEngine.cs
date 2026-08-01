@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Sdk.Orchestration;
@@ -29,6 +30,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
 
     /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
     private readonly Dictionary<ResourceRef, ManifestDoc> _extras = [];
+
+    // ponytail: one shared channel for every kind, filtered per-reader by kind+namespace below — two
+    // simultaneous watches of the *same* kind on one engine would only deliver a pushed event to
+    // whichever reads it first (a Channel<T> is a queue, not pub/sub). No test needs that yet; if one
+    // ever does, key this per (kind, namespace) instead.
+    private readonly Channel<ResourceEvent> _watchEvents = Channel.CreateUnbounded<ResourceEvent>();
+
+    /// <summary>Test hook (KON-308): push one more event into any watch already following this kind,
+    /// after its initial snapshot. Filtered to matching kind/namespace the same way the snapshot is.</summary>
+    public void EmitWatchEvent(ResourceEvent evt) => _watchEvents.Writer.TryWrite(evt);
 
     private string _activeContext;
 
@@ -432,7 +443,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public async IAsyncEnumerable<ResourceEvent> WatchAsync(
         GroupVersionKind kind, string? ns = null, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        // Seed the informer with the current world, then complete (a real adapter stays open).
+        // Seed the informer with the current world, then stay open (a real adapter does too).
         IEnumerable<ResourceRef> refs = kind.Kind switch
         {
             "Pod" => _pods.Where(p => Match(ns, p.Namespace)).Select(p => new ResourceRef(kind, p.Namespace, p.Name)),
@@ -454,6 +465,15 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             ct.ThrowIfCancellationRequested();
             await Task.Yield();
             yield return new ResourceEvent { Type = WatchEventType.Added, Resource = r };
+        }
+
+        // A real adapter stays open past the initial snapshot (KON-308); this fake now does too, reading
+        // whatever a test pushes via EmitWatchEvent. ReadAllAsync throws OperationCanceledException on
+        // ct — that is the "stays open until you stop watching" behaviour callers already rely on.
+        await foreach (var evt in _watchEvents.Reader.ReadAllAsync(ct))
+        {
+            if (evt.Resource.Kind.Kind == kind.Kind && Match(ns, evt.Resource.Namespace))
+                yield return evt;
         }
     }
 

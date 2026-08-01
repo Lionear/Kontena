@@ -1,5 +1,7 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -226,6 +228,42 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
             vm.SaveDetailWidth();
     }
+
+    /// <summary>
+    /// Pull the drawer's detail into a window of its own (KON-308). If one is already open for the same
+    /// object, that window comes forward instead of a second one opening — which would also mean a
+    /// second live stream for the same container or pod.
+    /// </summary>
+    private void OnDetachDetailClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        // Read off the detail actually in the drawer, not off a remembered domain object: the list
+        // rebuilds its records on every watch-driven reload, so the second detach of the same pod
+        // carries a different instance and reference identity would open a second window (KON-308).
+        var key = (vm.Detail as IDetachableDetail)?.DetailKey;
+        if (key is { Length: > 0 } && FindOpenWindowFor(key) is { } existing)
+        {
+            existing.Activate();
+            vm.CloseDetailCommand.Execute(null);
+            return;
+        }
+
+        var label = vm.DetailLabel;
+        if (vm.DetachDetailForWindow() is { } detail)
+            new DetailWindow(detail, label, key ?? string.Empty).Show();
+    }
+
+    /// <summary>
+    /// Found by the key it was opened for rather than by a handle kept here: the drawer is rebuilt on
+    /// every visit, so a page that never detached anything still has to be able to find a window a
+    /// different visit opened (same reasoning as ClusterTerminalsView.WindowFor, KON-217).
+    /// </summary>
+    private static DetailWindow? FindOpenWindowFor(string key) =>
+        (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Windows
+            .OfType<DetailWindow>()
+            .FirstOrDefault(w => string.Equals(w.Key, key, StringComparison.Ordinal));
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
