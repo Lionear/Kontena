@@ -125,18 +125,24 @@ public partial class MainWindowViewModel
         CurrentPage = detail;
     }
 
+    /// <summary>Widen or narrow the drawer by a drag on its left edge.</summary>
+    public void ResizeDetail(double delta) =>
+        DetailWidth = Math.Clamp(DetailWidth + delta, MinDetailWidth, MaxDetailWidth);
+
     /// <summary>
-    /// Widen or narrow the drawer by a drag on its left edge, and remember where it was let go.
-    /// Written on every drag rather than on release: a drag that ends in a crash is still a preference,
-    /// and the store already coalesces writes.
+    /// Remember where the drag was let go.
+    /// <para>
+    /// Separate from <see cref="ResizeDetail"/> because a drag raises a delta per pointer move, and
+    /// <c>SettingsStore.Update</c> is a read, a full serialise and a whole-file write each time —
+    /// saving as you drag would rewrite settings.json a hundred times to answer one gesture.
+    /// </para>
     /// </summary>
-    public void ResizeDetail(double delta)
+    public void SaveDetailWidth()
     {
-        var width = Math.Clamp(DetailWidth + delta, MinDetailWidth, MaxDetailWidth);
-        if (Math.Abs(width - DetailWidth) < 0.5)
+        var width = DetailWidth;
+        if (Math.Abs(width - _store.Load().DetailDrawerWidth) < 0.5)
             return;
 
-        DetailWidth = width;
         _store.Update(s => s with { DetailDrawerWidth = width });
     }
 }

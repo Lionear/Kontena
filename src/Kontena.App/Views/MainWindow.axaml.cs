@@ -210,6 +210,14 @@ public partial class MainWindow : Window
             vm.ResizeDetail(-e.Vector.X);
     }
 
+    // Saved when the drag ends, not while it runs: every pointer move raises a delta, and each save
+    // is a whole-file rewrite of settings.json.
+    private void OnDetailResized(object? sender, VectorEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.SaveDetailWidth();
+    }
+
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
         CaptureNormal();

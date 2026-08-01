@@ -184,7 +184,20 @@ public sealed class DetailDrawerTests
         shell.ResizeDetail(120);
 
         Assert.Equal(start + 120, shell.DetailWidth);
+
+        // Dragging does not write: every pointer move raises a delta, and a save is a whole-file
+        // rewrite of settings.json. Letting go does.
+        Assert.Equal(start, store.Load().DetailDrawerWidth);
+
+        shell.SaveDetailWidth();
         Assert.Equal(start + 120, store.Load().DetailDrawerWidth);
+
+        // And a new shell over the same file opens at the width the last one was left at — the whole
+        // point of remembering it.
+        Assert.Equal(
+            start + 120,
+            new MainWindowViewModel(new BackendRegistry([]), store, store.Load(), new FakeUpdateService())
+                .DetailWidth);
 
         // Dragged past the edge of the window it would stop being a drawer, and dragged shut it would
         // be a way to lose the panel without closing it.
