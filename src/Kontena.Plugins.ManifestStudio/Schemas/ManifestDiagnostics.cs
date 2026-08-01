@@ -7,7 +7,23 @@ public enum DiagnosticSeverity { Error, Warning, Hint }
 
 public enum DiagnosticAuthority { Schema, ClusterDiscovery, CrossDocument }
 
-public sealed record Diagnostic(DiagnosticAuthority Authority, DiagnosticSeverity Severity, int Line, string Message);
+/// <summary>What kind of finding this is, structured rather than left for a caller to sniff out of
+/// <see cref="Diagnostic.Message"/> — <c>QuickFixEngine</c> (KON-292) dispatches on this, not on
+/// parsing English sentences.</summary>
+public enum DiagnosticKind { Other, UnknownField, MissingRequiredField, WrongType, DeprecatedApiVersion, UnmatchedReference }
+
+public sealed record Diagnostic(DiagnosticAuthority Authority, DiagnosticSeverity Severity, int Line, string Message)
+{
+    public DiagnosticKind Kind { get; init; } = DiagnosticKind.Other;
+
+    /// <summary>The field name involved, for <see cref="DiagnosticKind.UnknownField"/>,
+    /// <see cref="DiagnosticKind.MissingRequiredField"/>, <see cref="DiagnosticKind.WrongType"/> and
+    /// <see cref="DiagnosticKind.UnmatchedReference"/>.</summary>
+    public string? FieldName { get; init; }
+
+    /// <summary>The version the cluster serves instead, for <see cref="DiagnosticKind.DeprecatedApiVersion"/>.</summary>
+    public string? SuggestedVersion { get; init; }
+}
 
 /// <summary>
 /// Validates a bundle (one or more <c>---</c>-separated documents — the same shape as
@@ -106,7 +122,8 @@ public static class ManifestDiagnostics
             {
                 diagnostics.Add(new Diagnostic(
                     DiagnosticAuthority.Schema, DiagnosticSeverity.Error, lineOffset + child.Line,
-                    $"Unknown field '{key}'."));
+                    $"Unknown field '{key}'.")
+                { Kind = DiagnosticKind.UnknownField, FieldName = key });
                 continue;
             }
 
@@ -114,7 +131,8 @@ public static class ManifestDiagnostics
             {
                 diagnostics.Add(new Diagnostic(
                     DiagnosticAuthority.Schema, DiagnosticSeverity.Error, lineOffset + child.Line,
-                    $"'{key}' expects {property.Type}, got '{value}'."));
+                    $"'{key}' expects {property.Type}, got '{value}'.")
+                { Kind = DiagnosticKind.WrongType, FieldName = key });
             }
 
             ValidateNode(child, property, lineOffset, diagnostics);
@@ -127,7 +145,8 @@ public static class ManifestDiagnostics
 
             diagnostics.Add(new Diagnostic(
                 DiagnosticAuthority.Schema, DiagnosticSeverity.Error, lineOffset + Math.Max(node.Line, 0),
-                $"Missing required field '{required}'."));
+                $"Missing required field '{required}'.")
+            { Kind = DiagnosticKind.MissingRequiredField, FieldName = required });
         }
     }
 
@@ -166,7 +185,8 @@ public static class ManifestDiagnostics
         diagnostics.Add(new Diagnostic(
             DiagnosticAuthority.ClusterDiscovery, DiagnosticSeverity.Warning, lineOffset,
             $"This cluster no longer serves {kind} at {groupLabel} — it serves "
-            + string.Join(", ", servedVersions) + " instead."));
+            + string.Join(", ", servedVersions) + " instead.")
+        { Kind = DiagnosticKind.DeprecatedApiVersion, SuggestedVersion = servedVersions[0] });
     }
 
     // ── Cross-document authority ─────────────────────────────────────────────
@@ -183,7 +203,8 @@ public static class ManifestDiagnostics
                 {
                     diagnostics.Add(new Diagnostic(
                         DiagnosticAuthority.CrossDocument, DiagnosticSeverity.Hint, lineOffset + name.Line,
-                        $"No {resourceKind} named '{referenced}' found in this bundle."));
+                        $"No {resourceKind} named '{referenced}' found in this bundle.")
+                    { Kind = DiagnosticKind.UnmatchedReference, FieldName = referenced });
                 }
             }
 
