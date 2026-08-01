@@ -62,7 +62,7 @@
             <StackPanel Orientation="Horizontal" Spacing="9">
                 <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Danger}"
                       Data="{StaticResource IconWarning}" VerticalAlignment="Top" Margin="0,1,0,0"/>
-                <TextBlock Text="This no longer exists. The window stays open with what it last had."
+                <TextBlock Text="This can no longer be tracked — it may have been deleted."
                            FontSize="12.5" Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
