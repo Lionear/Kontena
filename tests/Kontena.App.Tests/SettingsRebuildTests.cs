@@ -33,8 +33,13 @@ public sealed class SettingsRebuildTests : IDisposable
         var settings = new KontenaSettings { Onboarded = true };
         store.Save(settings);
 
+        // No engine ever created here (KON-306): a rebuild used to always re-probe the real
+        // Docker/Podman providers regardless of what triggered it, which made this test transitively
+        // depend on the host's engines and, on a Windows runner without Podman, occasionally miss its
+        // own deadline.
         var vm = new MainWindowViewModel(
-            new BackendRegistry([]), store, settings, new FakeUpdateService());
+            new BackendRegistry([]), store, settings, new FakeUpdateService(),
+            buildCatalog: (_, _, _, _) => []);
 
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (vm.SettingsPage is null && DateTime.UtcNow < deadline)

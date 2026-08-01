@@ -25,6 +25,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly BackendRegistry _registry;
     private readonly IToolRunner _toolRunner;
+    private readonly BackendCatalog.CatalogBuilder _buildCatalog;
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
     private IReadOnlyList<BackendProbe> _probes = [];
@@ -58,12 +59,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <param name="updateService">The updater. Defaults to the real one; the screenshot harness
     /// passes a fake, because the card's interesting states need a packaged install that is behind
     /// — which a development run never is.</param>
+    /// <param name="buildCatalog">How a rebuild (demo toggle, remote added, cluster created) rebuilds
+    /// the provider list. Defaults to the real <see cref="BackendCatalog.Build"/>, which always probes
+    /// Docker and Podman; a test that only cares about the rebuild itself passes one that doesn't
+    /// (KON-306) — a rebuild-triggering view-model test has no business reaching a real engine.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
-        IUpdateService? updateService = null, IToolRunner? toolRunner = null)
+        IUpdateService? updateService = null, IToolRunner? toolRunner = null,
+        BackendCatalog.CatalogBuilder? buildCatalog = null)
     {
         _registry = registry;
         _toolRunner = toolRunner ?? new ToolRunner();
+        _buildCatalog = buildCatalog ?? BackendCatalog.Build;
         // Rows carry a backend id, not a provider, so the logos the providers declare are remembered
         // here and again whenever the set changes (KON-80).
         BackendChips.Learn(registry.Providers);
