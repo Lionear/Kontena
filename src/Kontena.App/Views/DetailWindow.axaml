@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="640"
+        x:Class="Kontena.App.Views.DetailWindow"
+        x:CompileBindings="False"
+        Width="560" Height="640" MinWidth="460" MinHeight="360"
+        Background="{DynamicResource Bg}"
+        TransparencyLevelHint="None"
+        Icon="/Assets/icon.ico"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="38"
+        WindowDecorations="BorderOnly">
+
+    <Window.Styles>
+        <!-- The same caption button as TerminalWindow (KON-217) and the main window (KON-138) — a
+             detached detail with the window manager's own chrome would read as someone else's window. -->
+        <Style Selector="Button.caption">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.caption:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Button.caption.danger:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Danger}"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="38,Auto,*">
+
+        <Border Grid.Row="0" Background="{DynamicResource SidebarBg}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="0,0,0,1" PointerPressed="OnTitleBarPressed">
+            <Panel>
+                <TextBlock Text="{Binding $parent[Window].Title}" FontSize="12.5" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center" Margin="14,0"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Classes="caption danger" Click="OnCloseClick" ToolTip.Tip="Close">
+                        <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconClose}"/>
+                    </Button>
+                </StackPanel>
+            </Panel>
+        </Border>
+
+        <!--
+            KON-308: the banner a detail's source being gone raises. Bound loosely (no x:DataType)
+            because DataContext is whichever of the six detail view models this window was built for
+            — IsSourceGone is the one member IDetachableDetail guarantees all of them have. The window
+            does not close itself when this appears: a quietly stale screen is worse than an honest
+            one that says so (decided in KON-257, point 3).
+        -->
+        <Border Grid.Row="1" Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource Danger}"
+                BorderThickness="0,0,0,1" Padding="12,10" IsVisible="{Binding IsSourceGone}">
+            <StackPanel Orientation="Horizontal" Spacing="9">
+                <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Danger}"
+                      Data="{StaticResource IconWarning}" VerticalAlignment="Top" Margin="0,1,0,0"/>
+                <TextBlock Text="This no longer exists. The window stays open with what it last had."
+                           FontSize="12.5" Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <ContentControl Grid.Row="2" Content="{Binding}"/>
+    </Grid>
+</Window>
