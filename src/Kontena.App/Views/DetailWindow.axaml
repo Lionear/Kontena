@@ -34,6 +34,9 @@
         </Style>
     </Window.Styles>
 
+    <!-- 1px app-drawn edge — see MainWindow.axaml for why this is needed on top of
+         WindowDecorations="BorderOnly". -->
+    <Border BorderBrush="{DynamicResource WindowEdge}" BorderThickness="1">
     <Grid RowDefinitions="38,Auto,*">
 
         <Border Grid.Row="0" Background="{DynamicResource SidebarBg}" BorderBrush="{DynamicResource Border}"
@@ -69,4 +72,5 @@
 
         <ContentControl Grid.Row="2" Content="{Binding}"/>
     </Grid>
+    </Border>
 </Window>
