@@ -427,6 +427,21 @@ public partial class MainWindowViewModel
             $"{workload.Kind} {workload.Name}", workload);
     }
 
+    /// <summary>
+    /// Open a ConfigMap's or a Secret's detail (KON-330). The row's own object is handed over rather
+    /// than a reference, because it already carries the key names, the sizes and the fetcher — asking
+    /// the cluster again for what the list just read would be a second answer to the same question.
+    /// </summary>
+    private void ShowConfigDetail(ConfigObjectRow row)
+    {
+        if (_cluster is null || row is null)
+            return;
+
+        ShowDetail(
+            new ClusterConfigDetailViewModel(_cluster, row, onOpenPod: ShowPodDetail),
+            $"{(row.IsSecret ? "secret" : "config map")} {row.Name}", row);
+    }
+
     /// <summary>Open the service-detail page (KON-167).</summary>
     private void ShowServiceDetail(Service service)
     {

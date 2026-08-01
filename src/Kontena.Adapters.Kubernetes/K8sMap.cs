@@ -106,7 +106,68 @@ internal static class K8sMap
             ControlledBy = OwnerOf(p.Metadata),
             Labels = Labels(p.Metadata?.Labels),
             Age = AgeOf(p.Metadata),
+            ConfigUses = ConfigUsesOf(p.Spec),
         };
+    }
+
+    /// <summary>
+    /// Every ConfigMap and Secret the spec reaches, from all four directions (KON-330): volumes
+    /// (including projected sources, where a service-account token and a secret sit side by side),
+    /// single environment keys, whole-object <c>envFrom</c>, and image pull secrets.
+    /// <para>
+    /// Read off the spec that came with the listing, so this costs no extra call. Deduplicated because
+    /// the same secret mounted into three containers is one answer to "is this in use", and the pods
+    /// tab that shows it lists pods, not mounts.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<ConfigUse> ConfigUsesOf(V1PodSpec? spec)
+    {
+        if (spec is null)
+            return [];
+
+        var uses = new List<ConfigUse>();
+
+        void Add(GroupVersionKind kind, string? name, ConfigUseKind how, string container = "")
+        {
+            if (!string.IsNullOrEmpty(name))
+                uses.Add(new ConfigUse { Kind = kind, Name = name, How = how, Container = container });
+        }
+
+        foreach (var volume in spec.Volumes ?? [])
+        {
+            Add(GroupVersionKind.Secret, volume.Secret?.SecretName, ConfigUseKind.Volume);
+            Add(GroupVersionKind.ConfigMap, volume.ConfigMap?.Name, ConfigUseKind.Volume);
+
+            foreach (var source in volume.Projected?.Sources ?? [])
+            {
+                Add(GroupVersionKind.Secret, source.Secret?.Name, ConfigUseKind.Volume);
+                Add(GroupVersionKind.ConfigMap, source.ConfigMap?.Name, ConfigUseKind.Volume);
+            }
+        }
+
+        // Init containers count: a secret only an init container reads is still a secret whose removal
+        // stops the pod from starting.
+        foreach (var container in (spec.InitContainers ?? []).Concat(spec.Containers ?? []))
+        {
+            foreach (var env in container.Env ?? [])
+            {
+                Add(GroupVersionKind.Secret, env.ValueFrom?.SecretKeyRef?.Name,
+                    ConfigUseKind.EnvironmentVariable, container.Name);
+                Add(GroupVersionKind.ConfigMap, env.ValueFrom?.ConfigMapKeyRef?.Name,
+                    ConfigUseKind.EnvironmentVariable, container.Name);
+            }
+
+            foreach (var from in container.EnvFrom ?? [])
+            {
+                Add(GroupVersionKind.Secret, from.SecretRef?.Name, ConfigUseKind.EnvironmentFrom, container.Name);
+                Add(GroupVersionKind.ConfigMap, from.ConfigMapRef?.Name, ConfigUseKind.EnvironmentFrom, container.Name);
+            }
+        }
+
+        foreach (var pull in spec.ImagePullSecrets ?? [])
+            Add(GroupVersionKind.Secret, pull.Name, ConfigUseKind.ImagePullSecret);
+
+        return [.. uses.Distinct()];
     }
 
     private static Kontena.Sdk.Orchestration.Models.ContainerStatus ToContainerStatus(
