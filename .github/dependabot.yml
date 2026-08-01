@@ -7,6 +7,12 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    # develop, not the default branch (KON-313). main only moves at a release — the promote in
+    # CONTRIBUTING is a fast-forward for that reason — and a bump landing there directly also
+    # refreshes the preview release from workflow files develop does not have. Worse, the two sides
+    # then hold different pins for the same line, and a pin is one SHA: that merge has no "keep
+    # both" resolution, so it resolves to one of them and the bump goes quietly missing.
+    target-branch: develop
     schedule:
       interval: weekly
     commit-message:
