@@ -7,6 +7,7 @@ using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Core.Models;
+using Kontena.Engines;
 
 namespace Kontena.App.ViewModels;
 
@@ -517,6 +518,11 @@ public partial class MainWindowViewModel
             // redraw. Probing on every keystroke would make typing a name feel like a reconnect.
             OnNamesChanged = RefreshBackendNames,
 
+            // Settings retries in place: it re-probes and shows the answer, but does not switch. Someone
+            // fixing a connection from this page is not asking to be taken out of it — that choice is
+            // the switcher's, where clicking a row means "open this" (KON-328).
+            RetryBackend = ReprobeAsync,
+
             // Every cluster in every kubeconfig, not only the chosen ones — the hidden ones are exactly
             // what this list is for (KON-120).
             Clusters = DiscoveredClusters(),
@@ -628,6 +634,62 @@ public partial class MainWindowViewModel
         if (probe is not null)
             await ActivateAsync(probe.Provider);
     }
+
+    /// <summary>The backend currently being re-probed, or null — the switcher row that was clicked says
+    /// so rather than looking ignored while a remote takes its ten seconds.</summary>
+    private string? _retryingBackend;
+
+    /// <summary>
+    /// Ask one backend again, and open it if it answers this time (KON-327/KON-328).
+    /// <para>
+    /// The probe result used to be a one-off cache with no reachable refresh: an engine that was still
+    /// starting when Kontena launched stayed dead in the switcher for the rest of the session, and the
+    /// only button that re-probed lived in the down card — which is not on screen when something else
+    /// did connect. So the retry belongs on the row itself, where the user is standing when they notice.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task RetryBackendAsync(string backend)
+    {
+        if (_retryingBackend is not null)
+            return;
+
+        _retryingBackend = backend;
+        RebuildEngineList();
+        try
+        {
+            if (!await ReprobeAsync(backend))
+                return;
+        }
+        finally
+        {
+            _retryingBackend = null;
+            RebuildEngineList();
+        }
+
+        await SwitchEngineAsync(backend);
+    }
+
+    /// <summary>
+    /// Probe one provider again and fold the answer into the cached round, so the switcher and the
+    /// Settings rows both stop describing a failure that is over. Returns whether it answered.
+    /// </summary>
+    private async Task<bool> ReprobeAsync(string backend)
+    {
+        if (_registry.Providers.FirstOrDefault(p => p.Backend == backend) is not { } provider)
+            return false;
+
+        var probe = await BackendRegistry.ProbeAsync(provider);
+        _probes = [.. _probes.Select(p => p.Provider.Backend == backend ? probe : p)];
+
+        RebuildEngineList();
+
+        // The rows in place rather than a fresh Settings page: rebuilding it while the user is standing
+        // on it would throw away a remote form half-typed next to the row they just retried.
+        SettingsPage?.SetBackendConnected(backend, probe.Connected, probe.Detail ?? string.Empty);
+
+        return probe.Connected;
+    }
     private void RebuildEngineList()
     {
         Engines.Clear();
@@ -660,7 +722,12 @@ public partial class MainWindowViewModel
                 Detail = probe.Detail ?? string.Empty,
                 IsActive = isActive,
                 IsConnected = probe.Connected,
-                SwitchCommand = probe.Connected && !isActive ? SwitchEngineCommand : null,
+                IsRetrying = probe.Provider.Backend == _retryingBackend,
+
+                // A row that cannot be switched to is a row that can be asked again — never a dead
+                // button (KON-117, KON-328). Clicking an unreachable backend is the most direct way a
+                // user can say "it is running now", and before this it did nothing at all.
+                SwitchCommand = isActive ? null : probe.Connected ? SwitchEngineCommand : RetryBackendCommand,
             };
 
             (probe.Provider.Kind == BackendKind.Cluster ? Clusters : Engines).Add(option);

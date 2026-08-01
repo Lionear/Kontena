@@ -21,6 +21,16 @@ public sealed class EngineOption
     /// <summary>Whether the backend answered a ping.</summary>
     public bool IsConnected { get; init; }
 
-    /// <summary>Switches to this engine; null when it's active or not connected.</summary>
+    /// <summary>Whether this backend is being asked again right now (KON-328).</summary>
+    public bool IsRetrying { get; init; }
+
+    /// <summary>Says the click will re-probe rather than switch — a remote can take ten seconds to
+    /// answer, and a row that looks inert for ten seconds reads as the same dead button as before.</summary>
+    public bool CanRetry => !IsConnected && !IsRetrying;
+
+    /// <summary>
+    /// What clicking the row does: switch to it when it answered, ask it again when it did not
+    /// (KON-328). Null only for the backend already open.
+    /// </summary>
     public ICommand? SwitchCommand { get; init; }
 }

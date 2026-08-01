@@ -31,26 +31,17 @@ public sealed class BackendRegistry
         _providers.AddRange(providers);
     }
 
-    /// <summary>
-    /// How long a single provider gets to answer before it counts as unreachable.
-    /// <para>
-    /// A probe round sits between the user and their Settings page, and the round costs whatever its
-    /// slowest provider costs. The catalog always offers Docker and Podman, installed or not, and an
-    /// engine that is not there is exactly the slow case: a missing unix socket fails at once with
-    /// ENOENT, but connecting to a Windows named pipe that does not exist takes seconds to give up
-    /// (KON-317, found via KON-306). An engine that is actually running answers in milliseconds, so
-    /// this only ever truncates a wait whose answer was going to be "no" anyway.
-    /// </para>
-    /// </summary>
-    public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
-
     /// <summary>Probe every provider concurrently.</summary>
     public async Task<IReadOnlyList<BackendProbe>> ProbeAllAsync(CancellationToken ct = default)
         => await Task.WhenAll(_providers.Select(p => ProbeAsync(p, ct))).ConfigureAwait(false);
 
-    /// <summary>Create the provider's engine, ping it, and report whether it answered.</summary>
+    /// <summary>
+    /// Create the provider's engine, ping it, and report whether it answered — within the deadline the
+    /// provider itself sets (<see cref="IBackendProvider.ProbeTimeout"/>). One deadline for everyone
+    /// meant a remote could not pass a probe it had no way of finishing (KON-327).
+    /// </summary>
     public static Task<BackendProbe> ProbeAsync(IBackendProvider provider, CancellationToken ct = default)
-        => ProbeAsync(provider, ProbeTimeout, ct);
+        => ProbeAsync(provider, provider.ProbeTimeout, ct);
 
     /// <summary>
     /// As above, with the deadline spelled out — tests need one they do not have to wait for.

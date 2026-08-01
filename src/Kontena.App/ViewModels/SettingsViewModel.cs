@@ -23,7 +23,8 @@ public sealed record RegistryRow(string Host, string Username, bool IsInherited)
 /// <summary>A configured remote engine, as shown in Settings › Engines.</summary>
 /// <param name="Remote">The stored configuration.</param>
 /// <param name="Connected">Whether it answered the last time backends were probed.</param>
-public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
+/// <param name="Retrying">True while this remote is being asked again (KON-328).</param>
+public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected, bool Retrying = false)
 {
     public string Name => Remote.Name;
     public string Endpoint => Remote.Endpoint;
@@ -51,7 +52,25 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
 
     public string Status => Problem is not null
         ? "not used"
-        : Connected ? "connected" : "not reachable";
+        : Retrying ? "connecting…" : Connected ? "connected" : "not reachable";
+
+    /// <summary>
+    /// Whether to offer a connect attempt on the saved row (KON-328). Withheld only from a remote whose
+    /// details are refused before anything is dialled — there is nothing there to reach.
+    /// <para>
+    /// Present on a connected remote too, which is the "Test connection" that only ever existed inside
+    /// the add/edit form: re-testing a stored engine meant Edit → Test → Save, a trip through a form to
+    /// do something that changes nothing.
+    /// </para>
+    /// </summary>
+    public bool CanRetry => Problem is null;
+
+    /// <summary>False while the attempt is out, so a second click cannot start a second tunnel.</summary>
+    public bool RetryEnabled => !Retrying;
+
+    /// <summary>Naming what the click is for: proving a working one still works is a test, getting a
+    /// failed one back is a retry.</summary>
+    public string RetryLabel => Retrying ? "Connecting…" : Connected ? "Test" : "Retry";
 }
 
 /// <summary>One engine as shown in the Settings › Engines list.</summary>
@@ -59,9 +78,24 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
 /// What the backend calls itself, before any name the user gave it (KON-119). Kept alongside
 /// <paramref name="Name"/> so the rename field can show the original as its placeholder.
 /// </param>
+/// <param name="Retrying">True while this engine is being probed again (KON-328).</param>
 public sealed record EngineListItem(
     string Backend, string Name, BackendChipInfo Chip, string Detail, bool Connected, bool IsDefault,
-    string SourceName = "");
+    string SourceName = "", bool Retrying = false)
+{
+    /// <summary>
+    /// An unreachable engine gets a way to be asked again (KON-328). This list was entirely read-only,
+    /// so an engine that started after Kontena did — Docker Desktop is routinely still coming up — had
+    /// nothing to click anywhere, and restarting the app was the only way to be seen.
+    /// </summary>
+    public bool CanRetry => !Connected;
+
+    /// <summary>False while the probe is out, so a second click cannot start a second one.</summary>
+    public bool RetryEnabled => !Retrying;
+
+    /// <summary>The button says what is happening, since a probe can take seconds to come back.</summary>
+    public string RetryLabel => Retrying ? "Connecting…" : "Retry";
+}
 
 /// <summary>
 /// One row of Settings › Engines › Names — a backend and what to call it (KON-119).
@@ -202,6 +236,13 @@ public sealed record SettingsContext
     /// <summary>A rename changes no connection, so it must not cost a re-probe.</summary>
     public Action? OnNamesChanged { get; init; }
 
+    /// <summary>
+    /// Probe one backend again on request (KON-328). The shell owns the probe cache, so the answer has
+    /// to be folded in there — a retry that only lit up this page would leave the switcher still
+    /// refusing the engine the user just proved was running.
+    /// </summary>
+    public Func<string, Task>? RetryBackend { get; init; }
+
     /// <summary>Every cluster in every kubeconfig, not only the chosen ones (KON-120).</summary>
     public IReadOnlyList<DiscoveredCluster> Clusters { get; init; } = [];
 
@@ -245,6 +286,7 @@ public partial class SettingsViewModel : ViewModelBase
         _secrets = context.Secrets ?? SecretStore.Create();
         _onRemotesChanged = context.OnRemotesChanged;
         _onNamesChanged = context.OnNamesChanged;
+        _retryBackend = context.RetryBackend;
         _discoveredClusters = context.Clusters;
         Kubeconfigs = [.. context.Kubeconfigs];
         _onClustersChanged = context.OnClustersChanged;
