@@ -533,6 +533,79 @@
             </Panel>
         </Grid>
 
+        <!--
+            Detail drawer (KON-307): over the list rather than instead of it, so the row you opened
+            stays visible and selected behind the scrim. Below the modal overlay in this file on
+            purpose — a confirmation raised from inside the drawer has to sit over it, not under.
+        -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDetailOpen}">
+            <!-- The scrim is the click target for "close", so it is a button rather than a Border. -->
+            <Button Command="{Binding CloseDetailCommand}" Background="#8C060810" Focusable="False"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    BorderThickness="0" CornerRadius="0" Padding="0">
+                <Button.Styles>
+                    <!-- A scrim that lights up under the pointer reads as a control. It is a dismissal. -->
+                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                        <Setter Property="Background" Value="#8C060810"/>
+                    </Style>
+                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                        <Setter Property="Background" Value="#8C060810"/>
+                    </Style>
+                </Button.Styles>
+            </Button>
+
+            <Border Width="{Binding DetailWidth}" HorizontalAlignment="Right" Background="{DynamicResource Bg}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
+                    BoxShadow="-12 0 40 0 #66000000">
+                <Grid RowDefinitions="Auto,*">
+                    <!--
+                        Its own strip rather than floated over the detail's header: that header's
+                        right-hand side already carries the object's actions — Uncordon and Drain on a
+                        node — and a ✕ laid over them covered the last one. Surface, so it reads as the
+                        top of the header block below it rather than as a bar of its own. The ⤢ that
+                        opens this in a window of its own joins it here in KON-308.
+                    -->
+                    <Border Grid.Row="0" Background="{DynamicResource Surface}" Padding="12,8,12,0">
+                        <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right">
+                            <!--
+                                The drawer is narrow on purpose, and a YAML tab or a wide events table
+                                wants the window. Same view model, moved — no reload, same tab.
+                            -->
+                            <Button Classes="ghost" Command="{Binding OpenDetailAsPageCommand}"
+                                    ToolTip.Tip="Open as full page" Padding="7">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                                      Data="{StaticResource IconWindowMaximize}"/>
+                            </Button>
+                            <Button Classes="ghost" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close (Esc)"
+                                    Padding="7">
+                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                                      Data="{StaticResource IconClose}"/>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <ContentControl Grid.Row="1" Content="{Binding Detail}"/>
+
+                    <!--
+                        The left edge is the grip. How much of the list you want kept in view depends on
+                        the list, so the width is dragged and remembered rather than chosen once in
+                        Settings. Grid.RowSpan so the whole edge grips, not just the part beside the
+                        content.
+                    -->
+                    <Thumb Grid.Row="0" Grid.RowSpan="2" Name="DetailResizer" Width="6"
+                           HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                           Background="Transparent" Cursor="SizeWestEast"
+                           DragDelta="OnDetailResize" DragCompleted="OnDetailResized">
+                        <Thumb.Template>
+                            <ControlTemplate>
+                                <Border Background="{TemplateBinding Background}"/>
+                            </ControlTemplate>
+                        </Thumb.Template>
+                    </Thumb>
+                </Grid>
+            </Border>
+        </Panel>
+
         <!-- Modal overlay (Run container, …). Row 1 only: the title bar stays draggable behind it. -->
         <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
             <ContentControl Content="{Binding Dialog}" HorizontalAlignment="Center"

@@ -47,6 +47,7 @@ namespace Kontena.Screenshots;
 //         cluster / cluster-{nodes,namespaces,workloads,pods,services} (the cluster browsers),
 //         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
 //         reached by really switching backend and back, so it exercises the save/restore path),
+//         cluster-node-drawer / cluster-namespace-drawer (the detail drawer over its list, KON-307),
 //         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
@@ -656,6 +657,21 @@ internal static class Program
                 }
                 break;
 
+            case "cluster-node-drawer":
+            case "cluster-namespace-drawer":
+                // The detail drawer over the list it was opened from (KON-307). Reached through the
+                // row's own Open command, so the shot cannot show a drawer the card does not raise.
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(scene == "cluster-node-drawer" ? "nodes" : "namespaces");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNodesViewModel drawerNodes)
+                    drawerNodes.Items.FirstOrDefault()?.OpenCommand.Execute(null);
+                else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNamespacesViewModel drawerNs)
+                    drawerNs.Items.FirstOrDefault()?.OpenCommand.Execute(null);
+                Settle(rounds: 30);
+                break;
+
             case "pod":
             case "pod-logs":
             case "pod-logs-tail":
@@ -713,9 +729,9 @@ internal static class Program
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 // Clicking Workloads opens the group; it does not load every kind at once (KON-169).
                 vm.NavigateCommand.Execute("overview");
-                SettleUntil(() => vm.NavItems.Any(i => i.Key == "workloads" && i.HasChildren), maxRounds: 60);
+                SettleUntil(() => vm.NavGroups.SelectMany(g => g.Items).Any(i => i.Key == "workloads"), maxRounds: 60);
                 vm.NavigateCommand.Execute("workloads");
-                SettleUntil(() => vm.NavItems.Any(i => i.IsChild), maxRounds: 60);
+                SettleUntil(() => vm.NavGroups.SelectMany(g => g.Items).Any(i => i.IsChild), maxRounds: 60);
 
                 if (scene == "cluster-cronjobs")
                     vm.NavigateCommand.Execute("workloads:CronJob");

@@ -139,8 +139,20 @@ public partial class MainWindowViewModel
     /// never ran a command. With no dialog open the binding now does not match, and the key falls
     /// through to whatever has focus.
     /// </para>
-    [RelayCommand(CanExecute = nameof(IsDialogOpen))]
-    private void Dismiss() => CloseDialog();
+    [RelayCommand(CanExecute = nameof(IsDismissable))]
+    private void Dismiss()
+    {
+        // Top down: a confirmation opened from inside the drawer sits over it, so the first Escape
+        // answers that and the second closes the drawer. Closing both at once would take away the
+        // thing the question was about.
+        if (IsDialogOpen)
+            CloseDialog();
+        else
+            CloseDetail();
+    }
+
+    /// <summary>Whether Escape has something to dismiss — a dialog, or the detail drawer (KON-307).</summary>
+    private bool IsDismissable => IsDialogOpen || IsDetailOpen;
 
     /// <summary>
     /// Enter. Runs the open dialog's primary action, where it has one.

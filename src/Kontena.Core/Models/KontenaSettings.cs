@@ -237,6 +237,13 @@ public sealed record KontenaSettings
     /// <summary>Enable programming-font ligatures in the terminal.</summary>
     public bool TerminalLigatures { get; init; } = true;
 
+    /// <summary>
+    /// How wide the detail drawer is, in layout pixels (KON-307). Dragged rather than chosen in
+    /// Settings: how much of the list you want to keep in view depends on the list, and the answer
+    /// changes between a node grid and a workload table.
+    /// </summary>
+    public double DetailDrawerWidth { get; init; } = 500;
+
     /// <summary>Recently used build-context folders, most-recent first (for the Build modal).</summary>
     public IReadOnlyList<string> RecentBuildContexts { get; init; } = [];
 

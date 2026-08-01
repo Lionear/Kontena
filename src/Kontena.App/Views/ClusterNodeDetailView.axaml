@@ -111,7 +111,7 @@
                             CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                         <StackPanel>
                             <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                                <Grid ColumnDefinitions="1.2*,0.6*,3*">
+                                <Grid ColumnDefinitions="1.7*,0.7*,2.6*" ColumnSpacing="10">
                                     <TextBlock Grid.Column="0" Text="TYPE" Classes="colhead"/>
                                     <TextBlock Grid.Column="1" Text="STATE" Classes="colhead"/>
                                     <TextBlock Grid.Column="2" Text="DETAIL" Classes="colhead"/>
@@ -121,10 +121,10 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:NodeConditionRow">
                                         <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                            <Grid ColumnDefinitions="1.2*,0.6*,3*">
+                                            <Grid ColumnDefinitions="1.7*,0.7*,2.6*" ColumnSpacing="10">
                                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7">
                                                     <Ellipse Width="7" Height="7" Fill="{Binding Brush}" VerticalAlignment="Center"/>
-                                                    <TextBlock Text="{Binding Type}" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Type}" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                                 </StackPanel>
                                                 <TextBlock Grid.Column="1" Text="{Binding State}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="2" Text="{Binding Detail}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextWrapping="Wrap"/>

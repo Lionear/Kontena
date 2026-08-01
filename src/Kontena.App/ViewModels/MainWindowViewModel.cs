@@ -30,8 +30,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
-    private ContainerDetailViewModel? _detail;
-    private ClusterPodDetailViewModel? _podDetail;
     private readonly ActivityLog _activityLog = new();
 
     // Port forwards outlive the modal that starts them and belong to the cluster connection, so the
@@ -68,6 +66,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         BackendChips.Learn(registry.Providers);
         _store = store;
         _settings = settings;
+
+        // Clamped on read, not only on drag: the file can carry a width from a wider screen, or one a
+        // hand-edit put outside anything usable (KON-307).
+        _detailWidth = Math.Clamp(settings.DetailDrawerWidth, MinDetailWidth, MaxDetailWidth);
         _updateService = updateService ?? new VelopackUpdateService();
 
         NavGroups = [];
@@ -331,16 +333,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (!ct.IsCancellationRequested && ReferenceEquals(CurrentPage, target))
             target.SearchText = value;
     }
-    private void DisposeDetail()
-    {
-        _detail?.Dispose();
-        _detail = null;
-        _podDetail?.Dispose();
-        _podDetail = null;
-    }
     public void Dispose()
     {
-        DisposeDetail();
+        CloseDetail();
         CloseDialog();
         StopPortForwardsAsync().GetAwaiter().GetResult();
         _terminals.DisposeAsync().AsTask().GetAwaiter().GetResult();

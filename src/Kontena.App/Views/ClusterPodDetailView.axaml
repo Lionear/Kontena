@@ -15,8 +15,10 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16,24,0">
             <StackPanel Spacing="14">
-                <Grid ColumnDefinitions="*,Auto">
-                  <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                <!-- Title and its facts, then the actions under them. At the drawer's width (KON-310)
+                     the metrics readout and the container picker met in the middle of the name. -->
+                <StackPanel Spacing="12">
+                  <WrapPanel ItemSpacing="12" LineSpacing="8">
                     <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                     <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -37,18 +39,18 @@
                             <TextBlock Text="{Binding MemText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                         </StackPanel>
                     </StackPanel>
-                  </StackPanel>
+                  </WrapPanel>
 
-                  <!-- Right-side actions -->
-                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                  <!-- Actions -->
+                  <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <Button Classes="pill" Command="{Binding PortForwardCommand}" IsVisible="{Binding CanPortForward}">Port forward</Button>
                     <ComboBox ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer, Mode=TwoWay}"
                               MinWidth="150" VerticalAlignment="Center"/>
                   </StackPanel>
-                </Grid>
+                </StackPanel>
 
-                <!-- Meta strip -->
-                <StackPanel Orientation="Horizontal" Spacing="28">
+                <!-- Meta strip. Wraps, because six facts side by side is wider than the drawer. -->
+                <WrapPanel ItemSpacing="28" LineSpacing="10">
                     <StackPanel Spacing="2">
                         <TextBlock Text="NAMESPACE" Classes="colhead"/>
                         <TextBlock Text="{Binding Namespace}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
@@ -77,7 +79,7 @@
                         <TextBlock Text="AGE" Classes="colhead"/>
                         <TextBlock Text="{Binding AgeText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
-                </StackPanel>
+                </WrapPanel>
 
                 <!-- Tabs -->
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
@@ -163,7 +165,7 @@
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                         <StackPanel>
                             <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                                <Grid ColumnDefinitions="1.3*,1.8*,0.9*,0.7*,1.5*,1.4*">
+                                <Grid ColumnDefinitions="1.7*,1.6*,1.1*,0.5*,1.2*,1.2*" ColumnSpacing="8">
                                     <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
                                     <TextBlock Grid.Column="1" Text="IMAGE" Classes="colhead"/>
                                     <TextBlock Grid.Column="2" Text="READY" Classes="colhead"/>
@@ -176,24 +178,25 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:PodContainerRow">
                                         <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                            <Grid ColumnDefinitions="1.3*,1.8*,0.9*,0.7*,1.5*,1.4*">
-                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                            <Grid ColumnDefinitions="1.7*,1.6*,1.1*,0.5*,1.2*,1.2*" ColumnSpacing="8">
+                                                <Grid Grid.Column="0" ColumnDefinitions="*,Auto" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}"/>
                                                     <!-- An init container reads as an app container that is oddly always finished
                                                          unless it says which it is. -->
-                                                    <Border IsVisible="{Binding HasKindLabel}" Background="{DynamicResource AccentSoft}"
-                                                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                                    <Border Grid.Column="1" IsVisible="{Binding HasKindLabel}" Background="{DynamicResource AccentSoft}"
+                                                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="7,0,0,0">
                                                         <TextBlock Text="{Binding KindLabel}" FontSize="10" FontWeight="SemiBold"
                                                                    Foreground="{DynamicResource Accent}"/>
                                                     </Border>
-                                                </StackPanel>
+                                                </Grid>
                                                 <!-- A trimmed cell has no whitespace left of its own, so the ellipsis lands against
                                                      the next column unless the cell reserves the gap itself (KON-199). -->
                                                 <TextBlock Grid.Column="1" Text="{Binding Image}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding Image}"/>
-                                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                                                    <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
-                                                    <TextBlock Text="{Binding ReadyText}" Foreground="{DynamicResource TextDim}"/>
-                                                </StackPanel>
+                                                <Grid Grid.Column="2" ColumnDefinitions="Auto,*" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                    <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding ReadyText}" Foreground="{DynamicResource TextDim}"
+                                                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding ReadyText}"/>
+                                                </Grid>
                                                 <TextBlock Grid.Column="3" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="4" Text="{Binding PortsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding PortsTooltip}"/>
                                                 <TextBlock Grid.Column="5" Text="{Binding State}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
