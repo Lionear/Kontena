@@ -30,9 +30,13 @@
 
     <Window.Resources>
         <!-- One switcher row — shared by the Engines and Clusters groups in the popover. -->
+        <!--
+            An unreachable row stays clickable, and the click asks the backend again (KON-328). It used
+            to be disabled: the switcher was the one place that knew a backend was down and the one place
+            that could do nothing about it, so the engine you had just started stayed dead until restart.
+        -->
         <DataTemplate x:Key="SwitcherItem" x:DataType="vm:EngineOption">
             <Button Classes="engineitem" Classes.active="{Binding IsActive}"
-                    IsEnabled="{Binding IsConnected}"
                     Click="OnSwitcherItemClick"
                     Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
@@ -42,6 +46,14 @@
                             <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                             <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
                                 <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                            </Border>
+                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding CanRetry}">
+                                <TextBlock Text="Retry" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                            </Border>
+                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
+                                <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                             </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
@@ -55,7 +67,7 @@
 
         <!-- The same row in the down state, where there is no flyout to close on click. -->
         <DataTemplate x:Key="BackendChoice" x:DataType="vm:EngineOption">
-            <Button Classes="engineitem" IsEnabled="{Binding IsConnected}" Margin="0,0,0,2"
+            <Button Classes="engineitem" Margin="0,0,0,2"
                     Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="30" VerticalAlignment="Center"/>
@@ -65,6 +77,16 @@
                             <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center"
                                     IsVisible="{Binding IsConnected}">
                                 <TextBlock Text="Reachable" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                            </Border>
+                            <!-- The down card lists what did not answer, so retrying one is the whole
+                                 point of the list rather than an afterthought (KON-328). -->
+                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding CanRetry}">
+                                <TextBlock Text="Retry" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                            </Border>
+                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
+                                <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                             </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"

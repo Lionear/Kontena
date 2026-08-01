@@ -210,8 +210,17 @@ public partial class MainWindow : Window
     // inside a Flyout doesn't close it on its own. Defer the close to the next dispatcher tick so
     // the button's Command (the actual switch) runs first; hiding synchronously here cancels the
     // click before the command executes.
-    private void OnSwitcherItemClick(object? sender, RoutedEventArgs e) =>
+    //
+    // Retrying an unreachable backend is the exception (KON-328): that click starts a probe that can
+    // take ten seconds, the row it was made on is where "Connecting…" and the result appear, and
+    // closing the flyout over it would look exactly like the nothing that used to happen.
+    private void OnSwitcherItemClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: EngineOption { IsConnected: false } })
+            return;
+
         Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
+    }
 
     // The drawer grows leftwards, so a drag towards the left — a negative X — widens it (KON-307).
     // The clamp and the saving live in the view model; this only turns a gesture into a delta.

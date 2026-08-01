@@ -323,6 +323,83 @@ public partial class SettingsViewModel
         }
     }
 
+    // ── Retrying a backend that did not answer (KON-328) ────────────────────
+
+    private readonly Func<string, Task>? _retryBackend;
+
+    /// <summary>
+    /// Ask one backend again from the row that shows it as unreachable.
+    /// <para>
+    /// The reason this exists is the failure only a person can clear: an engine that has to be started,
+    /// a VPN that has to come up, an SSH agent waiting on a fingerprint in 1Password. Those attempts
+    /// succeed on the second try by definition — and until now the second try meant restarting Kontena.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task RetryBackendAsync(string? backend)
+    {
+        if (backend is null || _retryBackend is null || _retrying is not null)
+            return;
+
+        _retrying = backend;
+        MarkRetrying(backend, true);
+        try
+        {
+            // The shell re-probes and calls SetBackendConnected back with the answer — one probe cache,
+            // written in one place, whichever row asked.
+            await _retryBackend(backend);
+        }
+        finally
+        {
+            _retrying = null;
+            MarkRetrying(backend, false);
+        }
+    }
+
+    /// <summary>The backend being retried, so a click on another row cannot start a second probe.</summary>
+    private string? _retrying;
+
+    /// <summary>
+    /// Fold a fresh probe result into the rows already on screen (KON-328). In place rather than by
+    /// rebuilding the page, following <see cref="Relabel"/>: a rebuild would empty a remote form that is
+    /// halfway typed, and the user retrying a connection is often exactly the user filling one in.
+    /// </summary>
+    internal void SetBackendConnected(string backend, bool connected, string detail)
+    {
+        for (var i = 0; i < _backends.Count; i++)
+        {
+            if (_backends[i].Backend == backend)
+                _backends[i] = _backends[i] with { Connected = connected, Detail = detail };
+        }
+
+        for (var i = 0; i < Engines.Count; i++)
+        {
+            if (Engines[i].Backend == backend)
+                Engines[i] = Engines[i] with { Connected = connected, Detail = detail };
+        }
+
+        for (var i = 0; i < RemoteEngines.Count; i++)
+        {
+            if (RemoteEngines[i].Remote.Backend == backend)
+                RemoteEngines[i] = RemoteEngines[i] with { Connected = connected };
+        }
+    }
+
+    private void MarkRetrying(string backend, bool retrying)
+    {
+        for (var i = 0; i < Engines.Count; i++)
+        {
+            if (Engines[i].Backend == backend)
+                Engines[i] = Engines[i] with { Retrying = retrying };
+        }
+
+        for (var i = 0; i < RemoteEngines.Count; i++)
+        {
+            if (RemoteEngines[i].Remote.Backend == backend)
+                RemoteEngines[i] = RemoteEngines[i] with { Retrying = retrying };
+        }
+    }
+
     /// <summary>
     /// Actually connects, before anything is saved. For SSH that means opening the tunnel and asking the
     /// daemon through it — the only way to tell "the host is reachable" from "the engine answers", which are

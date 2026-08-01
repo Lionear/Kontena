@@ -34,6 +34,25 @@ public interface IBackendProvider
     /// <summary>Which axis this backend belongs to — drives switcher grouping and UI mode.</summary>
     BackendKind Kind { get; }
 
+    /// <summary>
+    /// How long this provider gets to answer a probe before it counts as unreachable.
+    /// <para>
+    /// Two seconds by default, which is a local socket's budget: a probe round sits between the user
+    /// and their Settings page and costs whatever its slowest provider costs, the catalog always offers
+    /// Docker and Podman whether installed or not, and connecting to a Windows named pipe that does not
+    /// exist takes seconds to give up (KON-317, found via KON-306). An engine that is running answers in
+    /// milliseconds, so that deadline only ever truncates a wait whose answer was going to be "no".
+    /// </para>
+    /// <para>
+    /// It is per provider because a remote does not fit that shape at all: TCP, key exchange and auth to
+    /// a host across a WAN routinely cost more than two seconds, and a provider cut off at a deadline it
+    /// cannot make is unreachable by construction — Settings would say "Connected" about the very host
+    /// the switcher calls dead (KON-327). Raise it only for what genuinely crosses a network; every
+    /// second here is a second the whole round can take.
+    /// </para>
+    /// </summary>
+    TimeSpan ProbeTimeout => TimeSpan.FromSeconds(2);
+
     /// <summary>Create a fresh backend instance — an <see cref="IContainerEngine"/> for
     /// <see cref="BackendKind.Engine"/>, an <c>IClusterEngine</c> for <see cref="BackendKind.Cluster"/>.</summary>
     IBackend CreateBackend();
