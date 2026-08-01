@@ -142,13 +142,24 @@ public sealed class VelopackUpdateService : IUpdateService
 
     private UpdateChannel _channel = UpdateChannel.Stable;
 
+    /// <summary>
+    /// Where a channel's release assets live. Stable is whatever tag GitHub currently calls "latest
+    /// release"; the two rolling streams are always republished onto the same fixed tag by the Build
+    /// workflow — an atomic staging-tag swap (build.yml) keeps that tag from ever briefly missing a
+    /// release — so their assets sit at a fixed URL too. Either way this is a plain <c>github.com</c>
+    /// download URL, never <c>api.github.com</c> (KON-312): unlike <see cref="GithubSource"/>, nothing
+    /// here is rate-limited to 60 requests an hour.
+    /// </summary>
+    internal static string BaseUrlFor(string repositoryUrl, UpdateChannel channel) =>
+        channel == UpdateChannel.Stable
+            ? $"{repositoryUrl}/releases/latest/download"
+            : $"{repositoryUrl}/releases/download/{ReleaseChannel.Stream(channel)}";
+
     private UpdateManager ManagerFor(UpdateChannel channel)
     {
         _channel = channel;
 
-        // Both rolling streams are published as GitHub prereleases, so the source has to be told to
-        // look at them; the channel below is what actually decides which feed is read.
-        var source = new GithubSource(RepositoryUrl, null, prerelease: channel != UpdateChannel.Stable);
+        var source = new SimpleWebSource(BaseUrlFor(RepositoryUrl, channel));
         return new UpdateManager(source, new UpdateOptions
         {
             ExplicitChannel = ReleaseChannel.ForCurrentPlatform(channel),
