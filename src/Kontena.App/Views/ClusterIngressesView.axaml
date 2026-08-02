@@ -23,20 +23,21 @@
                     IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="1.5*,1*,0.9*,2*,1.2*,0.7*">
+                        <Grid ColumnDefinitions="1.5*,1*,0.9*,2*,1.2*,0.7*,88">
                             <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="1" Text="NAMESPACE" Key="NAMESPACE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="2" Text="CLASS" Key="CLASS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="3" Text="HOSTS" Key="HOSTS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="4" Text="ADDRESS" Key="ADDRESS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="5" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <TextBlock Grid.Column="6" Text="" Classes="colhead" MinWidth="80"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:IngressRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="1.5*,1*,0.9*,2*,1.2*,0.7*">
+                                    <Grid ColumnDefinitions="1.5*,1*,0.9*,2*,1.2*,0.7*,88">
                                         <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
                                                    TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
@@ -62,6 +63,8 @@
                                                    Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding AddressTooltip}"/>
                                         <TextBlock Grid.Column="5" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="6" Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

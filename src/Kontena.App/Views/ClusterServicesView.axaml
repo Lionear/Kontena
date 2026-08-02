@@ -24,21 +24,21 @@
                     IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="1.6*,1*,1*,1.1*,1.6*,0.7*,104">
+                        <Grid ColumnDefinitions="1.6*,1*,1*,1.1*,1.6*,0.7*,160">
                             <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="1" Text="NAMESPACE" Key="NAMESPACE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="2" Text="TYPE" Key="TYPE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="3" Text="CLUSTER IP" Key="CLUSTER IP" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <TextBlock Grid.Column="4" Text="PORTS" Classes="colhead"/>
                             <controls:SortableHeader Grid.Column="5" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
-                            <TextBlock Grid.Column="6" Text="" Classes="colhead" MinWidth="96"/>
+                            <TextBlock Grid.Column="6" Text="" Classes="colhead" MinWidth="152"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ServiceRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="1.6*,1*,1*,1.1*,1.6*,0.7*,104">
+                                    <Grid ColumnDefinitions="1.6*,1*,1*,1.1*,1.6*,0.7*,160">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}"
                                                 IsEnabled="{Binding CanOpen}" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
@@ -50,7 +50,10 @@
                                              reserve the gap; the full list is on hover (KON-199). -->
                                         <TextBlock Grid.Column="4" Text="{Binding Ports}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding PortsTooltip}"/>
                                         <TextBlock Grid.Column="5" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                                        <Button Grid.Column="6" Classes="pill" HorizontalAlignment="Right" Command="{Binding ForwardCommand}" IsVisible="{Binding CanForward}">Forward</Button>
+                                        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                            <Button Classes="pill" Command="{Binding ForwardCommand}" IsVisible="{Binding CanForward}">Forward</Button>
+                                            <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
+                                        </StackPanel>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
