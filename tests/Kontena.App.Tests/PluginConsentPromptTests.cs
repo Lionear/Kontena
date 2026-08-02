@@ -62,6 +62,17 @@ public sealed class PluginConsentPromptTests : IDisposable
             plugins: plugins,
             pluginRoot: pluginRoot);
 
+    /// <summary>Like <see cref="Build(DiscoveredPlugin[])"/>, but with the given settings rather than a
+    /// fresh <see cref="KontenaSettings"/> — for a test that needs settings and the <c>_plugins</c>
+    /// snapshot to disagree, which a scan-driven <c>Build</c> overload cannot arrange: a real
+    /// <see cref="PluginLoader.Discover"/> re-scan always agrees with whatever settings it was just
+    /// given.</summary>
+    private MainWindowViewModel Build(KontenaSettings settings, params DiscoveredPlugin[] plugins) =>
+        new(
+            new BackendRegistry([]), new SettingsStore(_settingsPath), settings,
+            buildCatalog: (_, _, _, _) => [],
+            plugins: plugins);
+
     /// <summary>Write a real plugin directory — manifest only, no assembly — under <paramref
     /// name="root"/>, for tests that exercise a real <see cref="PluginLoader.Discover"/> re-scan rather
     /// than a hand-built <see cref="DiscoveredPlugin"/>. No assembly is needed: whether it loads or is
@@ -201,6 +212,23 @@ public sealed class PluginConsentPromptTests : IDisposable
             if (Directory.Exists(root))
                 Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void An_approved_plugin_is_not_asked_about_when_the_snapshot_is_stale()
+    {
+        // _plugins is a snapshot taken at the last Discover() call, and InitAsync — so
+        // AskPluginConsent — is re-entered from ReconnectAsync without a fresh one. That is the window
+        // where settings and the snapshot can disagree: settings already allow this id and version, but
+        // _plugins still says AwaitingConsent for it, because nothing has re-scanned since. No confirm
+        // step and no re-scan here — this constructs that disagreement directly, which is what the
+        // `!_settings.AllowsPlugin(...)` clause in the pending filter exists for.
+        var settings = new KontenaSettings().WithAllowedPlugin("com.acme.nerdctl", "1.0.0");
+        var vm = Build(settings, Awaiting(id: "com.acme.nerdctl", version: "1.0.0"));
+
+        vm.AskPluginConsent();
+
+        Assert.Null(vm.Dialog);
     }
 
     [Fact]
