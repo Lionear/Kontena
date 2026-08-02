@@ -22,5 +22,6 @@
     <Project Path="tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj" />
     <Project Path="tests/Kontena.Plugins.ManifestStudio.Tests/Kontena.Plugins.ManifestStudio.Tests.csproj" />
     <Project Path="tests/Kontena.Sdk.Tests/Kontena.Sdk.Tests.csproj" />
+    <Project Path="tests/Kontena.TestPlugin/Kontena.TestPlugin.csproj" />
   </Folder>
 </Solution>

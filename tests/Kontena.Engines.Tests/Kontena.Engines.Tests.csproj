@@ -21,6 +21,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kontena.Engines\Kontena.Engines.csproj" />
     <ProjectReference Include="..\..\src\Kontena.Core\Kontena.Core.csproj" />
+    <!-- Built, never referenced: the loader tests need this assembly on disk and *not* in the default
+         load context. ReferenceOutputAssembly="false" is what keeps its types out of this project. -->
+    <ProjectReference Include="..\Kontena.TestPlugin\Kontena.TestPlugin.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
   </ItemGroup>
 
 </Project>
