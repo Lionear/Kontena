@@ -65,17 +65,20 @@
     <Border Width="640" MaxWidth="640"
             Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
             BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True">
-        <StackPanel>
+        <!-- Header and footer pinned, only the middle scrolls: the wizard grows with what it found
+             (engines, a start assist, a kubeconfig full of contexts), and Skip/Continue are the two
+             things that must never be the part which falls off the bottom. -->
+        <Grid RowDefinitions="Auto,*,Auto">
 
             <!-- Header -->
-            <Border Padding="36,34,36,26" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+            <Border Grid.Row="0" Padding="36,34,36,26" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
                     Background="{DynamicResource SurfaceRaised}">
                 <StackPanel HorizontalAlignment="Center" Spacing="0">
                     <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,0,0,16">
                         <Image Source="{StaticResource KontenaLogo}" Width="36" Height="36"/>
                         <TextBlock Text="Kontena" FontSize="25" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock Text="Let's connect your container engine" FontSize="20" FontWeight="SemiBold"
+                    <TextBlock Text="{Binding Headline}" FontSize="20" FontWeight="SemiBold"
                                Foreground="{DynamicResource Text}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
                     <TextBlock FontSize="13.5" Foreground="{DynamicResource TextDim}" MaxWidth="440" Margin="0,8,0,0"
                                HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
@@ -84,6 +87,7 @@
             </Border>
 
             <!-- Body -->
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="36,26,36,10" Spacing="16">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Text="DETECTED ENGINES" FontSize="11" FontWeight="SemiBold"
@@ -143,6 +147,38 @@
                 </ItemsControl>
 
                 <!--
+                    Clusters (KON-336). Compact rows, and scrolling past four: a kubeconfig can hold
+                    a dozen contexts, and the wizard's buttons must stay above the fold.
+                -->
+                <StackPanel Spacing="10" IsVisible="{Binding HasClusters}">
+                    <TextBlock Text="CLUSTERS IN YOUR KUBECONFIG" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFaint}"/>
+                    <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                               Text="Tick the ones you want in the switcher. You can change this later in Settings."/>
+                    <ScrollViewer MaxHeight="184" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Clusters}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="8"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:OnboardingCluster">
+                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Padding="10,0,0,0"
+                                              HorizontalAlignment="Stretch" VerticalContentAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <controls:BackendChip Chip="{Binding Chip}" ChipSize="26"/>
+                                            <TextBlock Text="{Binding Name}" FontSize="13.5" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <!--
                     Start assist (KON-335). Appears only when a checked fix exists — Podman installed
                     with its user socket unit never enabled, the one case with a specific answer. Above
                     the install box on purpose: an engine you already have beats installing another.
@@ -175,9 +211,10 @@
                 <!--
                     Install assist. Steps aside for the start assist above: when the engine you already
                     have only needs starting, advice to go and install another one is noise — and two
-                    stacked boxes push Skip/Continue below the fold at the default window height.
+                    stacked boxes push Skip/Continue below the fold at the default window height. It
+                    also steps aside for a kubeconfig with clusters in it (KON-336).
                 -->
-                <Border IsVisible="{Binding FixCommandLine, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                <Border IsVisible="{Binding ShowInstallAssist}"
                         BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
                         Background="{DynamicResource SurfaceRaised}" Padding="16,14">
                     <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
@@ -200,15 +237,16 @@
                                   IsChecked="{Binding AutoDetect, Mode=TwoWay}"/>
                 </Grid>
             </StackPanel>
+            </ScrollViewer>
 
             <!-- Footer -->
-            <Grid Margin="36,20,36,30" ColumnDefinitions="*,Auto">
+            <Grid Grid.Row="2" Margin="36,20,36,30" ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
                     <Button Classes="ob ghost" Content="Skip" Command="{Binding SkipCommand}"/>
                     <Button Classes="ob primary" Content="{Binding ContinueLabel}"
                             IsEnabled="{Binding CanContinue}" Command="{Binding ContinueCommand}"/>
                 </StackPanel>
             </Grid>
-        </StackPanel>
+        </Grid>
     </Border>
 </UserControl>

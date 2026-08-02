@@ -702,10 +702,11 @@
 
         <!-- First-run onboarding: opaque, covers the whole shell below the title bar -->
         <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsOnboarding}" Background="{DynamicResource Bg}">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <ContentControl Content="{Binding Onboarding}" HorizontalAlignment="Center"
-                                VerticalAlignment="Center" Margin="24,32"/>
-            </ScrollViewer>
+            <!-- No ScrollViewer here on purpose (KON-336): scrolling the whole card takes its
+                 Skip/Continue buttons with it. The card scrolls its own middle instead, which needs a
+                 bounded height to do — which is exactly what this panel gives it. -->
+            <ContentControl Content="{Binding Onboarding}" HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Margin="24,32"/>
         </Panel>
     </Grid>
     </Border>

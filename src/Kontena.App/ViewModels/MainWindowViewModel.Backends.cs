@@ -159,7 +159,13 @@ public partial class MainWindowViewModel
             onInstallPodman: () => Browser.OpenUrl("https://podman.io/docs/installation"),
             onRescan: RunSetupAsync,
             onStartEngine: StartWizardEngineAsync,
-            nameOf: NameOf);
+            nameOf: NameOf,
+            // Read from the kubeconfig, not from the probes: which clusters are providers at all is
+            // itself the answer this screen is asking for, so at first run there are none (KON-336).
+            clusters: BackendCatalog.DiscoverClusters(_settings.KubeconfigPaths),
+            // New arrives ticked, declined comes back unticked rather than hidden — the same three
+            // states the switcher's "new clusters" row keeps (KON-120).
+            clusterTicked: id => _settings.ShowsCluster(id) || _settings.NewClusters([id]).Count > 0);
         IsOnboarding = true;
 
         _ = OfferWizardEngineStartAsync(Onboarding);
@@ -237,17 +243,33 @@ public partial class MainWindowViewModel
     {
         var autoDetect = Onboarding?.AutoDetect ?? _settings.AutoDetectEngines;
 
+        // Only on Continue. Skipping is "not now", and writing a decline for every context would turn
+        // it into "never", which is the one thing the three states exist to avoid.
+        var clusters = backend is null ? [] : Onboarding?.Clusters ?? [];
+
         // Onboarding no longer pins: picking an engine here says "start me here", not "and never
         // follow me anywhere else". Activating it records it as last used, which is enough.
-        _settings = _store.Update(s => s with
+        _settings = _store.Update(s =>
         {
-            Onboarded = true,
-            AutoDetectEngines = autoDetect,
+            var next = s with { Onboarded = true, AutoDetectEngines = autoDetect };
+
+            // Both answers are recorded, not just yes: a cluster ticked off here is declined, and a
+            // declined cluster must not be offered again on every launch (KON-120).
+            foreach (var cluster in clusters)
+                next = next.WithCluster(cluster.Backend, cluster.IsSelected);
+
+            return next;
         });
         BuildSettingsPage(); // reflect the just-chosen default in Settings
 
         IsOnboarding = false;
         Onboarding = null;
+
+        // The chosen clusters have no provider yet — the catalog was built before anyone said which
+        // ones belong in the switcher. Rebuilding is what makes the choice real.
+        if (clusters.Any(c => c.IsSelected))
+            await RebuildBackendsAsync(
+                BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends), _settings);
 
         if (backend is not null)
         {
@@ -678,14 +700,7 @@ public partial class MainWindowViewModel
         stored = _store.Update(s => s.PruneClusters(known)
             .PruneBackendNames([.. known, .. s.RemoteEngines.Select(r => r.Backend), "docker", "podman"]));
 
-        _registry.Replace(_buildCatalog(
-            BackendCatalog.ShouldIncludeDemo(includeDemo),
-            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
-        BackendChips.Learn(_registry.Providers);
-        _probes = await _registry.ProbeAllAsync();
-        RefreshNewClusters();
-
-        RebuildEngineList();
+        await RebuildBackendsAsync(includeDemo, stored);
         BuildSettingsPage();
 
         if (_registry.Providers.Any(p => p.Backend == _activeBackend))
@@ -701,6 +716,23 @@ public partial class MainWindowViewModel
                 "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.",
                 UnreachablePodmanProbe());
     }
+    /// <summary>
+    /// Build the provider set from what is stored now, probe it, and refresh the switcher. Shared by
+    /// the demo toggle, a created cluster, and the first-run wizard — all three change <i>which</i>
+    /// backends exist, which is the one thing the registry cannot notice by itself.
+    /// </summary>
+    private async Task RebuildBackendsAsync(bool includeDemo, KontenaSettings stored)
+    {
+        _registry.Replace(_buildCatalog(
+            BackendCatalog.ShouldIncludeDemo(includeDemo),
+            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
+        BackendChips.Learn(_registry.Providers);
+        _probes = await _registry.ProbeAllAsync();
+        RefreshNewClusters();
+
+        RebuildEngineList();
+    }
+
     [RelayCommand]
     private async Task SwitchEngineAsync(string backend)
     {
