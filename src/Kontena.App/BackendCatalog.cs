@@ -47,7 +47,7 @@ public static class BackendCatalog
 
     /// <summary>
     /// Backends contributed by loaded plugins. Set once at startup and once more after the user agrees
-    /// to something new (see <c>MainWindowViewModel.AskPluginConsentAsync</c>) — never per
+    /// to something new (see <c>MainWindowViewModel.AskPluginConsent</c>) — never per
     /// <see cref="Build"/>, which runs again on every settings change. Loading a plugin directory twice
     /// would mean a second <c>AssemblyLoadContext</c> over the same files, so where the providers live
     /// has to outlast the call that builds the list.
