@@ -19,6 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **The first-run wizard notices an engine you have just started.** It asks you to start the engine it
   reports as not running, and then could not see you do it: the row stayed grey until Kontena was
   restarted. A **Rescan** probes again in place. (KON-333)
+- **The first-run wizard can start a stopped Podman for you.** Kontena already knew the one case with
+  a specific answer — Podman installed, its user socket unit never enabled, which is why `podman ps`
+  works from a terminal while Kontena finds nothing — but only offered the fix on the engine-down
+  card, after the wizard had already been left behind. It is now offered on the wizard itself, with
+  the command shown and copyable for anyone who would rather run it themselves, and the engine list
+  refreshed in place afterwards. (KON-335)
 
 ## [0.3.0] - 2026-08-01
 

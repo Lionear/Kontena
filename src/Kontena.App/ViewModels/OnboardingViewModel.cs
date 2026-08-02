@@ -42,6 +42,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     private readonly Action _onSkip;
     private readonly Action _onInstallPodman;
     private readonly Func<Task> _onRescan;
+    private readonly Func<Task> _onStartEngine;
 
     /// <param name="nameOf">
     /// What to call a backend (KON-119). Defaults to the source's own name; a settings file carried over
@@ -56,6 +57,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         Action onSkip,
         Action onInstallPodman,
         Func<Task> onRescan,
+        Func<Task> onStartEngine,
         Func<IBackendProvider, string>? nameOf = null)
     {
         nameOf ??= p => p.DisplayName;
@@ -64,6 +66,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         _onSkip = onSkip;
         _onInstallPodman = onInstallPodman;
         _onRescan = onRescan;
+        _onStartEngine = onStartEngine;
 
         var items = new List<OnboardingEngine>();
         foreach (var p in probes)
@@ -143,6 +146,31 @@ public sealed partial class OnboardingViewModel : ViewModelBase
 
     [RelayCommand]
     private void InstallPodman() => _onInstallPodman();
+
+    /// <summary>
+    /// The command that would start the engine this screen is waiting on, or null when there is no
+    /// checked fix. Filled in after the screen is already up: asking systemd takes a moment, and the
+    /// reason an engine is not running must never hold up saying that it is not (KON-335).
+    /// <para>
+    /// Shown rather than only run, the way the engine-down card shows it — this manages a unit on the
+    /// user's own machine, so anyone who would rather type it themselves can read it first.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private string? _fixCommandLine;
+
+    /// <summary>Why starting it failed, or null. Cleared on the next attempt.</summary>
+    [ObservableProperty] private string? _fixError;
+
+    /// <summary>
+    /// Run the fix on explicit request, never on its own. A successful run rescans, so the row the
+    /// user was looking at goes from "Not running" to selectable without anyone restarting anything.
+    /// </summary>
+    [RelayCommand]
+    private Task StartEngine()
+    {
+        FixError = null;
+        return _onStartEngine();
+    }
 
     /// <summary>
     /// Probe again and rebuild this screen. Starting the engine is the obvious thing to do when it

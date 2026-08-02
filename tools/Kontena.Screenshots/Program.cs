@@ -11,12 +11,15 @@ using Avalonia.Threading;
 using System.Collections.Generic;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
+using Kontena.Adapters.Podman;
 using Kontena.App;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
 using Kontena.Sdk.Models;
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
+using Kontena.Sdk.Tooling.Fakes;
 using Kontena.Engines.Fakes;
 using HostApp = Kontena.App.App;
 using Kontena.Core.Models;
@@ -54,6 +57,9 @@ namespace Kontena.Screenshots;
 //         onboarding (the first-run wizard) and onboarding-again (the same wizard reached back from
 //         the engine-down card by running its own "Set up again" command, so the shot cannot show a
 //         route that the button does not really take),
+//         onboarding-start-assist (the wizard's offer to start a stopped Podman — a scripted
+//         systemctl and an unreachable Podman, driven through the real PodmanSocketFix; Linux-only,
+//         because the fix itself is, and on other systems the block correctly never appears),
 //         settings-clusters (KON-109/KON-76 — the local-cluster page; reads this machine, so the
 //         shot differs per box by design), settings-clusters-new (the create form, reached by running
 //         the page's own command),
@@ -102,8 +108,8 @@ internal static class Program
             {
                 Theme = theme,
 
-                // The one scene that is about not having been here before.
-                Onboarded = opts.Scene != "onboarding",
+                // The scenes that are about not having been here before.
+                Onboarded = opts.Scene is not ("onboarding" or "onboarding-start-assist"),
 
                 // Pinned, not "last used": a capture must not depend on what a previous capture
                 // happened to leave behind. The down-card scenes are the exception — they ask to
@@ -159,6 +165,15 @@ internal static class Program
             if (opts.Scene.StartsWith("real-", StringComparison.Ordinal))
                 providers.AddRange(KubernetesClusterProvider.DiscoverAll());
 
+            // A machine whose only engine is a Podman that will not answer. Nothing reachable, because
+            // the subject of the scene is the row that cannot be picked and what the wizard offers to
+            // do about it.
+            if (opts.Scene == "onboarding-start-assist")
+            {
+                providers.Clear();
+                providers.Add(new StoppedPodmanProvider());
+            }
+
             var registry = new BackendRegistry(providers);
 
             // Persist the scene's settings before anything reads them: parts of the app deliberately
@@ -183,7 +198,17 @@ internal static class Program
                         : UpdateChannel.Stable)
                 : null;
 
-            var viewModel = new MainWindowViewModel(registry, store, settings, updates);
+            // Scripted systemd state for the start-assist scene. The check itself is the real
+            // PodmanSocketFix — only systemctl's answer is supplied, the way the update scenes supply
+            // an update source. Asking the renderer's own machine would make the shot depend on
+            // whether the person capturing it happens to run Podman.
+            var tools = opts.Scene == "onboarding-start-assist"
+                ? new FakeToolRunner()
+                    .Install(new ExternalTool("systemctl", "systemctl", ["--version"], []))
+                    .When(i => i.Arguments.Contains("is-active"), output: ["inactive"], exitCode: 3)
+                : null;
+
+            var viewModel = new MainWindowViewModel(registry, store, settings, updates, tools);
 
             var window = new MainWindow
             {
@@ -312,6 +337,12 @@ internal static class Program
             case "containers":
             case "onboarding": // the launch state already is the wizard
                 break; // default page
+
+            // The offer arrives after the screen is already up — systemd is asked in the background,
+            // on purpose, so a slow answer cannot hold up drawing the wizard.
+            case "onboarding-start-assist":
+                SettleUntil(() => vm.Onboarding?.FixCommandLine is not null, maxRounds: 120);
+                break;
 
             // The way back: run the down card's own command rather than calling EnterOnboarding, so
             // a button wired to nothing would show up here as a shot still on the down card.
@@ -1111,6 +1142,26 @@ internal static class Program
             }
 
             return new Options(scene, theme, @out, width, height, scale);
+        }
+    }
+
+    /// <summary>A Podman that is installed but will not answer — the probe behind a "Not running" row.</summary>
+    private sealed class StoppedPodmanProvider : IBackendProvider
+    {
+        public string Backend => "podman";
+        public string DisplayName => "Podman";
+        public string Chip => "P";
+        public BackendChipStyle? ChipStyle => new(PodmanBrand.Glyph, PodmanBrand.Accent);
+        public BackendKind Kind => BackendKind.Engine;
+        public IBackend CreateBackend() => new StoppedBackend();
+
+        private sealed class StoppedBackend : IBackend
+        {
+            public string Backend => "podman";
+            public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default)
+                => throw new InvalidOperationException("the socket did not answer");
+            public ValueTask PingAsync(CancellationToken ct = default)
+                => throw new InvalidOperationException("the socket did not answer");
         }
     }
 }

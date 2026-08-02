@@ -99,6 +99,83 @@ public sealed class PodmanSocketFixTests
         }
     }
 
+    /// <summary>
+    /// The same fix on the first-run wizard (KON-335). It belongs there more than on the down card:
+    /// the wizard is the screen that asks you to start an engine, and it used to be the screen with no
+    /// way to do it.
+    /// </summary>
+    [SkippableFact]
+    public async Task The_wizard_offers_the_fix_for_an_engine_it_reports_as_not_running()
+    {
+        Skip.If(!OperatingSystem.IsLinux(), "systemd/Linux only.");
+
+        var (vm, cleanup) = await WizardWithInactivePodmanAsync();
+        try
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (vm.Onboarding?.FixCommandLine is null && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+
+            Assert.Equal("systemctl --user enable --now podman.socket", vm.Onboarding!.FixCommandLine);
+        }
+        finally { cleanup(); }
+    }
+
+    /// <summary>
+    /// A fix that fails says so and leaves the screen where it was. Rescanning on failure would redraw
+    /// the same stopped engine, which reads as if nothing had been tried.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_failed_start_is_reported_and_keeps_the_wizard_up()
+    {
+        Skip.If(!OperatingSystem.IsLinux(), "systemd/Linux only.");
+
+        var (vm, cleanup) = await WizardWithInactivePodmanAsync(enableFails: true);
+        try
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (vm.Onboarding?.FixCommandLine is null && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+
+            var wizard = vm.Onboarding!;
+            await wizard.StartEngineCommand.ExecuteAsync(null);
+
+            Assert.NotNull(wizard.FixError);
+            Assert.True(vm.IsOnboarding);
+            Assert.Same(wizard, vm.Onboarding);
+        }
+        finally { cleanup(); }
+    }
+
+    /// <summary>A first run whose only engine is an unreachable Podman with an inactive socket unit.</summary>
+    private static async Task<(MainWindowViewModel Vm, Action Cleanup)> WizardWithInactivePodmanAsync(
+        bool enableFails = false)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kontena-wizardfix-{Guid.NewGuid():N}.json");
+        var store = new SettingsStore(path);
+        var settings = new KontenaSettings { Onboarded = false };
+        store.Save(settings);
+
+        var runner = new FakeToolRunner()
+            .Install(Systemctl)
+            .When(i => i.Arguments.Contains("is-active"), output: ["inactive"], exitCode: 3)
+            .When(i => i.Arguments.Contains("enable"),
+                output: enableFails ? ["Failed to connect to bus."] : [],
+                exitCode: enableFails ? 1 : 0);
+
+        var vm = new MainWindowViewModel(
+            new BackendRegistry([new UnreachablePodmanProvider()]), store, settings,
+            new FakeUpdateService(), runner);
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!vm.IsOnboarding && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.True(vm.IsOnboarding, "the shell never showed the onboarding wizard");
+
+        return (vm, () => { if (File.Exists(path)) File.Delete(path); });
+    }
+
     /// <summary>A provider that always fails to connect, under the "podman" id — the shortest route
     /// to an unreachable-Podman probe without a real socket.</summary>
     private sealed class UnreachablePodmanProvider : IBackendProvider
