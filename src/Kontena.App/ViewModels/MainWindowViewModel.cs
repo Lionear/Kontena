@@ -9,6 +9,7 @@ using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 using Kontena.Engines;
+using Kontena.Engines.Plugins;
 
 namespace Kontena.App.ViewModels;
 
@@ -29,6 +30,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
     private IReadOnlyList<BackendProbe> _probes = [];
+    private readonly IReadOnlyList<DiscoveredPlugin> _plugins;
     private readonly ClusterTerminals _terminals = new();
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
@@ -63,10 +65,14 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// the provider list. Defaults to the real <see cref="BackendCatalog.Build"/>, which always probes
     /// Docker and Podman; a test that only cares about the rebuild itself passes one that doesn't
     /// (KON-306) — a rebuild-triggering view-model test has no business reaching a real engine.</param>
+    /// <param name="plugins">What the loader found at startup (KON-279). Those already agreed to are
+    /// loaded and their providers are in the registry; the rest is asked about in <c>InitAsync</c>,
+    /// once there is a window to ask in.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
-        BackendCatalog.CatalogBuilder? buildCatalog = null)
+        BackendCatalog.CatalogBuilder? buildCatalog = null,
+        IReadOnlyList<DiscoveredPlugin>? plugins = null)
     {
         // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
         // seam to its own dialog host means those read like every other confirm in the app rather
@@ -114,6 +120,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Activity = new ActivityViewModel(_activityLog);
 
         SyncThemeToggleIcon();
+        _plugins = plugins ?? [];
         _ = InitAsync();
     }
 
