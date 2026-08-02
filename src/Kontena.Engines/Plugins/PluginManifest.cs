@@ -15,12 +15,29 @@ namespace Kontena.Engines.Plugins;
 /// </summary>
 public sealed record PluginManifest
 {
+    /// <summary>Stable unique id, e.g. "com.acme.nerdctl".</summary>
     public required string Id { get; init; }
+
+    /// <summary>Human-facing name.</summary>
     public required string Name { get; init; }
+
+    /// <summary>Semantic version of the plugin.</summary>
     public required string Version { get; init; }
+
+    /// <summary>
+    /// Assembly filename, e.g. "Kontena.Plugins.Nerdctl.dll". This is named rather than derived from
+    /// the id: ids and assemblies follow different conventions, and deriving one from the other would
+    /// couple them, leaving later maintainers guessing which format changed.
+    /// </summary>
     public required string Assembly { get; init; }
+
+    /// <summary>Author or vendor.</summary>
     public string Author { get; init; } = string.Empty;
+
+    /// <summary>Short description of the plugin's purpose.</summary>
     public string Description { get; init; } = string.Empty;
+
+    /// <summary>Minimum Kontena SDK version this plugin targets.</summary>
     public string MinSdkVersion { get; init; } = string.Empty;
 
     private static readonly JsonSerializerOptions Options = new()

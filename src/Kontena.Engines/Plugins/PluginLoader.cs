@@ -32,8 +32,17 @@ public static class PluginLoader
         if (!Directory.Exists(root))
             return [];
 
-        return [.. Directory.GetDirectories(root).Order(StringComparer.Ordinal)
-            .Select(dir => DiscoverOne(dir, isAllowed))];
+        try
+        {
+            return [.. Directory.GetDirectories(root).Order(StringComparer.Ordinal)
+                .Select(dir => DiscoverOne(dir, isAllowed))];
+        }
+        catch
+        {
+            // If the root cannot be enumerated (permission denied, I/O error, etc.), a directory we
+            // cannot list has nothing to report per plugin — an empty list is the honest answer.
+            return [];
+        }
     }
 
     private static DiscoveredPlugin DiscoverOne(string directory, Func<PluginManifest, bool> isAllowed)

@@ -69,6 +69,21 @@ public sealed class PluginLoaderTests : IDisposable
     }
 
     [Fact]
+    public void A_manifest_missing_a_required_field_is_rejected_with_a_reason()
+    {
+        var dir = Path.Combine(_root, "incomplete");
+        Directory.CreateDirectory(dir);
+        // Valid JSON, but no id and no assembly: System.Text.Json throws on the required members, and
+        // that has to land as a rejection like any other unreadable manifest.
+        File.WriteAllText(Path.Combine(dir, "plugin.json"), """{ "name": "Half a plugin" }""");
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.NotNull(found.Reason);
+    }
+
+    [Fact]
     public void A_plugin_without_consent_awaits_it_and_is_not_loaded()
     {
         WriteManifest("com.kontena.test");
