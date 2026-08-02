@@ -27,15 +27,21 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
 {
     private readonly IClusterEngine _cluster;
     private readonly Action<Pod>? _onOpenPod;
+    private readonly Action? _onDelete;
     private CancellationTokenSource? _watch;
 
     // No onBack: Back is the shell's history now, and a page that carried its own would be a second
     // way out that has to be kept in step with the first (KON-173).
+    /// <param name="onDelete">Invoked by the header's Delete (KON-334). The shell's, not the page's:
+    /// deleting what a detail shows also has to close that detail and drop the history step that
+    /// leads back to it, and neither is the page's to do. Left null by the kinds this page shape also
+    /// serves but that have no business offering a delete — a Node and a Namespace.</param>
     protected ClusterObjectDetailViewModel(
-        IClusterEngine cluster, ResourceRef reference, Action<Pod>? onOpenPod)
+        IClusterEngine cluster, ResourceRef reference, Action<Pod>? onOpenPod, Action? onDelete = null)
     {
         _cluster = cluster;
         _onOpenPod = onOpenPod;
+        _onDelete = onDelete;
         Reference = reference;
 
         if (cluster.Capabilities.Watch)
@@ -101,6 +107,12 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     /// <summary>Kind/name(/namespace) — stable across the list reloads that hand this page a brand
     /// new record for the same object (KON-308). Shared by all four subclasses, like IsSourceGone.</summary>
     public string DetailKey => Reference.ToString();
+
+    /// <summary>Whether the shell wired a delete for this kind (KON-334).</summary>
+    public bool CanDelete => _onDelete is not null;
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke();
 
     // Taken from the reference rather than declared abstract: it is the same fact twice, and a
     // subclass that answered differently from the reference it was constructed with would read its
@@ -288,8 +300,9 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
 
     public ClusterWorkloadDetailViewModel(
         IClusterEngine cluster, Workload workload,
-        Action<Pod>? onOpenPod = null, Action<Workload>? onScale = null, Action<Workload>? onRestart = null)
-        : base(cluster, workload.Reference, onOpenPod)
+        Action<Pod>? onOpenPod = null, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
+        Action? onDelete = null)
+        : base(cluster, workload.Reference, onOpenPod, onDelete)
     {
         _workload = workload;
         _onScale = onScale;
@@ -364,8 +377,10 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
     public ClusterServiceDetailViewModel(
         IClusterEngine cluster, Service service,
         Action<Pod>? onOpenPod = null, Action<Service>? onForward = null,
-        PortForwardRegistry? portForwards = null)
-        : base(cluster, new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name), onOpenPod)
+        PortForwardRegistry? portForwards = null, Action? onDelete = null)
+        : base(
+            cluster, new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name),
+            onOpenPod, onDelete)
     {
         _service = service;
         _onForward = onForward;

@@ -23,8 +23,9 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
     private readonly ConfigObjectRow _row;
 
     public ClusterConfigDetailViewModel(
-        IClusterEngine cluster, ConfigObjectRow row, Action<Pod>? onOpenPod = null)
-        : base(cluster, RefOf(row), onOpenPod)
+        IClusterEngine cluster, ConfigObjectRow row, Action<Pod>? onOpenPod = null,
+        Action? onDelete = null)
+        : base(cluster, RefOf(row), onOpenPod, onDelete)
     {
         _row = row;
         Keys = [.. row.BuildKeyRows()];

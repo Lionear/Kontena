@@ -29,6 +29,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     private readonly Action<Pod>? _onForward;
     private readonly PortForwardRegistry? _portForwards;
     private readonly Func<ResourceRef, Task<bool>>? _onOpenController;
+    private readonly Action? _onDelete;
     private readonly ResourceRef _ref;
     private readonly List<LogLineViewModel> _all = [];
 
@@ -40,18 +41,29 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     /// record for the same pod (KON-308).</summary>
     public string DetailKey => _ref.ToString();
 
+    /// <summary>Whether the shell wired a delete (KON-334).</summary>
+    public bool CanDelete => _onDelete is not null;
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke();
+
     private CancellationTokenSource? _cts;         // page lifetime (metrics, watch)
     private CancellationTokenSource? _logCts;      // per-container log stream
 
+    /// <param name="onDelete">Invoked by the header's Delete (KON-334). The shell's, for the same
+    /// reason as on the other detail pages: deleting the pod this page describes also has to close
+    /// the page and drop the history step that leads back to it (KON-173).</param>
     public ClusterPodDetailViewModel(
         IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null,
-        PortForwardRegistry? portForwards = null, Func<ResourceRef, Task<bool>>? onOpenController = null)
+        PortForwardRegistry? portForwards = null, Func<ResourceRef, Task<bool>>? onOpenController = null,
+        Action? onDelete = null)
     {
         _cluster = cluster;
         _pod = pod;
         _onForward = onForward;
         _portForwards = portForwards;
         _onOpenController = onOpenController;
+        _onDelete = onDelete;
         _ref = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
 
         SupportsExec = cluster.Capabilities.Exec;

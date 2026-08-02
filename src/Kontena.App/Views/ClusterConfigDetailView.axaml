@@ -13,15 +13,23 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16,24,0">
             <StackPanel Spacing="14">
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
-                    <!-- Only Secrets carry a type; a ConfigMap gets no empty chip where there was
-                         never a question. -->
-                    <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center"
-                            IsVisible="{Binding HasType}">
-                        <TextBlock Text="{Binding TypeText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                    </Border>
-                </StackPanel>
+                <!-- Title left, actions right — the same header shape the workload and service
+                     details use, so a Delete sits where it already sits on those (KON-334). -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        <!-- Only Secrets carry a type; a ConfigMap gets no empty chip where there was
+                             never a question. -->
+                        <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center"
+                                IsVisible="{Binding HasType}">
+                            <TextBlock Text="{Binding TypeText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
+                    </StackPanel>
+                </Grid>
 
                 <StackPanel Orientation="Horizontal" Spacing="28">
                     <StackPanel Spacing="2">

@@ -59,28 +59,71 @@ public partial class MainWindowViewModel
             onClose: CloseDialog);
     }
     /// <summary>Delete a pod (KON-69) — destructive, so it always goes through a confirm.</summary>
-    private void ConfirmDeletePod(Pod pod)
+    private void ConfirmDeletePod(Pod pod) =>
+        ConfirmDeleteObject(
+            new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name), pod,
+            "Delete pod",
+            $"Delete pod \"{pod.Name}\" in {pod.Namespace}? If a controller owns it, a replacement is"
+            + " scheduled straight away; if not, it is gone for good.");
+
+    /// <summary>Delete a workload from its detail page (KON-334); the list row has its own (KON-332).</summary>
+    private void ConfirmDeleteWorkload(Workload workload)
+    {
+        var (title, message) = ClusterDeleteWording.Workload(
+            workload.Kind.ToString(), workload.Name, workload.Namespace);
+
+        ConfirmDeleteObject(workload.Reference, workload, title, message);
+    }
+
+    /// <summary>Delete a service from its detail page (KON-334).</summary>
+    private void ConfirmDeleteService(Service service)
+    {
+        var (title, message) = ClusterDeleteWording.Service(
+            service.Name, service.Namespace, service.Type == ServiceType.LoadBalancer);
+
+        ConfirmDeleteObject(
+            new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name),
+            service, title, message);
+    }
+
+    /// <summary>Delete a config map or secret from its detail page (KON-334).</summary>
+    private void ConfirmDeleteConfigObject(ConfigObjectRow row)
+    {
+        var (title, message) = ConfigDelete.Words(row);
+
+        ConfirmDeleteObject(row.Reference, row, title, message);
+    }
+
+    /// <summary>
+    /// Delete one object, from wherever the shell was asked to (KON-334).
+    /// <para>
+    /// This is what a detail page's Delete needs that a list row's does not, and why these do not go
+    /// through the page's own confirm the way the list pages do (KON-332): the history step that
+    /// leads back to the object has to be dropped, and that is not the page's to do.
+    /// </para>
+    /// <para>
+    /// Nothing here closes the detail, which the delete plainly has to do — <see cref="ReloadCurrentClusterPage"/>
+    /// already does it, because rebuilding a cluster page starts by closing the drawer and by replacing
+    /// whatever <c>CurrentPage</c> was. A second close alongside it was written first and removed: it
+    /// passed every test with it commented out, which is the definition of a line that is not doing
+    /// the work it claims. The behaviour is pinned by <c>DeleteFromDetailTests</c> either way, so a
+    /// reload that stops closing details fails there rather than silently leaving a page up.
+    /// </para>
+    /// </summary>
+    private void ConfirmDeleteObject(ResourceRef reference, object target, string title, string message)
     {
         if (_cluster is null)
             return;
 
-        Dialog = new ConfirmViewModel(
-            "Delete pod",
-            $"Delete pod \"{pod.Name}\" in {pod.Namespace}? If a controller owns it, a replacement is" +
-            " scheduled straight away; if not, it is gone for good.",
-            "Delete",
-            onConfirm: async () =>
-            {
-                await _cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name));
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(reference);
 
-                // Back must not lead to the detail page of something that no longer exists — and only
-                // this moment knows the step was ever valid (KON-173).
-                ForgetSteps(pod);
-                CloseDialog();
-                ReloadCurrentClusterPage();
-            },
-            onClose: CloseDialog,
-            destructive: true);
+            // Back must not lead to the detail page of something that no longer exists — and only
+            // this moment knows the step was ever valid (KON-173).
+            ForgetSteps(target);
+            ReloadCurrentClusterPage();
+        });
     }
     /// <summary>
     /// The node-detail page (KON-197). Until this existed a node was a dead end: the card summarised
@@ -406,7 +449,8 @@ public partial class MainWindowViewModel
 
         ShowDetail(
             new ClusterPodDetailViewModel(
-                _cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards, OpenEventObjectAsync),
+                _cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards, OpenEventObjectAsync,
+                onDelete: () => ConfirmDeletePod(pod)),
             $"pod {pod.Name}", pod);
     }
 
@@ -423,7 +467,8 @@ public partial class MainWindowViewModel
             _cluster, workload,
             onOpenPod: ShowPodDetail,
             onScale: ShowScaleDialog,
-            onRestart: ConfirmRestartWorkload),
+            onRestart: ConfirmRestartWorkload,
+            onDelete: () => ConfirmDeleteWorkload(workload)),
             $"{workload.Kind} {workload.Name}", workload);
     }
 
@@ -438,7 +483,8 @@ public partial class MainWindowViewModel
             return;
 
         ShowDetail(
-            new ClusterConfigDetailViewModel(_cluster, row, onOpenPod: ShowPodDetail),
+            new ClusterConfigDetailViewModel(
+                _cluster, row, onOpenPod: ShowPodDetail, onDelete: () => ConfirmDeleteConfigObject(row)),
             $"{(row.IsSecret ? "secret" : "config map")} {row.Name}", row);
     }
 
@@ -452,7 +498,8 @@ public partial class MainWindowViewModel
             _cluster, service,
             onOpenPod: ShowPodDetail,
             onForward: ShowServicePortForward,
-            portForwards: _portForwards),
+            portForwards: _portForwards,
+            onDelete: () => ConfirmDeleteService(service)),
             $"service {service.Name}", service);
     }
 

@@ -362,36 +362,16 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         ? $"No {k}s in this namespace."
         : "No workloads in this namespace.";
 
-    /// <summary>
-    /// Delete a workload, always confirmed (KON-332).
-    /// <para>
-    /// The wording is the feature. "Delete" on a controller is not the same act on every kind: a
-    /// StatefulSet leaves its volume claims behind, a CronJob takes a schedule with it, and a
-    /// DaemonSet's pods are on every node rather than in one place. One sentence for all five would
-    /// have to be vague about exactly the part someone is deciding on.
-    /// </para>
-    /// </summary>
+    /// <summary>Delete a workload, always confirmed (KON-332).</summary>
     private void ConfirmDelete(WorkloadRow row)
     {
-        var consequence = row.Kind switch
-        {
-            "CronJob" => "Its schedule stops, and the jobs it already created go with it.",
-            "Job" => "Its pods go with it, the finished ones included.",
-            "StatefulSet" => "Its pods are terminated with it. The volume claims it made are not —"
-                + " those stay, and a StatefulSet applied again under this name picks them back up.",
-            "DaemonSet" => "Its pods are terminated on every node that runs one.",
-            _ => "Its pods are terminated with it and nothing recreates them.",
-        };
+        var (title, message) = ClusterDeleteWording.Workload(row.Kind, row.Name, row.Namespace);
 
-        ConfirmDelete(
-            $"Delete {row.Kind}",
-            $"Delete {row.Kind} \"{row.Name}\" in {row.Namespace}? {consequence} Kontena keeps no copy,"
-            + " so bringing it back means applying its manifest again.",
-            async () =>
-            {
-                await _cluster.DeleteAsync(row.Reference);
-                await LoadAsync();
-            });
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
     }
 
     protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync() =>
@@ -500,28 +480,16 @@ public partial class ClusterServicesViewModel : ClusterListPageViewModel<Service
 
     public override string SearchPlaceholder => "Search services…";
 
-    /// <summary>
-    /// Delete a service, always confirmed (KON-332). What breaks is one step away from what is
-    /// deleted — the pods keep running and keep looking healthy, and it is everything that reached
-    /// them by name that stops. A LoadBalancer adds the part that is not undoable by re-applying:
-    /// the address goes back to the cloud provider.
-    /// </summary>
+    /// <summary>Delete a service, always confirmed (KON-332).</summary>
     private void ConfirmDelete(ServiceRow row)
     {
-        var address = row.IsLoadBalancer
-            ? " Its external address is released, and a service created again does not get the same one back."
-            : string.Empty;
+        var (title, message) = ClusterDeleteWording.Service(row.Name, row.Namespace, row.IsLoadBalancer);
 
-        ConfirmDelete(
-            "Delete service",
-            $"Delete service \"{row.Name}\" in {row.Namespace}? The pods behind it keep running, but"
-            + " nothing reaches them by this name any more: clients in the cluster stop resolving it,"
-            + $" and any ingress routing to it starts failing.{address}",
-            async () =>
-            {
-                await _cluster.DeleteAsync(row.Reference);
-                await LoadAsync();
-            });
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
     }
 
     protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync() =>
@@ -560,23 +528,16 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
 
     public override string SearchPlaceholder => "Search ingresses…";
 
-    /// <summary>
-    /// Delete an ingress, always confirmed (KON-332). The smallest blast radius of the three and the
-    /// one most likely to be misread as bigger: nothing inside the cluster changes, and what stops is
-    /// the way in from outside.
-    /// </summary>
+    /// <summary>Delete an ingress, always confirmed (KON-332).</summary>
     private void ConfirmDelete(IngressRow row)
     {
-        ConfirmDelete(
-            "Delete ingress",
-            $"Delete ingress \"{row.Name}\" in {row.Namespace}? The service and its pods keep running —"
-            + " what goes is the route in from outside, so the hosts on this row stop reaching them as"
-            + " soon as the controller drops the rule.",
-            async () =>
-            {
-                await _cluster.DeleteAsync(row.Reference);
-                await LoadAsync();
-            });
+        var (title, message) = ClusterDeleteWording.Ingress(row.Name, row.Namespace);
+
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
     }
 
     protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync() =>
@@ -1443,4 +1404,68 @@ public sealed partial class ServiceRow
         obj is ServiceRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
 
     public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
+}
+
+/// <summary>
+/// What a confirm says before deleting a workload, a service or an ingress (KON-332), in one place
+/// because two places say it (KON-334): the list row and the detail page of the same object.
+/// <para>
+/// Pulled out for the same reason as <c>ConfigDelete</c>: the delete itself is one call, the wording
+/// is the whole feature, and a sentence written twice about the same act is a sentence that will
+/// disagree with itself the first time either copy is improved. The mechanism differs by where you
+/// are — a list page raises its own confirm, a detail page goes through the shell so the drawer can
+/// close and the history step can go — so this returns the words rather than raising anything.
+/// </para>
+/// </summary>
+internal static class ClusterDeleteWording
+{
+    /// <summary>
+    /// Kind-aware on purpose. "Delete" on a controller is not the same act on every kind: a
+    /// StatefulSet leaves its volume claims behind, a CronJob takes a schedule with it, and a
+    /// DaemonSet's pods are on every node rather than in one place. One sentence for all five would
+    /// have to be vague about exactly the part someone is deciding on.
+    /// </summary>
+    public static (string Title, string Message) Workload(string kind, string name, string @namespace)
+    {
+        var consequence = kind switch
+        {
+            "CronJob" => "Its schedule stops, and the jobs it already created go with it.",
+            "Job" => "Its pods go with it, the finished ones included.",
+            "StatefulSet" => "Its pods are terminated with it. The volume claims it made are not —"
+                + " those stay, and a StatefulSet applied again under this name picks them back up.",
+            "DaemonSet" => "Its pods are terminated on every node that runs one.",
+            _ => "Its pods are terminated with it and nothing recreates them.",
+        };
+
+        return ($"Delete {kind}",
+            $"Delete {kind} \"{name}\" in {@namespace}? {consequence} Kontena keeps no copy, so"
+            + " bringing it back means applying its manifest again.");
+    }
+
+    /// <summary>
+    /// What breaks is one step away from what is deleted — the pods keep running and keep looking
+    /// healthy, and it is everything that reached them by name that stops. A LoadBalancer adds the
+    /// part that re-applying the same manifest does not undo: the address goes back to the provider.
+    /// </summary>
+    public static (string Title, string Message) Service(string name, string @namespace, bool loadBalancer)
+    {
+        var address = loadBalancer
+            ? " Its external address is released, and a service created again does not get the same one back."
+            : string.Empty;
+
+        return ("Delete service",
+            $"Delete service \"{name}\" in {@namespace}? The pods behind it keep running, but nothing"
+            + " reaches them by this name any more: clients in the cluster stop resolving it, and any"
+            + $" ingress routing to it starts failing.{address}");
+    }
+
+    /// <summary>
+    /// The smallest blast radius of the three and the one most likely to be misread as bigger:
+    /// nothing inside the cluster changes, and what stops is the way in from outside.
+    /// </summary>
+    public static (string Title, string Message) Ingress(string name, string @namespace) =>
+        ("Delete ingress",
+            $"Delete ingress \"{name}\" in {@namespace}? The service and its pods keep running — what"
+            + " goes is the route in from outside, so the hosts it routes stop reaching them as soon as"
+            + " the controller drops the rule.");
 }
