@@ -3,9 +3,21 @@ using Kontena.Sdk;
 namespace Kontena.App.Tests;
 
 /// <summary>
-/// Plugin providers hang off the process, not off a call: BackendCatalog.Build runs again on every
-/// settings change, and an AssemblyLoadContext is not something to enter twice for the same directory.
+/// The xUnit collection for every test that mutates <c>BackendCatalog.Plugins</c> — the static list
+/// behind <c>BackendCatalog.PluginProviders</c> — and resets it via <c>ResetPluginProviders()</c> in
+/// <c>Dispose</c>. xunit 2.9.3 parallelises across test classes by default, one class's <c>Dispose</c>
+/// can clear the list mid-assertion in another, and both <see cref="PluginCatalogTests"/> and
+/// <c>PluginConsentPromptTests</c> do exactly that (KON-279 final review, finding 3). Join this
+/// collection — do not add a new one — if a test you are writing touches <c>BackendCatalog</c>'s plugin
+/// state. Holds nothing itself: collection membership alone is what serialises the classes in it.
 /// </summary>
+[CollectionDefinition(Name)]
+public sealed class BackendCatalogPluginState
+{
+    public const string Name = "BackendCatalog plugin state";
+}
+
+[Collection(BackendCatalogPluginState.Name)]
 public sealed class PluginCatalogTests : IDisposable
 {
     public void Dispose() => BackendCatalog.ResetPluginProviders();
