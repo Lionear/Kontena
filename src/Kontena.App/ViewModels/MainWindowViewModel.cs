@@ -68,6 +68,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
         BackendCatalog.CatalogBuilder? buildCatalog = null)
     {
+        // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
+        // seam to its own dialog host means those read like every other confirm in the app rather
+        // than hand-rolling a second ConfirmViewModel next to ShowConfirm.
+        RequestConfirm = ShowConfirm;
+
         _registry = registry;
         _toolRunner = toolRunner ?? new ToolRunner();
         _buildCatalog = buildCatalog ?? BackendCatalog.Build;

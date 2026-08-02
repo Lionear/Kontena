@@ -330,8 +330,11 @@ public sealed partial class ConfigKeyRow : ObservableObject
 /// </summary>
 internal static class ConfigDelete
 {
-    public static void Confirm(
-        ViewModelBase page, IClusterEngine cluster, ConfigObjectRow row, Func<Task> reload)
+    /// <summary>
+    /// The words alone, for the caller that raises the confirm itself — the detail page's delete goes
+    /// through the shell so the drawer can close behind it (KON-334).
+    /// </summary>
+    public static (string Title, string Message) Words(ConfigObjectRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
 
@@ -346,14 +349,22 @@ internal static class ConfigDelete
             : "Pods already running keep the values they started with, so nothing breaks now. The next"
               + " pod that tries to mount it, or read it as environment, will not start.";
 
-        page.ConfirmDelete(
-            $"Delete {kind}",
+        return ($"Delete {kind}",
             $"Delete {kind} \"{row.Name}\" in {row.Namespace}? This cannot be undone — Kontena does not"
-            + $" keep a copy. {mounted}",
-            async () =>
-            {
-                await cluster.DeleteAsync(row.Reference);
-                await reload();
-            });
+            + $" keep a copy. {mounted}");
+    }
+
+    public static void Confirm(
+        ViewModelBase page, IClusterEngine cluster, ConfigObjectRow row, Func<Task> reload)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var (title, message) = Words(row);
+
+        page.ConfirmDelete(title, message, async () =>
+        {
+            await cluster.DeleteAsync(row.Reference);
+            await reload();
+        });
     }
 }
