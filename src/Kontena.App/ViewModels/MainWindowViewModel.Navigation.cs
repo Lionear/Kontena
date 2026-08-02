@@ -149,8 +149,11 @@ public partial class MainWindowViewModel
             // are handed.
             "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
             "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
+            // RequestConfirm because the page owns its own delete, and its confirm is the only thing
+            // between a click and a workload that is gone (KON-332).
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
-                new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind),
+                new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind)
+                { RequestConfirm = ShowConfirm },
             // The dashboard only where there is something to summarise. With one kind the sidebar has
             // no submenu either, and a dashboard of a single card is a page that says less than the
             // list it replaces — so there it stays the list (KON-174).
@@ -159,10 +162,12 @@ public partial class MainWindowViewModel
                     _cluster, ActiveNamespace,
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
                     onOpenWorkload: ShowWorkloadDetail),
-            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail),
+            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail)
+                { RequestConfirm = ShowConfirm },
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
-            "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail),
-            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace),
+            "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail)
+                { RequestConfirm = ShowConfirm },
+            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
             // The three storage pages point at each other: a claim to its volume and its class, a
             // volume back to its claim (KON-254). Routing by search term rather than by a filter the
             // page owns keeps one way of saying "show me this one".

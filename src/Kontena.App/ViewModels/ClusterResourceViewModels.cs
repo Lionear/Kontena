@@ -362,9 +362,41 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         ? $"No {k}s in this namespace."
         : "No workloads in this namespace.";
 
+    /// <summary>
+    /// Delete a workload, always confirmed (KON-332).
+    /// <para>
+    /// The wording is the feature. "Delete" on a controller is not the same act on every kind: a
+    /// StatefulSet leaves its volume claims behind, a CronJob takes a schedule with it, and a
+    /// DaemonSet's pods are on every node rather than in one place. One sentence for all five would
+    /// have to be vague about exactly the part someone is deciding on.
+    /// </para>
+    /// </summary>
+    private void ConfirmDelete(WorkloadRow row)
+    {
+        var consequence = row.Kind switch
+        {
+            "CronJob" => "Its schedule stops, and the jobs it already created go with it.",
+            "Job" => "Its pods go with it, the finished ones included.",
+            "StatefulSet" => "Its pods are terminated with it. The volume claims it made are not —"
+                + " those stay, and a StatefulSet applied again under this name picks them back up.",
+            "DaemonSet" => "Its pods are terminated on every node that runs one.",
+            _ => "Its pods are terminated with it and nothing recreates them.",
+        };
+
+        ConfirmDelete(
+            $"Delete {row.Kind}",
+            $"Delete {row.Kind} \"{row.Name}\" in {row.Namespace}? {consequence} Kontena keeps no copy,"
+            + " so bringing it back means applying its manifest again.",
+            async () =>
+            {
+                await _cluster.DeleteAsync(row.Reference);
+                await LoadAsync();
+            });
+    }
+
     protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync() =>
         [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace))
-            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail))];
+            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(WorkloadRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Kind, term) || Contains(row.Namespace, term);
@@ -468,8 +500,33 @@ public partial class ClusterServicesViewModel : ClusterListPageViewModel<Service
 
     public override string SearchPlaceholder => "Search services…";
 
+    /// <summary>
+    /// Delete a service, always confirmed (KON-332). What breaks is one step away from what is
+    /// deleted — the pods keep running and keep looking healthy, and it is everything that reached
+    /// them by name that stops. A LoadBalancer adds the part that is not undoable by re-applying:
+    /// the address goes back to the cloud provider.
+    /// </summary>
+    private void ConfirmDelete(ServiceRow row)
+    {
+        var address = row.IsLoadBalancer
+            ? " Its external address is released, and a service created again does not get the same one back."
+            : string.Empty;
+
+        ConfirmDelete(
+            "Delete service",
+            $"Delete service \"{row.Name}\" in {row.Namespace}? The pods behind it keep running, but"
+            + " nothing reaches them by this name any more: clients in the cluster stop resolving it,"
+            + $" and any ingress routing to it starts failing.{address}",
+            async () =>
+            {
+                await _cluster.DeleteAsync(row.Reference);
+                await LoadAsync();
+            });
+    }
+
     protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListServicesAsync(_namespace)).Select(s => new ServiceRow(s, _onForward, _onOpenDetail))];
+        [.. (await _cluster.ListServicesAsync(_namespace))
+            .Select(s => new ServiceRow(s, _onForward, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(ServiceRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
@@ -503,8 +560,27 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
 
     public override string SearchPlaceholder => "Search ingresses…";
 
+    /// <summary>
+    /// Delete an ingress, always confirmed (KON-332). The smallest blast radius of the three and the
+    /// one most likely to be misread as bigger: nothing inside the cluster changes, and what stops is
+    /// the way in from outside.
+    /// </summary>
+    private void ConfirmDelete(IngressRow row)
+    {
+        ConfirmDelete(
+            "Delete ingress",
+            $"Delete ingress \"{row.Name}\" in {row.Namespace}? The service and its pods keep running —"
+            + " what goes is the route in from outside, so the hosts on this row stop reaching them as"
+            + " soon as the controller drops the rule.",
+            async () =>
+            {
+                await _cluster.DeleteAsync(row.Reference);
+                await LoadAsync();
+            });
+    }
+
     protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListIngressesAsync(_namespace)).Select(i => new IngressRow(i))];
+        [.. (await _cluster.ListIngressesAsync(_namespace)).Select(i => new IngressRow(i, ConfirmDelete))];
 
     // The host is the thing you know: someone reports that app.example.com is down and the ingress is
     // what you go looking for. The class matters when a cluster runs more than one controller.
@@ -953,11 +1029,17 @@ public sealed class StorageClassRow
 }
 
 
-public sealed class IngressRow
+public sealed partial class IngressRow
 {
-    public IngressRow(Ingress i)
+    private readonly Action<IngressRow>? _onDelete;
+
+    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null)
     {
         ArgumentNullException.ThrowIfNull(i);
+
+        _onDelete = onDelete;
+        CanDelete = onDelete is not null;
+        Reference = new ResourceRef(GroupVersionKind.Ingress, i.Namespace, i.Name);
 
         Name = i.Name;
         Namespace = i.Namespace;
@@ -1018,6 +1100,15 @@ public sealed class IngressRow
 
     /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
     public TimeSpan AgeSpan { get; }
+
+    /// <summary>What the delete addresses (KON-332).</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>Whether the page wired a delete handler (KON-332).</summary>
+    public bool CanDelete { get; }
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 }
 
 public sealed partial class PvcRow
@@ -1109,16 +1200,20 @@ public sealed partial class WorkloadRow
     private readonly Action<Workload>? _onScale;
     private readonly Action<Workload>? _onRestart;
     private readonly Action<Workload>? _onOpenDetail;
+    private readonly Action<WorkloadRow>? _onDelete;
 
     public WorkloadRow(
         Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null)
+        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null)
     {
         _workload = w;
         _onScale = onScale;
         _onRestart = onRestart;
         _onOpenDetail = onOpenDetail;
+        _onDelete = onDelete;
         CanOpen = onOpenDetail is not null;
+        CanDelete = onDelete is not null;
+        Reference = w.Reference;
 
         Name = w.Name;
         Namespace = w.Namespace;
@@ -1147,12 +1242,19 @@ public sealed partial class WorkloadRow
     public string Status { get; }
     public string Age { get; }
 
+    /// <summary>What the delete addresses — the kind is the row's, not the page's (KON-332).</summary>
+    public ResourceRef Reference { get; }
+
     /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
     public TimeSpan AgeSpan { get; }
 
     public bool CanScale { get; }
     public bool CanRestart { get; }
     public bool CanOpen { get; }
+
+    /// <summary>Whether the page wired a delete handler (KON-332).</summary>
+    public bool CanDelete { get; }
+
     public IBrush StatusBrush { get; }
 
     [RelayCommand]
@@ -1163,6 +1265,9 @@ public sealed partial class WorkloadRow
 
     [RelayCommand]
     private void Restart() => _onRestart?.Invoke(_workload);
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 
     /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250).</summary>
     private string Signature =>
@@ -1265,13 +1370,20 @@ public sealed partial class ServiceRow
     private readonly Service _service;
     private readonly Action<Service>? _onForward;
     private readonly Action<Service>? _onOpenDetail;
+    private readonly Action<ServiceRow>? _onDelete;
 
-    public ServiceRow(Service s, Action<Service>? onForward = null, Action<Service>? onOpenDetail = null)
+    public ServiceRow(
+        Service s, Action<Service>? onForward = null, Action<Service>? onOpenDetail = null,
+        Action<ServiceRow>? onDelete = null)
     {
         _service = s;
         _onForward = onForward;
         _onOpenDetail = onOpenDetail;
+        _onDelete = onDelete;
         CanOpen = onOpenDetail is not null;
+        CanDelete = onDelete is not null;
+        Reference = new ResourceRef(GroupVersionKind.Service, s.Namespace, s.Name);
+        IsLoadBalancer = s.Type == ServiceType.LoadBalancer;
 
         Name = s.Name;
         Namespace = s.Namespace;
@@ -1297,17 +1409,32 @@ public sealed partial class ServiceRow
     public string? PortsTooltip { get; }
     public string Age { get; }
 
+    /// <summary>What the delete addresses (KON-332).</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>
+    /// Whether deleting this one also gives up an external address — the part of a service delete
+    /// that cannot be undone by applying the same manifest again (KON-332).
+    /// </summary>
+    public bool IsLoadBalancer { get; }
+
     /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
     public TimeSpan AgeSpan { get; }
 
     public bool CanForward { get; }
     public bool CanOpen { get; }
 
+    /// <summary>Whether the page wired a delete handler (KON-332).</summary>
+    public bool CanDelete { get; }
+
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_service);
 
     [RelayCommand]
     private void Forward() => _onForward?.Invoke(_service);
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 
     /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250).</summary>
     private string Signature => string.Join('\u001f', Name, Namespace, Type, ClusterIp, Ports, Age);
