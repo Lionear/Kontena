@@ -1,0 +1,257 @@
+using Kontena.Sdk;
+using Kontena.Sdk.Errors;
+using Kontena.Sdk.Models;
+using Kontena.Sdk.Tooling;
+
+namespace Kontena.Plugins.Nerdctl;
+
+/// <summary>
+/// CEAL implementation backed by the nerdctl CLI (KON-141) — one instance per containerd namespace,
+/// matching the one-provider-per-namespace shape <see cref="NerdctlEngineProvider"/> already exposes.
+/// <para>
+/// This PR (nerdctl PR 2, KON-141 task 5) only gives the backend identity, reachability and honest
+/// capabilities — <see cref="Backend"/>, <see cref="PingAsync"/>, <see cref="GetInfoAsync"/> and
+/// <see cref="Capabilities"/> are real. Every other member throws <see cref="NotSupportedException"/>
+/// naming the PR that fills it in: reading containers/images/volumes/networks is this same PR's next
+/// task, writing lands in PR 3, and build/compose/exec/stats/events/volume-browsing land in PR 4. That
+/// is acceptable only because the plugin is not distributed until PR 5 — no user can reach any of this
+/// yet.
+/// </para>
+/// </summary>
+public sealed class NerdctlEngine : IContainerEngine
+{
+    private const string ReadNotYet =
+        "Reading containers/images/volumes/networks is nerdctl's next task in this PR (KON-141 PR 2).";
+
+    private const string WriteNotYet =
+        "Creating, starting, stopping, removing and pruning containers/images/volumes/networks lands in nerdctl PR 3 (KON-141).";
+
+    private const string AdvancedNotYet =
+        "Build, compose, exec, stats, events and volume browsing land in nerdctl PR 4 (KON-141).";
+
+    private readonly NerdctlCli _cli;
+    private readonly string _backend;
+    private readonly string _displayName;
+    private readonly string _namespace;
+
+    /// <summary>
+    /// Whether the last successful <c>info</c> read named <c>name=rootless</c> in its security options.
+    /// Starts false — the honest answer before anything has been observed — and is refreshed every
+    /// <see cref="GetInfoAsync"/> call, since <see cref="Capabilities"/> has no async path of its own to
+    /// read <c>info</c> through.
+    /// </summary>
+    private bool _rootless;
+
+    public NerdctlEngine(NerdctlCli cli, string backend, string displayName, string @namespace)
+    {
+        _cli = cli;
+        _backend = backend;
+        _displayName = displayName;
+        _namespace = @namespace;
+    }
+
+    public string Backend => _backend;
+
+    /// <summary>
+    /// Every capability but <see cref="EngineCapabilities.Rootless"/> is pinned false in this PR: none
+    /// of the methods behind them work yet, and a capability that says yes while the method throws is
+    /// worse than one that says no — the UI would offer a button that fails. Rootless is the one
+    /// exception, because it is an observation read off <c>info</c>, not a promise about a method.
+    /// </summary>
+    public EngineCapabilities Capabilities => new()
+    {
+        Rootless = _rootless,
+        SupportsBuild = false,
+        SupportsCompose = false,
+        SupportsExec = false,
+        SupportsPrune = false,
+        SupportsGpu = false,
+        SupportsStats = false,
+        SupportsEvents = false,
+        SupportsVolumeBrowse = false,
+    };
+
+    public ValueTask PingAsync(CancellationToken ct = default) =>
+        new(ReadInfoAsync(ct).AsTask());
+
+    public async ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default)
+    {
+        var info = await ReadInfoAsync(ct).ConfigureAwait(false);
+        return new BackendInfo
+        {
+            Backend = _backend,
+            DisplayName = _displayName,
+            Kind = "container engine",
+            // `ServerVersion` in nerdctl's `info` is containerd's own version (e.g. "v2.3.1"), never
+            // nerdctl's — nerdctl does not report its own version in this payload at all.
+            Version = info.ServerVersion,
+            // The namespace, not a socket path — that is what tells one nerdctl backend apart from
+            // another in the switcher, where Docker would show its socket.
+            Endpoint = _namespace,
+            ConnectionState = EngineConnectionState.Connected,
+        };
+    }
+
+    /// <summary>
+    /// Runs <c>nerdctl --namespace &lt;ns&gt; info --format json</c> — the one call both
+    /// <see cref="PingAsync"/> and <see cref="GetInfoAsync"/> need — and refreshes
+    /// <see cref="_rootless"/> from it. A missing binary or a non-zero exit both mean the same thing to
+    /// a caller: this backend cannot be reached, so both become <see cref="EngineUnreachableException"/>,
+    /// the same exception the other adapters raise for a stopped engine, so
+    /// <c>BackendRegistry.ProbeAsync</c> counts this backend as "Not connected" the same way.
+    /// </summary>
+    private async ValueTask<NerdctlInfo> ReadInfoAsync(CancellationToken ct)
+    {
+        string stdout;
+        try
+        {
+            stdout = await _cli.RunAsync(ct, "info", "--format", "json").ConfigureAwait(false);
+        }
+        catch (ToolNotFoundException ex)
+        {
+            throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+        }
+        catch (ToolFailedException ex)
+        {
+            throw new EngineUnreachableException($"nerdctl did not respond for '{_backend}': {ex.Message}", ex);
+        }
+
+        var rows = NerdctlJson.Parse<NerdctlInfo>(stdout);
+        if (rows.Count == 0)
+            throw new EngineUnreachableException($"'nerdctl info' returned nothing for '{_backend}'.");
+        var info = rows[0];
+
+        // There is no `Rootless` field in `info` at all — the trap this plugin's fixtures were captured
+        // specifically to catch. Rootless is signalled the same way Docker signals it: a
+        // "name=rootless" entry in SecurityOptions, nothing else.
+        _rootless = info.SecurityOptions.Contains("name=rootless", StringComparer.Ordinal);
+
+        return info;
+    }
+
+    // ── Containers ──────────────────────────────────────────────────────────
+
+    public ValueTask<IReadOnlyList<ContainerSummary>> ListContainersAsync(
+        bool all = true, CancellationToken ct = default) =>
+        throw new NotSupportedException(ReadNotYet);
+
+    public ValueTask<string> CreateContainerAsync(
+        CreateContainerRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask StartContainerAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask StopContainerAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask RestartContainerAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask PauseContainerAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask UnpauseContainerAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask RemoveContainerAsync(string id, bool force = false, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask<ContainerInspect> InspectContainerAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(ReadNotYet);
+
+    public ValueTask<int> ExecAsync(string id, ExecRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(AdvancedNotYet);
+
+    public ValueTask<IExecSession> StartExecSessionAsync(
+        string id, ExecRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(AdvancedNotYet);
+
+    public ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    // ── Images ──────────────────────────────────────────────────────────────
+
+    public ValueTask<IReadOnlyList<ImageSummary>> ListImagesAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException(ReadNotYet);
+
+    public IAsyncEnumerable<PullProgress> PullImageAsync(
+        string reference, RegistryCredential? credential = null, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask VerifyRegistryLoginAsync(RegistryCredential credential, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public IAsyncEnumerable<BuildProgress> BuildImageAsync(
+        BuildRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(AdvancedNotYet);
+
+    public ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default) =>
+        throw new NotSupportedException(ReadNotYet);
+
+    public ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    // ── Volumes ─────────────────────────────────────────────────────────────
+
+    public ValueTask<IReadOnlyList<VolumeSummary>> ListVolumesAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException(ReadNotYet);
+
+    public ValueTask<VolumeSummary> CreateVolumeAsync(
+        CreateVolumeRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask<VolumeListing> BrowseVolumeAsync(
+        string name, string path = "/", CancellationToken ct = default) =>
+        throw new NotSupportedException(AdvancedNotYet);
+
+    public ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    // ── Networks ────────────────────────────────────────────────────────────
+
+    public ValueTask<IReadOnlyList<NetworkSummary>> ListNetworksAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException(ReadNotYet);
+
+    public ValueTask<NetworkSummary> CreateNetworkAsync(
+        CreateNetworkRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask ConnectNetworkAsync(
+        string containerId, string networkId, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    public ValueTask DisconnectNetworkAsync(
+        string containerId, string networkId, bool force = false, CancellationToken ct = default) =>
+        throw new NotSupportedException(WriteNotYet);
+
+    // ── Compose ─────────────────────────────────────────────────────────────
+
+    public IAsyncEnumerable<ComposeProgress> ComposeUpAsync(
+        ComposeUpRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(AdvancedNotYet);
+
+    // ── Streams ─────────────────────────────────────────────────────────────
+
+    public IAsyncEnumerable<LogEntry> StreamLogsAsync(
+        string id, bool follow = true, CancellationToken ct = default) =>
+        throw new NotSupportedException(ReadNotYet);
+
+    public IAsyncEnumerable<ContainerStats> StreamStatsAsync(string id, CancellationToken ct = default) =>
+        throw new NotSupportedException(AdvancedNotYet);
+
+    public IAsyncEnumerable<EngineEvent> StreamEventsAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException(AdvancedNotYet);
+}

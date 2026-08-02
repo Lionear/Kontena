@@ -20,8 +20,8 @@ public sealed class NerdctlEngineProvider : IBackendProvider
 
     private readonly string _namespace;
 
-    /// <summary>Kept for the engine this provider will build in KON-141 task 5 — <see cref="CreateBackend"/>
-    /// does not use it yet, since <c>NerdctlEngine</c> does not exist yet.</summary>
+    /// <summary>Handed to the <see cref="NerdctlCli"/> each <see cref="CreateBackend"/> builds — the
+    /// same runner every namespace's engine shells out through.</summary>
     private readonly IToolRunner _runner;
 
     public NerdctlEngineProvider(string @namespace, IToolRunner runner)
@@ -49,14 +49,12 @@ public sealed class NerdctlEngineProvider : IBackendProvider
     // approved in DesignSystem.md yet, so the switcher falls back to the "N" letter badge.
 
     /// <summary>
-    /// Not implemented yet — the read/write engine behind this namespace lands in KON-141 task 5.
-    /// Thrown rather than left half-built: <c>BackendRegistry</c> already treats a throwing
-    /// <c>CreateBackend</c> as "not connected" (the same path a truly offline Docker takes), so this
-    /// provider can exist and be discovered before the engine behind it does.
+    /// One <see cref="NerdctlEngine"/> per call, talking to this instance's namespace through a fresh
+    /// <see cref="NerdctlCli"/> — cheap enough (no connection to open) that there is no reason to cache
+    /// and share one across probes the way <c>DockerEngine</c> must for its client.
     /// </summary>
     public IBackend CreateBackend() =>
-        throw new NotSupportedException(
-            "NerdctlEngine is not implemented yet (KON-141 task 5); this provider only enumerates namespaces so far.");
+        new NerdctlEngine(new NerdctlCli(_runner, _namespace), Backend, DisplayName, _namespace);
 
     /// <summary>
     /// One provider per containerd namespace, read from <c>nerdctl namespace ls</c>.
