@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- nerdctl plugin (KON-141): a real plugin, referencing only Kontena.Sdk (CONTRIBUTING.md §4,
+       enforced the same way as every other plugin — see ExtensionBoundaryTests). nerdctl has no
+       socket, so everything this plugin knows comes from parsing what the CLI prints. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kontena.Sdk\Kontena.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>
