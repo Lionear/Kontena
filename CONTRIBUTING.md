@@ -119,7 +119,11 @@ release. The builds are unsigned / not notarized for now.
 
 ### Cutting a release
 
-1. **Promote.** `develop` becomes `main` — a fast-forward, since `main` only moves at a release.
+1. **Promote.** Open a `develop` → `main` pull request and merge it. Not a fast-forward push: only a
+   pull request against `main` triggers `ci.yml`, which is the one place the suite runs on Windows and
+   macOS as well as Linux (`test.yml` runs on every PR, but on Linux only). The first release that did
+   this found four real, platform-specific failures, so the release is where that check belongs. The
+   merge commit this leaves on `main` is the price, and it is why this step is a PR from here on.
 2. **Tag.** Push `v<major>.<minor>.<patch>`. Anything with a prerelease part is refused: a tag build
    publishes to stable, becomes the latest release and rolls the changelog, and a release candidate
    should do none of those.
