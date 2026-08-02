@@ -35,6 +35,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     // gone from the snapshot — otherwise every reconnect would ask again and load another context for
     // it (KON-279).
     private IReadOnlyList<DiscoveredPlugin> _plugins;
+    // Where AskPluginConsent's OnConfirm re-scans — see the pluginRoot constructor parameter.
+    private readonly string _pluginRoot;
     private readonly ClusterTerminals _terminals = new();
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
@@ -72,11 +74,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <param name="plugins">What the loader found at startup (KON-279). Those already agreed to are
     /// loaded and their providers are in the registry; the rest is asked about in <c>InitAsync</c>,
     /// once there is a window to ask in.</param>
+    /// <param name="pluginRoot">Where <c>AskPluginConsent</c>'s <c>OnConfirm</c> re-runs
+    /// <see cref="PluginLoader.Discover"/> after the user agrees to something new. Defaults to
+    /// <see cref="PluginLoader.DefaultRoot"/>, same as <paramref name="buildCatalog"/>'s default: a test
+    /// pointing at a real directory would either find nothing (a machine with no plugins folder) or the
+    /// developer's actual plugins (a machine with one) — neither is what a test of the consent flow
+    /// itself is asking about.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
         BackendCatalog.CatalogBuilder? buildCatalog = null,
-        IReadOnlyList<DiscoveredPlugin>? plugins = null)
+        IReadOnlyList<DiscoveredPlugin>? plugins = null,
+        string? pluginRoot = null)
     {
         // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
         // seam to its own dialog host means those read like every other confirm in the app rather
@@ -125,6 +134,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         SyncThemeToggleIcon();
         _plugins = plugins ?? [];
+        _pluginRoot = pluginRoot ?? PluginLoader.DefaultRoot;
         _ = InitAsync();
     }
 

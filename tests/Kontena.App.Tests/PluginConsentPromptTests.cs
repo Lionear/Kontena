@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Kontena.App;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
@@ -11,6 +12,10 @@ namespace Kontena.App.Tests;
 /// A plugin found but not agreed to has to be asked about, and the answer has to survive a restart.
 /// The prompt is the shell's ordinary confirm — what the manifest says is rendered, not composed.
 /// </summary>
+// Same collection as PluginCatalogTests — see BackendCatalogPluginState's own comment. Both classes
+// mutate BackendCatalog.Plugins and reset it in Dispose; left in separate (default) collections, xunit's
+// cross-class parallelism lets one class's Dispose clear the list mid-assertion in the other.
+[Collection(BackendCatalogPluginState.Name)]
 public sealed class PluginConsentPromptTests : IDisposable
 {
     private readonly string _settingsPath = Path.Combine(
@@ -45,6 +50,38 @@ public sealed class PluginConsentPromptTests : IDisposable
             new BackendRegistry([]), new SettingsStore(_settingsPath), new KontenaSettings(),
             buildCatalog: (_, _, _, _) => [],
             plugins: plugins);
+
+    /// <summary>Like <see cref="Build(DiscoveredPlugin[])"/>, but with the loader pointed at a real,
+    /// throwaway directory instead of <see cref="PluginLoader.DefaultRoot"/> — so
+    /// <c>AskPluginConsent</c>'s <c>OnConfirm</c> re-scan sees actual files rather than whatever
+    /// happens (or does not happen) to be on this machine's real plugins folder.</summary>
+    private MainWindowViewModel Build(string pluginRoot, params DiscoveredPlugin[] plugins) =>
+        new(
+            new BackendRegistry([]), new SettingsStore(_settingsPath), new KontenaSettings(),
+            buildCatalog: (_, _, _, _) => [],
+            plugins: plugins,
+            pluginRoot: pluginRoot);
+
+    /// <summary>Write a real plugin directory — manifest only, no assembly — under <paramref
+    /// name="root"/>, for tests that exercise a real <see cref="PluginLoader.Discover"/> re-scan rather
+    /// than a hand-built <see cref="DiscoveredPlugin"/>. No assembly is needed: whether it loads or is
+    /// rejected for a missing file, either way it is no longer <see cref="PluginStatus.AwaitingConsent"/>
+    /// once consent has been given, which is all these tests need.</summary>
+    private static void WritePluginManifest(string root, string id, string name, string version = "1.0.0")
+    {
+        var dir = Path.Combine(root, id);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "plugin.json"), JsonSerializer.Serialize(new
+        {
+            id,
+            name,
+            version,
+            author = "Acme",
+            description = "containerd containers.",
+            minSdkVersion = "",
+            assembly = "Missing.dll",
+        }));
+    }
 
     [Fact]
     public void A_plugin_awaiting_consent_raises_a_confirm()
@@ -133,13 +170,37 @@ public sealed class PluginConsentPromptTests : IDisposable
         // AskPluginConsent() in the same process must see this plugin as already answered: neither the
         // modal returning, nor another PluginLoadContext (each Discover() call creates one that is never
         // collectible) for a plugin the user already approved.
-        var vm = Build(Awaiting());
-        vm.AskPluginConsent();
-        await ((ConfirmViewModel)vm.Dialog!).ConfirmCommand.ExecuteAsync(null);
+        //
+        // A real pluginRoot with two directories on disk, not PluginLoader.DefaultRoot, is what makes
+        // this test mean something (KON-279 final review, finding 2): on a machine with no plugins
+        // folder — the normal case, including CI — OnConfirm's re-scan would come back empty and
+        // Assert.Null(vm.Dialog) would pass whether or not the settings check in the pending filter
+        // does anything at all. Asserting that the *second, still-pending* plugin is what comes up next
+        // is what actually exercises that check, because an empty snapshot has no second plugin to ask
+        // about either.
+        var root = Path.Combine(Path.GetTempPath(), "kontena-consent-root-" + Guid.NewGuid().ToString("N"));
+        WritePluginManifest(root, "com.acme.one", "first");
+        WritePluginManifest(root, "com.acme.two", "second");
 
-        vm.AskPluginConsent();
+        try
+        {
+            var vm = Build(root, Awaiting("com.acme.one", name: "first"), Awaiting("com.acme.two", name: "second"));
+            vm.AskPluginConsent();
+            Assert.Contains("first", ((ConfirmViewModel)vm.Dialog!).Message);
 
-        Assert.Null(vm.Dialog);
+            await ((ConfirmViewModel)vm.Dialog!).ConfirmCommand.ExecuteAsync(null);
+
+            vm.AskPluginConsent();
+
+            var dialog = Assert.IsType<ConfirmViewModel>(vm.Dialog);
+            Assert.Contains("second", dialog.Message);
+            Assert.DoesNotContain("first", dialog.Message);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

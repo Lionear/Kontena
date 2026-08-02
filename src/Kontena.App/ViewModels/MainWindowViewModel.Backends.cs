@@ -91,7 +91,7 @@ public partial class MainWindowViewModel
                 // that ran at startup now sees the consent, and there is one path by which a plugin
                 // becomes a provider.
                 var loaded = PluginLoader.Discover(
-                    PluginLoader.DefaultRoot, m => stored.AllowsPlugin(m.Id, m.Version));
+                    _pluginRoot, m => stored.AllowsPlugin(m.Id, m.Version));
 
                 // Replace the snapshot, not just the providers: this plugin's entry is now Loaded
                 // rather than AwaitingConsent, so a later reconnect's InitAsync (which reuses _plugins,
