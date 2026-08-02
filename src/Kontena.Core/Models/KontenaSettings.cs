@@ -178,6 +178,31 @@ public sealed record KontenaSettings
     public IReadOnlyList<string> KubeconfigPaths { get; init; } = [];
 
     /// <summary>
+    /// Plugins the user has agreed to run, as <c>"&lt;id&gt;@&lt;version&gt;"</c>. Until releases are
+    /// signed (KON-53), a dll in the plugins directory is arbitrary code in Kontena's process, so
+    /// nothing loads without an answer here.
+    /// <para>
+    /// Per id <b>and</b> version on purpose: an update is different bytes, and the permission was given
+    /// for the old ones. It is a weak boundary — a hostile replacement can lie about its own version to
+    /// reuse an answer — and that is exactly the hole the signature check closes. It is not worked
+    /// around here, because a workaround would only look like a boundary.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> AllowedPlugins { get; init; } = [];
+
+    /// <summary>Whether this exact build of this plugin has been agreed to.</summary>
+    public bool AllowsPlugin(string id, string version) =>
+        AllowedPlugins.Contains(PluginKey(id, version), StringComparer.Ordinal);
+
+    /// <summary>Record agreement for this exact build, leaving earlier versions recorded.</summary>
+    public KontenaSettings WithAllowedPlugin(string id, string version) =>
+        AllowsPlugin(id, version)
+            ? this
+            : this with { AllowedPlugins = [.. AllowedPlugins, PluginKey(id, version)] };
+
+    private static string PluginKey(string id, string version) => $"{id}@{version}";
+
+    /// <summary>
     /// Names the user gave a backend, keyed by backend id (KON-119). Empty means "use what the source
     /// calls itself".
     /// <para>
