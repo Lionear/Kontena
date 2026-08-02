@@ -105,6 +105,17 @@ public sealed class NerdctlMapTests
         Assert.Equal("<none>", image.Tag);
     }
 
+    [Fact]
+    public void A_real_tag_survives_mapping()
+    {
+        // images.json's nginx row carries a concrete tag, "1.27-alpine" — unlike the "<none>" case
+        // above, this differs from ImageSummary.Tag's own default, so it actually pins that ToImage
+        // reads Tag from the DTO rather than only ever hitting the SDK's default.
+        var image = Assert.Single(Images(), i => i is { Repository: "nginx", Tag: "1.27-alpine" }).ToImage();
+
+        Assert.Equal("1.27-alpine", image.Tag);
+    }
+
     // ── network-ls.json → NetworkSummary ───────────────────────────────────────────────────────
 
     [Fact]
@@ -127,6 +138,19 @@ public sealed class NerdctlMapTests
         Assert.True(networks["host"].IsBuiltIn);
         Assert.True(networks["none"].IsBuiltIn);
         Assert.False(networks["kindnet"].IsBuiltIn);
+    }
+
+    [Fact]
+    public void Driver_is_never_guessed_as_bridge_for_an_unknown_network()
+    {
+        // nerdctl's `network ls` reports no driver at all. "host" and "none" are self-evident (the
+        // network's own name is its driver); "kindnet" is not — claiming "bridge" for it (the SDK's own
+        // NetworkSummary.Driver default) would be a wrong answer stated as fact, not a missing one.
+        var networks = Networks().Select(n => n.ToNetwork()).ToDictionary(n => n.Name);
+
+        Assert.Equal("host", networks["host"].Driver);
+        Assert.Equal("none", networks["none"].Driver);
+        Assert.Equal(string.Empty, networks["kindnet"].Driver);
     }
 
     // ── inspect.json → ContainerInspect ────────────────────────────────────────────────────────
@@ -173,5 +197,55 @@ public sealed class NerdctlMapTests
     public void Oom_killed_is_always_false_since_nerdctl_does_not_report_it()
     {
         Assert.False(Inspect().ToInspect().OomKilled);
+    }
+
+    [Fact]
+    public void Environment_variables_are_split_on_the_first_equals_sign()
+    {
+        // inspect.json's Config.Env carries 13 real entries; PATH's own value has colons but no '=',
+        // so this pins the ordinary case against real captured data.
+        var inspect = Inspect().ToInspect();
+
+        Assert.Equal(13, inspect.EnvironmentVariables.Count);
+        Assert.Equal("local-path-provisioner-855c7b7774-vw7t9", inspect.EnvironmentVariables["HOSTNAME"]);
+    }
+
+    [Fact]
+    public void An_env_value_containing_an_equals_sign_keeps_the_rest_intact()
+    {
+        // None of inspect.json's 13 real Env entries happens to contain a second '=' in its value, so
+        // the fixture alone cannot exercise this edge — constructed directly to pin the same
+        // split-on-first-'=' behavior NerdctlJson.Labels already handles for comma-joined labels.
+        var inspect = new NerdctlInspectContainer
+        {
+            Config = new NerdctlInspectConfig { Env = ["CONNECTION_STRING=Server=localhost;User=admin"] },
+        }.ToInspect();
+
+        Assert.Equal("Server=localhost;User=admin", inspect.EnvironmentVariables["CONNECTION_STRING"]);
+    }
+
+    [Fact]
+    public void Empty_started_at_and_finished_at_map_to_null()
+    {
+        // The captured container's State.StartedAt/FinishedAt are both "" — nerdctl's own convention
+        // for "unset", unlike Docker's zero-date. Confirmed against real fixture data.
+        var inspect = Inspect().ToInspect();
+
+        Assert.Null(inspect.StartedAt);
+        Assert.Null(inspect.FinishedAt);
+    }
+
+    [Fact]
+    public void A_real_started_at_is_not_also_treated_as_unset()
+    {
+        // inspect.json's StartedAt is always "" on the captured container, so the fixture alone cannot
+        // exercise ParseOptionalTime's other branch — constructed directly to pin that a real timestamp
+        // survives rather than being swallowed by the same empty-string check.
+        var inspect = new NerdctlInspectContainer
+        {
+            State = new NerdctlInspectState { StartedAt = "2026-08-02T08:42:05.000000000Z" },
+        }.ToInspect();
+
+        Assert.Equal(new DateTimeOffset(2026, 8, 2, 8, 42, 5, TimeSpan.Zero), inspect.StartedAt);
     }
 }

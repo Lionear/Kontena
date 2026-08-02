@@ -34,6 +34,10 @@ public static class NerdctlMap
     /// </summary>
     public static ContainerSummary ToSummary(this NerdctlContainer container, string backend)
     {
+        // "kontena.nerdctl.names" is our own synthetic key, added after the parsed labels so it can
+        // only ever be overwritten by a real label of that exact name — vanishingly unlikely (real CRI
+        // labels are all "io.*"-scoped) but if it ever happens, the real label silently loses. Flagged
+        // rather than guarded against, since guarding a collision this unlikely is not worth the code.
         var labels = new Dictionary<string, string>(NerdctlJson.Labels(container.Labels))
         {
             ["kontena.nerdctl.names"] = container.Names,
@@ -87,9 +91,16 @@ public static class NerdctlMap
     {
         Id = network.Id,
         Name = network.Name,
-        // nerdctl's `network ls` reports neither a driver nor a scope (Docker's API does); left at the
-        // SDK's own defaults rather than guessed. The built-in check mirrors
-        // DockerEngine.MapNetwork's exactly, for the same three reserved names.
+        // nerdctl's `network ls` reports no driver at all. Leaving NetworkSummary.Driver unset would
+        // fall back to the SDK record's own default, "bridge" — stating a specific, wrong brand name as
+        // fact for e.g. a CNI-managed network like "kindnet" is worse than saying nothing. For the two
+        // reserved names the network's own name doubles as an honest driver name (same convention
+        // Docker uses for its "host" network); "bridge" gets the same treatment for consistency, since
+        // that one really is its own driver name too. Anything else — no evidence, so empty rather than
+        // a guess.
+        Driver = network.Name is "bridge" or "host" or "none" ? network.Name : string.Empty,
+        // Scope defaults to the SDK's "local" and needs no override: nerdctl networks really are local.
+        // The built-in check mirrors DockerEngine.MapNetwork's exactly, for the same three reserved names.
         IsBuiltIn = network.Name is "bridge" or "host" or "none",
     };
 
