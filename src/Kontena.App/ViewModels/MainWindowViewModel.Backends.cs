@@ -141,7 +141,11 @@ public partial class MainWindowViewModel
     /// </summary>
     private static string Pretty(string backend) =>
         backend.Split(':') is [_, var context] && context.Length > 0 ? context : backend;
-    private void EnterOnboarding()
+    /// <param name="autoDetect">
+    /// The toggle to open with. Passed on a rescan, which builds a fresh view model: without it the
+    /// switch would silently spring back to the stored value every time the user probed again.
+    /// </param>
+    private void EnterOnboarding(bool? autoDetect = null)
     {
         IsReady = false;
         IsBackendDown = false;
@@ -149,12 +153,30 @@ public partial class MainWindowViewModel
         Onboarding = new OnboardingViewModel(
             _probes.Where(p => p.Provider.Kind == BackendKind.Engine).ToList(),
             FakeBackend,
-            _settings.AutoDetectEngines,
+            autoDetect ?? _settings.AutoDetectEngines,
             onContinue: backend => _ = CompleteOnboardingAsync(backend),
             onSkip: () => _ = CompleteOnboardingAsync(null),
             onInstallPodman: () => Browser.OpenUrl("https://podman.io/docs/installation"),
+            onRescan: RunSetupAsync,
             nameOf: NameOf);
         IsOnboarding = true;
+    }
+    /// <summary>
+    /// Probe again and hand the first-run wizard back, whether or not it has run before.
+    /// <para>
+    /// Reached from the engine-down card and from the wizard's own rescan. Skipping used to be a
+    /// one-way door: <c>Onboarded</c> is a latch, so the app went on picking the first engine that
+    /// answered and never asked again — fine when there is one engine, silent when there are two.
+    /// Reconnect restores the connection but not the choice, which is what this restores.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task RunSetupAsync()
+    {
+        _probes = await _registry.ProbeAllAsync();
+        RebuildEngineList();
+        RefreshNewClusters();
+        EnterOnboarding(Onboarding?.AutoDetect);
     }
     private async Task CompleteOnboardingAsync(string? backend)
     {

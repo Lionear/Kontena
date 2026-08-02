@@ -51,6 +51,9 @@ namespace Kontena.Screenshots;
 //         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
+//         onboarding (the first-run wizard) and onboarding-again (the same wizard reached back from
+//         the engine-down card by running its own "Set up again" command, so the shot cannot show a
+//         route that the button does not really take),
 //         settings-clusters (KON-109/KON-76 — the local-cluster page; reads this machine, so the
 //         shot differs per box by design), settings-clusters-new (the create form, reached by running
 //         the page's own command),
@@ -79,7 +82,8 @@ internal static class Program
         Environment.SetEnvironmentVariable("APPDATA", sandbox);
         // The app's ConnectPreferred honours this to boot straight into the demo engine — except
         // for the one scene whose whole subject is what happens when that does not work out.
-        if (opts.Scene != "backend-down")
+        // onboarding-again starts life on the down card, so it needs the same "no shortcut" treatment.
+        if (opts.Scene is not ("backend-down" or "onboarding-again"))
             Environment.SetEnvironmentVariable("KONTENA_SCREENSHOT", "1");
 
         try
@@ -97,12 +101,16 @@ internal static class Program
             var settings = new KontenaSettings
             {
                 Theme = theme,
-                Onboarded = true,
+
+                // The one scene that is about not having been here before.
+                Onboarded = opts.Scene != "onboarding",
 
                 // Pinned, not "last used": a capture must not depend on what a previous capture
-                // happened to leave behind. The backend-down scene is the exception — it asks to
+                // happened to leave behind. The down-card scenes are the exception — they ask to
                 // return to a backend that is deliberately not in the list.
-                Startup = opts.Scene == "backend-down" ? StartupBackend.LastUsed : StartupBackend.Pinned,
+                Startup = opts.Scene is "backend-down" or "onboarding-again"
+                    ? StartupBackend.LastUsed
+                    : StartupBackend.Pinned,
                 PinnedBackend = "docker",
                 LastBackend = "kubernetes:corp-cluster",
                 AutoDetectEngines = true,
@@ -193,7 +201,8 @@ internal static class Program
 
             // Let the fire-and-forget InitAsync → ConnectPreferred → ActivateAsync settle so the
             // container list (and its live log/stat streams) is populated before we drive the scene.
-            SettleUntil(() => viewModel.IsReady || viewModel.IsBackendDown, maxRounds: 120);
+            SettleUntil(() => viewModel.IsReady || viewModel.IsBackendDown || viewModel.IsOnboarding,
+                maxRounds: 120);
 
             ApplyScene(opts.Scene, viewModel);
             Settle(rounds: 40);
@@ -301,7 +310,15 @@ internal static class Program
         switch (scene)
         {
             case "containers":
+            case "onboarding": // the launch state already is the wizard
                 break; // default page
+
+            // The way back: run the down card's own command rather than calling EnterOnboarding, so
+            // a button wired to nothing would show up here as a shot still on the down card.
+            case "onboarding-again":
+                vm.RunSetupCommand.Execute(null);
+                SettleUntil(() => vm.IsOnboarding, maxRounds: 120);
+                break;
 
             // No scene for the switcher's "n new clusters found" row (KON-120): it lives in a flyout,
             // and a flyout renders into its own popup window rather than into this frame. Its count

@@ -41,6 +41,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     private readonly Action<string?> _onContinue; // chosen backend, or null when skipping
     private readonly Action _onSkip;
     private readonly Action _onInstallPodman;
+    private readonly Func<Task> _onRescan;
 
     /// <param name="nameOf">
     /// What to call a backend (KON-119). Defaults to the source's own name; a settings file carried over
@@ -54,6 +55,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         Action<string?> onContinue,
         Action onSkip,
         Action onInstallPodman,
+        Func<Task> onRescan,
         Func<IBackendProvider, string>? nameOf = null)
     {
         nameOf ??= p => p.DisplayName;
@@ -61,6 +63,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         _onContinue = onContinue;
         _onSkip = onSkip;
         _onInstallPodman = onInstallPodman;
+        _onRescan = onRescan;
 
         var items = new List<OnboardingEngine>();
         foreach (var p in probes)
@@ -140,4 +143,16 @@ public sealed partial class OnboardingViewModel : ViewModelBase
 
     [RelayCommand]
     private void InstallPodman() => _onInstallPodman();
+
+    /// <summary>
+    /// Probe again and rebuild this screen. Starting the engine is the obvious thing to do when it
+    /// reads "Not running", and until this existed the row stayed grey until the app was restarted —
+    /// the one action the screen asks for was the one it could not see you take.
+    /// <para>
+    /// Async so the generated command disables itself while a probe is in flight; a kubeconfig full
+    /// of unreachable contexts takes long enough for a second click to be the natural response.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private Task Rescan() => _onRescan();
 }

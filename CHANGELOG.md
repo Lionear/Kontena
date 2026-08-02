@@ -9,7 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Skipping the first-run wizard is no longer a decision you are stuck with.** Skipping it left
+  Kontena picking the first engine that answered, every launch, without ever asking again — invisible
+  with one engine, a silent choice with two. **Set up again**, next to Reconnect on the engine-down
+  card, brings the wizard back: Reconnect retries what the app decided for you, this is where you
+  decide again. (KON-333)
+- **The first-run wizard notices an engine you have just started.** It asks you to start the engine it
+  reports as not running, and then could not see you do it: the row stayed grey until Kontena was
+  restarted. A **Rescan** probes again in place. (KON-333)
 
 ## [0.3.0] - 2026-08-01
 
