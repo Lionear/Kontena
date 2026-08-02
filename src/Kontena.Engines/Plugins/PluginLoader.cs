@@ -56,6 +56,9 @@ public static class PluginLoader
             if (!isAllowed(manifest))
                 return new DiscoveredPlugin(directory, manifest, PluginStatus.AwaitingConsent, null, []);
 
+            if (SdkTooOld(manifest.MinSdkVersion, out var sdkReason))
+                return new DiscoveredPlugin(directory, manifest, PluginStatus.Rejected, sdkReason, []);
+
             var assembly = Path.Combine(directory, manifest.Assembly);
             if (!File.Exists(assembly))
                 return new DiscoveredPlugin(
@@ -86,7 +89,52 @@ public static class PluginLoader
             return new DiscoveredPlugin(
                 directory, manifest, PluginStatus.Rejected, entry.FullName + " is not an IEnginePlugin", []);
 
+        // The user agreed to what plugin.json said. Code that describes itself differently is not what
+        // was agreed to — and until signing lands, this is the only thing tying the two together.
+        var declared = plugin.Manifest;
+        if (declared.Id != manifest.Id || declared.Version != manifest.Version)
+            return new DiscoveredPlugin(
+                directory, manifest, PluginStatus.Rejected,
+                $"plugin.json says {manifest.Id} {manifest.Version}, the assembly says "
+                + $"{declared.Id} {declared.Version}", []);
+
         return new DiscoveredPlugin(
             directory, manifest, PluginStatus.Loaded, null, [.. plugin.GetProviders()]);
+    }
+
+    /// <summary>
+    /// Whether the host's <c>Kontena.Sdk</c> is older than what the plugin asks for.
+    /// <para>
+    /// One number, and it is the SDK assembly's own. The plugin compiles against
+    /// <c>Kontena.Sdk.dll</c> and is handed the host's copy at run time, so that assembly <em>is</em>
+    /// the contract; a second, hand-maintained "host API version" would be a separate claim about the
+    /// same fact, and the two would drift.
+    /// </para>
+    /// <para>
+    /// A floor only. It does not catch a much newer host that dropped something the plugin uses — that
+    /// surfaces as a <c>MissingMethodException</c> at the call. The fix is a semver major rule, and it
+    /// can be added later against manifests written today, because <c>MinSdkVersion</c> already records
+    /// what each plugin was built against. Nothing is lost by waiting, and there is no major 2 yet.
+    /// </para>
+    /// </summary>
+    private static bool SdkTooOld(string minSdkVersion, out string? reason)
+    {
+        reason = null;
+
+        if (string.IsNullOrWhiteSpace(minSdkVersion))
+            return false;
+
+        if (!Version.TryParse(minSdkVersion, out var required))
+        {
+            reason = $"Unreadable MinSdkVersion '{minSdkVersion}'";
+            return true;
+        }
+
+        var host = typeof(IEnginePlugin).Assembly.GetName().Version;
+        if (host is not null && required <= host)
+            return false;
+
+        reason = $"Needs Kontena.Sdk {minSdkVersion}, this build has {host?.ToString() ?? "none"}";
+        return true;
     }
 }

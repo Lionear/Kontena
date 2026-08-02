@@ -217,4 +217,61 @@ public sealed class PluginLoaderTests : IDisposable
         Assert.Equal(PluginStatus.Rejected, found.Status);
         Assert.NotNull(found.Reason);
     }
+
+    [Fact]
+    public void A_plugin_that_needs_a_newer_sdk_is_rejected_with_a_reason()
+    {
+        InstallFixture(minSdk: "99.0.0");
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains("99.0.0", found.Reason);
+        Assert.Empty(found.Providers);
+    }
+
+    [Fact]
+    public void A_plugin_that_needs_exactly_this_sdk_loads()
+    {
+        var host = typeof(Kontena.Sdk.IEnginePlugin).Assembly.GetName().Version!;
+        InstallFixture(minSdk: $"{host.Major}.{host.Minor}.{host.Build}");
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+    }
+
+    [Fact]
+    public void A_plugin_without_a_minimum_sdk_loads()
+    {
+        InstallFixture(minSdk: "");
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+    }
+
+    [Fact]
+    public void An_unparseable_minimum_sdk_is_rejected_rather_than_ignored()
+    {
+        InstallFixture(minSdk: "banana");
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.NotNull(found.Reason);
+    }
+
+    [Fact]
+    public void A_plugin_whose_code_disagrees_with_its_manifest_is_rejected()
+    {
+        // The fixture's own manifest says 1.0.0; the file on disk claims 9.9.9. Consent was given for
+        // what the file said, so the code may not turn out to be something else.
+        InstallFixture(version: "9.9.9");
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.NotNull(found.Reason);
+    }
 }
