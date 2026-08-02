@@ -13,10 +13,41 @@ public sealed class PluginLoaderTests : IDisposable
     private readonly string _root = Path.Combine(
         Path.GetTempPath(), "kontena-plugin-tests-" + Guid.NewGuid().ToString("N"));
 
+    /// <summary>
+    /// The fixture assembly, built by <c>tests/Kontena.TestPlugin</c> into this project's output. It
+    /// carries its own copy of Kontena.Sdk.dll, which is the whole point: the loader must ignore it.
+    /// </summary>
+    private static string FixtureDirectory =>
+        Path.Combine(AppContext.BaseDirectory, "plugin-fixture");
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
             Directory.Delete(_root, recursive: true);
+    }
+
+    /// <summary>Copy the built fixture into the plugins root and give it a manifest.</summary>
+    private string InstallFixture(string version = "1.0.0", string minSdk = "0.1.0", string? id = null)
+    {
+        id ??= "com.kontena.test";
+        var dir = Path.Combine(_root, id);
+        Directory.CreateDirectory(dir);
+
+        foreach (var file in Directory.GetFiles(FixtureDirectory))
+            File.Copy(file, Path.Combine(dir, Path.GetFileName(file)), overwrite: true);
+
+        File.WriteAllText(Path.Combine(dir, "plugin.json"), JsonSerializer.Serialize(new
+        {
+            id,
+            name = "Test Plugin",
+            version,
+            author = "Kontena",
+            description = "A plugin.",
+            minSdkVersion = minSdk,
+            assembly = "Kontena.TestPlugin.dll",
+        }));
+
+        return dir;
     }
 
     /// <summary>Write a plugin directory containing only a manifest — no assembly.</summary>
@@ -128,5 +159,62 @@ public sealed class PluginLoaderTests : IDisposable
         Assert.Equal(2, found.Count);
         Assert.Contains(found, p => p.Status == PluginStatus.AwaitingConsent);
         Assert.Contains(found, p => p.Status == PluginStatus.Rejected);
+    }
+
+    [Fact]
+    public void The_fixture_ships_its_own_sdk_copy()
+    {
+        // Guards the guard: if this stops being true, the test below proves nothing.
+        Assert.True(File.Exists(Path.Combine(FixtureDirectory, "Kontena.Sdk.dll")));
+    }
+
+    [Fact]
+    public void An_allowed_plugin_loads_and_contributes_its_providers()
+    {
+        InstallFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Null(found.Reason);
+        var provider = Assert.Single(found.Providers);
+        Assert.Equal("testplugin", provider.Backend);
+    }
+
+    [Fact]
+    public void The_sdk_comes_from_the_host_even_though_the_plugin_ships_one()
+    {
+        InstallFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+        var provider = Assert.Single(found.Providers);
+
+        // The cast in the loader already proves type identity, but say so out loud: this is the
+        // failure that produces no exception and no backend, only silence.
+        Assert.Same(
+            typeof(Kontena.Sdk.IBackendProvider),
+            provider.GetType().GetInterface("Kontena.Sdk.IBackendProvider"));
+    }
+
+    [Fact]
+    public void A_plugin_that_contributes_nothing_useful_is_rejected_rather_than_thrown()
+    {
+        // A directory whose assembly holds no IEnginePlugin: point the manifest at the SDK itself.
+        var dir = InstallFixture();
+        File.WriteAllText(Path.Combine(dir, "plugin.json"), JsonSerializer.Serialize(new
+        {
+            id = "com.kontena.test",
+            name = "Test Plugin",
+            version = "1.0.0",
+            author = "Kontena",
+            description = "A plugin.",
+            minSdkVersion = "0.1.0",
+            assembly = "Kontena.Sdk.dll",
+        }));
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.NotNull(found.Reason);
     }
 }

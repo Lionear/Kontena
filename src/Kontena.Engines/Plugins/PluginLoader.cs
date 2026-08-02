@@ -71,5 +71,22 @@ public static class PluginLoader
     }
 
     private static DiscoveredPlugin Load(string directory, PluginManifest manifest, string assemblyPath)
-        => new(directory, manifest, PluginStatus.Rejected, "Loading is not implemented yet", []);
+    {
+        var assembly = new PluginLoadContext(assemblyPath).LoadFromAssemblyPath(assemblyPath);
+
+        var entry = assembly.GetExportedTypes()
+            .FirstOrDefault(t => typeof(IEnginePlugin).IsAssignableFrom(t)
+                                 && t is { IsAbstract: false, IsInterface: false });
+
+        if (entry is null)
+            return new DiscoveredPlugin(
+                directory, manifest, PluginStatus.Rejected, "No IEnginePlugin in " + manifest.Assembly, []);
+
+        if (Activator.CreateInstance(entry) is not IEnginePlugin plugin)
+            return new DiscoveredPlugin(
+                directory, manifest, PluginStatus.Rejected, entry.FullName + " is not an IEnginePlugin", []);
+
+        return new DiscoveredPlugin(
+            directory, manifest, PluginStatus.Loaded, null, [.. plugin.GetProviders()]);
+    }
 }
