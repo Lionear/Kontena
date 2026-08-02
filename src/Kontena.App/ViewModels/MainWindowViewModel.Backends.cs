@@ -57,8 +57,13 @@ public partial class MainWindowViewModel
     /// </summary>
     internal void AskPluginConsent()
     {
-        var pending = _plugins
-            .FirstOrDefault(p => p.Status == PluginStatus.AwaitingConsent && p.Manifest is not null);
+        // Both conditions guard the same thing — arbitrary code — so neither is redundant: Status is
+        // the snapshot taken at the last Discover(), _settings is updated the moment the user answers.
+        // Checking both is what stops a reconnect from re-asking about something already approved this
+        // session, without waiting for _plugins to catch up.
+        var pending = _plugins.FirstOrDefault(p =>
+            p.Status == PluginStatus.AwaitingConsent && p.Manifest is not null
+            && !_settings.AllowsPlugin(p.Manifest.Id, p.Manifest.Version));
 
         if (pending?.Manifest is not { } manifest)
             return;
@@ -87,6 +92,11 @@ public partial class MainWindowViewModel
                 // becomes a provider.
                 var loaded = PluginLoader.Discover(
                     PluginLoader.DefaultRoot, m => stored.AllowsPlugin(m.Id, m.Version));
+
+                // Replace the snapshot, not just the providers: this plugin's entry is now Loaded
+                // rather than AwaitingConsent, so a later reconnect's InitAsync (which reuses _plugins,
+                // not a fresh scan) does not ask about it again or hand it to another PluginLoadContext.
+                _plugins = loaded;
 
                 BackendCatalog.SetPluginProviders(loaded.SelectMany(p => p.Providers));
                 await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));

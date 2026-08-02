@@ -23,13 +23,14 @@ public sealed class PluginConsentPromptTests : IDisposable
             File.Delete(_settingsPath);
     }
 
-    private static DiscoveredPlugin Awaiting(string id = "com.acme.nerdctl", string version = "1.0.0") =>
+    private static DiscoveredPlugin Awaiting(
+        string id = "com.acme.nerdctl", string version = "1.0.0", string name = "nerdctl") =>
         new(
             Directory: Path.Combine(Path.GetTempPath(), id),
             Manifest: new PluginManifest
             {
                 Id = id,
-                Name = "nerdctl",
+                Name = name,
                 Version = version,
                 Assembly = "Kontena.Plugins.Nerdctl.dll",
                 Author = "Acme",
@@ -126,12 +127,34 @@ public sealed class PluginConsentPromptTests : IDisposable
     }
 
     [Fact]
-    public void Only_one_plugin_is_asked_about_at_a_time()
+    public async Task An_approved_plugin_is_not_asked_about_again()
     {
-        var vm = Build(Awaiting("com.a.one"), Awaiting("com.b.two"));
+        // InitAsync is not startup-only — ReconnectAsync runs it again without a restart — so a second
+        // AskPluginConsent() in the same process must see this plugin as already answered: neither the
+        // modal returning, nor another PluginLoadContext (each Discover() call creates one that is never
+        // collectible) for a plugin the user already approved.
+        var vm = Build(Awaiting());
+        vm.AskPluginConsent();
+        await ((ConfirmViewModel)vm.Dialog!).ConfirmCommand.ExecuteAsync(null);
 
         vm.AskPluginConsent();
 
-        Assert.IsType<ConfirmViewModel>(vm.Dialog);
+        Assert.Null(vm.Dialog);
+    }
+
+    [Fact]
+    public void Only_one_plugin_is_asked_about_at_a_time()
+    {
+        // Distinguishable names: a loop that raised a confirm per pending plugin would still leave a
+        // ConfirmViewModel in Dialog (ShowConfirm overwrites unconditionally), so asserting the type
+        // alone cannot tell that apart from asking about only the first. Naming the one actually asked
+        // about can.
+        var vm = Build(Awaiting("com.a.one", name: "first"), Awaiting("com.b.two", name: "second"));
+
+        vm.AskPluginConsent();
+
+        var dialog = Assert.IsType<ConfirmViewModel>(vm.Dialog);
+        Assert.Contains("first", dialog.Message);
+        Assert.DoesNotContain("second", dialog.Message);
     }
 }

@@ -30,7 +30,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
     private IReadOnlyList<BackendProbe> _probes = [];
-    private readonly IReadOnlyList<DiscoveredPlugin> _plugins;
+    // Not readonly: InitAsync runs again on reconnect (ReconnectAsync), and AskPluginConsent's OnConfirm
+    // replaces this with the fresh Discover() result so an approved plugin's AwaitingConsent entry is
+    // gone from the snapshot — otherwise every reconnect would ask again and load another context for
+    // it (KON-279).
+    private IReadOnlyList<DiscoveredPlugin> _plugins;
     private readonly ClusterTerminals _terminals = new();
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
