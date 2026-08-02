@@ -9,6 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- **The first-run wizard no longer advertises a runtime your machine can never run.** The "Apple
+  container · Coming soon" row was a full-size engine row on every platform, so on a machine with one
+  detected engine a third of the list was a roadmap item — and on Linux and Windows it announced a
+  native macOS runtime that will never arrive there. It now appears only on macOS. (KON-337)
+
 ### Fixed
 
 - **Skipping the first-run wizard is no longer a decision you are stuck with.** Skipping it left
