@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Its own subfolder, next to Kontena.TestPlugin's: PluginLoader.Load finds a plugin type with
+         FirstOrDefault over exported types, so two IEnginePlugin implementations in one assembly would
+         make which one loads unpredictable. Separate assemblies keep the well-behaved fixture and this
+         hostile one from ever sharing a directory. -->
+    <OutDir>$(MSBuildThisFileDirectory)..\Kontena.Engines.Tests\bin\$(Configuration)\net10.0\hostile-plugin-fixture\</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kontena.Sdk\Kontena.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>

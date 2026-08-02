@@ -59,7 +59,11 @@ public static class PluginLoader
             if (SdkTooOld(manifest.MinSdkVersion, out var sdkReason))
                 return new DiscoveredPlugin(directory, manifest, PluginStatus.Rejected, sdkReason, []);
 
-            var assembly = Path.Combine(directory, manifest.Assembly);
+            // GetFileName strips any directory component: an absolute path in the manifest would
+            // otherwise replace `directory` outright, and "../.." would escape it — and since consent
+            // is keyed on id@version only, a directory reusing a previously approved key could point
+            // the loader anywhere on disk without asking again.
+            var assembly = Path.Combine(directory, Path.GetFileName(manifest.Assembly));
             if (!File.Exists(assembly))
                 return new DiscoveredPlugin(
                     directory, manifest, PluginStatus.Rejected, $"No {manifest.Assembly}", []);
@@ -98,8 +102,16 @@ public static class PluginLoader
                 $"plugin.json says {manifest.Id} {manifest.Version}, the assembly says "
                 + $"{declared.Id} {declared.Version}", []);
 
-        return new DiscoveredPlugin(
-            directory, manifest, PluginStatus.Loaded, null, [.. plugin.GetProviders()]);
+        var providers = plugin.GetProviders().ToList();
+
+        // Touch every identity member here, inside the containment this method already sits in. The
+        // host reads these while building the very first switcher — outside any try, before there is a
+        // window to report a failure in — so a getter that throws would take the launch down instead
+        // of costing one plugin its place in the list.
+        foreach (var provider in providers)
+            _ = (provider.Backend, provider.DisplayName, provider.Chip, provider.Kind, provider.ChipStyle);
+
+        return new DiscoveredPlugin(directory, manifest, PluginStatus.Loaded, null, providers);
     }
 
     /// <summary>

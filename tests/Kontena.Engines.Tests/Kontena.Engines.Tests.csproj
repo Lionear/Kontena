@@ -26,6 +26,11 @@
     <ProjectReference Include="..\Kontena.TestPlugin\Kontena.TestPlugin.csproj"
                       ReferenceOutputAssembly="false"
                       Private="false" />
+    <!-- Same deal, its own subfolder: the hostile fixture's provider throws from an identity getter,
+         and it needs its own assembly so it cannot end up sharing a directory with TestPlugin's type. -->
+    <ProjectReference Include="..\Kontena.HostilePlugin\Kontena.HostilePlugin.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
   </ItemGroup>
 
 </Project>
