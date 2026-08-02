@@ -85,8 +85,14 @@
 
             <!-- Body -->
             <StackPanel Margin="36,26,36,10" Spacing="16">
-                <TextBlock Text="DETECTED ENGINES" FontSize="11" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextFaint}"/>
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="DETECTED ENGINES" FontSize="11" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextFaint}"/>
+                    <!-- Disabled by the command itself while the probe runs, so a slow kubeconfig
+                         cannot be clicked into a queue of rescans. -->
+                    <Button Grid.Column="1" Classes="ghost" Padding="10,5" FontSize="11.5"
+                            Command="{Binding RescanCommand}" Content="Rescan"/>
+                </Grid>
 
                 <ItemsControl ItemsSource="{Binding Engines}">
                     <ItemsControl.ItemsPanel>
