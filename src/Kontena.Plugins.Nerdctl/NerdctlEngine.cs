@@ -54,10 +54,12 @@ public sealed class NerdctlEngine : IContainerEngine
     public string Backend => _backend;
 
     /// <summary>
-    /// Every capability but <see cref="EngineCapabilities.Rootless"/> is pinned false in this PR: none
-    /// of the methods behind them work yet, and a capability that says yes while the method throws is
-    /// worse than one that says no — the UI would offer a button that fails. Rootless is the one
-    /// exception, because it is an observation read off <c>info</c>, not a promise about a method.
+    /// <see cref="EngineCapabilities.SupportsPrune"/> turns on in this PR: <see cref="PruneContainersAsync"/>,
+    /// <see cref="PruneImagesAsync"/> and <see cref="PruneVolumesAsync"/> all run real nerdctl commands
+    /// now, not stubs. Every other capability but <see cref="EngineCapabilities.Rootless"/> stays pinned
+    /// false: none of the methods behind them work yet, and a capability that says yes while the method
+    /// throws is worse than one that says no — the UI would offer a button that fails. Rootless is the
+    /// one exception, because it is an observation read off <c>info</c>, not a promise about a method.
     /// </summary>
     public EngineCapabilities Capabilities => new()
     {
@@ -65,7 +67,7 @@ public sealed class NerdctlEngine : IContainerEngine
         SupportsBuild = false,
         SupportsCompose = false,
         SupportsExec = false,
-        SupportsPrune = false,
+        SupportsPrune = true,
         SupportsGpu = false,
         SupportsStats = false,
         SupportsEvents = false,
@@ -744,10 +746,23 @@ public sealed class NerdctlEngine : IContainerEngine
     public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>
         RunLifecycleAsync("Network", id, "no network found matching:", ct, "network", "rm", id);
 
+    /// <summary>
+    /// nerdctl 2.3.5 has no <c>network connect</c> subcommand at all — the CLI answers "unknown
+    /// subcommand", not a failure this plugin could translate into success later. This is a permanent
+    /// limitation of the tool this engine shells out to, not unfinished work, and unlike the other
+    /// still-throwing members above it has no <see cref="EngineCapabilities"/> flag guarding it: nothing
+    /// on that record names this method, so the UI has no capability to check before offering the action
+    /// and must instead learn about the gap from here.
+    /// </summary>
     public ValueTask ConnectNetworkAsync(
         string containerId, string networkId, CancellationToken ct = default) =>
         throw new NotSupportedException(WriteNotYet);
 
+    /// <summary>
+    /// Same limitation as <see cref="ConnectNetworkAsync"/>: nerdctl 2.3.5 has no <c>network disconnect</c>
+    /// subcommand either, so this can never work against this CLI, and no <see cref="EngineCapabilities"/>
+    /// flag exists to let the UI know ahead of calling it.
+    /// </summary>
     public ValueTask DisconnectNetworkAsync(
         string containerId, string networkId, bool force = false, CancellationToken ct = default) =>
         throw new NotSupportedException(WriteNotYet);
