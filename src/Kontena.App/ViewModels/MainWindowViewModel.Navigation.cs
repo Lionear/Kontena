@@ -121,7 +121,11 @@ public partial class MainWindowViewModel
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
     }
-    private void NavigateCluster(string key)
+    /// <param name="refreshCounts">
+    /// False only where the caller has just counted, so the badges are not refetched twice for one
+    /// navigation.
+    /// </param>
+    private void NavigateCluster(string key, bool refreshCounts = true)
     {
         if (_cluster is null)
             return;
@@ -211,12 +215,45 @@ public partial class MainWindowViewModel
             _ => new ClusterOverviewViewModel(_cluster),
         };
 
+        // The counts follow the same event the page just reloaded on (KON-339). Set here rather than
+        // on each of the constructors above: one place that knows a page is on screen, and the watch
+        // having already started in the constructor costs nothing — the callback is read when it
+        // fires, not when the stream opens.
+        if (CurrentPage is IClusterListPage live)
+            live.Changed = () => _ = RefreshClusterNavCountsAsync();
+
+        // Only the open page's stream drives that callback, so the badges stop following the moment
+        // you land somewhere that watches nothing — the Workloads dashboard, Config maps, Events. Seen
+        // for real: a pod deleted while its page was open refreshed the counts mid-termination, the
+        // page was navigated away from before the pod actually went, and the badge kept the number it
+        // had caught in between. After the page rather than before it, and not awaited: a count is
+        // worth a round-trip but never worth making the click wait for one.
+        if (refreshCounts)
+            _ = RefreshClusterNavCountsAsync();
+
         // The search term does not survive navigating away, and that is the honest behaviour while
         // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
         // pages keep theirs because they are long-lived fields. Restoring a term onto a fresh page
         // would show a filtered list with no way to tell it had been filtered (KON-164).
         SearchText = string.Empty;
     }
+    /// <summary>
+    /// Refresh the badges after the open page saw the cluster change (KON-339). Failure is silent on
+    /// purpose: this runs off a watch stream nobody asked to be told about, and a count that could not
+    /// be refetched is a number that stays as it was — the page itself reports an unreachable cluster.
+    /// </summary>
+    private async Task RefreshClusterNavCountsAsync()
+    {
+        try
+        {
+            await UpdateClusterNavCountsAsync();
+        }
+        catch (Exception)
+        {
+            // Left as they were, which is the same answer a refresh that never ran would give.
+        }
+    }
+
     /// <summary>Rebuild the currently-selected cluster page (e.g. after an action mutates it).</summary>
     private void ReloadCurrentClusterPage()
     {
@@ -253,7 +290,7 @@ public partial class MainWindowViewModel
         }
 
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups));
+            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshCounts: false);
     }
     /// <summary>
     /// Fill the sidebar badges. Every lister is started before any of them is awaited (KON-338):
@@ -485,6 +522,20 @@ public partial class MainWindowViewModel
         ThemeToggleIconKey = isDark ? "IconSun" : "IconMoon";
         ThemeToggleTip = isDark ? "Switch to light theme" : "Switch to dark theme";
     }
+    /// <inheritdoc cref="RefreshClusterNavCountsAsync"/>
+    private async Task RefreshNavCountsAsync()
+    {
+        try
+        {
+            await UpdateNavCountsAsync();
+        }
+        catch (Exception)
+        {
+            // Same reasoning as the cluster side: an engine that stopped answering is the containers
+            // page's news to break, not a reason for a badge to go blank.
+        }
+    }
+
     private async Task UpdateNavCountsAsync()
     {
         if (_engine is null || Containers is null)
