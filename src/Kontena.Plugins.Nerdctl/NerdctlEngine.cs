@@ -254,7 +254,7 @@ public sealed class NerdctlEngine : IContainerEngine
         var id = stdout.Trim();
 
         if (request.Start)
-            await RunLifecycleAsync(id, ct, "start", id).ConfigureAwait(false);
+            await RunLifecycleAsync("Container", id, "no such container", ct, "start", id).ConfigureAwait(false);
 
         return id;
     }
@@ -322,27 +322,27 @@ public sealed class NerdctlEngine : IContainerEngine
     /// <summary>Runs <c>nerdctl start &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
     /// failures are told apart.</summary>
     public ValueTask StartContainerAsync(string id, CancellationToken ct = default) =>
-        RunLifecycleAsync(id, ct, "start", id);
+        RunLifecycleAsync("Container", id, "no such container", ct, "start", id);
 
     /// <summary>Runs <c>nerdctl stop &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
     /// failures are told apart.</summary>
     public ValueTask StopContainerAsync(string id, CancellationToken ct = default) =>
-        RunLifecycleAsync(id, ct, "stop", id);
+        RunLifecycleAsync("Container", id, "no such container", ct, "stop", id);
 
     /// <summary>Runs <c>nerdctl restart &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
     /// failures are told apart.</summary>
     public ValueTask RestartContainerAsync(string id, CancellationToken ct = default) =>
-        RunLifecycleAsync(id, ct, "restart", id);
+        RunLifecycleAsync("Container", id, "no such container", ct, "restart", id);
 
     /// <summary>Runs <c>nerdctl pause &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
     /// failures are told apart.</summary>
     public ValueTask PauseContainerAsync(string id, CancellationToken ct = default) =>
-        RunLifecycleAsync(id, ct, "pause", id);
+        RunLifecycleAsync("Container", id, "no such container", ct, "pause", id);
 
     /// <summary>Runs <c>nerdctl unpause &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
     /// failures are told apart.</summary>
     public ValueTask UnpauseContainerAsync(string id, CancellationToken ct = default) =>
-        RunLifecycleAsync(id, ct, "unpause", id);
+        RunLifecycleAsync("Container", id, "no such container", ct, "unpause", id);
 
     /// <summary>
     /// Runs <c>nerdctl rm &lt;id&gt;</c>, adding <c>-f</c> only when <paramref name="force"/> is true.
@@ -352,29 +352,33 @@ public sealed class NerdctlEngine : IContainerEngine
     /// </summary>
     public ValueTask RemoveContainerAsync(string id, bool force = false, CancellationToken ct = default) =>
         force
-            ? RunLifecycleAsync(id, ct, "rm", "-f", id)
-            : RunLifecycleAsync(id, ct, "rm", id);
+            ? RunLifecycleAsync("Container", id, "no such container", ct, "rm", "-f", id)
+            : RunLifecycleAsync("Container", id, "no such container", ct, "rm", id);
 
     /// <summary>
-    /// Runs a bare lifecycle command (<c>start</c>, <c>stop</c>, <c>restart</c>, <c>pause</c>,
-    /// <c>unpause</c>, <c>rm</c>) whose only meaningful result is the exit code: every one of these
-    /// echoes back the very name or id it was given, never a new identifier, so unlike
-    /// <see cref="RunListAsync{T}"/> there is nothing on stdout worth reading on success.
+    /// Runs a bare lifecycle or removal command (<c>start</c>, <c>stop</c>, <c>restart</c>,
+    /// <c>pause</c>, <c>unpause</c>, <c>rm</c>, <c>volume rm</c>, <c>network rm</c>) whose only
+    /// meaningful result is the exit code: every one of these echoes back the very name or id it was
+    /// given, never a new identifier, so unlike <see cref="RunListAsync{T}"/> there is nothing on
+    /// stdout worth reading on success. Shared across containers, volumes and networks rather than
+    /// copied per resource kind — the failure shapes below are the same regardless of which resource
+    /// nerdctl was told to act on.
     /// <para>
     /// Two <see cref="ToolFailedException"/> shapes are told apart here rather than folded into one
-    /// exception. <c>"no such container: &lt;id&gt;"</c> means the id nerdctl was given does not exist
-    /// — a <see cref="ResourceNotFoundException"/>, the same exception <see cref="InspectContainerAsync"/>
-    /// already raises for the same wording. Every other failure — <c>rm</c> on a running container
-    /// answering <c>"container &lt;id&gt; is in running status. unpause/stop container first or force
-    /// removal"</c> being the one this task actually observed — is a conflict over the container's
-    /// current state, not a missing resource: the id is perfectly real, nerdctl just refuses to act on
-    /// it right now. Reporting that as "not found" would be a wrong answer stated as fact, so it
-    /// surfaces as the base <see cref="EngineException"/> instead, with nerdctl's own sentence kept
-    /// whole — it already names the container, the state, and the two ways out, which is more than a
-    /// generic message could tell the caller.
+    /// exception. <paramref name="notFoundMarker"/> (e.g. <c>"no such container"</c>) means the id
+    /// nerdctl was given does not exist — a <see cref="ResourceNotFoundException"/>, the same exception
+    /// <see cref="InspectContainerAsync"/> already raises for the container case. Every other failure —
+    /// <c>rm</c> on a running container ("is in running status…") or <c>volume rm</c> on one still
+    /// mounted ("some volumes could not be removed") — is a conflict over the resource's current state,
+    /// not a missing resource: the id is perfectly real, nerdctl just refuses to act on it right now.
+    /// Reporting that as "not found" would be a wrong answer stated as fact, so it surfaces as the base
+    /// <see cref="EngineException"/> instead, with nerdctl's own sentence kept whole — it already names
+    /// the resource, the state, and (for containers) the two ways out, which is more than a generic
+    /// message could tell the caller.
     /// </para>
     /// </summary>
-    private async ValueTask RunLifecycleAsync(string id, CancellationToken ct, params string[] args)
+    private async ValueTask RunLifecycleAsync(
+        string resourceKind, string id, string notFoundMarker, CancellationToken ct, params string[] args)
     {
         try
         {
@@ -384,9 +388,9 @@ public sealed class NerdctlEngine : IContainerEngine
         {
             throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
         }
-        catch (ToolFailedException ex) when (ex.Message.Contains("no such container", StringComparison.Ordinal))
+        catch (ToolFailedException ex) when (ex.Message.Contains(notFoundMarker, StringComparison.Ordinal))
         {
-            throw new ResourceNotFoundException($"Container '{id}' was not found on '{_backend}'.", ex);
+            throw new ResourceNotFoundException($"{resourceKind} '{id}' was not found on '{_backend}'.", ex);
         }
         catch (ToolFailedException ex)
         {
@@ -493,12 +497,66 @@ public sealed class NerdctlEngine : IContainerEngine
             ct,
             "volume", "ls", "--format", "json").ConfigureAwait(false);
 
-    public ValueTask<VolumeSummary> CreateVolumeAsync(
-        CreateVolumeRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl volume create</c>, then reads the created volume back with
+    /// <see cref="ListVolumesAsync"/> instead of constructing a <see cref="VolumeSummary"/> from the
+    /// request. <c>volume create</c> only echoes the name it was given (Notes/nerdctl-write-formats.md)
+    /// — no driver, no mountpoint — so building the summary from <paramref name="request"/> would report
+    /// <see cref="VolumeSummary.Driver"/> and <see cref="VolumeSummary.Mountpoint"/> as whatever was
+    /// asked for rather than what nerdctl actually created. Reading it back is what proves this.
+    /// </summary>
+    public async ValueTask<VolumeSummary> CreateVolumeAsync(
+        CreateVolumeRequest request, CancellationToken ct = default)
+    {
+        List<string> args = ["volume", "create"];
 
+        // "local" is nerdctl's own default — spelling it out on every command line would be noise, the
+        // same choice BuildCreateArgs makes for RestartPolicy.No.
+        if (request.Driver != "local")
+            args.AddRange(["--driver", request.Driver]);
+
+        foreach (var (key, value) in request.Labels)
+            args.AddRange(["--label", $"{key}={value}"]);
+
+        args.Add(request.Name);
+
+        try
+        {
+            await _cli.RunAsync(ct, [.. args]).ConfigureAwait(false);
+        }
+        catch (ToolNotFoundException ex)
+        {
+            throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+        }
+        catch (ToolFailedException ex)
+        {
+            throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+        }
+
+        var created = (await ListVolumesAsync(ct).ConfigureAwait(false))
+            .FirstOrDefault(v => v.Name == request.Name);
+
+        if (created is null)
+        {
+            throw new EngineException(
+                $"nerdctl reported volume '{request.Name}' created but it is not in 'volume ls' for '{_backend}'.");
+        }
+
+        return created;
+    }
+
+    /// <summary>
+    /// Runs <c>nerdctl volume rm &lt;name&gt;</c>, adding <c>-f</c> only when <paramref name="force"/>
+    /// is true — mirrors <see cref="RemoveContainerAsync"/>'s own flag. A volume still mounted by a
+    /// container fails with a warning ("is in use (failed precondition)") followed by
+    /// "some volumes could not be removed"; that names no "no such volume" marker, so it falls through
+    /// <see cref="RunLifecycleAsync"/>'s generic case as a conflict, not a not-found — the same
+    /// treatment that method already gives "is in running status" for containers.
+    /// </summary>
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        force
+            ? RunLifecycleAsync("Volume", name, "no such volume", ct, "volume", "rm", "-f", name)
+            : RunLifecycleAsync("Volume", name, "no such volume", ct, "volume", "rm", name);
 
     public ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default) =>
@@ -515,12 +573,63 @@ public sealed class NerdctlEngine : IContainerEngine
             ct,
             "network", "ls", "--format", "json").ConfigureAwait(false);
 
-    public ValueTask<NetworkSummary> CreateNetworkAsync(
-        CreateNetworkRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl network create</c>, then reads the created network back with
+    /// <see cref="ListNetworksAsync"/> rather than trusting stdout for anything beyond existence.
+    /// <c>network create</c> prints the full 64-character id (Notes/nerdctl-write-formats.md) — a
+    /// different shape than <c>volume create</c>'s name, and still no driver or subnet — so the same
+    /// "don't construct it from the request" reasoning <see cref="CreateVolumeAsync"/> documents applies
+    /// here too. Looked up by <see cref="CreateNetworkRequest.Name"/> rather than the returned id: `ls`
+    /// reports only a short id, and reserved/CNI-managed networks report none at all, so name is the
+    /// one key guaranteed to match what was just created.
+    /// </summary>
+    public async ValueTask<NetworkSummary> CreateNetworkAsync(
+        CreateNetworkRequest request, CancellationToken ct = default)
+    {
+        List<string> args = ["network", "create"];
 
+        // "bridge" is nerdctl's own default driver — same reasoning as CreateVolumeAsync's "local".
+        if (request.Driver != "bridge")
+            args.AddRange(["--driver", request.Driver]);
+
+        if (!string.IsNullOrWhiteSpace(request.Subnet))
+            args.AddRange(["--subnet", request.Subnet]);
+
+        args.Add(request.Name);
+
+        try
+        {
+            await _cli.RunAsync(ct, [.. args]).ConfigureAwait(false);
+        }
+        catch (ToolNotFoundException ex)
+        {
+            throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+        }
+        catch (ToolFailedException ex)
+        {
+            throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+        }
+
+        var created = (await ListNetworksAsync(ct).ConfigureAwait(false))
+            .FirstOrDefault(n => n.Name == request.Name);
+
+        if (created is null)
+        {
+            throw new EngineException(
+                $"nerdctl reported network '{request.Name}' created but it is not in 'network ls' for '{_backend}'.");
+        }
+
+        return created;
+    }
+
+    /// <summary>
+    /// Runs <c>nerdctl network rm &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
+    /// failures are told apart. No force flag exists here: <see cref="IContainerEngine.RemoveNetworkAsync"/>
+    /// does not take one, and nothing in Notes/nerdctl-write-formats.md observed a conflict case for
+    /// network removal the way <see cref="RemoveVolumeAsync"/> has one.
+    /// </summary>
     public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        RunLifecycleAsync("Network", id, "no such network", ct, "network", "rm", id);
 
     public ValueTask ConnectNetworkAsync(
         string containerId, string networkId, CancellationToken ct = default) =>

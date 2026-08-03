@@ -137,6 +137,9 @@ public sealed class NerdctlEngineTests
         // NerdctlEngineLifecycleTests instead, against the fake runner rather than a bare default.
         // CreateContainerAsync is task 2's payload (this PR) — covered by NerdctlEngineCreateTests
         // instead, against the fake runner rather than a bare default.
+        // CreateVolumeAsync, RemoveVolumeAsync, CreateNetworkAsync and RemoveNetworkAsync are task 3's
+        // payload (this PR) — covered by NerdctlEngineVolumeNetworkTests instead, against the fake
+        // runner rather than a bare default.
         var engine = Engine(new FakeToolRunner());
 
         // CA2012 wants every ValueTask awaited. These calls never produce one — each member throws
@@ -156,12 +159,8 @@ public sealed class NerdctlEngineTests
             () => _ = engine.InspectImageAsync("nginx"),
             () => _ = engine.TagImageAsync("id", "nginx:latest"),
             () => _ = engine.PruneImagesAsync(),
-            () => _ = engine.CreateVolumeAsync(new CreateVolumeRequest { Name = "v" }),
-            () => _ = engine.RemoveVolumeAsync("v"),
             () => _ = engine.BrowseVolumeAsync("v"),
             () => _ = engine.PruneVolumesAsync(),
-            () => _ = engine.CreateNetworkAsync(new CreateNetworkRequest { Name = "n" }),
-            () => _ = engine.RemoveNetworkAsync("n"),
             () => _ = engine.ConnectNetworkAsync("id", "n"),
             () => _ = engine.DisconnectNetworkAsync("id", "n"),
             () => _ = engine.ComposeUpAsync(new ComposeUpRequest { ComposeFilePath = "compose.yaml" }),
