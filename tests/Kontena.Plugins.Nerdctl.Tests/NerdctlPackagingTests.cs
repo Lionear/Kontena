@@ -46,7 +46,13 @@ public sealed class NerdctlPackagingTests
         // A plugin whose only constructor takes an IToolRunner is discovered and then rejected with a
         // MissingMethodException, which reads as "this plugin is broken" rather than "it wanted
         // something".
+        //
+        // CA2263 wants the generic overload, and here that would defeat the test: the loader only ever
+        // has a Type it found by reflection, and this line exists to be that call. Scoped to the one
+        // statement rather than switched off for the project, since everywhere else the rule is right.
+#pragma warning disable CA2263
         var plugin = Activator.CreateInstance(typeof(NerdctlPlugin));
+#pragma warning restore CA2263
 
         Assert.IsAssignableFrom<IEnginePlugin>(plugin);
     }
