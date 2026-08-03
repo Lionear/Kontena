@@ -307,4 +307,112 @@ public sealed class NerdctlMapTests
 
         Assert.Equal(new DateTimeOffset(2026, 8, 2, 8, 42, 5, TimeSpan.Zero), inspect.StartedAt);
     }
+
+    // ── stats ───────────────────────────────────────────────────────────────────────────────────
+
+    private static NerdctlStats StatsRow() =>
+        JsonSerializer.Deserialize<NerdctlStats>(Fixture("stats.json"), Options)!;
+
+    [Fact]
+    public void ToStats_reads_every_paired_field_of_a_real_stats_row()
+    {
+        var stats = StatsRow().ToStats("statsprobe");
+
+        Assert.Equal(0, stats.CpuPercent);
+        // 13.11MiB used of 62.7GiB — binary units, so the used figure is above 13 million bytes and the
+        // limit above 60 billion. Reading these with the decimal parser would land ~5% low on both.
+        Assert.InRange(stats.MemoryUsedBytes, 13_000_000, 14_000_000);
+        Assert.InRange(stats.MemoryLimitBytes, 60_000_000_000, 70_000_000_000);
+        Assert.Equal(0, stats.NetRxBytes);
+        Assert.Equal(0, stats.NetTxBytes);
+        Assert.Equal(0, stats.BlockReadBytes);
+        Assert.Equal(0, stats.BlockWriteBytes);
+    }
+
+    [Fact]
+    public void ToStats_carries_the_id_the_caller_asked_about_not_nerdctls_short_one()
+    {
+        // The fixture's own ID is the 12-character "2b31b8a09e84"; a caller streaming by full id would
+        // never match its samples back up if that were used instead.
+        var stats = StatsRow().ToStats("2b31b8a09e8478f1b1e0e1f0f9b0c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f70819");
+
+        Assert.Equal("2b31b8a09e8478f1b1e0e1f0f9b0c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f70819", stats.ContainerId);
+    }
+
+    [Fact]
+    public void ToStats_leaves_a_field_nerdctl_did_not_print_at_zero_rather_than_inventing_one()
+    {
+        var stats = new NerdctlStats().ToStats("empty");
+
+        Assert.Equal(0, stats.CpuPercent);
+        Assert.Equal(0, stats.MemoryUsedBytes);
+        Assert.Equal(0, stats.MemoryLimitBytes);
+    }
+
+    // ── events ──────────────────────────────────────────────────────────────────────────────────
+
+    private static IReadOnlyList<NerdctlEvent> EventRows() =>
+        NerdctlJson.Parse<NerdctlEvent>(Fixture("events.ndjson"));
+
+    [Fact]
+    public void ToEvent_takes_the_id_from_the_nested_payload_because_the_records_own_ID_is_empty()
+    {
+        var created = EventRows().Single(e => e.Topic == "/containers/create");
+
+        Assert.Equal(string.Empty, created.Id);
+
+        var mapped = created.ToEvent();
+
+        Assert.Equal("62091b25…", mapped.ResourceId);
+        Assert.Equal(EngineEventType.Created, mapped.Type);
+        Assert.Equal(ResourceKind.Container, mapped.ResourceKind);
+        // The record's own Timestamp is ISO8601 with nanoseconds; pinned to the second so the assertion
+        // does not depend on how many fractional digits survive parsing.
+        Assert.Equal(
+            new DateTime(2026, 8, 3, 12, 28, 22, DateTimeKind.Utc),
+            new DateTime(mapped.Timestamp.UtcDateTime.Ticks - (mapped.Timestamp.UtcDateTime.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void ToEvent_maps_containerds_storage_topics_to_Unknown_rather_than_inventing_an_action()
+    {
+        var snapshot = EventRows().Single(e => e.Topic == "/snapshot/prepare").ToEvent();
+
+        Assert.Equal(EngineEventType.Unknown, snapshot.Type);
+        // The payload names its subject "key", not "id" — still mapped, so a snapshot event is not
+        // silently id-less.
+        Assert.Equal("62091b25…", snapshot.ResourceId);
+    }
+
+    [Theory]
+    [InlineData("/tasks/start", EngineEventType.Started, ResourceKind.Container)]
+    [InlineData("/tasks/exit", EngineEventType.Died, ResourceKind.Container)]
+    [InlineData("/tasks/delete", EngineEventType.Stopped, ResourceKind.Container)]
+    [InlineData("/tasks/paused", EngineEventType.Paused, ResourceKind.Container)]
+    [InlineData("/tasks/resumed", EngineEventType.Unpaused, ResourceKind.Container)]
+    [InlineData("/containers/delete", EngineEventType.Removed, ResourceKind.Container)]
+    [InlineData("/images/create", EngineEventType.Pulled, ResourceKind.Image)]
+    [InlineData("/images/delete", EngineEventType.Removed, ResourceKind.Image)]
+    // Deliberately Unknown: containerd emits it alongside /containers/create for one user action, and
+    // reporting both would show the same container being created twice.
+    [InlineData("/tasks/create", EngineEventType.Unknown, ResourceKind.Container)]
+    [InlineData("/leases/create", EngineEventType.Unknown, ResourceKind.Container)]
+    public void ToEvent_maps_containerd_topics_not_docker_actions(
+        string topic, EngineEventType expectedType, ResourceKind expectedKind)
+    {
+        var mapped = new NerdctlEvent { Topic = topic }.ToEvent();
+
+        Assert.Equal(expectedType, mapped.Type);
+        Assert.Equal(expectedKind, mapped.ResourceKind);
+    }
+
+    [Theory]
+    [InlineData("start")]
+    [InlineData("die")]
+    [InlineData("stop")]
+    public void Docker_action_names_are_not_topics_and_map_to_nothing(string dockerAction)
+    {
+        // Pins the trap: matching on Docker's vocabulary finds nothing here, without any error to say so.
+        Assert.Equal(EngineEventType.Unknown, new NerdctlEvent { Topic = dockerAction }.ToEvent().Type);
+    }
 }

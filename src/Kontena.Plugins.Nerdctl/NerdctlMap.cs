@@ -283,4 +283,87 @@ public static class NerdctlMap
         "unless-stopped" => RestartPolicy.UnlessStopped,
         _ => RestartPolicy.No,
     };
+
+    /// <summary>
+    /// Maps one <c>stats --no-stream</c> row. <paramref name="containerId"/> is the id the caller asked
+    /// about, not <see cref="NerdctlStats.Id"/>: nerdctl answers with the short id, and a sample whose
+    /// id does not equal the one the caller is streaming would not match up on the other side.
+    /// <para>
+    /// Only the fields nerdctl actually reports are filled. It gives no CPU-time or system-usage
+    /// counters, so nothing here is computed from a previous sample the way Docker's adapter can — a
+    /// derived number would be an invention, and <see cref="ContainerStats"/> already leaves absent
+    /// values at zero.
+    /// </para>
+    /// </summary>
+    public static ContainerStats ToStats(this NerdctlStats stats, string containerId)
+    {
+        var (memoryUsed, memoryLimit) = NerdctlJson.Pair(stats.MemUsage);
+        var (received, transmitted) = NerdctlJson.Pair(stats.NetIo);
+        var (read, written) = NerdctlJson.Pair(stats.BlockIo);
+
+        return new ContainerStats
+        {
+            ContainerId = containerId,
+            CpuPercent = NerdctlJson.Percent(stats.CpuPerc),
+            // BinarySize, not Size: `stats` prints MiB/GiB while `images` prints MB/GB. See NerdctlJson.
+            MemoryUsedBytes = NerdctlJson.BinarySize(memoryUsed),
+            MemoryLimitBytes = NerdctlJson.BinarySize(memoryLimit),
+            NetRxBytes = NerdctlJson.BinarySize(received),
+            NetTxBytes = NerdctlJson.BinarySize(transmitted),
+            BlockReadBytes = NerdctlJson.BinarySize(read),
+            BlockWriteBytes = NerdctlJson.BinarySize(written),
+        };
+    }
+
+    /// <summary>
+    /// Maps one <c>events</c> record onto the CEAL's engine-neutral event. Everything interesting comes
+    /// from <see cref="NerdctlEvent.Topic"/> and the nested <see cref="NerdctlEvent.Event"/> payload —
+    /// the record's own <c>ID</c> and <c>Status</c> fields are empty and <c>"unknown"</c> respectively on
+    /// every observed event (Notes/nerdctl-advanced-formats.md), so reading them would produce
+    /// event streams that look alive and say nothing.
+    /// </summary>
+    public static EngineEvent ToEvent(this NerdctlEvent @event) => new(
+        EventTypeFromTopic(@event.Topic),
+        EventKindFromTopic(@event.Topic),
+        NerdctlJson.NestedId(@event.Event),
+        NerdctlJson.Time(@event.Timestamp));
+
+    /// <summary>
+    /// containerd's topics, mapped onto <see cref="EngineEventType"/>. The vocabulary is not Docker's:
+    /// a container's lifetime is split across two topic families — <c>/containers/*</c> for the record
+    /// and <c>/tasks/*</c> for the process — so "started" comes from <c>/tasks/start</c> while "created"
+    /// comes from <c>/containers/create</c>.
+    /// <para>
+    /// <c>/tasks/create</c> deliberately maps to <see cref="EngineEventType.Unknown"/> rather than
+    /// <see cref="EngineEventType.Created"/>: containerd emits it alongside <c>/containers/create</c> for
+    /// one user action, and reporting both would show the same container being created twice in the
+    /// activity log. Everything unrecognised lands on <c>Unknown</c> too — the many <c>/snapshot/*</c>
+    /// and <c>/content/*</c> topics are containerd's storage plumbing, not something a user did.
+    /// </para>
+    /// </summary>
+    private static EngineEventType EventTypeFromTopic(string topic) => topic switch
+    {
+        "/containers/create" => EngineEventType.Created,
+        "/containers/delete" => EngineEventType.Removed,
+        "/tasks/start" => EngineEventType.Started,
+        "/tasks/exit" => EngineEventType.Died,
+        "/tasks/delete" => EngineEventType.Stopped,
+        "/tasks/paused" => EngineEventType.Paused,
+        "/tasks/resumed" => EngineEventType.Unpaused,
+        "/images/create" => EngineEventType.Pulled,
+        "/images/delete" => EngineEventType.Removed,
+        _ => EngineEventType.Unknown,
+    };
+
+    /// <summary>
+    /// Which resource a topic is about. Volumes and networks never appear: nerdctl keeps both outside
+    /// containerd (a volume is a directory, a network is a CNI config file), so containerd has no topic
+    /// to emit for them and this backend's event stream simply never mentions them — a gap the UI sees
+    /// as "nothing happened", which is why it is stated here rather than left to be discovered.
+    /// </summary>
+    private static ResourceKind EventKindFromTopic(string topic) =>
+        topic.StartsWith("/images/", StringComparison.Ordinal) ||
+        topic.StartsWith("/content/", StringComparison.Ordinal)
+            ? ResourceKind.Image
+            : ResourceKind.Container;
 }

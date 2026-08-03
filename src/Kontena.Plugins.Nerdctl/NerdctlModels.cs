@@ -125,6 +125,70 @@ public sealed class NerdctlNamespace
     public string? Labels { get; init; }
 }
 
+/// <summary>
+/// One row of <c>nerdctl stats --no-stream --format json</c>. Every value is formatted for a terminal
+/// column, not for a caller (Notes/nerdctl-advanced-formats.md): the percentages carry their <c>%</c>,
+/// and three fields pack two values into one string separated by <c>" / "</c>. The sizes here are
+/// <b>binary</b> ("13.11MiB") unlike <see cref="NerdctlImage.Size"/>'s decimal ones — read them with
+/// <see cref="NerdctlJson.BinarySize"/>, never <see cref="NerdctlJson.Size"/>.
+/// </summary>
+public sealed class NerdctlStats
+{
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>The <b>short</b> id, not the 64-character one — see <see cref="NerdctlMap.ToStats"/> for why it is not used as the sample's id.</summary>
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>e.g. <c>"0.00%"</c> — read with <see cref="NerdctlJson.Percent"/>.</summary>
+    public string CpuPerc { get; init; } = string.Empty;
+
+    /// <summary>Used and limit in one string: <c>"13.11MiB / 62.7GiB"</c> — split with <see cref="NerdctlJson.Pair"/>.</summary>
+    public string MemUsage { get; init; } = string.Empty;
+
+    /// <summary>Already derivable from <see cref="MemUsage"/>; <see cref="Kontena.Sdk.Models.ContainerStats"/> computes its own fraction, so this is kept only so the row round-trips.</summary>
+    public string MemPerc { get; init; } = string.Empty;
+
+    /// <summary>Received and transmitted in one string: <c>"0B / 0B"</c>.</summary>
+    public string NetIo { get; init; } = string.Empty;
+
+    /// <summary>Read and written in one string: <c>"0B / 0B"</c>.</summary>
+    public string BlockIo { get; init; } = string.Empty;
+
+    /// <summary>A number as a string. <see cref="Kontena.Sdk.Models.ContainerStats"/> has no field for it, so it is not mapped.</summary>
+    public string Pids { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// One record of <c>nerdctl events --format json</c> — NDJSON with a blank line between records. Three
+/// of these fields lie about what they look like (Notes/nerdctl-advanced-formats.md), which is why this
+/// DTO carries doc comments where the other row types do not.
+/// </summary>
+public sealed class NerdctlEvent
+{
+    public string Timestamp { get; init; } = string.Empty;
+
+    /// <summary>
+    /// <b>Empty on every observed event.</b> The real id is nested inside <see cref="Event"/>; reading
+    /// this field gives an empty string with no error anywhere — see <see cref="NerdctlJson.NestedId"/>.
+    /// </summary>
+    public string Id { get; init; } = string.Empty;
+
+    public string Namespace { get; init; } = string.Empty;
+
+    /// <summary>
+    /// containerd's own topic (<c>/containers/create</c>, <c>/tasks/start</c>, <c>/snapshot/prepare</c>),
+    /// <b>not</b> Docker's action name — matching on "start"/"die"/"stop" finds nothing. This is the only
+    /// field that says what happened; <see cref="NerdctlMap.ToEvent"/> maps it.
+    /// </summary>
+    public string Topic { get; init; } = string.Empty;
+
+    /// <summary>Literally <c>"unknown"</c> on every observed event — carried for round-tripping, never read.</summary>
+    public string Status { get; init; } = string.Empty;
+
+    /// <summary>The topic's payload as an <b>escaped JSON string</b>, not an object — parse with <see cref="NerdctlJson.NestedId"/>.</summary>
+    public string Event { get; init; } = string.Empty;
+}
+
 /// <summary>Log and storage drivers <c>nerdctl info</c> reports as supported.</summary>
 public sealed class NerdctlInfoPlugins
 {

@@ -64,13 +64,39 @@ public static partial class NerdctlJson
             ["TB"] = 1_000_000_000_000,
         };
 
+    private static readonly Dictionary<string, double> BinarySizeUnits =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["B"] = 1,
+            ["KiB"] = 1024,
+            ["MiB"] = 1024L * 1024,
+            ["GiB"] = 1024L * 1024 * 1024,
+            ["TiB"] = 1024L * 1024 * 1024 * 1024,
+        };
+
     /// <summary>
-    /// Reads a size the way nerdctl prints one — a human string with a decimal unit, e.g. "53.98MB" —
-    /// not the byte count Docker's API gives. nerdctl's units are powers of 1000, not 1024: "53.98MB" is
-    /// 53.98 &#215; 10^6. Anything it cannot read comes back as 0 rather than throwing, because one odd
-    /// value in a size column is not worth losing the whole list over.
+    /// Reads a size the way <c>images</c> prints one — a human string with a <b>decimal</b> unit, e.g.
+    /// "53.98MB" — not the byte count Docker's API gives. nerdctl's units are powers of 1000 there, not
+    /// 1024: "53.98MB" is 53.98 &#215; 10^6. Anything it cannot read comes back as 0 rather than
+    /// throwing, because one odd value in a size column is not worth losing the whole list over.
+    /// <para>
+    /// <b>This is not the parser for <c>stats</c>.</b> That command prints binary units ("13.11MiB",
+    /// "62.7GiB") for the same kind of value — see <see cref="BinarySize"/>. Reading a memory figure
+    /// with this method is ~5% off and nothing in the output says so, which is why the two live side by
+    /// side instead of one being made to cover both.
+    /// </para>
     /// </summary>
-    public static long Size(string text)
+    public static long Size(string text) => Size(text, SizeUnits);
+
+    /// <summary>
+    /// Reads a size the way <c>stats</c> prints one — a human string with a <b>binary</b> unit, e.g.
+    /// "13.11MiB" or "62.7GiB" (Notes/nerdctl-advanced-formats.md). Same fail-soft contract as
+    /// <see cref="Size"/>, which is the decimal counterpart for <c>images</c>; the two commands really do
+    /// disagree on units, so both parsers exist on purpose.
+    /// </summary>
+    public static long BinarySize(string text) => Size(text, BinarySizeUnits);
+
+    private static long Size(string text, Dictionary<string, double> units)
     {
         var match = SizePattern().Match(text);
         if (!match.Success)
@@ -79,10 +105,38 @@ public static partial class NerdctlJson
         if (!double.TryParse(match.Groups["number"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
             return 0;
 
-        if (!SizeUnits.TryGetValue(match.Groups["unit"].Value, out var multiplier))
+        if (!units.TryGetValue(match.Groups["unit"].Value, out var multiplier))
             return 0;
 
         return (long)Math.Round(number * multiplier);
+    }
+
+    /// <summary>
+    /// Splits the three <c>stats</c> fields that carry two values in one string —
+    /// <c>MemUsage</c> is <c>"13.11MiB / 62.7GiB"</c> (used / limit), <c>NetIO</c> and <c>BlockIO</c> are
+    /// <c>"&lt;in&gt; / &lt;out&gt;"</c>. A field without the separator yields the whole text as the
+    /// first half and an empty second half, which the size parsers then read as 0 — the same fail-soft
+    /// contract as <see cref="Size"/> rather than a throw over one odd row.
+    /// </summary>
+    public static (string First, string Second) Pair(string text)
+    {
+        var separator = text.IndexOf('/', StringComparison.Ordinal);
+        return separator < 0
+            ? (text.Trim(), string.Empty)
+            : (text[..separator].Trim(), text[(separator + 1)..].Trim());
+    }
+
+    /// <summary>
+    /// Reads a <c>stats</c> percentage — <c>"0.00%"</c>, <c>"12.5%"</c> — as a number. The <c>%</c> is
+    /// part of the value nerdctl prints, so it is stripped here rather than by every caller. Unreadable
+    /// input comes back as 0, same reasoning as <see cref="Size"/>.
+    /// </summary>
+    public static double Percent(string text)
+    {
+        var trimmed = text.Trim().TrimEnd('%');
+        return double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0;
     }
 
     // Go's default time layout has no colon in its offset ("+0000"), which .NET's "zzz" specifier
@@ -178,5 +232,60 @@ public static partial class NerdctlJson
         }
 
         return labels;
+    }
+
+    [GeneratedRegex(@"^level=(?<level>[a-z]+)\s+msg=""(?<message>.*)""\s*$")]
+    private static partial Regex LogrusPattern();
+
+    /// <summary>
+    /// Unwraps one of nerdctl's logrus lines — <c>compose</c> narrates entirely this way, on stderr:
+    /// <c>level=info msg="Creating container cmp-web-1"</c> (Notes/nerdctl-advanced-formats.md). The
+    /// sentence a user needs is inside <c>msg</c>; showing the whole line would put nerdctl's own log
+    /// plumbing on screen. A line that is not logrus-shaped (compose also prints bare lines) comes back
+    /// unchanged with a <c>null</c> level, so a caller can pass it through as-is.
+    /// </summary>
+    public static (string? Level, string Message) Logrus(string line)
+    {
+        var match = LogrusPattern().Match(line.Trim());
+        return match.Success
+            ? (match.Groups["level"].Value, match.Groups["message"].Value)
+            : (null, line);
+    }
+
+    /// <summary>
+    /// Digs the resource id out of an <c>events</c> record's <c>Event</c> field. That field is an
+    /// <b>escaped JSON string</b>, not an object, and it is the only place the id appears: the record's
+    /// own top-level <c>ID</c> was empty on every event captured
+    /// (Notes/nerdctl-advanced-formats.md). Which key holds it depends on the topic — containerd events
+    /// name it <c>id</c>, image events <c>name</c>, snapshot events <c>key</c> — so all three are tried
+    /// in that order. Nothing readable comes back as an empty string rather than throwing: an event
+    /// stream that dies on one unfamiliar topic is worse than an event with no id.
+    /// </summary>
+    public static string NestedId(string escapedJson)
+    {
+        if (string.IsNullOrWhiteSpace(escapedJson))
+            return string.Empty;
+
+        try
+        {
+            using var document = JsonDocument.Parse(escapedJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return string.Empty;
+
+            foreach (var key in (string[])["id", "name", "key"])
+            {
+                if (document.RootElement.TryGetProperty(key, out var value) &&
+                    value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString() ?? string.Empty;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return string.Empty;
+        }
+
+        return string.Empty;
     }
 }
