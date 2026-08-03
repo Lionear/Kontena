@@ -1,0 +1,2 @@
+2026-08-02T08:42:00.944709304Z I0802 08:42:00.944686       1 controller.go:838] "Starting provisioner controller"
+2026-08-02T08:42:01.045116997Z I0802 08:42:01.044984       1 controller.go:887] "Started provisioner controller"
