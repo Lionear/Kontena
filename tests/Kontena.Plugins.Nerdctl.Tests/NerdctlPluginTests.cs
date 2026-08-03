@@ -78,11 +78,34 @@ public sealed class NerdctlPluginTests
         // `default`-namespace fallback ever appeared. Capturing the token handed to RunAsync — rather
         // than waiting out an actual timeout — proves a deadline was attached without making this test
         // slow or flaky.
+        //
+        // This only pins "not None" — a 1-tick CancellationTokenSource would satisfy CanBeCanceled just
+        // as well. It does not pin the five-second duration, and on its own it does not prove that an
+        // expired deadline actually reaches the `default`-provider fallback — the next test does that
+        // part, by simulating the token already having fired rather than waiting the real five seconds.
         var runner = new TokenCapturingToolRunner();
 
         NerdctlEngineProvider.DiscoverAll(runner);
 
         Assert.True(runner.CapturedToken.CanBeCanceled);
+    }
+
+    [Fact]
+    public void DiscoverAll_falls_back_to_default_when_the_deadline_fires()
+    {
+        // Simulates the five-second deadline having already elapsed by the time nerdctl would have
+        // answered — the same OperationCanceledException(ct) a real cancelled RunAsync raises — without
+        // making the test wait out the actual five seconds. If DiscoverAll ever went back to
+        // CancellationToken.None, this token would never be cancellable, RunAsync would return
+        // CanceledToolRunner's default fallback instead of throwing, the "catch (Exception)" below would
+        // never fire, and DiscoverAll would return an empty list rather than one default provider —
+        // failing this test the same way the `EngineProvider_ids_...` cases above already fail similar
+        // regressions.
+        var runner = new CanceledToolRunner();
+
+        var providers = NerdctlEngineProvider.DiscoverAll(runner);
+
+        Assert.Single(providers, p => p.Backend == "nerdctl:default");
     }
 
     private sealed class TokenCapturingToolRunner : IToolRunner
@@ -96,6 +119,25 @@ public sealed class NerdctlPluginTests
         {
             CapturedToken = ct;
             return ValueTask.FromResult(new ToolResult(0, string.Empty, string.Empty));
+        }
+
+        public IAsyncEnumerable<ToolLine> StreamAsync(ToolInvocation invocation, CancellationToken ct = default) =>
+            throw new NotSupportedException("DiscoverAll only ever calls RunAsync.");
+    }
+
+    /// <summary>A namespace list that never answers — it only ever reports the deadline that was
+    /// supposed to end it, exactly as a real cancelled <c>RunAsync</c> would once its token fires.</summary>
+    private sealed class CanceledToolRunner : IToolRunner
+    {
+        public ValueTask<ToolLocation> FindAsync(ExternalTool tool, CancellationToken ct = default) =>
+            ValueTask.FromResult(new ToolLocation(tool, "/fake/bin/nerdctl", "v1.0.0"));
+
+        public ValueTask<ToolResult> RunAsync(ToolInvocation invocation, CancellationToken ct = default)
+        {
+            if (!ct.CanBeCanceled)
+                throw new InvalidOperationException("DiscoverAll must hand RunAsync a cancellable token.");
+
+            throw new OperationCanceledException("Simulated: the deadline elapsed before nerdctl answered.", ct);
         }
 
         public IAsyncEnumerable<ToolLine> StreamAsync(ToolInvocation invocation, CancellationToken ct = default) =>
