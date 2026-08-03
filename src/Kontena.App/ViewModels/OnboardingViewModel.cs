@@ -58,7 +58,8 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         Action onInstallPodman,
         Func<Task> onRescan,
         Func<Task> onStartEngine,
-        Func<IBackendProvider, string>? nameOf = null)
+        Func<IBackendProvider, string>? nameOf = null,
+        bool? showRoadmap = null)
     {
         nameOf ??= p => p.DisplayName;
         _autoDetect = autoDetect;
@@ -84,18 +85,23 @@ public sealed partial class OnboardingViewModel : ViewModelBase
             });
         }
 
-        // Roadmap row (not a probe): the native macOS runtime, planned as a later backend.
-        items.Add(new OnboardingEngine
+        // Roadmap row (not a probe): the native macOS runtime, planned as a later backend. Only where
+        // it can ever apply (KON-337) — on Linux and Windows it announced a runtime that platform will
+        // never get, at the size of a real engine, on the most expensive screen in the app.
+        if (showRoadmap ?? OperatingSystem.IsMacOS())
         {
-            Backend = "apple",
-            Name = "Apple container",
-            // The mark as path data rather than U+F8FF: the private-use Apple glyph only renders on
-            // Apple's own systems, so on Windows and Linux this row showed a tofu box (KON-80).
-            Chip = new BackendChipInfo("A", AppleBrand.Glyph, AppleBrand.Accent),
-            Detail = "Native macOS runtime · planned backend",
-            IsConnected = false,
-            ComingSoon = true,
-        });
+            items.Add(new OnboardingEngine
+            {
+                Backend = "apple",
+                Name = "Apple container",
+                // The mark as path data rather than U+F8FF: the private-use Apple glyph only renders on
+                // Apple's own systems, so on Windows and Linux this row showed a tofu box (KON-80).
+                Chip = new BackendChipInfo("A", AppleBrand.Glyph, AppleBrand.Accent),
+                Detail = "Native macOS runtime · planned backend",
+                IsConnected = false,
+                ComingSoon = true,
+            });
+        }
 
         Engines = items;
 
