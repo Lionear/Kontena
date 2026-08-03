@@ -18,6 +18,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **The first-run wizard shows the clusters in your kubeconfig.** With a kubeconfig and no local
+  engine it reported "no engines detected" and offered the Podman install guide — sending you off to
+  install software you do not need, past clusters that were ready to use. The contexts in your
+  kubeconfig are now listed on the wizard itself: tick the ones you want in the switcher and continue,
+  engine or no engine. Ticking one off is remembered as an answer, so a cluster you did not want is
+  not offered again on every launch. (KON-336)
+- **The wizard's Skip and Continue stay put.** They sat at the bottom of a card that grows with
+  whatever was found, so a machine with enough to show pushed them off the screen. The card now
+  scrolls its own middle and keeps the buttons in view. (KON-336)
 - **Skipping the first-run wizard is no longer a decision you are stuck with.** Skipping it left
   Kontena picking the first engine that answered, every launch, without ever asking again — invisible
   with one engine, a silent choice with two. **Set up again**, next to Reconnect on the engine-down
