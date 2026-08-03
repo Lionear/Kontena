@@ -106,8 +106,11 @@ public sealed class NerdctlEngineTests
     }
 
     [Fact]
-    public void Every_operation_beyond_identity_reachability_and_capabilities_throws_NotSupportedException()
+    public void Every_operation_this_PR_does_not_fill_in_throws_NotSupportedException()
     {
+        // ListContainersAsync, ListImagesAsync, ListNetworksAsync, ListVolumesAsync,
+        // InspectContainerAsync and StreamLogsAsync are this PR's task 6 payload — covered by
+        // NerdctlEngineReadTests instead, against the fake runner's fixtures rather than a bare default.
         var engine = Engine(new FakeToolRunner());
 
         // CA2012 wants every ValueTask awaited. These calls never produce one — each member throws
@@ -117,7 +120,6 @@ public sealed class NerdctlEngineTests
 #pragma warning disable CA2012
         Action[] calls =
         [
-            () => _ = engine.ListContainersAsync(),
             () => _ = engine.CreateContainerAsync(new CreateContainerRequest { Image = "nginx" }),
             () => _ = engine.StartContainerAsync("id"),
             () => _ = engine.StopContainerAsync("id"),
@@ -125,11 +127,9 @@ public sealed class NerdctlEngineTests
             () => _ = engine.PauseContainerAsync("id"),
             () => _ = engine.UnpauseContainerAsync("id"),
             () => _ = engine.RemoveContainerAsync("id"),
-            () => _ = engine.InspectContainerAsync("id"),
             () => _ = engine.ExecAsync("id", new ExecRequest { Command = ["echo"] }),
             () => _ = engine.StartExecSessionAsync("id", new ExecRequest { Command = ["echo"] }),
             () => _ = engine.PruneContainersAsync(),
-            () => _ = engine.ListImagesAsync(),
             () => _ = engine.PullImageAsync("nginx"),
             () => _ = engine.VerifyRegistryLoginAsync(new RegistryCredential("host", "user", "secret")),
             () => _ = engine.BuildImageAsync(new BuildRequest { ContextPath = ".", Tag = "x" }),
@@ -137,18 +137,15 @@ public sealed class NerdctlEngineTests
             () => _ = engine.InspectImageAsync("nginx"),
             () => _ = engine.TagImageAsync("id", "nginx:latest"),
             () => _ = engine.PruneImagesAsync(),
-            () => _ = engine.ListVolumesAsync(),
             () => _ = engine.CreateVolumeAsync(new CreateVolumeRequest { Name = "v" }),
             () => _ = engine.RemoveVolumeAsync("v"),
             () => _ = engine.BrowseVolumeAsync("v"),
             () => _ = engine.PruneVolumesAsync(),
-            () => _ = engine.ListNetworksAsync(),
             () => _ = engine.CreateNetworkAsync(new CreateNetworkRequest { Name = "n" }),
             () => _ = engine.RemoveNetworkAsync("n"),
             () => _ = engine.ConnectNetworkAsync("id", "n"),
             () => _ = engine.DisconnectNetworkAsync("id", "n"),
             () => _ = engine.ComposeUpAsync(new ComposeUpRequest { ComposeFilePath = "compose.yaml" }),
-            () => _ = engine.StreamLogsAsync("id"),
             () => _ = engine.StreamStatsAsync("id"),
             () => _ = engine.StreamEventsAsync(),
         ];

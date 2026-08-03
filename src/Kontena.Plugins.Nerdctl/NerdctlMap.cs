@@ -82,6 +82,12 @@ public static class NerdctlMap
     };
 
     /// <summary>
+    /// Maps one <c>volume ls</c> row. Only <see cref="NerdctlVolume.Name"/> exists to map — see that
+    /// type's remarks for why driver/mountpoint are not guessed at.
+    /// </summary>
+    public static VolumeSummary ToVolume(this NerdctlVolume volume) => new() { Name = volume.Name };
+
+    /// <summary>
     /// Maps one <c>network ls</c> row. <c>kindnet</c>, <c>host</c> and <c>none</c> were all observed
     /// with an empty <see cref="NerdctlNetwork.Id"/> — three different networks sharing the same empty
     /// key — so <see cref="NetworkSummary.Id"/> is passed through as-is (possibly empty) rather than

@@ -90,6 +90,19 @@ public sealed class NerdctlNetwork
 }
 
 /// <summary>
+/// One row of <c>nerdctl volume ls --format json</c>. Only <see cref="Name"/> is declared: every other
+/// command's populated shape here was captured against a real nerdctl (Notes/nerdctl-cli-formats.md),
+/// but <c>volume ls</c> was only ever observed with zero volumes — its empty case is the one edge that
+/// capture caught. Guessing a driver/mountpoint field name from nerdctl's docs rather than an actual
+/// capture is exactly the risk this file exists to avoid, so those are left unmapped until a populated
+/// capture exists (KON-141 PR 3/4).
+/// </summary>
+public sealed class NerdctlVolume
+{
+    public string Name { get; init; } = string.Empty;
+}
+
+/// <summary>
 /// One row of <c>nerdctl namespace ls --format json</c> — a containerd namespace (e.g. <c>k8s.io</c>),
 /// not a Kubernetes one. Unlike <c>ps</c>/<c>images</c>/<c>network ls</c>, the counts here are real JSON
 /// numbers, not strings.

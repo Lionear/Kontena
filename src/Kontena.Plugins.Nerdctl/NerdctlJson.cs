@@ -28,6 +28,14 @@ public static partial class NerdctlJson
     public static IReadOnlyList<T> Parse<T>(string stdout) =>
         [.. Lines(stdout).Select(line => JsonSerializer.Deserialize<T>(line, Options)!)];
 
+    /// <summary>
+    /// Deserializes a genuine JSON array — <c>nerdctl inspect</c> is the one command here that prints
+    /// this shape instead of NDJSON (a single-element array, Docker-compatible; see
+    /// Notes/nerdctl-cli-formats.md).
+    /// </summary>
+    public static IReadOnlyList<T> ParseArray<T>(string stdout) =>
+        JsonSerializer.Deserialize<List<T>>(stdout, Options) ?? [];
+
     [GeneratedRegex(@"^\s*(?<number>[0-9.]+)\s*(?<unit>[A-Za-z]+)\s*$")]
     private static partial Regex SizePattern();
 
