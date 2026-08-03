@@ -110,8 +110,11 @@ public sealed class NerdctlEngineTests
     {
         var engine = Engine(new FakeToolRunner());
 
-        // `_ =` discards each result explicitly — CA2012 is silenced for tests (.editorconfig) for
-        // exactly this shape: the point of every call below is the synchronous throw, never the task.
+        // CA2012 wants every ValueTask awaited. These calls never produce one — each member throws
+        // synchronously, which is precisely what is under test — so awaiting would only obscure that.
+        // Scoped to this array rather than switched off for the repository's tests: elsewhere, an
+        // unawaited ValueTask is the bug the rule is there to find.
+#pragma warning disable CA2012
         Action[] calls =
         [
             () => _ = engine.ListContainersAsync(),
@@ -149,6 +152,7 @@ public sealed class NerdctlEngineTests
             () => _ = engine.StreamStatsAsync("id"),
             () => _ = engine.StreamEventsAsync(),
         ];
+#pragma warning restore CA2012
 
         Assert.All(calls, call => Assert.Throws<NotSupportedException>(call));
     }

@@ -24,9 +24,7 @@ dotnet_style_qualification_for_property = false:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 
 # Test method names intentionally use underscores for readability;
-# terse LINQ (First/Last) over indexable collections is fine in tests;
-# a ValueTask a test expects to throw before it is ever produced has nothing to await.
+# terse LINQ (First/Last) over indexable collections is fine in tests.
 [tests/**.cs]
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1826.severity = none
-dotnet_diagnostic.CA2012.severity = none

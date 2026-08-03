@@ -12,16 +12,16 @@ namespace Kontena.Plugins.Nerdctl;
 /// This PR (nerdctl PR 2, KON-141 task 5) only gives the backend identity, reachability and honest
 /// capabilities — <see cref="Backend"/>, <see cref="PingAsync"/>, <see cref="GetInfoAsync"/> and
 /// <see cref="Capabilities"/> are real. Every other member throws <see cref="NotSupportedException"/>
-/// naming the PR that fills it in: reading containers/images/volumes/networks is this same PR's next
-/// task, writing lands in PR 3, and build/compose/exec/stats/events/volume-browsing land in PR 4. That
-/// is acceptable only because the plugin is not distributed until PR 5 — no user can reach any of this
-/// yet.
+/// naming the PR that fills it in: reading containers/images/volumes/networks/logs is this same PR's
+/// next task, writing lands in PR 3, and build/compose/exec/stats/events/volume-browsing land in PR 4.
+/// That is acceptable only because the plugin is not distributed until PR 5 — no user can reach any of
+/// this yet.
 /// </para>
 /// </summary>
 public sealed class NerdctlEngine : IContainerEngine
 {
     private const string ReadNotYet =
-        "Reading containers/images/volumes/networks is nerdctl's next task in this PR (KON-141 PR 2).";
+        "Reading containers/images/volumes/networks/logs is nerdctl's next task in this PR (KON-141 PR 2).";
 
     private const string WriteNotYet =
         "Creating, starting, stopping, removing and pruning containers/images/volumes/networks lands in nerdctl PR 3 (KON-141).";
