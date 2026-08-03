@@ -7,8 +7,8 @@ using Kontena.Sdk.Tooling.Fakes;
 namespace Kontena.Plugins.Nerdctl.Tests;
 
 /// <summary>
-/// <see cref="NerdctlEngine"/> in this PR only has identity, reachability and honest capabilities —
-/// everything else throws <see cref="NotSupportedException"/> (KON-141 PR 2 task 5). The fixture-backed
+/// <see cref="NerdctlEngine"/>'s identity, reachability and honest capabilities (KON-141 PR 2 task 5),
+/// plus the shrinking list of members this backend refuses outright. The fixture-backed
 /// tests here pin the two things a test asserting a bare default would not actually prove: that
 /// <see cref="EngineCapabilities.Rootless"/> flips on <c>name=rootless</c> appearing in
 /// <c>SecurityOptions</c> — the field <c>info</c> does not have — and that <see cref="BackendInfo.Version"/>
@@ -127,24 +127,19 @@ public sealed class NerdctlEngineTests
     }
 
     [Fact]
-    public void Every_operation_this_PR_does_not_fill_in_throws_NotSupportedException()
+    public void Every_operation_this_backend_cannot_serve_throws_NotSupportedException()
     {
-        // ListContainersAsync, ListImagesAsync, ListNetworksAsync, ListVolumesAsync,
-        // InspectContainerAsync and StreamLogsAsync are this PR's task 6 payload — covered by
-        // NerdctlEngineReadTests instead, against the fake runner's fixtures rather than a bare default.
-        // StartContainerAsync, StopContainerAsync, RestartContainerAsync, PauseContainerAsync,
-        // UnpauseContainerAsync and RemoveContainerAsync are task 1's payload (this PR) — covered by
-        // NerdctlEngineLifecycleTests instead, against the fake runner rather than a bare default.
-        // CreateContainerAsync is task 2's payload (this PR) — covered by NerdctlEngineCreateTests
-        // instead, against the fake runner rather than a bare default.
-        // CreateVolumeAsync, RemoveVolumeAsync, CreateNetworkAsync and RemoveNetworkAsync are task 3's
-        // payload (this PR) — covered by NerdctlEngineVolumeNetworkTests instead, against the fake
-        // runner rather than a bare default.
-        // PruneContainersAsync, PruneImagesAsync and PruneVolumesAsync are task 4's payload (this PR) —
-        // covered by NerdctlEnginePruneTests instead. They also would not belong in the array below even
-        // unimplemented: all three are async methods, so a thrown exception surfaces on the returned
-        // ValueTask rather than synchronously from the call expression the way every bare `=> throw ...`
-        // member below does, and Assert.Throws here needs the latter.
+        // What is left here after PR 4 is no longer "not built yet" — each of these names a limitation
+        // of nerdctl or of the tool seam, spelled out on the member itself. Everything implemented is
+        // covered by its own file: reading (NerdctlEngineReadTests), lifecycle
+        // (NerdctlEngineLifecycleTests), create (NerdctlEngineCreateTests), volumes and networks
+        // (NerdctlEngineVolumeNetworkTests), prune (NerdctlEnginePruneTests), and this PR's streams,
+        // build, Compose and image writes (NerdctlEngineAdvancedTests).
+        //
+        // BuildImageAsync, ComposeUpAsync, PullImageAsync, StreamStatsAsync and StreamEventsAsync are
+        // deliberately absent from the array below even where they can still refuse: they are iterators,
+        // so their exception surfaces on the first MoveNext rather than from the call expression, and
+        // Assert.Throws here needs the latter. NerdctlEngineAdvancedTests asserts those by enumerating.
         var engine = Engine(new FakeToolRunner());
 
         // CA2012 wants every ValueTask awaited. These calls never produce one — each member throws
@@ -156,18 +151,11 @@ public sealed class NerdctlEngineTests
         [
             () => _ = engine.ExecAsync("id", new ExecRequest { Command = ["echo"] }),
             () => _ = engine.StartExecSessionAsync("id", new ExecRequest { Command = ["echo"] }),
-            () => _ = engine.PullImageAsync("nginx"),
             () => _ = engine.VerifyRegistryLoginAsync(new RegistryCredential("host", "user", "secret")),
-            () => _ = engine.BuildImageAsync(new BuildRequest { ContextPath = ".", Tag = "x" }),
-            () => _ = engine.RemoveImageAsync("id"),
             () => _ = engine.InspectImageAsync("nginx"),
-            () => _ = engine.TagImageAsync("id", "nginx:latest"),
             () => _ = engine.BrowseVolumeAsync("v"),
             () => _ = engine.ConnectNetworkAsync("id", "n"),
             () => _ = engine.DisconnectNetworkAsync("id", "n"),
-            () => _ = engine.ComposeUpAsync(new ComposeUpRequest { ComposeFilePath = "compose.yaml" }),
-            () => _ = engine.StreamStatsAsync("id"),
-            () => _ = engine.StreamEventsAsync(),
         ];
 #pragma warning restore CA2012
 
