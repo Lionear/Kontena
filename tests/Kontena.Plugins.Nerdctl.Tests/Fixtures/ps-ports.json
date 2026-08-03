@@ -1,0 +1,1 @@
+{"Command":"\"/docker-entrypoint.…\"","CreatedAt":"2026-08-03T10:10:31.123456789Z","ID":"c2c9761a61d7","Image":"docker.io/library/nginx:latest","Platform":"","Names":"portprobe","Ports":"0.0.0.0:8080->80/tcp, 0.0.0.0:9090->90/udp","Status":"Up","Runtime":"io.containerd.runc.v2","Size":"","Labels":""}
