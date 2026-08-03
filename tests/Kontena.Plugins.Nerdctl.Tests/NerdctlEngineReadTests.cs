@@ -170,6 +170,29 @@ public sealed class NerdctlEngineReadTests
     }
 
     [Fact]
+    public async Task InspectContainerAsync_on_malformed_json_throws_EngineException_not_a_raw_JsonException()
+    {
+        // A JSON syntax error here must not reach the caller as a raw System.Text.Json.JsonException —
+        // and must not be mistaken for ResourceNotFoundException either, since nerdctl did answer, it
+        // just answered with something this plugin cannot read.
+        var runner = Installed().When(_ => true, output: ["{not valid json"]);
+
+        await Assert.ThrowsAsync<EngineException>(
+            () => Engine(runner).InspectContainerAsync("281c109b7ece").AsTask());
+    }
+
+    [Fact]
+    public async Task InspectContainerAsync_on_a_null_array_element_throws_EngineException_not_a_raw_NullReferenceException()
+    {
+        // "[null]" is a well-formed JSON array whose one element is JSON null; reading .Id off it in
+        // ToInspect would otherwise be a raw NullReferenceException three lines later.
+        var runner = Installed().When(_ => true, output: ["[null]"]);
+
+        await Assert.ThrowsAsync<EngineException>(
+            () => Engine(runner).InspectContainerAsync("281c109b7ece").AsTask());
+    }
+
+    [Fact]
     public async Task InspectContainerAsync_for_an_unknown_id_translates_the_non_zero_exit_to_ResourceNotFoundException()
     {
         // A container id nerdctl does not know about makes the CLI exit non-zero — NerdctlCli surfaces

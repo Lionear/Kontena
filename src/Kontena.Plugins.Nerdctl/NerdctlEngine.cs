@@ -117,7 +117,19 @@ public sealed class NerdctlEngine : IContainerEngine
             throw new EngineUnreachableException($"nerdctl did not respond for '{_backend}': {ex.Message}", ex);
         }
 
-        var rows = NerdctlJson.Parse<NerdctlInfo>(stdout);
+        IReadOnlyList<NerdctlInfo> rows;
+        try
+        {
+            rows = NerdctlJson.Parse<NerdctlInfo>(stdout);
+        }
+        catch (JsonException ex)
+        {
+            // Garbled `info` output means the same thing to a caller as the tool failures just above:
+            // this backend cannot be understood right now, so PingAsync's callers see the one kind of
+            // failure this whole method exists to guarantee, not a raw System.Text.Json type.
+            throw new EngineUnreachableException($"nerdctl returned output for '{_backend}' that could not be parsed: {ex.Message}", ex);
+        }
+
         if (rows.Count == 0)
             throw new EngineUnreachableException($"'nerdctl info' returned nothing for '{_backend}'.");
         var info = rows[0];
@@ -134,16 +146,16 @@ public sealed class NerdctlEngine : IContainerEngine
     /// Runs a listing command (<c>ps</c>, <c>images</c>, <c>network ls</c>, <c>volume ls</c>), then
     /// hands stdout to <paramref name="parse"/> — the caller's own <c>NerdctlJson.Parse</c> + mapping —
     /// and translates every way either step can fail to the exceptions the rest of the CEAL already
-    /// expects: the same translation <see cref="ReadInfoAsync"/> applies to <c>info</c>, so a caller
-    /// sees one consistent family of failures from this engine, never a raw tooling exception or a raw
-    /// <see cref="JsonException"/>.
+    /// expects: the same translation <see cref="ReadInfoAsync"/> and <see cref="InspectContainerAsync"/>
+    /// apply to their own commands, so a caller sees one consistent family of failures from this engine,
+    /// never a raw tooling exception or a raw <see cref="JsonException"/>.
     /// <para>
-    /// <c>NerdctlJson.Parse</c>'s <c>!</c> trusts that every NDJSON line deserializes to a real object;
-    /// a malformed line throws <see cref="JsonException"/>, and the literal line <c>"null"</c> instead
-    /// produces a null entry that throws <see cref="NullReferenceException"/> the moment the mapping
-    /// below reads a property off it. Either way this is nerdctl printing something this plugin did not
-    /// expect, not a tooling failure, so it gets the same kind of engine exception the CLI-level
-    /// failures above do rather than a raw <c>System.Text.Json</c> type reaching the UI.
+    /// <c>NerdctlJson.Parse</c>/<c>ParseArray</c> already guarantee malformed JSON and a <c>null</c>
+    /// entry both surface as <see cref="JsonException"/> rather than a
+    /// <see cref="NullReferenceException"/> three lines later in the mapping below — that guard lives
+    /// once in <c>NerdctlJson</c> so every caller inherits it. This still catches
+    /// <see cref="NullReferenceException"/> alongside it as a defensive backstop for whatever the
+    /// mapping delegate itself might do with a value <c>NerdctlJson</c> did hand back.
     /// </para>
     /// </summary>
     private async ValueTask<IReadOnlyList<T>> RunListAsync<T>(
@@ -238,7 +250,20 @@ public sealed class NerdctlEngine : IContainerEngine
             throw new ResourceNotFoundException($"Container '{id}' was not found on '{_backend}'.", ex);
         }
 
-        var rows = NerdctlJson.ParseArray<NerdctlInspectContainer>(stdout);
+        IReadOnlyList<NerdctlInspectContainer> rows;
+        try
+        {
+            rows = NerdctlJson.ParseArray<NerdctlInspectContainer>(stdout);
+        }
+        catch (JsonException ex)
+        {
+            // Garbled `inspect` output is not "id not found" (ResourceNotFoundException would be a
+            // wrong answer stated as fact) and not "cannot reach the backend" (nerdctl did respond) —
+            // it is nerdctl printing something this plugin cannot read, the same generic failure
+            // RunListAsync already reports for the same reason on its own commands.
+            throw new EngineException($"nerdctl returned output for '{_backend}' that could not be parsed: {ex.Message}", ex);
+        }
+
         if (rows.Count == 0)
             throw new ResourceNotFoundException($"Container '{id}' was not found on '{_backend}'.");
 

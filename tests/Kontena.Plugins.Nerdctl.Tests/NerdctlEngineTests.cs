@@ -69,6 +69,27 @@ public sealed class NerdctlEngineTests
     }
 
     [Fact]
+    public async Task PingAsync_on_malformed_json_throws_EngineUnreachableException_not_a_raw_JsonException()
+    {
+        // A JSON syntax error escaping NerdctlJson.Parse would otherwise reach PingAsync's callers as a
+        // raw System.Text.Json.JsonException — exactly the tooling-layer leak this method's carefully
+        // translated ToolNotFoundException/ToolFailedException branches above already exist to prevent.
+        var runner = Installed().When(_ => true, output: ["{not valid json"]);
+
+        await Assert.ThrowsAsync<EngineUnreachableException>(() => Engine(runner).PingAsync().AsTask());
+    }
+
+    [Fact]
+    public async Task PingAsync_on_a_literal_null_line_throws_EngineUnreachableException_not_a_raw_NullReferenceException()
+    {
+        // The literal line "null" deserializes to a null NerdctlInfo; reading SecurityOptions off it
+        // three lines later would otherwise be a raw NullReferenceException, not an engine-level failure.
+        var runner = Installed().When(_ => true, output: ["null"]);
+
+        await Assert.ThrowsAsync<EngineUnreachableException>(() => Engine(runner).PingAsync().AsTask());
+    }
+
+    [Fact]
     public async Task GetInfoAsync_reports_the_containerd_version_and_the_namespace_as_the_endpoint()
     {
         var runner = Installed().When(_ => true, output: [InfoFixture]);
