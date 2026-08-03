@@ -204,9 +204,110 @@ public sealed class NerdctlEngine : IContainerEngine
             args).ConfigureAwait(false);
     }
 
-    public ValueTask<string> CreateContainerAsync(
-        CreateContainerRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl create</c>, then <c>start</c> when <see cref="CreateContainerRequest.Start"/> asks
+    /// for it — two calls, not one, because <c>create</c> alone never starts the container (the same
+    /// two-step shape <c>DockerEngine</c> uses). Every field on <see cref="CreateContainerRequest"/> maps
+    /// onto a real flag (see <see cref="BuildCreateArgs"/>); <c>Start</c> is the only one that is not a
+    /// flag at all, which is why it drives this second call instead.
+    /// <para>
+    /// Unlike the lifecycle commands, <c>create</c>'s stdout <i>is</i> the answer: it prints the full
+    /// 64-character id (Notes/nerdctl-write-formats.md), so this reads and trims it rather than echoing
+    /// back something the caller already had. <c>ps</c> later reports only the 12-character short id, so
+    /// the value returned here will not literally equal what <see cref="ListContainersAsync"/> shows for
+    /// the same container afterwards — a caller correlating the two must compare by prefix, not equality.
+    /// </para>
+    /// </summary>
+    public async ValueTask<string> CreateContainerAsync(
+        CreateContainerRequest request, CancellationToken ct = default)
+    {
+        string stdout;
+        try
+        {
+            stdout = await _cli.RunAsync(ct, BuildCreateArgs(request)).ConfigureAwait(false);
+        }
+        catch (ToolNotFoundException ex)
+        {
+            throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+        }
+        catch (ToolFailedException ex)
+        {
+            // Unlike RunLifecycleAsync's failures, there is no id yet for nerdctl to complain about not
+            // finding — a name already in use, a missing image, or an unparseable flag all exit non-zero
+            // here undistinguished, since none of them were observed with a marker as stable as "no such
+            // container" (Notes/nerdctl-write-formats.md only documents the lifecycle and
+            // volume-in-use cases). nerdctl's own sentence is kept whole rather than replaced with
+            // something generic, the same choice RunLifecycleAsync makes for its own fallback case.
+            throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+        }
+
+        var id = stdout.Trim();
+
+        if (request.Start)
+            await RunLifecycleAsync(id, ct, "start", id).ConfigureAwait(false);
+
+        return id;
+    }
+
+    /// <summary>
+    /// Translates <see cref="CreateContainerRequest"/> into a <c>create</c> command line. Every field
+    /// maps onto a real nerdctl flag — name, ports, environment, volumes, network and restart policy are
+    /// all part of nerdctl's Docker-compatible <c>create</c>/<c>run</c> flag set — so nothing on the
+    /// request is dropped silently; <see cref="CreateContainerRequest.Start"/> is handled by the caller
+    /// as a separate <c>start</c> call instead, since it has no flag of its own.
+    /// <para>
+    /// No explicit "does the image exist locally" check runs before this, unlike <c>DockerEngine</c>:
+    /// that adapter talks to the raw Engine API, which does not pull on create, while this shells out to
+    /// the actual <c>nerdctl</c> CLI, which auto-pulls a missing image itself — the same reason
+    /// <c>docker create</c> does not need a caller to pull first either.
+    /// </para>
+    /// </summary>
+    private static string[] BuildCreateArgs(CreateContainerRequest request)
+    {
+        List<string> args = ["create"];
+
+        if (request.Name is { } name)
+            args.AddRange(["--name", name]);
+
+        foreach (var port in request.Ports)
+        {
+            // A null HostPort means "publish to a random host port", not "don't publish" — every entry
+            // in Ports is meant to be published, matching how DockerEngine maps this same request field.
+            var spec = port.HostPort is { } hostPort
+                ? $"{hostPort}:{port.ContainerPort}/{port.Protocol}"
+                : $"{port.ContainerPort}/{port.Protocol}";
+            args.AddRange(["-p", spec]);
+        }
+
+        foreach (var (key, value) in request.Environment)
+            args.AddRange(["-e", $"{key}={value}"]);
+
+        foreach (var (source, target) in request.Volumes)
+            args.AddRange(["-v", $"{source}:{target}"]);
+
+        if (request.Network is { } network)
+            args.AddRange(["--network", network]);
+
+        if (request.RestartPolicy != RestartPolicy.No)
+            args.AddRange(["--restart", MapRestart(request.RestartPolicy)]);
+
+        args.Add(request.Image);
+
+        return [.. args];
+    }
+
+    /// <summary>
+    /// nerdctl's <c>--restart</c> accepts the same policy names Docker's CLI does. <see cref="RestartPolicy.No"/>
+    /// never reaches here — <see cref="BuildCreateArgs"/> skips the flag entirely for it, since that is
+    /// nerdctl's own default and spelling it out on every command line would just be noise.
+    /// </summary>
+    private static string MapRestart(RestartPolicy policy) => policy switch
+    {
+        RestartPolicy.Always => "always",
+        RestartPolicy.OnFailure => "on-failure",
+        RestartPolicy.UnlessStopped => "unless-stopped",
+        _ => "no",
+    };
 
     /// <summary>Runs <c>nerdctl start &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
     /// failures are told apart.</summary>
