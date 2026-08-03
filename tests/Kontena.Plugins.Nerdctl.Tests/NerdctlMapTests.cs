@@ -182,6 +182,21 @@ public sealed class NerdctlMapTests
     }
 
     [Fact]
+    public void A_positive_memory_is_read_from_host_config()
+    {
+        // inspect.json's captured container has HostConfig.Memory == 0 (no limit), so the fixture alone
+        // cannot exercise the other branch — constructed directly, the same way the other HostConfig/
+        // Config edge cases in this file are, to pin that a real limit survives mapping rather than the
+        // line only ever being seen returning null.
+        var inspect = new NerdctlInspectContainer
+        {
+            HostConfig = new NerdctlInspectHostConfig { Memory = 536_870_912 },
+        }.ToInspect();
+
+        Assert.Equal(536_870_912, inspect.MemoryLimitBytes);
+    }
+
+    [Fact]
     public void Mounts_and_networks_carry_over()
     {
         var inspect = Inspect().ToInspect();
@@ -196,6 +211,9 @@ public sealed class NerdctlMapTests
     [Fact]
     public void Oom_killed_is_always_false_since_nerdctl_does_not_report_it()
     {
+        // This pins nothing: false is both the absent JSON key's and ContainerInspect.OomKilled's own
+        // default, so ToInspect could drop the assignment entirely and this would still pass. Kept as
+        // documentation of the gap, not as a test that would catch a regression here.
         Assert.False(Inspect().ToInspect().OomKilled);
     }
 
