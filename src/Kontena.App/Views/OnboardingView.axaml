@@ -142,8 +142,43 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Install assist -->
-                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
+                <!--
+                    Start assist (KON-335). Appears only when a checked fix exists — Podman installed
+                    with its user socket unit never enabled, the one case with a specific answer. Above
+                    the install box on purpose: an engine you already have beats installing another.
+                -->
+                <Border IsVisible="{Binding FixCommandLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        BorderBrush="{DynamicResource Primary}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
+                        Background="{DynamicResource SurfaceRaised}" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                   Text="Podman is installed here, but its socket was never enabled — that is why it reads as not running. Turning it on needs no admin rights."/>
+                        <!-- Command and buttons on one row: two stacked rows pushed Skip/Continue
+                             off the bottom of the default window. -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding FixCommandLine}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                       Foreground="{DynamicResource Text}" TextWrapping="Wrap"
+                                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Classes="ob primary" Padding="14,8" Command="{Binding StartEngineCommand}"
+                                        Content="Start it for me"/>
+                                <Button Classes="ob ghost" Padding="14,8" Click="OnCopyFixCommandClick"
+                                        Tag="{Binding FixCommandLine}" Content="Copy"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="{Binding FixError}" FontSize="12" Foreground="{DynamicResource Danger}"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding FixError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                </Border>
+
+                <!--
+                    Install assist. Steps aside for the start assist above: when the engine you already
+                    have only needs starting, advice to go and install another one is noise — and two
+                    stacked boxes push Skip/Continue below the fold at the default window height.
+                -->
+                <Border IsVisible="{Binding FixCommandLine, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
                         Background="{DynamicResource SurfaceRaised}" Padding="16,14">
                     <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                         <TextBlock Grid.Column="0" FontSize="12.5" Foreground="{DynamicResource TextDim}"

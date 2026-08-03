@@ -217,8 +217,63 @@ public partial class MainWindowViewModel
             onSkip: () => _ = CompleteOnboardingAsync(null),
             onInstallPodman: () => Browser.OpenUrl("https://podman.io/docs/installation"),
             onRescan: RunSetupAsync,
+            onStartEngine: StartWizardEngineAsync,
             nameOf: NameOf);
         IsOnboarding = true;
+
+        _ = OfferWizardEngineStartAsync(Onboarding);
+    }
+    /// <summary>
+    /// Offer to start the engine the wizard is waiting on, when there is a checked fix for it
+    /// (KON-335). The same <see cref="PodmanSocketFix"/> the engine-down card uses: `podman ps` works
+    /// from a terminal but the API socket answers nothing, because the user socket unit was never
+    /// enabled.
+    /// <para>
+    /// It belongs here more than on the down card. The wizard is where a first run meets a stopped
+    /// engine, it is the screen that asks you to start one, and until now it was the screen with no
+    /// way to do it — the error card offered more help than the screen meant to prevent the error.
+    /// </para>
+    /// </summary>
+    private async Task OfferWizardEngineStartAsync(OnboardingViewModel wizard)
+    {
+        if (!_probes.Any(p => p.Provider.Backend == "podman" && !p.Connected))
+            return;
+
+        if (!await PodmanSocketFix.IsFixableAsync(_toolRunner))
+            return;
+
+        // A rescan replaces the view model, and the user may have left the wizard entirely while
+        // systemd was being asked. Offering the fix on a screen that is gone would do nothing; worse,
+        // it would keep a stale wizard alive.
+        if (IsOnboarding && ReferenceEquals(Onboarding, wizard))
+            wizard.FixCommandLine = PodmanSocketFix.EnableSocket.CommandLine;
+    }
+    /// <summary>
+    /// Runs that fix, then rescans so the row goes from "Not running" to selectable in place. On
+    /// failure it says what went wrong and leaves the screen alone: a rescan would only redraw the
+    /// same stopped engine and read as if nothing had been tried.
+    /// </summary>
+    private async Task StartWizardEngineAsync()
+    {
+        var wizard = Onboarding;
+        if (wizard is null)
+            return;
+
+        try
+        {
+            var result = await _toolRunner.RunAsync(PodmanSocketFix.EnableSocket);
+            if (result.Ok)
+            {
+                await RunSetupAsync();
+                return;
+            }
+
+            wizard.FixError = $"Starting it failed: {result.Complaint}";
+        }
+        catch (Exception ex)
+        {
+            wizard.FixError = $"Starting it failed: {ex.Message}";
+        }
     }
     /// <summary>
     /// Probe again and hand the first-run wizard back, whether or not it has run before.
