@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:conv="using:Kontena.App.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="760"
@@ -47,7 +48,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <Border Width="30" Height="30" CornerRadius="{StaticResource RadiusSm}" Background="{DynamicResource AccentSoft}">
                                         <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Accent}"
-                                              Data="{StaticResource IconLayers}"/>
+                                              Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
                                     </Border>
                                     <TextBlock Text="{Binding Label}" FontSize="14" FontWeight="SemiBold"
                                                Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>

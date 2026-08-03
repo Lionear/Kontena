@@ -166,7 +166,8 @@ public partial class MainWindowViewModel
                 new ClusterWorkloadsDashboardViewModel(
                     _cluster, ActiveNamespace,
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
-                    onOpenWorkload: ShowWorkloadDetail),
+                    onOpenWorkload: ShowWorkloadDetail,
+                    onOpenPods: () => NavigateCluster("pods")),
             "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail)
                 { RequestConfirm = ShowConfirm },
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
