@@ -75,27 +75,39 @@ public static partial class NerdctlJson
     [GeneratedRegex(@"([+-])(\d{2})(\d{2})\b")]
     private static partial Regex OffsetWithoutColon();
 
-    private static readonly string[] GoTimeFormats =
-    [
-        "yyyy-MM-dd HH:mm:ss zzz 'UTC'",
-        "yyyy-MM-dd HH:mm:ss.ffffff zzz 'UTC'",
-    ];
+    // `images` prints this column with Go's `.Local()` (nerdctl's pkg/cmd/image/list.go), so the
+    // trailing zone name is whatever the host's timezone happens to be ("CEST", "JST", "EDT", ...), not
+    // always "UTC" — the fixture only says UTC because it was captured inside a container with no
+    // timezone set. .NET has no way to parse an arbitrary zone abbreviation (they are not even unique:
+    // "CST" alone names three different offsets), so the format below does not try: it parses only the
+    // date, time and numeric offset — the first three space-separated tokens — and lets whatever zone
+    // name follows go unread instead of assuming it is "UTC".
+    //
+    // Go's `time.Time.String()` calls `Round(time.Second)` before formatting, so this column never
+    // carries fractional seconds — a ".ffffff" variant would match nothing this CLI ever prints, so
+    // there is only the one layout here.
+    private const string GoTimeFormat = "yyyy-MM-dd HH:mm:ss zzz";
 
     /// <summary>
     /// Reads a timestamp regardless of which of nerdctl's two observed layouts it is in: <c>ps</c>
     /// gives ISO8601, <c>images</c> gives Go's default <c>time.Time</c> string
-    /// ("2026-07-30 22:10:58 +0000 UTC"). One parser is not enough for both. Anything neither layout
-    /// matches comes back as <c>default</c> rather than throwing — the same fail-soft contract as
-    /// <see cref="Size"/>, for the same reason.
+    /// ("2026-07-30 22:10:58 +0000 UTC", zone name varying with the host — see <see cref="GoTimeFormat"/>).
+    /// One parser is not enough for both. Anything neither layout matches comes back as <c>default</c>
+    /// rather than throwing — the same fail-soft contract as <see cref="Size"/>, for the same reason.
     /// </summary>
     public static DateTimeOffset Time(string text)
     {
         if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var iso))
             return iso;
 
-        var withColon = OffsetWithoutColon().Replace(text, "$1$2:$3");
-        if (DateTimeOffset.TryParseExact(withColon, GoTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var go))
-            return go;
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 3)
+        {
+            var dateTimeAndOffset = string.Join(' ', parts[0], parts[1], parts[2]);
+            var withColon = OffsetWithoutColon().Replace(dateTimeAndOffset, "$1$2:$3");
+            if (DateTimeOffset.TryParseExact(withColon, GoTimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var go))
+                return go;
+        }
 
         return default;
     }

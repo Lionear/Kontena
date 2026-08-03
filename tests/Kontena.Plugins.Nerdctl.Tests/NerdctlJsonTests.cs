@@ -1,3 +1,4 @@
+using System.Globalization;
 using Kontena.Plugins.Nerdctl;
 
 namespace Kontena.Plugins.Nerdctl.Tests;
@@ -61,6 +62,20 @@ public sealed class NerdctlJsonTests
             new DateTimeOffset(2026, 7, 30, 22, 10, 58, TimeSpan.Zero),
             NerdctlJson.Time("2026-07-30 22:10:58 +0000 UTC"),
             TimeSpan.FromSeconds(1));
+    }
+
+    [Theory]
+    // The fixture only ever shows "+0000 UTC" because it was captured inside a container with no
+    // timezone set — nerdctl formats this column with Go's `.Local()` (pkg/cmd/image/list.go), so on
+    // any machine with a timezone the offset and zone name are whatever the host uses. Each case here
+    // asserts the correct instant, not merely "not default" — that would pass even if the zone name
+    // were silently mis-parsed as an offset of its own.
+    [InlineData("2026-07-30 22:10:58 +0200 CEST", "2026-07-30T20:10:58Z")]
+    [InlineData("2021-08-07 02:19:45 +0900 JST", "2021-08-06T17:19:45Z")]
+    [InlineData("2026-07-30 18:10:58 -0400 EDT", "2026-07-30T22:10:58Z")]
+    public void A_non_utc_go_timestamp_still_resolves_to_the_right_instant(string text, string expectedUtc)
+    {
+        Assert.Equal(DateTimeOffset.Parse(expectedUtc, CultureInfo.InvariantCulture), NerdctlJson.Time(text));
     }
 
     [Fact]
