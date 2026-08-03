@@ -50,10 +50,10 @@ public static class NerdctlMap
             Image = container.Image,
             State = StateFromPsStatus(container.Status),
             Status = container.Status,
-            // Every captured fixture has an empty Ports column; there is no observed populated format
-            // to parse against (see Notes/nerdctl-cli-formats.md), so this stays empty rather than
-            // guessing a layout nobody has seen.
-            Ports = [],
+            // "0.0.0.0:8080->80/tcp, 0.0.0.0:9090->90/udp" — a comma-separated human string, not
+            // structured JSON (see Fixtures/ps-ports.json). NerdctlJson.Ports does the parsing so it
+            // gets the same shared, individually tested treatment as Size/Time/Labels above.
+            Ports = NerdctlJson.Ports(container.Ports),
             Labels = labels,
             CreatedAt = NerdctlJson.Time(container.CreatedAt),
             Backend = backend,
@@ -244,9 +244,12 @@ public static class NerdctlMap
     }
 
     /// <summary>
-    /// <c>ps</c>'s <see cref="NerdctlContainer.Status"/> is a bare word ("Up", "Created"), never
-    /// Docker's "Up 2 hours" — matched by prefix regardless, in case a future nerdctl version adds
-    /// a duration back.
+    /// <c>ps</c>'s <see cref="NerdctlContainer.Status"/> is a bare word for a running, created or
+    /// paused container ("Up", "Created", "Paused"), but not for a stopped one — a real capture reads
+    /// "Exited (0) Less than a second ago" (see <c>Fixtures/ps-states.json</c>), Docker's own shape for
+    /// that state. All branches match by prefix rather than exact string for exactly that reason: it
+    /// already covers the one case observed to carry a suffix, and leaves room for a future nerdctl
+    /// version to add one elsewhere.
     /// </summary>
     private static ContainerState StateFromPsStatus(string status) => status switch
     {

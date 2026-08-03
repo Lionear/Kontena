@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Kontena.Sdk.Models;
 
 namespace Kontena.Plugins.Nerdctl;
 
@@ -124,6 +125,38 @@ public static partial class NerdctlJson
         }
 
         return default;
+    }
+
+    [GeneratedRegex(@"^(?<host>.*):(?<hostport>\d+)->(?<containerport>\d+)/(?<protocol>[A-Za-z]+)$")]
+    private static partial Regex PortPattern();
+
+    /// <summary>
+    /// Reads <c>ps</c>'s <c>Ports</c> column — a comma-separated human string, e.g.
+    /// <c>"0.0.0.0:8080->80/tcp, 0.0.0.0:9090->90/udp"</c> — not the structured list Docker's API gives
+    /// for the same field (see <c>DockerEngine.MapPorts</c>). The common case is an empty string (most
+    /// captured containers publish nothing), which yields an empty list. A fragment that does not match
+    /// the pattern is skipped rather than throwing — the same fail-soft contract as <see cref="Size"/>
+    /// and <see cref="Time"/>: one odd binding is not worth losing the whole container list over.
+    /// </summary>
+    public static IReadOnlyList<PortBinding> Ports(string text)
+    {
+        var bindings = new List<PortBinding>();
+
+        foreach (var fragment in text.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var match = PortPattern().Match(fragment.Trim());
+            if (!match.Success)
+                continue;
+
+            if (!int.TryParse(match.Groups["hostport"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var hostPort))
+                continue;
+            if (!int.TryParse(match.Groups["containerport"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var containerPort))
+                continue;
+
+            bindings.Add(new PortBinding(hostPort, containerPort, match.Groups["protocol"].Value));
+        }
+
+        return bindings;
     }
 
     /// <summary>

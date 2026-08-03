@@ -31,6 +31,12 @@ public sealed class NerdctlMapTests
     private static NerdctlInspectContainer Inspect() =>
         JsonSerializer.Deserialize<NerdctlInspectContainer[]>(Fixture("inspect.json"), Options)![0];
 
+    private static NerdctlContainer PortsRow() =>
+        Assert.Single(NerdctlJson.Parse<NerdctlContainer>(Fixture("ps-ports.json")));
+
+    private static IReadOnlyList<NerdctlContainer> StateRows() =>
+        NerdctlJson.Parse<NerdctlContainer>(Fixture("ps-states.json"));
+
     // ── ps.json → ContainerSummary ─────────────────────────────────────────────────────────────
 
     [Fact]
@@ -85,6 +91,41 @@ public sealed class NerdctlMapTests
         Assert.Contains('…', truncated);
         Assert.DoesNotContain('…', real);
         Assert.StartsWith("local-path-provisioner --debug start", real, StringComparison.Ordinal);
+    }
+
+    // ── ps-ports.json / ps-states.json → ContainerSummary ──────────────────────────────────────
+
+    [Fact]
+    public void Published_ports_are_parsed_from_the_comma_separated_string()
+    {
+        // Real capture: a container started with `-p 8080:80 -p 9090:90/udp`. This is the case that
+        // actually carries weight — an empty Ports list is ContainerSummary.Ports' own default, so a
+        // test only ever exercising the empty case would pass whether or not parsing ran at all.
+        var summary = PortsRow().ToSummary(Backend);
+
+        Assert.Equal(
+            [new PortBinding(8080, 80, "tcp"), new PortBinding(9090, 90, "udp")],
+            summary.Ports);
+    }
+
+    [Fact]
+    public void No_published_ports_is_an_empty_list()
+    {
+        var summary = Assert.Single(Containers(), c => c.Id == "281c109b7ece").ToSummary(Backend);
+
+        Assert.Empty(summary.Ports);
+    }
+
+    [Theory]
+    [InlineData("aaaaaaaaaaaa", ContainerState.Running)] // Status "Up"
+    [InlineData("bbbbbbbbbbbb", ContainerState.Exited)] // Status "Exited (0) Less than a second ago"
+    [InlineData("cccccccccccc", ContainerState.Paused)] // Status "Paused"
+    [InlineData("dddddddddddd", ContainerState.Created)] // Status "Created"
+    public void Each_observed_ps_status_maps_to_its_state(string id, ContainerState expected)
+    {
+        var summary = Assert.Single(StateRows(), c => c.Id == id).ToSummary(Backend);
+
+        Assert.Equal(expected, summary.State);
     }
 
     // ── images.json → ImageSummary ─────────────────────────────────────────────────────────────
