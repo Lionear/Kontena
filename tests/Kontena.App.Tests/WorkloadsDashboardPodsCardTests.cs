@@ -43,6 +43,11 @@ public sealed class WorkloadsDashboardPodsCardTests
         Assert.Equal(pods.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), card.Count);
         Assert.Equal("pods", card.Unit);
 
+        // The sidebar's Pods icon rather than the kinds' stack of layers, which is what the card wore
+        // while the template held the icon.
+        Assert.Equal("IconContainer", card.IconKey);
+        Assert.All(page.Kinds.Where(k => k.Label != "Pods"), k => Assert.Equal("IconLayers", k.IconKey));
+
         // The seed is deliberately not all-healthy, so both halves of the split have something to say.
         var running = pods.Count(p => p.Phase == PodPhase.Running);
         var pending = pods.Count(p => p.Phase == PodPhase.Pending);

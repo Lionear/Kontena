@@ -145,6 +145,9 @@ public sealed partial class KindCard : ObservableObject
     {
         _onOpen = () => onOpen?.Invoke(kind);
 
+        // The same icon the sidebar's per-kind entries carry, so a card and its nav row are the
+        // same thing seen twice.
+        IconKey = "IconLayers";
         Label = WorkloadNavGroups.LabelFor(kind);
         Count = workloads.Count.ToString(CultureInfo.InvariantCulture);
         Unit = workloads.Count == 1
@@ -193,6 +196,8 @@ public sealed partial class KindCard : ObservableObject
     {
         _onOpen = onOpen;
 
+        // The sidebar's Pods icon, not the kinds' stack of layers.
+        IconKey = "IconContainer";
         Label = "Pods";
         Count = pods.Count.ToString(CultureInfo.InvariantCulture);
         Unit = pods.Count == 1 ? "pod" : "pods";
@@ -232,6 +237,13 @@ public sealed partial class KindCard : ObservableObject
         WorkloadKind.Job => "completed",
         _ => "complete",
     };
+
+    /// <summary>
+    /// Which Lucide geometry the card wears, resolved through the same converter the sidebar uses. The
+    /// icon was fixed in the template until KON-341 put a card here that is not a workload kind, and a
+    /// Pods card under a stack-of-layers is the one thing on this page that would be lying.
+    /// </summary>
+    public string IconKey { get; }
 
     public string Label { get; }
     public string Count { get; }
