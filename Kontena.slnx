@@ -9,6 +9,7 @@
     <Project Path="src/Kontena.Core.Orchestration/Kontena.Core.Orchestration.csproj" />
     <Project Path="src/Kontena.Engines/Kontena.Engines.csproj" />
     <Project Path="src/Kontena.Plugins.ManifestStudio/Kontena.Plugins.ManifestStudio.csproj" />
+    <Project Path="src/Kontena.Plugins.Nerdctl/Kontena.Plugins.Nerdctl.csproj" />
     <Project Path="src/Kontena.Sdk/Kontena.Sdk.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -22,6 +23,7 @@
     <Project Path="tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj" />
     <Project Path="tests/Kontena.HostilePlugin/Kontena.HostilePlugin.csproj" />
     <Project Path="tests/Kontena.Plugins.ManifestStudio.Tests/Kontena.Plugins.ManifestStudio.Tests.csproj" />
+    <Project Path="tests/Kontena.Plugins.Nerdctl.Tests/Kontena.Plugins.Nerdctl.Tests.csproj" />
     <Project Path="tests/Kontena.Sdk.Tests/Kontena.Sdk.Tests.csproj" />
     <Project Path="tests/Kontena.TestPlugin/Kontena.TestPlugin.csproj" />
   </Folder>

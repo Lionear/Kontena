@@ -1,0 +1,3 @@
+{"Name":"default","Containers":2,"Images":5,"Volumes":1,"Labels":null}
+{"Name":"k8s.io","Containers":31,"Images":34,"Volumes":0,"Labels":null}
+{"Name":"moby","Containers":7,"Images":12,"Volumes":3,"Labels":null}
