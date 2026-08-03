@@ -140,6 +140,11 @@ public sealed class NerdctlEngineTests
         // CreateVolumeAsync, RemoveVolumeAsync, CreateNetworkAsync and RemoveNetworkAsync are task 3's
         // payload (this PR) — covered by NerdctlEngineVolumeNetworkTests instead, against the fake
         // runner rather than a bare default.
+        // PruneContainersAsync, PruneImagesAsync and PruneVolumesAsync are task 4's payload (this PR) —
+        // covered by NerdctlEnginePruneTests instead. They also would not belong in the array below even
+        // unimplemented: all three are async methods, so a thrown exception surfaces on the returned
+        // ValueTask rather than synchronously from the call expression the way every bare `=> throw ...`
+        // member below does, and Assert.Throws here needs the latter.
         var engine = Engine(new FakeToolRunner());
 
         // CA2012 wants every ValueTask awaited. These calls never produce one — each member throws
@@ -151,16 +156,13 @@ public sealed class NerdctlEngineTests
         [
             () => _ = engine.ExecAsync("id", new ExecRequest { Command = ["echo"] }),
             () => _ = engine.StartExecSessionAsync("id", new ExecRequest { Command = ["echo"] }),
-            () => _ = engine.PruneContainersAsync(),
             () => _ = engine.PullImageAsync("nginx"),
             () => _ = engine.VerifyRegistryLoginAsync(new RegistryCredential("host", "user", "secret")),
             () => _ = engine.BuildImageAsync(new BuildRequest { ContextPath = ".", Tag = "x" }),
             () => _ = engine.RemoveImageAsync("id"),
             () => _ = engine.InspectImageAsync("nginx"),
             () => _ = engine.TagImageAsync("id", "nginx:latest"),
-            () => _ = engine.PruneImagesAsync(),
             () => _ = engine.BrowseVolumeAsync("v"),
-            () => _ = engine.PruneVolumesAsync(),
             () => _ = engine.ConnectNetworkAsync("id", "n"),
             () => _ = engine.DisconnectNetworkAsync("id", "n"),
             () => _ = engine.ComposeUpAsync(new ComposeUpRequest { ComposeFilePath = "compose.yaml" }),

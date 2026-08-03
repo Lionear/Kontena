@@ -185,6 +185,51 @@ public sealed class NerdctlEngine : IContainerEngine
         }
     }
 
+    /// <summary>
+    /// Runs a prune command and returns its raw stdout, translating a missing binary or non-zero exit
+    /// the same way <see cref="RunListAsync{T}"/> does. Unlike that method there is no JSON afterwards —
+    /// prune's output is the header-and-bare-lines shape Notes/nerdctl-write-formats.md captured, so each
+    /// prune method parses this stdout itself with <see cref="CountAfterHeader"/> or
+    /// <see cref="CountUntaggedLines"/> instead of handing it to <c>NerdctlJson</c>.
+    /// </summary>
+    private async ValueTask<string> RunPruneAsync(CancellationToken ct, params string[] args)
+    {
+        try
+        {
+            return await _cli.RunAsync(ct, args).ConfigureAwait(false);
+        }
+        catch (ToolNotFoundException ex)
+        {
+            throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+        }
+        catch (ToolFailedException ex)
+        {
+            throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Counts the bare name/id lines <c>container prune</c> and <c>volume prune</c> both print under
+    /// their header (Notes/nerdctl-write-formats.md) — every line after <paramref name="header"/> is one
+    /// removed item, and nothing to prune means the header itself never appears, which this reports as
+    /// zero rather than searching for a header that will not be found.
+    /// </summary>
+    private static int CountAfterHeader(string stdout, string header)
+    {
+        var lines = NerdctlJson.Lines(stdout).ToList();
+        return lines.Contains(header) ? lines.Count - 1 : 0;
+    }
+
+    /// <summary>
+    /// Counts removed images from <c>image prune</c>'s output: one <c>Untagged: &lt;ref&gt;</c> line per
+    /// image, each optionally followed by <c>deleted: sha256:…</c> lines for its layers
+    /// (Notes/nerdctl-write-formats.md). Counting every line instead would count one image's layers as
+    /// separate removals; nothing to prune prints no <c>Untagged:</c> lines at all, so this needs no
+    /// separate empty-output case.
+    /// </summary>
+    private static int CountUntaggedLines(string stdout) =>
+        NerdctlJson.Lines(stdout).Count(line => line.StartsWith("Untagged: ", StringComparison.Ordinal));
+
     // ── Containers ──────────────────────────────────────────────────────────
 
     /// <summary>
@@ -449,8 +494,19 @@ public sealed class NerdctlEngine : IContainerEngine
         string id, ExecRequest request, CancellationToken ct = default) =>
         throw new NotSupportedException(AdvancedNotYet);
 
-    public ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl container prune -f</c> (<c>-f</c> skips the confirmation prompt nerdctl otherwise
+    /// blocks on, which a non-interactive caller would never answer). A real capture against nerdctl
+    /// 2.3.5 shows nothing at all on stdout — not even the <c>Deleted Containers:</c> header — when
+    /// there were no stopped containers to remove (Notes/nerdctl-write-formats.md); <see cref="CountAfterHeader"/>
+    /// already treats a header that never appears as zero, so that ordinary case reaches here as an
+    /// empty result rather than needing a special case.
+    /// </summary>
+    public async ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default)
+    {
+        var stdout = await RunPruneAsync(ct, "container", "prune", "-f").ConfigureAwait(false);
+        return new PruneResult(CountAfterHeader(stdout, "Deleted Containers:"), 0);
+    }
 
     // ── Images ──────────────────────────────────────────────────────────────
 
@@ -480,8 +536,25 @@ public sealed class NerdctlEngine : IContainerEngine
     public ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
         throw new NotSupportedException(WriteNotYet);
 
-    public ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl image prune -f</c>, adding <c>--all</c> when <paramref name="allUnused"/> asks for
+    /// every unused image rather than only dangling ones — the same distinction
+    /// <c>DockerEngine.PruneImagesAsync</c> makes for the Docker Engine API's own <c>dangling=false</c>
+    /// filter. Unlike the bare name/id lines <see cref="PruneContainersAsync"/> and
+    /// <see cref="PruneVolumesAsync"/> parse, each removed image prints an <c>Untagged: &lt;ref&gt;</c>
+    /// line followed by zero or more <c>deleted: sha256:…</c> lines for its layers
+    /// (Notes/nerdctl-write-formats.md) — so the count is the number of <c>Untagged:</c> lines, not the
+    /// total line count: counting every line would count one image's layers as separate removals.
+    /// </summary>
+    public async ValueTask<PruneResult> PruneImagesAsync(bool allUnused = true, CancellationToken ct = default)
+    {
+        List<string> args = ["image", "prune", "-f"];
+        if (allUnused)
+            args.Add("--all");
+
+        var stdout = await RunPruneAsync(ct, [.. args]).ConfigureAwait(false);
+        return new PruneResult(CountUntaggedLines(stdout), 0);
+    }
 
     // ── Volumes ─────────────────────────────────────────────────────────────
 
@@ -586,8 +659,20 @@ public sealed class NerdctlEngine : IContainerEngine
         string name, string path = "/", CancellationToken ct = default) =>
         throw new NotSupportedException(AdvancedNotYet);
 
-    public ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl volume prune -f --all</c>. <c>--all</c> is not optional here the way it is on
+    /// <see cref="PruneImagesAsync"/>: nerdctl's own default (no <c>--all</c>) removes only anonymous
+    /// volumes, leaving named-but-unused ones behind, while <see cref="IContainerEngine.PruneVolumesAsync"/>
+    /// promises "remove all volumes not used by any container" — the same behaviour
+    /// <c>DockerEngine.PruneVolumesAsync</c> gets from Docker's own default (Docker draws no
+    /// anonymous/named distinction for volume prune the way nerdctl does). Without <c>--all</c> this
+    /// method would silently under-deliver on its own contract.
+    /// </summary>
+    public async ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default)
+    {
+        var stdout = await RunPruneAsync(ct, "volume", "prune", "-f", "--all").ConfigureAwait(false);
+        return new PruneResult(CountAfterHeader(stdout, "Deleted Volumes:"), 0);
+    }
 
     // ── Networks ────────────────────────────────────────────────────────────
 
