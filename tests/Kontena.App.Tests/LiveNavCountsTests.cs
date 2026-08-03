@@ -68,6 +68,28 @@ public sealed class LiveNavCountsTests
             shell.NavGroups.SelectMany(g => g.Items).Single(i => i.Key == "pods").Count, want));
     }
 
+    [Fact]
+    public async Task Landing_on_a_page_that_watches_nothing_still_refreshes_the_badges()
+    {
+        // Found by driving the real app (KON-339): only the open page's stream feeds the callback, so
+        // the badges froze the moment you navigated to the Workloads dashboard, Config maps or Events.
+        // Worse than freezing on an old number — the one caught here was mid-termination.
+        var cluster = new FakeClusterEngine();
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(cluster));
+
+        var before = (await cluster.ListPodsAsync()).Count;
+        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c"));
+
+        // Config maps watches nothing, so nothing here can be the page's own doing.
+        shell.NavigateCommand.Execute("configmaps");
+        Assert.IsNotAssignableFrom<IClusterListPage>(shell.CurrentPage);
+
+        Assert.Equal(
+            (before - 1).ToString(CultureInfo.InvariantCulture),
+            shell.NavGroups.SelectMany(g => g.Items).Single(i => i.Key == "pods").Count);
+    }
+
     /// <summary>Re-read <paramref name="read"/> until it says <paramref name="want"/> or time is up.</summary>
     private static async Task<string> EventuallyAsync(Func<string> read, string want)
     {

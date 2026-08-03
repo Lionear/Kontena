@@ -121,7 +121,11 @@ public partial class MainWindowViewModel
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
     }
-    private void NavigateCluster(string key)
+    /// <param name="refreshCounts">
+    /// False only where the caller has just counted, so the badges are not refetched twice for one
+    /// navigation.
+    /// </param>
+    private void NavigateCluster(string key, bool refreshCounts = true)
     {
         if (_cluster is null)
             return;
@@ -218,6 +222,15 @@ public partial class MainWindowViewModel
         if (CurrentPage is IClusterListPage live)
             live.Changed = () => _ = RefreshClusterNavCountsAsync();
 
+        // Only the open page's stream drives that callback, so the badges stop following the moment
+        // you land somewhere that watches nothing — the Workloads dashboard, Config maps, Events. Seen
+        // for real: a pod deleted while its page was open refreshed the counts mid-termination, the
+        // page was navigated away from before the pod actually went, and the badge kept the number it
+        // had caught in between. After the page rather than before it, and not awaited: a count is
+        // worth a round-trip but never worth making the click wait for one.
+        if (refreshCounts)
+            _ = RefreshClusterNavCountsAsync();
+
         // The search term does not survive navigating away, and that is the honest behaviour while
         // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
         // pages keep theirs because they are long-lived fields. Restoring a term onto a fresh page
@@ -277,7 +290,7 @@ public partial class MainWindowViewModel
         }
 
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups));
+            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshCounts: false);
     }
     /// <summary>
     /// Fill the sidebar badges. Every lister is started before any of them is awaited (KON-338):
