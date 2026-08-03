@@ -25,16 +25,30 @@ public static partial class NerdctlJson
         stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Deserializes NDJSON — one <typeparamref name="T"/> per line — into a list.</summary>
-    public static IReadOnlyList<T> Parse<T>(string stdout) =>
-        [.. Lines(stdout).Select(line => JsonSerializer.Deserialize<T>(line, Options)!)];
+    /// <exception cref="JsonException">
+    /// A line is not valid JSON, or is the literal <c>null</c> — every caller here goes on to read a
+    /// property off each entry, so a null one must fail here rather than as a
+    /// <see cref="NullReferenceException"/> wherever it is next dereferenced. This is the one place
+    /// that guard needs writing: every command's output passes through here.
+    /// </exception>
+    public static IReadOnlyList<T> Parse<T>(string stdout) where T : class =>
+        [.. Lines(stdout).Select(line => RequireObject(JsonSerializer.Deserialize<T>(line, Options)))];
 
     /// <summary>
     /// Deserializes a genuine JSON array — <c>nerdctl inspect</c> is the one command here that prints
     /// this shape instead of NDJSON (a single-element array, Docker-compatible; see
     /// Notes/nerdctl-cli-formats.md).
     /// </summary>
-    public static IReadOnlyList<T> ParseArray<T>(string stdout) =>
-        JsonSerializer.Deserialize<List<T>>(stdout, Options) ?? [];
+    /// <exception cref="JsonException">The array itself is malformed, or one of its elements is the
+    /// literal <c>null</c> — same reasoning as <see cref="Parse{T}"/>.</exception>
+    public static IReadOnlyList<T> ParseArray<T>(string stdout) where T : class =>
+        JsonSerializer.Deserialize<List<T?>>(stdout, Options)?.Select(RequireObject).ToList() ?? [];
+
+    /// <summary>A deserialized element that turned out to be JSON <c>null</c> is exactly as unusable to
+    /// every caller as malformed JSON — both mean nerdctl printed something this plugin cannot read —
+    /// so both are reported the same way rather than one becoming a deferred <see cref="NullReferenceException"/>.</summary>
+    private static T RequireObject<T>(T? value) where T : class =>
+        value ?? throw new JsonException($"Expected a {typeof(T).Name} object but found JSON null.");
 
     [GeneratedRegex(@"^\s*(?<number>[0-9.]+)\s*(?<unit>[A-Za-z]+)\s*$")]
     private static partial Regex SizePattern();
