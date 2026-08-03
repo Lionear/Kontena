@@ -52,25 +52,45 @@ public sealed class NerdctlEngineVolumeNetworkTests
     }
 
     [Fact]
-    public async Task CreateVolumeAsync_never_sends_a_dash_dash_driver_flag_even_when_the_request_names_one()
+    public async Task CreateVolumeAsync_with_the_default_driver_creates_normally()
     {
-        // A real capture against nerdctl 2.3.5 shows `volume create --help` lists only `--label` — no
-        // `--driver` at all — and passing `--driver` anyway is fatal ("unknown flag: --driver"), not
-        // silently ignored by nerdctl. A request naming a driver other than the SDK default must
-        // therefore never reach the command line; nerdctl only ever creates the one driver it has.
+        // "local" is CreateVolumeRequest's own default — explicitly naming it is "no preference", not a
+        // request for something nerdctl cannot do, so this must reach `volume create` exactly like an
+        // unspecified Driver would.
         var runner = Installed()
             .When(inv => inv.Arguments.Contains("ls"), output: [
                 $$"""{"Driver":"local","Labels":"","Mountpoint":"{{DummyMountpoint}}","Name":"probe-vol","Scope":"local","Size":""}""",
             ])
             .When(_ => true, output: ["probe-vol"]);
 
-        await Engine(runner).CreateVolumeAsync(new CreateVolumeRequest { Name = "probe-vol", Driver = "overlayfs" });
+        var summary = await Engine(runner).CreateVolumeAsync(
+            new CreateVolumeRequest { Name = "probe-vol", Driver = "local" });
 
         Assert.Equal(
             ["--namespace", "k8s.io", "volume", "create", "probe-vol"],
             runner.Invocations[0].Arguments);
-        Assert.DoesNotContain("--driver", runner.Invocations[0].Arguments);
-        Assert.DoesNotContain("overlayfs", runner.Invocations[0].Arguments);
+        Assert.Equal(DummyMountpoint, summary.Mountpoint);
+    }
+
+    [Fact]
+    public async Task CreateVolumeAsync_for_a_non_default_driver_throws_before_any_nerdctl_invocation()
+    {
+        // A real capture against nerdctl 2.3.5 shows `volume create --help` lists only `--label` — no
+        // `--driver` at all — and passing `--driver` anyway is fatal ("unknown flag: --driver"). nerdctl
+        // has exactly one volume driver, so a request naming a different one cannot be silently
+        // downgraded to "local": that would report success while doing something other than what was
+        // asked, with nothing anywhere to reveal the substitution (CreateVolumeViewModel discards the
+        // returned VolumeSummary). Refusing loudly, and refusing before `volume create` ever runs, is
+        // the only honest option — asserting zero invocations proves this fails before creating
+        // anything, not after.
+        var runner = Installed().When(_ => true, output: ["probe-vol"]);
+
+        await Assert.ThrowsAsync<EngineException>(
+            () => Engine(runner)
+                .CreateVolumeAsync(new CreateVolumeRequest { Name = "probe-vol", Driver = "overlayfs" })
+                .AsTask());
+
+        Assert.Empty(runner.Invocations);
     }
 
     [Fact]

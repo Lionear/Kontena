@@ -505,19 +505,29 @@ public sealed class NerdctlEngine : IContainerEngine
     /// <see cref="VolumeSummary.Driver"/> and <see cref="VolumeSummary.Mountpoint"/> as whatever was
     /// asked for rather than what nerdctl actually created. Reading it back is what proves this.
     /// <para>
-    /// <see cref="CreateVolumeRequest.Driver"/> is never sent to nerdctl: <c>volume create --help</c>
-    /// lists only <c>--label</c>, and passing <c>--driver</c> anyway is fatal ("unknown flag: --driver"),
-    /// not silently ignored by nerdctl itself — a real capture against nerdctl 2.3.5 caught this after
-    /// this method first shipped assuming Docker-compatible flag parity. nerdctl only ever creates the
-    /// one driver it has, so a request naming a different one is honoured the same way
-    /// <see cref="NerdctlMap.ToNetwork"/> already handles a field nerdctl has no way to set: silently,
-    /// with the gap documented here rather than guessed at or thrown on a value this method has no way
-    /// to act on regardless.
+    /// <see cref="CreateVolumeRequest.Driver"/> is checked against <c>"local"</c> — the request record's
+    /// own default, meaning "no preference" — before anything runs. <c>volume create --help</c> lists
+    /// only <c>--label</c>; nerdctl has exactly one volume driver and no flag to select another, so a
+    /// request naming a different one cannot be honoured. This is a write-side input the caller chose,
+    /// not a read-side field nerdctl simply never reports (contrast <see cref="NerdctlMap.ToNetwork"/>'s
+    /// <c>Driver</c>, which is genuinely absent from nerdctl's own output): silently substituting
+    /// <c>"local"</c> here would report success while doing something other than what was asked, with no
+    /// signal anywhere that it happened — <c>CreateVolumeViewModel</c> discards the returned
+    /// <see cref="VolumeSummary"/>, so even a `Driver` field that came back wrong would never surface.
+    /// Refusing before <c>volume create</c> ever runs is therefore the only honest option, and doing it
+    /// before the call (rather than after) means a rejected request never creates the volume anyway.
     /// </para>
     /// </summary>
     public async ValueTask<VolumeSummary> CreateVolumeAsync(
         CreateVolumeRequest request, CancellationToken ct = default)
     {
+        if (request.Driver != "local")
+        {
+            throw new EngineException(
+                $"nerdctl supports only its built-in volume driver and has no flag to select " +
+                $"'{request.Driver}'.");
+        }
+
         List<string> args = ["volume", "create"];
 
         foreach (var (key, value) in request.Labels)
