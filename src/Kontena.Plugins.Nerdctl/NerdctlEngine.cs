@@ -217,6 +217,16 @@ public sealed class NerdctlEngine : IContainerEngine
     /// the value returned here will not literally equal what <see cref="ListContainersAsync"/> shows for
     /// the same container afterwards — a caller correlating the two must compare by prefix, not equality.
     /// </para>
+    /// <para>
+    /// <b>If <c>create</c> succeeds but the follow-up <c>start</c> throws, this method never returns</b>:
+    /// the caller gets an exception, not the id, even though the container now exists on the backend in
+    /// a stopped state. It is not orphaned — <see cref="ListContainersAsync"/> or a retried
+    /// <see cref="StartContainerAsync"/> against the name/id still reaches it, and nerdctl's own failure
+    /// text (surfaced unchanged by <see cref="RunLifecycleAsync"/>) usually names the container — but the
+    /// id is not handed back structurally. This is a deliberate gap, not an oversight: it matches
+    /// <c>DockerEngine.CreateContainerAsync</c>, which has exactly the same shape against the raw Docker
+    /// API, so a caller already has to handle this for the other adapter too.
+    /// </para>
     /// </summary>
     public async ValueTask<string> CreateContainerAsync(
         CreateContainerRequest request, CancellationToken ct = default)

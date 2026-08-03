@@ -70,15 +70,25 @@ public sealed class NerdctlEngineCreateTests
         Assert.Equal(DummyId, id);
     }
 
-    [Fact]
-    public async Task CreateContainerAsync_with_RestartPolicy_No_omits_the_restart_flag()
+    // All four RestartPolicy values, not just Always (which the argument-list test above already
+    // exercises) — MapRestart's OnFailure and UnlessStopped branches would go untested otherwise, and
+    // swapping those two specific strings would pass every other test in this file.
+    [Theory]
+    [InlineData(RestartPolicy.No, null)]
+    [InlineData(RestartPolicy.Always, "always")]
+    [InlineData(RestartPolicy.OnFailure, "on-failure")]
+    [InlineData(RestartPolicy.UnlessStopped, "unless-stopped")]
+    public async Task CreateContainerAsync_maps_every_RestartPolicy_value(RestartPolicy policy, string? flagValue)
     {
         var runner = Installed().When(_ => true, output: [DummyId]);
 
         await Engine(runner).CreateContainerAsync(
-            new CreateContainerRequest { Image = "nginx", Start = false });
+            new CreateContainerRequest { Image = "nginx", RestartPolicy = policy, Start = false });
 
-        Assert.Equal(["--namespace", "k8s.io", "create", "nginx"], runner.Invocations[0].Arguments);
+        string[] expected = flagValue is null
+            ? ["--namespace", "k8s.io", "create", "nginx"]
+            : ["--namespace", "k8s.io", "create", "--restart", flagValue, "nginx"];
+        Assert.Equal(expected, runner.Invocations[0].Arguments);
     }
 
     [Fact]
