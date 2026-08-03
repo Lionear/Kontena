@@ -21,8 +21,13 @@ namespace Kontena.Plugins.Nerdctl;
 /// </summary>
 public sealed class NerdctlEngine : IContainerEngine
 {
-    private const string WriteNotYet =
-        "Creating, starting, stopping, removing and pruning containers/images/volumes/networks lands in nerdctl PR 3 (KON-141).";
+    private const string ImageWriteNotYet =
+        "Pulling an image, verifying a registry login, removing an image and tagging an image land in a later nerdctl PR (KON-141).";
+
+    private const string NetworkAttachUnsupported =
+        "nerdctl 2.3.5 has no 'network connect' or 'network disconnect' subcommand — attaching or " +
+        "detaching a container from a network is not possible through this backend, and no future " +
+        "PR will change that; it would take nerdctl itself gaining the subcommand.";
 
     private const string ImageInspectNotYet =
         "Inspecting a single image is not part of nerdctl PR 2 task 6 — it lands alongside build/exec in nerdctl PR 4 (KON-141).";
@@ -520,23 +525,23 @@ public sealed class NerdctlEngine : IContainerEngine
 
     public IAsyncEnumerable<PullProgress> PullImageAsync(
         string reference, RegistryCredential? credential = null, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        throw new NotSupportedException(ImageWriteNotYet);
 
     public ValueTask VerifyRegistryLoginAsync(RegistryCredential credential, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        throw new NotSupportedException(ImageWriteNotYet);
 
     public IAsyncEnumerable<BuildProgress> BuildImageAsync(
         BuildRequest request, CancellationToken ct = default) =>
         throw new NotSupportedException(AdvancedNotYet);
 
     public ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        throw new NotSupportedException(ImageWriteNotYet);
 
     public ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default) =>
         throw new NotSupportedException(ImageInspectNotYet);
 
     public ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        throw new NotSupportedException(ImageWriteNotYet);
 
     /// <summary>
     /// Runs <c>nerdctl image prune -f</c>, adding <c>--all</c> when <paramref name="allUnused"/> asks for
@@ -756,7 +761,7 @@ public sealed class NerdctlEngine : IContainerEngine
     /// </summary>
     public ValueTask ConnectNetworkAsync(
         string containerId, string networkId, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        throw new NotSupportedException(NetworkAttachUnsupported);
 
     /// <summary>
     /// Same limitation as <see cref="ConnectNetworkAsync"/>: nerdctl 2.3.5 has no <c>network disconnect</c>
@@ -765,7 +770,7 @@ public sealed class NerdctlEngine : IContainerEngine
     /// </summary>
     public ValueTask DisconnectNetworkAsync(
         string containerId, string networkId, bool force = false, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        throw new NotSupportedException(NetworkAttachUnsupported);
 
     // ── Compose ─────────────────────────────────────────────────────────────
 
