@@ -10,6 +10,23 @@ namespace Kontena.Plugins.Nerdctl;
 /// </summary>
 public sealed class NerdctlPlugin(IToolRunner runner) : IEnginePlugin
 {
+    /// <summary>
+    /// What the loader actually uses. <c>PluginLoader</c> instantiates the entry type with
+    /// <see cref="Activator.CreateInstance(Type)"/> — no arguments, no host services handed in — so
+    /// without this constructor the plugin is discovered, consented to, and then rejected with a
+    /// <see cref="MissingMethodException"/>: loadable in every respect except the one that counts.
+    /// <para>
+    /// The <see cref="IToolRunner"/> overload stays for the tests, which script a fake CLI. Nothing
+    /// else can supply one: a plugin has no way to ask the host for a service yet, and inventing a
+    /// service-injection contract for one dependency this assembly can construct itself would be a
+    /// change to the loader, not to this plugin.
+    /// </para>
+    /// </summary>
+    public NerdctlPlugin()
+        : this(new ToolRunner())
+    {
+    }
+
     public EngineManifest Manifest => new()
     {
         Id = "com.kontena.nerdctl",
