@@ -202,7 +202,7 @@ public sealed class NerdctlEngineVolumeNetworkTests
             ])
             .When(_ => true, output: [DummyNetworkCreateId]);
 
-        await Engine(runner).CreateNetworkAsync(new CreateNetworkRequest
+        var summary = await Engine(runner).CreateNetworkAsync(new CreateNetworkRequest
         {
             Name = "probe-net",
             Driver = "macvlan",
@@ -212,6 +212,12 @@ public sealed class NerdctlEngineVolumeNetworkTests
         Assert.Equal(
             ["--namespace", "k8s.io", "network", "create", "--driver", "macvlan", "--subnet", "10.10.0.0/24", "probe-net"],
             runner.Invocations[0].Arguments);
+
+        // `network ls` never reports a driver for a name it does not reserve (Notes/nerdctl-write-
+        // formats.md) — asking for "macvlan" here does not make the read-back say so. Pinning this
+        // means a regression that fell back to NetworkSummary's own "bridge" default would report a
+        // specific, wrong driver as fact instead of silently passing every other assertion above.
+        Assert.Equal(string.Empty, summary.Driver);
     }
 
     [Fact]
