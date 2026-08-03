@@ -184,6 +184,12 @@ public static class NerdctlMap
             RestartCount = inspect.RestartCount,
             MemoryLimitBytes = inspect.HostConfig.Memory is > 0 and var memory ? memory : null,
             Error = inspect.State.Error,
+            // Every CRI-managed container observed has HostConfig.RestartPolicy.Name == "" — kubelet
+            // restarts these itself and never sets a Docker-style policy — which MapRestartPolicy's
+            // fallback maps to RestartPolicy.No, the enum's own zero value. That states "No" as fact for
+            // a container kubelet does restart, but the SDK's RestartPolicy enum has no "unknown" member
+            // to say otherwise with, so there is nothing to change here (same class of gap as OomKilled
+            // above).
             RestartPolicy = MapRestartPolicy(inspect.HostConfig.RestartPolicy.Name),
             Command = string.Join(" ", command),
             WorkingDirectory = inspect.Config.WorkingDir ?? string.Empty,
