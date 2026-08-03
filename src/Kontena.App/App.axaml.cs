@@ -12,6 +12,7 @@ using Kontena.Sdk;
 using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
 using Kontena.Engines;
+using Kontena.Engines.Plugins;
 
 namespace Kontena.App;
 
@@ -41,6 +42,15 @@ public partial class App : Application
 
             settings = store.Update(s => s.AdoptExistingClusters(clusters).PruneClusters(clusters));
 
+            // Before the window, because a provider a plugin contributes has to be in the very first
+            // catalog — the switcher is built from that. Only what already has consent is loaded here;
+            // anything new comes back as AwaitingConsent and is asked about once there is a window to
+            // ask in (MainWindowViewModel.InitAsync).
+            var plugins = PluginLoader.Discover(
+                PluginLoader.DefaultRoot, m => settings.AllowsPlugin(m.Id, m.Version));
+
+            BackendCatalog.SetPluginProviders(plugins.SelectMany(p => p.Providers));
+
             var registry = new BackendRegistry(
                 BackendCatalog.Build(
                     BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends),
@@ -48,7 +58,7 @@ public partial class App : Application
 
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(registry, store, settings),
+                DataContext = new MainWindowViewModel(registry, store, settings, plugins: plugins),
             };
         }
 

@@ -103,6 +103,7 @@ public class KontenaSettingsTests
                     CertificateDirectory: "/srv/docker/certs/lab"),
             ],
             KubeconfigPaths = ["/srv/kubeconfigs/acme.yaml", "~/Downloads/kubeconfig"],
+            AllowedPlugins = ["com.acme.nerdctl@1.0.0", "com.acme.nerdctl@1.1.0"],
             BackendNames = new Dictionary<string, string>
             {
                 ["kubernetes:gke_myproject-prod_europe-west4_cluster-1"] = "Production EU",
@@ -151,6 +152,9 @@ public class KontenaSettingsTests
 
         // Paths only — a kubeconfig is read where it lies and never copied into settings.
         Assert.Equal(original.KubeconfigPaths, restored.KubeconfigPaths);
+
+        // Consent is recorded per id and version independently, so both entries must survive.
+        Assert.Equal(original.AllowedPlugins, restored.AllowedPlugins);
         Assert.Equal(original.BackendNames, restored.BackendNames);
 
         // Declined clusters survive as false, which is what stops them being offered again.
@@ -172,6 +176,7 @@ public class KontenaSettingsTests
                 Registries = restored.Registries,
                 RemoteEngines = restored.RemoteEngines,
                 KubeconfigPaths = restored.KubeconfigPaths,
+                AllowedPlugins = restored.AllowedPlugins,
                 BackendNames = restored.BackendNames,
                 KnownClusters = restored.KnownClusters,
                 ContainerGrouping = restored.ContainerGrouping,

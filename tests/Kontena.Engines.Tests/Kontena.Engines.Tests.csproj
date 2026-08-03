@@ -21,6 +21,16 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kontena.Engines\Kontena.Engines.csproj" />
     <ProjectReference Include="..\..\src\Kontena.Core\Kontena.Core.csproj" />
+    <!-- Built, never referenced: the loader tests need this assembly on disk and *not* in the default
+         load context. ReferenceOutputAssembly="false" is what keeps its types out of this project. -->
+    <ProjectReference Include="..\Kontena.TestPlugin\Kontena.TestPlugin.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
+    <!-- Same deal, its own subfolder: the hostile fixture's provider throws from an identity getter,
+         and it needs its own assembly so it cannot end up sharing a directory with TestPlugin's type. -->
+    <ProjectReference Include="..\Kontena.HostilePlugin\Kontena.HostilePlugin.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
   </ItemGroup>
 
 </Project>

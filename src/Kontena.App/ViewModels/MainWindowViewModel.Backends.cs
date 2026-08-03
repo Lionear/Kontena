@@ -8,6 +8,7 @@ using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Core.Models;
 using Kontena.Engines;
+using Kontena.Engines.Plugins;
 
 namespace Kontena.App.ViewModels;
 
@@ -37,11 +38,69 @@ public partial class MainWindowViewModel
             // After the shell is usable, never before: a slow or unreachable update server must not
             // hold up connecting to an engine, which is what the user actually opened Kontena for.
             _ = Update.CheckAsync();
+
+            AskPluginConsent();
         }
         catch (Exception ex)
         {
             EnterBackendDown("Can't reach a container engine", ex.Message);
         }
+    }
+    /// <summary>
+    /// Ask about a plugin that was found but never agreed to (KON-279). Startup only loads what already
+    /// has consent, so this is where a newly dropped-in plugin gets its answer — after the window
+    /// exists, because a modal before there is one is not a thing Avalonia does gracefully.
+    /// <para>
+    /// One at a time: the shell has a single modal slot, and a second request would overwrite the first
+    /// unasked. The next one comes up on the next launch. Cheap, and there is one plugin to install.
+    /// </para>
+    /// </summary>
+    internal void AskPluginConsent()
+    {
+        // Both conditions guard the same thing — arbitrary code — so neither is redundant: Status is
+        // the snapshot taken at the last Discover(), _settings is updated the moment the user answers.
+        // Checking both is what stops a reconnect from re-asking about something already approved this
+        // session, without waiting for _plugins to catch up.
+        var pending = _plugins.FirstOrDefault(p =>
+            p.Status == PluginStatus.AwaitingConsent && p.Manifest is not null
+            && !_settings.AllowsPlugin(p.Manifest.Id, p.Manifest.Version));
+
+        if (pending?.Manifest is not { } manifest)
+            return;
+
+        ShowConfirm(new ConfirmRequest(
+            Title: "Run this plugin?",
+            Message: $"{manifest.Name} was found in your plugins folder. It runs inside Kontena with "
+                     + "the same access you have. Only allow it if you put it there.",
+            ConfirmLabel: "Allow",
+            // Nothing is destroyed here. The question is whether to trust, and the danger styling
+            // would answer a different one.
+            Destructive: false,
+            Details:
+            [
+                new ConfirmDetail("IconPlug", manifest.Name, $"{manifest.Id} · {manifest.Version}"),
+                new ConfirmDetail("IconInfo", "Published by", manifest.Author),
+                new ConfirmDetail("IconFolder", "Loaded from", pending.Directory),
+            ],
+            OnConfirm: async () =>
+            {
+                var stored = _store.Update(s => s.WithAllowedPlugin(manifest.Id, manifest.Version));
+                _settings = _settings.WithAllowedPlugin(manifest.Id, manifest.Version);
+
+                // Load again rather than reaching into the loader for this one directory: the same call
+                // that ran at startup now sees the consent, and there is one path by which a plugin
+                // becomes a provider.
+                var loaded = PluginLoader.Discover(
+                    _pluginRoot, m => stored.AllowsPlugin(m.Id, m.Version));
+
+                // Replace the snapshot, not just the providers: this plugin's entry is now Loaded
+                // rather than AwaitingConsent, so a later reconnect's InitAsync (which reuses _plugins,
+                // not a fresh scan) does not ask about it again or hand it to another PluginLoadContext.
+                _plugins = loaded;
+
+                BackendCatalog.SetPluginProviders(loaded.SelectMany(p => p.Providers));
+                await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));
+            }));
     }
     /// <summary>
     /// Open what the user was last on, or pinned, or — failing both — the first engine that answers
