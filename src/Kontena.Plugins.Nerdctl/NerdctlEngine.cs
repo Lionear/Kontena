@@ -11,11 +11,20 @@ namespace Kontena.Plugins.Nerdctl;
 /// CEAL implementation backed by the nerdctl CLI (KON-141) — one instance per containerd namespace,
 /// matching the one-provider-per-namespace shape <see cref="NerdctlEngineProvider"/> already exposes.
 /// <para>
-/// This PR (nerdctl PR 2) gives the backend identity, reachability, honest capabilities (KON-141 task
-/// 5) and reading containers/images/volumes/networks/inspect/logs (task 6) — every one of those against
-/// the CLI shapes captured in Notes/nerdctl-cli-formats.md, never against nerdctl's documentation.
-/// Every other member still throws <see cref="NotSupportedException"/> naming the PR that fills it in:
-/// writing lands in PR 3, build/compose/exec/stats/events/volume-browsing in PR 4. That is acceptable
+/// As of this PR (nerdctl PR 3), the backend identity, reachability and honest capabilities and reading
+/// (containers/images/volumes/networks/inspect/logs, from PR 2) are joined by writing: the full
+/// container lifecycle and <see cref="CreateContainerAsync"/>, volume and network create/remove, and
+/// pruning containers/images/volumes — all against the CLI shapes captured in
+/// Notes/nerdctl-cli-formats.md and Notes/nerdctl-write-formats.md, never against nerdctl's
+/// documentation.
+/// </para>
+/// <para>
+/// Still deferred to a later PR: build, compose, exec, stats, events, and the image write operations —
+/// pull, tag, remove, registry login. Each of those still throws <see cref="NotSupportedException"/>
+/// naming the PR that fills it in. <see cref="ConnectNetworkAsync"/>/<see cref="DisconnectNetworkAsync"/>
+/// are different from that list: nerdctl 2.3.5 has no <c>network connect</c>/<c>network disconnect</c>
+/// subcommand at all (see <see cref="NetworkAttachUnsupported"/>), so that gap is permanent, not
+/// deferred — no future PR closes it unless nerdctl itself grows the subcommand. That is acceptable
 /// only because the plugin is not distributed until PR 5 — no user can reach any of this yet.
 /// </para>
 /// </summary>
