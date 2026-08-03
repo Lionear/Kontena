@@ -658,11 +658,17 @@ public partial class MainWindowViewModel
         // them back on General each time is the shell losing their place.
         var category = SettingsPage?.Category;
 
+        // Which of these are remotes the user configured decides whether the row can point at its own
+        // entry further down the page (KON-264). Read from settings rather than from the backend id's
+        // shape: the id format is the remote adapter's business, not this list's.
+        var remoteBackends = _settings.RemoteEngines.Select(r => r.Backend).ToHashSet(StringComparer.Ordinal);
+
         var all = _probes.Select(p => new EngineListItem(
             p.Provider.Backend, NameOf(p.Provider), BackendChipInfo.For(p.Provider),
             p.Detail ?? string.Empty, p.Connected,
             p.Provider.Backend == _settings.ResolvedPinnedBackend,
-            p.Provider.DisplayName)).ToList();
+            p.Provider.DisplayName,
+            IsRemote: remoteBackends.Contains(p.Provider.Backend))).ToList();
 
         // The detected-engines list stays engine-only; what you can pin does not — a cluster is a
         // perfectly reasonable thing to always start on.
