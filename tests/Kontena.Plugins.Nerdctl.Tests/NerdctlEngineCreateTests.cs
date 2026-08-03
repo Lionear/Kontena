@@ -70,6 +70,33 @@ public sealed class NerdctlEngineCreateTests
         Assert.Equal(DummyId, id);
     }
 
+    // Not observed against real nerdctl 2.3.5 today — the auto-pull progress this method's own doc
+    // comment describes goes to stderr, not stdout — but a bare `.Trim()` of the whole blob would fail
+    // this the moment it ever did land on stdout, so this pins the defensive "last non-empty line"
+    // behaviour rather than trusting it went untested.
+    [Fact]
+    public async Task CreateContainerAsync_uses_the_last_non_empty_line_if_stdout_has_more_than_one()
+    {
+        var runner = Installed().When(_ => true, output: ["pulling image...", "", DummyId]);
+
+        var id = await Engine(runner).CreateContainerAsync(
+            new CreateContainerRequest { Image = "nginx", Start = false });
+
+        Assert.Equal(DummyId, id);
+    }
+
+    [Fact]
+    public async Task CreateContainerAsync_throws_rather_than_return_a_null_id_for_empty_stdout()
+    {
+        var runner = Installed().When(_ => true, output: []);
+
+        var ex = await Assert.ThrowsAsync<EngineException>(
+            () => Engine(runner).CreateContainerAsync(
+                new CreateContainerRequest { Image = "nginx", Start = false }).AsTask());
+
+        Assert.Contains("printed no id", ex.Message, StringComparison.Ordinal);
+    }
+
     // All four RestartPolicy values, not just Always (which the argument-list test above already
     // exercises) — MapRestart's OnFailure and UnlessStopped branches would go untested otherwise, and
     // swapping those two specific strings would pass every other test in this file.

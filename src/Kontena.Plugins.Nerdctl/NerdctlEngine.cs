@@ -312,7 +312,19 @@ public sealed class NerdctlEngine : IContainerEngine
             throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
         }
 
-        var id = stdout.Trim();
+        // The doc comment above notes nerdctl auto-pulls a missing image, and today that pull progress
+        // goes to stderr, not stdout — but if it ever landed on stdout too, a bare `.Trim()` of the
+        // whole blob would hand the id-plus-progress mush to `start` below and back to the caller. The
+        // last non-empty line is the id in both the observed single-line case and that hypothetical
+        // one, at no extra cost. Empty stdout is not "no id" silently swallowed: it means create
+        // reported success without printing anything to identify what it made, which is a failure this
+        // engine should say so about rather than hand back null as if that were a normal id.
+        var id = NerdctlJson.Lines(stdout).LastOrDefault()?.Trim();
+        if (string.IsNullOrEmpty(id))
+        {
+            throw new EngineException(
+                $"nerdctl reported a container was created on '{_backend}' but printed no id.");
+        }
 
         if (request.Start)
             await RunLifecycleAsync("Container", id, "no such container", ct, "start", id).ConfigureAwait(false);
