@@ -132,6 +132,9 @@ public sealed class NerdctlEngineTests
         // ListContainersAsync, ListImagesAsync, ListNetworksAsync, ListVolumesAsync,
         // InspectContainerAsync and StreamLogsAsync are this PR's task 6 payload — covered by
         // NerdctlEngineReadTests instead, against the fake runner's fixtures rather than a bare default.
+        // StartContainerAsync, StopContainerAsync, RestartContainerAsync, PauseContainerAsync,
+        // UnpauseContainerAsync and RemoveContainerAsync are task 1's payload (this PR) — covered by
+        // NerdctlEngineLifecycleTests instead, against the fake runner rather than a bare default.
         var engine = Engine(new FakeToolRunner());
 
         // CA2012 wants every ValueTask awaited. These calls never produce one — each member throws
@@ -142,12 +145,6 @@ public sealed class NerdctlEngineTests
         Action[] calls =
         [
             () => _ = engine.CreateContainerAsync(new CreateContainerRequest { Image = "nginx" }),
-            () => _ = engine.StartContainerAsync("id"),
-            () => _ = engine.StopContainerAsync("id"),
-            () => _ = engine.RestartContainerAsync("id"),
-            () => _ = engine.PauseContainerAsync("id"),
-            () => _ = engine.UnpauseContainerAsync("id"),
-            () => _ = engine.RemoveContainerAsync("id"),
             () => _ = engine.ExecAsync("id", new ExecRequest { Command = ["echo"] }),
             () => _ = engine.StartExecSessionAsync("id", new ExecRequest { Command = ["echo"] }),
             () => _ = engine.PruneContainersAsync(),

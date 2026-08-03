@@ -208,23 +208,80 @@ public sealed class NerdctlEngine : IContainerEngine
         CreateContainerRequest request, CancellationToken ct = default) =>
         throw new NotSupportedException(WriteNotYet);
 
+    /// <summary>Runs <c>nerdctl start &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
+    /// failures are told apart.</summary>
     public ValueTask StartContainerAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        RunLifecycleAsync(id, ct, "start", id);
 
+    /// <summary>Runs <c>nerdctl stop &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
+    /// failures are told apart.</summary>
     public ValueTask StopContainerAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        RunLifecycleAsync(id, ct, "stop", id);
 
+    /// <summary>Runs <c>nerdctl restart &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
+    /// failures are told apart.</summary>
     public ValueTask RestartContainerAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        RunLifecycleAsync(id, ct, "restart", id);
 
+    /// <summary>Runs <c>nerdctl pause &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
+    /// failures are told apart.</summary>
     public ValueTask PauseContainerAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        RunLifecycleAsync(id, ct, "pause", id);
 
+    /// <summary>Runs <c>nerdctl unpause &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
+    /// failures are told apart.</summary>
     public ValueTask UnpauseContainerAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        RunLifecycleAsync(id, ct, "unpause", id);
 
+    /// <summary>
+    /// Runs <c>nerdctl rm &lt;id&gt;</c>, adding <c>-f</c> only when <paramref name="force"/> is true.
+    /// That flag is the difference between succeeding and hitting the "is in running status" conflict
+    /// <see cref="RunLifecycleAsync"/> documents — nerdctl refuses to remove a running container
+    /// without it.
+    /// </summary>
     public ValueTask RemoveContainerAsync(string id, bool force = false, CancellationToken ct = default) =>
-        throw new NotSupportedException(WriteNotYet);
+        force
+            ? RunLifecycleAsync(id, ct, "rm", "-f", id)
+            : RunLifecycleAsync(id, ct, "rm", id);
+
+    /// <summary>
+    /// Runs a bare lifecycle command (<c>start</c>, <c>stop</c>, <c>restart</c>, <c>pause</c>,
+    /// <c>unpause</c>, <c>rm</c>) whose only meaningful result is the exit code: every one of these
+    /// echoes back the very name or id it was given, never a new identifier, so unlike
+    /// <see cref="RunListAsync{T}"/> there is nothing on stdout worth reading on success.
+    /// <para>
+    /// Two <see cref="ToolFailedException"/> shapes are told apart here rather than folded into one
+    /// exception. <c>"no such container: &lt;id&gt;"</c> means the id nerdctl was given does not exist
+    /// — a <see cref="ResourceNotFoundException"/>, the same exception <see cref="InspectContainerAsync"/>
+    /// already raises for the same wording. Every other failure — <c>rm</c> on a running container
+    /// answering <c>"container &lt;id&gt; is in running status. unpause/stop container first or force
+    /// removal"</c> being the one this task actually observed — is a conflict over the container's
+    /// current state, not a missing resource: the id is perfectly real, nerdctl just refuses to act on
+    /// it right now. Reporting that as "not found" would be a wrong answer stated as fact, so it
+    /// surfaces as the base <see cref="EngineException"/> instead, with nerdctl's own sentence kept
+    /// whole — it already names the container, the state, and the two ways out, which is more than a
+    /// generic message could tell the caller.
+    /// </para>
+    /// </summary>
+    private async ValueTask RunLifecycleAsync(string id, CancellationToken ct, params string[] args)
+    {
+        try
+        {
+            await _cli.RunAsync(ct, args).ConfigureAwait(false);
+        }
+        catch (ToolNotFoundException ex)
+        {
+            throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+        }
+        catch (ToolFailedException ex) when (ex.Message.Contains("no such container", StringComparison.Ordinal))
+        {
+            throw new ResourceNotFoundException($"Container '{id}' was not found on '{_backend}'.", ex);
+        }
+        catch (ToolFailedException ex)
+        {
+            throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+        }
+    }
 
     /// <summary>
     /// Runs <c>nerdctl inspect &lt;id&gt;</c> — Docker-compatible, a JSON array with one element (see
