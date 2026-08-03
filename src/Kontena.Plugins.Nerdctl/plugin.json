@@ -1,0 +1,9 @@
+{
+  "id": "com.kontena.nerdctl",
+  "name": "nerdctl",
+  "version": "0.1.0",
+  "author": "Kontena",
+  "description": "Reads containerd through the nerdctl CLI, one backend per namespace.",
+  "minSdkVersion": "0.4.0",
+  "assembly": "Kontena.Plugins.Nerdctl.dll"
+}

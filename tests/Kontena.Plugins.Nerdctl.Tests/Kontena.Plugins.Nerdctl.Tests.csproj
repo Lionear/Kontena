@@ -20,6 +20,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kontena.Plugins.Nerdctl\Kontena.Plugins.Nerdctl.csproj" />
+    <!-- The host's plugin loader, so NerdctlPackagingTests can prove the packaged layout actually
+         loads (KON-141 PR 5) rather than only that its parts look right. Test-only, and this
+         direction on purpose: the plugin's tests may know about the host, the host must not know
+         about the plugin. ExtensionBoundaryTests keeps src/Kontena.Plugins.* on Kontena.Sdk alone. -->
+    <ProjectReference Include="..\..\src\Kontena.Engines\Kontena.Engines.csproj" />
   </ItemGroup>
 
   <ItemGroup>
