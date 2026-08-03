@@ -255,6 +255,12 @@ public partial class MainWindowViewModel
         if (IsClusterMode)
             NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups));
     }
+    /// <summary>
+    /// Fill the sidebar badges. Every lister is started before any of them is awaited (KON-338):
+    /// twelve badges that know nothing of each other were costing twelve round-trips one behind the
+    /// other, and since this runs before the page is built, it is what a namespace switch waits on.
+    /// The adapter already fetches its five workload kinds exactly this way.
+    /// </summary>
     private async Task UpdateClusterNavCountsAsync()
     {
         if (_cluster is null)
@@ -262,30 +268,49 @@ public partial class MainWindowViewModel
 
         var ci = CultureInfo.InvariantCulture;
         var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
-        SetNavCount("nodes", (await _cluster.ListNodesAsync()).Count.ToString(ci));
-        SetNavCount("namespaces", (await _cluster.ListNamespacesAsync()).Count.ToString(ci));
+
+        var nodes = _cluster.ListNodesAsync().AsTask();
+        var namespaces = _cluster.ListNamespacesAsync().AsTask();
 
         // One call, grouped here, rather than one per kind: five round-trips to fill five badges is
         // five chances for them to disagree with each other and with the list they label (KON-169).
-        var workloads = await _cluster.ListWorkloadsAsync(null, ns);
-        SetNavCount("workloads", workloads.Count.ToString(ci));
-        SyncWorkloadKindNav(workloads);
+        var workloads = _cluster.ListWorkloadsAsync(null, ns).AsTask();
 
-        SetNavCount("pods", (await _cluster.ListPodsAsync(ns)).Count.ToString(ci));
-        SetNavCount("services", (await _cluster.ListServicesAsync(ns)).Count.ToString(ci));
-        SetNavCount("configmaps", (await _cluster.ListConfigMapsAsync(ns)).Count.ToString(ci));
-        SetNavCount("secrets", (await _cluster.ListSecretsAsync(ns)).Count.ToString(ci));
+        var pods = _cluster.ListPodsAsync(ns).AsTask();
+        var services = _cluster.ListServicesAsync(ns).AsTask();
+        var configMaps = _cluster.ListConfigMapsAsync(ns).AsTask();
+        var secrets = _cluster.ListSecretsAsync(ns).AsTask();
+        var events = _cluster.ListEventsAsync(ns).AsTask();
+        var ingresses = _cluster.ListIngressesAsync(ns).AsTask();
+        var pvcs = _cluster.ListPvcsAsync(ns).AsTask();
+        var volumes = _cluster.ListVolumesAsync().AsTask();
+        var storageClasses = _cluster.ListStorageClassesAsync().AsTask();
+
+        await Task.WhenAll(
+            nodes, namespaces, workloads, pods, services, configMaps,
+            secrets, events, ingresses, pvcs, volumes, storageClasses);
+
+        SetNavCount("nodes", nodes.Result.Count.ToString(ci));
+        SetNavCount("namespaces", namespaces.Result.Count.ToString(ci));
+
+        SetNavCount("workloads", workloads.Result.Count.ToString(ci));
+        SyncWorkloadKindNav(workloads.Result);
+
+        SetNavCount("pods", pods.Result.Count.ToString(ci));
+        SetNavCount("services", services.Result.Count.ToString(ci));
+        SetNavCount("configmaps", configMaps.Result.Count.ToString(ci));
+        SetNavCount("secrets", secrets.Result.Count.ToString(ci));
 
         // Warnings, not events (KON-248). Every namespace has events all the time, so a total is a
         // badge that is always lit and therefore says nothing; the count of warnings is the one number
         // worth carrying into the sidebar, and no warnings means no badge at all.
-        var warnings = (await _cluster.ListEventsAsync(ns)).Count(e => e.Severity == EventSeverity.Warning);
+        var warnings = events.Result.Count(e => e.Severity == EventSeverity.Warning);
         SetNavCount("events", warnings > 0 ? warnings.ToString(ci) : string.Empty);
 
-        SetNavCount("ingresses", (await _cluster.ListIngressesAsync(ns)).Count.ToString(ci));
-        SetNavCount("pvcs", (await _cluster.ListPvcsAsync(ns)).Count.ToString(ci));
-        SetNavCount("volumes", (await _cluster.ListVolumesAsync()).Count.ToString(ci));
-        SetNavCount("storageclasses", (await _cluster.ListStorageClassesAsync()).Count.ToString(ci));
+        SetNavCount("ingresses", ingresses.Result.Count.ToString(ci));
+        SetNavCount("pvcs", pvcs.Result.Count.ToString(ci));
+        SetNavCount("volumes", volumes.Result.Count.ToString(ci));
+        SetNavCount("storageclasses", storageClasses.Result.Count.ToString(ci));
         UpdatePortForwardCount();
     }
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
