@@ -45,6 +45,44 @@ public sealed class LiveNavCountsTests
     }
 
     [Fact]
+    public async Task A_watch_event_moves_the_badge_without_anyone_asking()
+    {
+        // The whole chain, once, through the settle window: stream → reload → callback → badge. The
+        // test above pins the wiring and this one pins that something actually pulls it, which is the
+        // half that a callback nobody invokes would still pass.
+        var cluster = new FakeClusterEngine();
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(cluster));
+        shell.NavigateCommand.Execute("pods");
+
+        var doomed = new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c");
+        var before = (await cluster.ListPodsAsync()).Count;
+        await cluster.DeleteAsync(doomed);
+
+        cluster.EmitWatchEvent(new ResourceEvent { Type = WatchEventType.Deleted, Resource = doomed });
+
+        // Polled to a deadline rather than slept for a fixed span: the settle is 400ms and a test that
+        // waits exactly that long is a coin flip on a loaded machine.
+        var want = (before - 1).ToString(CultureInfo.InvariantCulture);
+        Assert.Equal(want, await EventuallyAsync(() =>
+            shell.NavGroups.SelectMany(g => g.Items).Single(i => i.Key == "pods").Count, want));
+    }
+
+    /// <summary>Re-read <paramref name="read"/> until it says <paramref name="want"/> or time is up.</summary>
+    private static async Task<string> EventuallyAsync(Func<string> read, string want)
+    {
+        for (var i = 0; i < 60; i++)
+        {
+            if (read() == want)
+                break;
+
+            await Task.Delay(50);
+        }
+
+        return read();
+    }
+
+    [Fact]
     public async Task An_engine_page_that_sees_a_change_gets_the_badges_refreshed()
     {
         // Same gap on the Docker side, and the same fix: ContainersViewModel was reloading itself on
