@@ -18,6 +18,16 @@ public sealed class NerdctlEngineProvider : IBackendProvider
     /// </summary>
     private const string DockerSharedNamespace = "moby";
 
+    /// <summary>
+    /// How long <see cref="DiscoverAll"/> waits for <c>namespace ls</c> before giving up on it. This
+    /// runs synchronously at startup, before there is any window to show progress in — an unresponsive
+    /// containerd socket or a waking lima VM cannot be allowed to hold that up for
+    /// <c>ToolRunner</c>'s ordinary two-minute default. Five seconds is generous for what, on a working
+    /// install, answers instantly; a local namespace list that cannot in that time is not going to,
+    /// however much longer it is given.
+    /// </summary>
+    private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(5);
+
     private readonly string _namespace;
 
     /// <summary>Handed to the <see cref="NerdctlCli"/> each <see cref="CreateBackend"/> builds — the
@@ -74,7 +84,8 @@ public sealed class NerdctlEngineProvider : IBackendProvider
 
         try
         {
-            var stdout = cli.RunAsync(CancellationToken.None, "namespace", "ls", "--format", "json")
+            using var cts = new CancellationTokenSource(DiscoveryTimeout);
+            var stdout = cli.RunAsync(cts.Token, "namespace", "ls", "--format", "json")
                 .AsTask().GetAwaiter().GetResult();
 
             var names = NerdctlJson.Parse<NerdctlNamespace>(stdout)

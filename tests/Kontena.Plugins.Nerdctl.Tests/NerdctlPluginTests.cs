@@ -1,4 +1,5 @@
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
 using Kontena.Sdk.Tooling.Fakes;
 
 namespace Kontena.Plugins.Nerdctl.Tests;
@@ -66,6 +67,39 @@ public sealed class NerdctlPluginTests
         var providers = NerdctlEngineProvider.DiscoverAll(Installed());
 
         Assert.Single(providers, p => p.Backend == "nerdctl:default");
+    }
+
+    [Fact]
+    public void DiscoverAll_gives_namespace_ls_a_cancellable_deadline_not_CancellationToken_None()
+    {
+        // GetProviders() runs synchronously at startup, before there is any window to show progress in.
+        // CancellationToken.None never fires, so an unresponsive containerd socket would hold this call
+        // (and the whole UI thread behind it) for ToolRunner's ordinary two-minute default before the
+        // `default`-namespace fallback ever appeared. Capturing the token handed to RunAsync — rather
+        // than waiting out an actual timeout — proves a deadline was attached without making this test
+        // slow or flaky.
+        var runner = new TokenCapturingToolRunner();
+
+        NerdctlEngineProvider.DiscoverAll(runner);
+
+        Assert.True(runner.CapturedToken.CanBeCanceled);
+    }
+
+    private sealed class TokenCapturingToolRunner : IToolRunner
+    {
+        public CancellationToken CapturedToken { get; private set; }
+
+        public ValueTask<ToolLocation> FindAsync(ExternalTool tool, CancellationToken ct = default) =>
+            ValueTask.FromResult(new ToolLocation(tool, "/fake/bin/nerdctl", "v1.0.0"));
+
+        public ValueTask<ToolResult> RunAsync(ToolInvocation invocation, CancellationToken ct = default)
+        {
+            CapturedToken = ct;
+            return ValueTask.FromResult(new ToolResult(0, string.Empty, string.Empty));
+        }
+
+        public IAsyncEnumerable<ToolLine> StreamAsync(ToolInvocation invocation, CancellationToken ct = default) =>
+            throw new NotSupportedException("DiscoverAll only ever calls RunAsync.");
     }
 
     [Fact]
