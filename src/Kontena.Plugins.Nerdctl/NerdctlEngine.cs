@@ -11,43 +11,79 @@ namespace Kontena.Plugins.Nerdctl;
 /// CEAL implementation backed by the nerdctl CLI (KON-141) — one instance per containerd namespace,
 /// matching the one-provider-per-namespace shape <see cref="NerdctlEngineProvider"/> already exposes.
 /// <para>
-/// As of this PR (nerdctl PR 3), the backend identity, reachability and honest capabilities and reading
-/// (containers/images/volumes/networks/inspect/logs, from PR 2) are joined by writing: the full
-/// container lifecycle and <see cref="CreateContainerAsync"/>, volume and network create/remove, and
-/// pruning containers/images/volumes — all against the CLI shapes captured in
-/// Notes/nerdctl-cli-formats.md and Notes/nerdctl-write-formats.md, never against nerdctl's
-/// documentation.
+/// As of this PR (nerdctl PR 4), every <see cref="IContainerEngine"/> member this CLI can actually
+/// serve is implemented: reading (PR 2), writing (PR 3), and now live stats and events, image build,
+/// Compose, and the image write side — pull, tag, remove. All of it against the CLI shapes captured in
+/// Notes/nerdctl-cli-formats.md, Notes/nerdctl-write-formats.md and Notes/nerdctl-advanced-formats.md,
+/// never against nerdctl's documentation.
 /// </para>
 /// <para>
-/// Still deferred to a later PR: build, compose, exec, stats, events, and the image write operations —
-/// pull, tag, remove, registry login. Each of those still throws <see cref="NotSupportedException"/>
-/// naming the PR that fills it in. <see cref="ConnectNetworkAsync"/>/<see cref="DisconnectNetworkAsync"/>
-/// are different from that list: nerdctl 2.3.5 has no <c>network connect</c>/<c>network disconnect</c>
-/// subcommand at all (see <see cref="NetworkAttachUnsupported"/>), so that gap is permanent, not
-/// deferred — no future PR closes it unless nerdctl itself grows the subcommand. That is acceptable
-/// only because the plugin is not distributed until PR 5 — no user can reach any of this yet.
+/// What still throws <see cref="NotSupportedException"/> is not deferred work with a PR number on it —
+/// each one names a limitation of the tool or the seam:
+/// <list type="bullet">
+/// <item><description><see cref="ConnectNetworkAsync"/>/<see cref="DisconnectNetworkAsync"/> — nerdctl
+/// 2.3.5 has no such subcommand at all (<see cref="NetworkAttachUnsupported"/>).</description></item>
+/// <item><description><see cref="ExecAsync"/>/<see cref="StartExecSessionAsync"/> — the tool seam can
+/// read a process's output but cannot write to its stdin or give it a PTY
+/// (<see cref="ExecUnsupported"/>).</description></item>
+/// <item><description><see cref="VerifyRegistryLoginAsync"/>, <see cref="InspectImageAsync"/> and
+/// <see cref="BrowseVolumeAsync"/> — nobody has captured what these commands print, and this plugin
+/// does not map output it has not seen (<see cref="RegistryLoginUnobserved"/>,
+/// <see cref="ImageInspectUnobserved"/>, <see cref="VolumeBrowseUnobserved"/>).</description></item>
+/// <item><description><see cref="BuildImageAsync"/> — only while buildkitd is out of reach; see
+/// <see cref="_buildkit"/>, which is the one capability here that varies per machine.</description></item>
+/// </list>
 /// </para>
 /// </summary>
 public sealed class NerdctlEngine : IContainerEngine
 {
-    private const string ImageWriteNotYet =
-        "Pulling an image, verifying a registry login, removing an image and tagging an image land in a later nerdctl PR (KON-141).";
-
     private const string NetworkAttachUnsupported =
         "nerdctl 2.3.5 has no 'network connect' or 'network disconnect' subcommand — attaching or " +
         "detaching a container from a network is not possible through this backend, and no future " +
         "PR will change that; it would take nerdctl itself gaining the subcommand.";
 
-    private const string ImageInspectNotYet =
-        "Inspecting a single image is not part of nerdctl PR 2 task 6 — it lands alongside build/exec in nerdctl PR 4 (KON-141).";
+    private const string ExecUnsupported =
+        "Running a command inside a container is not available on this backend. nerdctl is driven " +
+        "through the tool seam, which starts a process and reads its output but cannot write to its " +
+        "stdin or attach a pseudo-terminal — so a terminal opened here would echo nothing, never " +
+        "resize, and never deliver Ctrl-C. Closing this gap takes a PTY-capable seam, not another " +
+        "nerdctl flag, so the capability says no rather than offering half a terminal.";
 
-    private const string AdvancedNotYet =
-        "Build, compose, exec, stats, events and volume browsing land in nerdctl PR 4 (KON-141).";
+    private const string ImageInspectUnobserved =
+        "What 'nerdctl image inspect' prints has not been captured against a real containerd, and this " +
+        "plugin maps only output it has seen — mapping this one from nerdctl's documentation is exactly " +
+        "the mistake its fixtures exist to prevent.";
+
+    private const string RegistryLoginUnobserved =
+        "What 'nerdctl login' prints against a real registry has not been captured " +
+        "(Notes/nerdctl-advanced-formats.md names it as unobserved), so this backend cannot say whether " +
+        "a credential is good — and guessing would report a working login for one that is not.";
+
+    private const string VolumeBrowseUnobserved =
+        "Browsing a volume needs a throwaway container mounting it, which means an image that may not " +
+        "exist in this containerd namespace and a pull that the caller never asked for. Neither that " +
+        "command nor its output has been captured, so this backend does not offer it.";
+
+    /// <summary>
+    /// The buildkit candidate sockets nerdctl itself named when it refused to build
+    /// (Notes/nerdctl-advanced-formats.md) — <c>/run/buildkit-&lt;namespace&gt;/buildkitd.sock</c> first,
+    /// then <c>/run/buildkit/buildkitd.sock</c>. Used by <see cref="DetectBuildkit"/>, and repeated to
+    /// the user verbatim when a build is refused, since that message is what tells them what to start.
+    /// </summary>
+    private const string BuildkitSocketRoot = "/run/buildkit";
+
+    /// <summary>
+    /// How long <see cref="StreamStatsAsync"/> waits between samples. Two seconds because each sample is
+    /// its own <c>nerdctl</c> process: faster would spend more time starting processes than measuring,
+    /// and the detail view it feeds updates a number, not an animation.
+    /// </summary>
+    private static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(2);
 
     private readonly NerdctlCli _cli;
     private readonly string _backend;
     private readonly string _displayName;
     private readonly string _namespace;
+    private readonly string _buildkitSocketRoot;
 
     /// <summary>
     /// Whether the last successful <c>info</c> read named <c>name=rootless</c> in its security options.
@@ -57,34 +93,62 @@ public sealed class NerdctlEngine : IContainerEngine
     /// </summary>
     private bool _rootless;
 
-    public NerdctlEngine(NerdctlCli cli, string backend, string displayName, string @namespace)
+    /// <summary>
+    /// Whether a buildkitd socket was on disk the last time <c>info</c> was read. Starts false — the
+    /// honest answer before anything has been looked at — and is refreshed by <see cref="DetectBuildkit"/>
+    /// on every <see cref="GetInfoAsync"/>/<see cref="PingAsync"/>, the same way <see cref="_rootless"/>
+    /// is, since <see cref="Capabilities"/> has no async path of its own.
+    /// <para>
+    /// This is the one capability that cannot be answered by looking at nerdctl: <c>build</c> exists as a
+    /// subcommand whether or not it can work, so its presence says nothing (Notes/nerdctl-advanced-formats.md).
+    /// </para>
+    /// </summary>
+    private bool _buildkit;
+
+    /// <param name="buildkitSocketRoot">
+    /// Where <see cref="DetectBuildkit"/> looks for buildkitd's socket. Overridable only so a test can
+    /// point it at a directory it controls: the real value is a fixed path on the host
+    /// (<see cref="BuildkitSocketRoot"/>), and a test asserting against that would pass or fail
+    /// depending on whether the machine running it happens to have buildkit installed.
+    /// </param>
+    public NerdctlEngine(
+        NerdctlCli cli, string backend, string displayName, string @namespace,
+        string buildkitSocketRoot = BuildkitSocketRoot)
     {
         _cli = cli;
         _backend = backend;
         _displayName = displayName;
         _namespace = @namespace;
+        _buildkitSocketRoot = buildkitSocketRoot;
     }
 
     public string Backend => _backend;
 
     /// <summary>
-    /// <see cref="EngineCapabilities.SupportsPrune"/> turns on in this PR: <see cref="PruneContainersAsync"/>,
-    /// <see cref="PruneImagesAsync"/> and <see cref="PruneVolumesAsync"/> all run real nerdctl commands
-    /// now, not stubs. Every other capability but <see cref="EngineCapabilities.Rootless"/> stays pinned
-    /// false: none of the methods behind them work yet, and a capability that says yes while the method
-    /// throws is worse than one that says no — the UI would offer a button that fails. Rootless is the
-    /// one exception, because it is an observation read off <c>info</c>, not a promise about a method.
+    /// Stats, events and Compose turn on in this PR alongside the prune flag PR 3 lit up: every method
+    /// behind them runs a real nerdctl command now. The three that stay false stay false permanently as
+    /// far as this plugin is concerned — <see cref="EngineCapabilities.SupportsExec"/> because the seam
+    /// has no stdin or PTY (<see cref="ExecUnsupported"/>),
+    /// <see cref="EngineCapabilities.SupportsVolumeBrowse"/> because that would take a throwaway
+    /// container nobody has captured (<see cref="VolumeBrowseUnobserved"/>), and
+    /// <see cref="EngineCapabilities.SupportsGpu"/> because no adapter implements GPU passthrough at all.
+    /// <para>
+    /// <see cref="EngineCapabilities.SupportsBuild"/> is the only flag here that differs from machine to
+    /// machine: it follows <see cref="_buildkit"/>, since <c>nerdctl build</c> without a running
+    /// buildkitd fails every time. <see cref="EngineCapabilities.Rootless"/> is likewise an observation
+    /// read off <c>info</c>, not a promise about a method.
+    /// </para>
     /// </summary>
     public EngineCapabilities Capabilities => new()
     {
         Rootless = _rootless,
-        SupportsBuild = false,
-        SupportsCompose = false,
+        SupportsBuild = _buildkit,
+        SupportsCompose = true,
         SupportsExec = false,
         SupportsPrune = true,
         SupportsGpu = false,
-        SupportsStats = false,
-        SupportsEvents = false,
+        SupportsStats = true,
+        SupportsEvents = true,
         SupportsVolumeBrowse = false,
     };
 
@@ -155,7 +219,50 @@ public sealed class NerdctlEngine : IContainerEngine
         // "name=rootless" entry in SecurityOptions, nothing else.
         _rootless = info.SecurityOptions.Contains("name=rootless", StringComparer.Ordinal);
 
+        DetectBuildkit();
+
         return info;
+    }
+
+    /// <summary>
+    /// Answers whether a build could work, by looking for buildkitd's socket on the same paths nerdctl
+    /// named when it refused to build without one. Asking nerdctl itself is not an option: <c>build</c>
+    /// exists as a subcommand regardless, and the only command that proves buildkitd is reachable is a
+    /// build — which is not something to run behind a user's back to fill in a capability flag.
+    /// <para>
+    /// <c>BUILDKIT_HOST</c> is taken at its word: nerdctl consults it before any default path, and it may
+    /// point at a TCP address this plugin cannot probe. Better to offer a build that then fails with
+    /// nerdctl's own message than to hide the button from someone who configured buildkit deliberately.
+    /// </para>
+    /// <para>
+    /// ponytail: a socket-file probe, not a handshake. A nerdctl reached through Lima or WSL keeps its
+    /// sockets inside that VM, so this reports false there and the UI hides a build that would have
+    /// worked — the safe direction to be wrong in. Upgrade to an actual buildkitd dial if that setup
+    /// starts mattering.
+    /// </para>
+    /// </summary>
+    private void DetectBuildkit()
+    {
+        if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("BUILDKIT_HOST")))
+        {
+            _buildkit = true;
+            return;
+        }
+
+        _buildkit = BuildkitSockets().Any(File.Exists);
+    }
+
+    /// <summary>
+    /// The socket paths nerdctl printed as its two candidates, in its own order — the namespaced one
+    /// first — plus the rootless location, where a rootless nerdctl puts buildkitd instead.
+    /// </summary>
+    private IEnumerable<string> BuildkitSockets()
+    {
+        yield return $"{_buildkitSocketRoot}-{_namespace}/buildkitd.sock";
+        yield return $"{_buildkitSocketRoot}/buildkitd.sock";
+
+        if (System.Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { Length: > 0 } runtimeDir)
+            yield return Path.Combine(runtimeDir, "buildkit", "buildkitd.sock");
     }
 
     /// <summary>
@@ -202,13 +309,19 @@ public sealed class NerdctlEngine : IContainerEngine
     }
 
     /// <summary>
-    /// Runs a prune command and returns its raw stdout, translating a missing binary or non-zero exit
-    /// the same way <see cref="RunListAsync{T}"/> does. Unlike that method there is no JSON afterwards —
-    /// prune's output is the header-and-bare-lines shape Notes/nerdctl-write-formats.md captured, so each
-    /// prune method parses this stdout itself with <see cref="CountAfterHeader"/> or
-    /// <see cref="CountUntaggedLines"/> instead of handing it to <c>NerdctlJson</c>.
+    /// Runs a command whose output is plain text and returns its raw stdout, translating a missing binary
+    /// or non-zero exit the same way <see cref="RunListAsync{T}"/> does. Unlike that method there is no
+    /// JSON afterwards — the prune commands print the header-and-bare-lines shape
+    /// Notes/nerdctl-write-formats.md captured, which each prune method counts itself with
+    /// <see cref="CountAfterHeader"/> or <see cref="CountUntaggedLines"/>, while <c>tag</c> and
+    /// <c>rmi</c> print something no caller here needs to read at all.
+    /// <para>
+    /// No not-found translation happens here, unlike <see cref="RunLifecycleAsync"/>: none of these
+    /// commands has a failure marker captured against a real containerd, and inventing one would report
+    /// a missing image for what might be a permission error.
+    /// </para>
     /// </summary>
-    private async ValueTask<string> RunPruneAsync(CancellationToken ct, params string[] args)
+    private async ValueTask<string> RunTextAsync(CancellationToken ct, params string[] args)
     {
         try
         {
@@ -221,6 +334,114 @@ public sealed class NerdctlEngine : IContainerEngine
         catch (ToolFailedException ex)
         {
             throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>The failure every command here reports the same way: nerdctl ran, said no, and its own
+    /// sentence is the most useful thing anyone can be told about why.</summary>
+    private EngineException Failed(ToolFailedException ex) =>
+        new($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+
+    /// <summary>
+    /// Streams a command's output line by line, translating the two tooling failures into the CEAL's own
+    /// exceptions — a missing binary always to <see cref="EngineUnreachableException"/>, a non-zero exit
+    /// to whatever <paramref name="onFailure"/> decides, since "no such container" means one thing for
+    /// <c>logs</c> and another for <c>events</c>.
+    /// <para>
+    /// The enumerator is driven by hand rather than with <c>await foreach</c> because C# forbids
+    /// <c>yield return</c> inside a <c>try</c> that has a <c>catch</c> — and translating those exceptions
+    /// is the entire point of this method. Every streaming caller shares it so the translation is written
+    /// once instead of once per command.
+    /// </para>
+    /// </summary>
+    private async IAsyncEnumerable<ToolLine> StreamOrThrowAsync(
+        Func<ToolFailedException, Exception> onFailure,
+        [EnumeratorCancellation] CancellationToken ct,
+        params string[] args)
+    {
+        var lines = _cli.StreamAsync(ct, args).GetAsyncEnumerator(ct);
+        try
+        {
+            while (true)
+            {
+                bool has;
+                try
+                {
+                    has = await lines.MoveNextAsync().ConfigureAwait(false);
+                }
+                catch (ToolNotFoundException ex)
+                {
+                    throw new EngineUnreachableException(
+                        $"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+                }
+                catch (ToolFailedException ex)
+                {
+                    throw onFailure(ex);
+                }
+
+                if (!has)
+                    yield break;
+
+                yield return lines.Current;
+            }
+        }
+        finally
+        {
+            await lines.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// The same stream as <see cref="StreamOrThrowAsync"/>, but for the two commands a user watches —
+    /// <c>build</c> and <c>compose</c> — where a failure is the last line of the log rather than an
+    /// exception. <see cref="BuildProgress"/> and <see cref="ComposeProgress"/> both carry an optional
+    /// error string for exactly this, and the view models show it: a build that throws halfway would
+    /// throw away the output explaining why it failed.
+    /// <para>
+    /// nerdctl's own message is what lands in that error, unchanged. Both commands narrate on stderr —
+    /// BuildKit's step output and Compose's logrus lines are both there, not on stdout — so the streams
+    /// are merged here, exactly as <see cref="ToolRunner"/> already merges them, and the caller decides
+    /// what to make of each line.
+    /// </para>
+    /// </summary>
+    private async IAsyncEnumerable<(string Text, string? Error)> StreamProgressAsync(
+        [EnumeratorCancellation] CancellationToken ct, params string[] args)
+    {
+        var lines = StreamOrThrowAsync(Failed, ct, args).GetAsyncEnumerator(ct);
+        try
+        {
+            while (true)
+            {
+                bool has;
+                string? failure = null;
+                try
+                {
+                    has = await lines.MoveNextAsync().ConfigureAwait(false);
+                }
+                catch (EngineException ex)
+                {
+                    // Both failures StreamOrThrowAsync raises land here — it is the only place that
+                    // knows about the tooling exceptions, and EngineUnreachableException derives from
+                    // EngineException, so neither needs naming twice.
+                    has = false;
+                    failure = ex.Message;
+                }
+
+                if (failure is not null)
+                {
+                    yield return (failure, failure);
+                    yield break;
+                }
+
+                if (!has)
+                    yield break;
+
+                yield return (lines.Current.Text, null);
+            }
+        }
+        finally
+        {
+            await lines.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -515,12 +736,27 @@ public sealed class NerdctlEngine : IContainerEngine
         return rows[0].ToInspect();
     }
 
+    /// <summary>
+    /// Not available here — see <see cref="ExecUnsupported"/>. <c>nerdctl exec</c> itself would work for
+    /// this one-shot case (its exit code is readable, if only out of the
+    /// <c>"exec failed with exit code &lt;n&gt;"</c> line it prints — nerdctl does not hand it back any
+    /// other way, Notes/nerdctl-advanced-formats.md). It is left unimplemented anyway because
+    /// <see cref="EngineCapabilities.SupportsExec"/> guards this method and
+    /// <see cref="StartExecSessionAsync"/> together, and that one genuinely cannot be built on this seam:
+    /// a flag that says yes would put a terminal in the UI that cannot type.
+    /// </summary>
     public ValueTask<int> ExecAsync(string id, ExecRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(AdvancedNotYet);
+        throw new NotSupportedException(ExecUnsupported);
 
+    /// <summary>
+    /// Not available here — see <see cref="ExecUnsupported"/>. <see cref="IToolRunner"/> exposes
+    /// <c>RunAsync</c> and <c>StreamAsync</c>: a process is started and its output read, with no way to
+    /// write to its stdin and no pseudo-terminal, which is exactly what <see cref="IExecSession"/>'s
+    /// <c>WriteAsync</c> and <c>ResizeAsync</c> require.
+    /// </summary>
     public ValueTask<IExecSession> StartExecSessionAsync(
         string id, ExecRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(AdvancedNotYet);
+        throw new NotSupportedException(ExecUnsupported);
 
     /// <summary>
     /// Runs <c>nerdctl container prune -f</c> (<c>-f</c> skips the confirmation prompt nerdctl otherwise
@@ -532,7 +768,7 @@ public sealed class NerdctlEngine : IContainerEngine
     /// </summary>
     public async ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default)
     {
-        var stdout = await RunPruneAsync(ct, "container", "prune", "-f").ConfigureAwait(false);
+        var stdout = await RunTextAsync(ct, "container", "prune", "-f").ConfigureAwait(false);
         return new PruneResult(CountAfterHeader(stdout, "Deleted Containers:"), 0);
     }
 
@@ -544,25 +780,118 @@ public sealed class NerdctlEngine : IContainerEngine
             ct,
             "images", "--format", "json").ConfigureAwait(false);
 
-    public IAsyncEnumerable<PullProgress> PullImageAsync(
-        string reference, RegistryCredential? credential = null, CancellationToken ct = default) =>
-        throw new NotSupportedException(ImageWriteNotYet);
+    /// <summary>
+    /// Streams <c>nerdctl pull &lt;reference&gt;</c>. nerdctl narrates a pull in free-form progress lines
+    /// with no per-layer byte counts a caller could total up (Notes/nerdctl-advanced-formats.md), so
+    /// <see cref="PullProgress.Current"/> and <see cref="PullProgress.Total"/> stay <c>null</c> rather
+    /// than carrying a number derived from the text — the UI shows an indeterminate pull, which is the
+    /// truth here, instead of a progress bar built on a guess.
+    /// <para>
+    /// A <paramref name="credential"/> is refused rather than ignored. Authenticating means
+    /// <c>nerdctl login</c> first, and that command is unobserved (<see cref="RegistryLoginUnobserved"/>);
+    /// pulling anyway would work for public images and fail confusingly for the private one the caller
+    /// supplied a credential for in the first place.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<PullProgress> PullImageAsync(
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (credential is not null)
+            throw new NotSupportedException(RegistryLoginUnobserved);
 
+        await foreach (var line in StreamOrThrowAsync(Failed, ct, "pull", reference).ConfigureAwait(false))
+            yield return new PullProgress(reference, line.Text, null, null);
+    }
+
+    /// <summary>Not available here — see <see cref="RegistryLoginUnobserved"/>.</summary>
     public ValueTask VerifyRegistryLoginAsync(RegistryCredential credential, CancellationToken ct = default) =>
-        throw new NotSupportedException(ImageWriteNotYet);
+        throw new NotSupportedException(RegistryLoginUnobserved);
 
-    public IAsyncEnumerable<BuildProgress> BuildImageAsync(
-        BuildRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(AdvancedNotYet);
+    /// <summary>
+    /// Streams <c>nerdctl build --progress=plain</c>. That flag is not cosmetic: nerdctl's default
+    /// progress output redraws itself the way a TTY progress bar does, which read line by line is a
+    /// stream of near-duplicate fragments rather than a build log (Notes/nerdctl-advanced-formats.md).
+    /// <para>
+    /// Refused outright when no buildkitd was found (<see cref="DetectBuildkit"/>), naming both socket
+    /// paths nerdctl itself named and the URL it points at. Letting the build run instead would produce
+    /// the same failure a few seconds later, with the reason buried under the build's own noise — and
+    /// <see cref="EngineCapabilities.SupportsBuild"/> already told the UI not to offer this.
+    /// </para>
+    /// <para>
+    /// The Dockerfile is resolved against the context directory rather than passed through as-is: nerdctl
+    /// reads <c>-f</c> relative to the working directory, which is Kontena's, not the caller's context.
+    /// A <see cref="BuildRequest.Dockerfile"/> that is already absolute is left alone.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<BuildProgress> BuildImageAsync(
+        BuildRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (!_buildkit)
+        {
+            throw new NotSupportedException(
+                "'nerdctl build' needs a running buildkitd, and none was found for " +
+                $"'{_backend}' — tried {string.Join(" and ", BuildkitSockets())}. " +
+                "See https://github.com/moby/buildkit for how to start one.");
+        }
 
-    public ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default) =>
-        throw new NotSupportedException(ImageWriteNotYet);
+        if (!Directory.Exists(request.ContextPath))
+        {
+            yield return new BuildProgress(
+                $"Build context not found: {request.ContextPath}",
+                $"Build context not found: {request.ContextPath}");
+            yield break;
+        }
 
+        var dockerfile = string.IsNullOrWhiteSpace(request.Dockerfile) ? "Dockerfile" : request.Dockerfile;
+
+        List<string> args =
+        [
+            "build",
+            "--progress=plain",
+            "-f", Path.IsPathRooted(dockerfile) ? dockerfile : Path.Combine(request.ContextPath, dockerfile),
+            "-t", request.Tag,
+        ];
+
+        if (!string.IsNullOrWhiteSpace(request.Target))
+            args.AddRange(["--target", request.Target]);
+        if (request.NoCache)
+            args.Add("--no-cache");
+        if (request.Pull)
+            args.Add("--pull");
+
+        foreach (var (key, value) in request.BuildArgs)
+            args.AddRange(["--build-arg", $"{key}={value}"]);
+
+        args.Add(request.ContextPath);
+
+        await foreach (var line in StreamProgressAsync(ct, [.. args]).ConfigureAwait(false))
+            yield return new BuildProgress(line.Text, line.Error);
+    }
+
+    /// <summary>
+    /// Runs <c>nerdctl rmi &lt;id&gt;</c>, adding <c>-f</c> only when <paramref name="force"/> is true.
+    /// Its output — one <c>Deleted: sha256:…</c> line per layer — is not read: this method returns
+    /// nothing, and the count only matters for <see cref="PruneImagesAsync"/>, which parses its own
+    /// (lowercase <c>deleted:</c>, a different word for the same thing).
+    /// </summary>
+    public async ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default)
+    {
+        string[] args = force ? ["rmi", "-f", id] : ["rmi", id];
+        await RunTextAsync(ct, args).ConfigureAwait(false);
+    }
+
+    /// <summary>Not available here — see <see cref="ImageInspectUnobserved"/>.</summary>
     public ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default) =>
-        throw new NotSupportedException(ImageInspectNotYet);
+        throw new NotSupportedException(ImageInspectUnobserved);
 
-    public ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
-        throw new NotSupportedException(ImageWriteNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl tag &lt;id&gt; &lt;newTag&gt;</c>, which prints nothing at all on success and exits
+    /// zero (Notes/nerdctl-advanced-formats.md) — so, as with the lifecycle commands, the exit code is
+    /// the entire result and there is nothing on stdout worth reading.
+    /// </summary>
+    public async ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
+        await RunTextAsync(ct, "tag", id, newTag).ConfigureAwait(false);
 
     /// <summary>
     /// Runs <c>nerdctl image prune -f</c>, adding <c>--all</c> when <paramref name="allUnused"/> asks for
@@ -580,7 +909,7 @@ public sealed class NerdctlEngine : IContainerEngine
         if (allUnused)
             args.Add("--all");
 
-        var stdout = await RunPruneAsync(ct, [.. args]).ConfigureAwait(false);
+        var stdout = await RunTextAsync(ct, [.. args]).ConfigureAwait(false);
         return new PruneResult(CountUntaggedLines(stdout), 0);
     }
 
@@ -683,9 +1012,10 @@ public sealed class NerdctlEngine : IContainerEngine
             ? RunLifecycleAsync("Volume", name, "\": not found", ct, "volume", "rm", "-f", name)
             : RunLifecycleAsync("Volume", name, "\": not found", ct, "volume", "rm", name);
 
+    /// <summary>Not available here — see <see cref="VolumeBrowseUnobserved"/>.</summary>
     public ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default) =>
-        throw new NotSupportedException(AdvancedNotYet);
+        throw new NotSupportedException(VolumeBrowseUnobserved);
 
     /// <summary>
     /// Runs <c>nerdctl volume prune -f --all</c>. <c>--all</c> is not optional here the way it is on
@@ -698,7 +1028,7 @@ public sealed class NerdctlEngine : IContainerEngine
     /// </summary>
     public async ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default)
     {
-        var stdout = await RunPruneAsync(ct, "volume", "prune", "-f", "--all").ConfigureAwait(false);
+        var stdout = await RunTextAsync(ct, "volume", "prune", "-f", "--all").ConfigureAwait(false);
         return new PruneResult(CountAfterHeader(stdout, "Deleted Volumes:"), 0);
     }
 
@@ -795,9 +1125,58 @@ public sealed class NerdctlEngine : IContainerEngine
 
     // ── Compose ─────────────────────────────────────────────────────────────
 
-    public IAsyncEnumerable<ComposeProgress> ComposeUpAsync(
-        ComposeUpRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(AdvancedNotYet);
+    /// <summary>
+    /// Runs <c>nerdctl compose up -d</c> and streams what it says. nerdctl's Compose narrates through
+    /// logrus on stderr — <c>level=info msg="Creating container cmp-web-1"</c>
+    /// (Notes/nerdctl-advanced-formats.md) — so the useful sentence is unwrapped with
+    /// <see cref="NerdctlJson.Logrus"/> before it reaches the caller; passing the raw line through would
+    /// put nerdctl's log plumbing in Kontena's Compose panel.
+    /// <para>
+    /// A missing compose file is answered here rather than by nerdctl, matching
+    /// <c>DockerEngine.ComposeUpAsync</c>: the caller gets one clear line naming the path instead of the
+    /// CLI's own error about a file it could not open.
+    /// </para>
+    /// <para>
+    /// <c>level=error</c> and <c>level=fatal</c> lines are marked as failures as they arrive. Waiting for
+    /// the non-zero exit would work too, but the process can keep talking for a while after the sentence
+    /// that explains what went wrong, and the UI stops at the first error line it is given.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<ComposeProgress> ComposeUpAsync(
+        ComposeUpRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.ComposeFilePath) || !File.Exists(request.ComposeFilePath))
+        {
+            var missing = $"Compose file not found: {request.ComposeFilePath}";
+            yield return new ComposeProgress(missing, missing);
+            yield break;
+        }
+
+        List<string> args = ["compose", "-f", request.ComposeFilePath];
+
+        if (request.ProjectName is { Length: > 0 } project)
+            args.AddRange(["-p", project]);
+
+        args.AddRange(["up", "-d"]);
+
+        if (request.Build)
+            args.Add("--build");
+        if (request.ForceRecreate)
+            args.Add("--force-recreate");
+
+        await foreach (var line in StreamProgressAsync(ct, [.. args]).ConfigureAwait(false))
+        {
+            if (line.Error is { } error)
+            {
+                yield return new ComposeProgress(error, error);
+                yield break;
+            }
+
+            var (level, message) = NerdctlJson.Logrus(line.Text);
+            var failed = level is "error" or "fatal";
+            yield return new ComposeProgress(message, failed ? message : null);
+        }
+    }
 
     // ── Streams ─────────────────────────────────────────────────────────────
 
@@ -824,46 +1203,117 @@ public sealed class NerdctlEngine : IContainerEngine
             args.Add("-f");
         args.Add(id);
 
-        var lines = _cli.StreamAsync(ct, [.. args]).GetAsyncEnumerator(ct);
-        try
-        {
-            while (true)
-            {
-                bool has;
-                try
-                {
-                    has = await lines.MoveNextAsync().ConfigureAwait(false);
-                }
-                catch (ToolNotFoundException ex)
-                {
-                    throw new EngineUnreachableException(
-                        $"nerdctl is not installed — cannot reach '{_backend}'.", ex);
-                }
-                catch (ToolFailedException ex)
-                {
-                    // Same reasoning as InspectContainerAsync: an id nerdctl does not know about is by
-                    // far the most common reason `logs` exits non-zero, so the CLI-specific exception
-                    // does not leak past the CEAL boundary either.
-                    throw new ResourceNotFoundException($"Container '{id}' was not found on '{_backend}'.", ex);
-                }
+        // Same reasoning as InspectContainerAsync: an id nerdctl does not know about is by far the most
+        // common reason `logs` exits non-zero, so it becomes the not-found exception rather than the
+        // generic failure the other streaming commands report.
+        var notFound = (ToolFailedException ex) =>
+            (Exception)new ResourceNotFoundException($"Container '{id}' was not found on '{_backend}'.", ex);
 
-                if (!has)
-                    yield break;
-
-                var line = lines.Current;
-                var source = line.Stream == ToolOutputKind.Error ? LogSource.Stderr : LogSource.Stdout;
-                yield return LogLine.Parse(line.Text, source, DateTimeOffset.UtcNow);
-            }
-        }
-        finally
+        await foreach (var line in StreamOrThrowAsync(notFound, ct, [.. args]).ConfigureAwait(false))
         {
-            await lines.DisposeAsync().ConfigureAwait(false);
+            var source = line.Stream == ToolOutputKind.Error ? LogSource.Stderr : LogSource.Stdout;
+            yield return LogLine.Parse(line.Text, source, DateTimeOffset.UtcNow);
         }
     }
 
-    public IAsyncEnumerable<ContainerStats> StreamStatsAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(AdvancedNotYet);
+    /// <summary>
+    /// Polls <c>stats --no-stream --format json &lt;id&gt;</c> and yields one sample per round, rather
+    /// than leaving <c>nerdctl stats</c> running as a stream. Its streaming mode is a terminal display
+    /// that redraws in place — the same trap <c>build</c> has (Notes/nerdctl-advanced-formats.md) —
+    /// while <c>--no-stream</c> prints exactly one JSON object and exits, which is what
+    /// <see cref="NerdctlJson.Parse{T}"/> already reads.
+    /// <para>
+    /// The delay comes after the sample, not before, so a caller that takes one value and walks away
+    /// never waits: disposing the enumerator at the <c>yield</c> means <see cref="Task.Delay(TimeSpan, CancellationToken)"/>
+    /// is never reached.
+    /// </para>
+    /// <para>
+    /// ponytail: one process per sample, every <see cref="StatsInterval"/>. Fine for the one or two
+    /// containers a detail view watches; a dashboard sampling fifty at once would want the streaming
+    /// mode parsed properly instead.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<ContainerStats> StreamStatsAsync(
+        string id, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        while (true)
+        {
+            string stdout;
+            try
+            {
+                stdout = await _cli.RunAsync(ct, "stats", "--no-stream", "--format", "json", id)
+                    .ConfigureAwait(false);
+            }
+            catch (ToolNotFoundException ex)
+            {
+                throw new EngineUnreachableException($"nerdctl is not installed — cannot reach '{_backend}'.", ex);
+            }
+            catch (ToolFailedException ex)
+            {
+                // Same reasoning as StreamLogsAsync: an id nerdctl does not know about is by far the
+                // most common reason `stats` exits non-zero.
+                throw new ResourceNotFoundException($"Container '{id}' was not found on '{_backend}'.", ex);
+            }
 
-    public IAsyncEnumerable<EngineEvent> StreamEventsAsync(CancellationToken ct = default) =>
-        throw new NotSupportedException(AdvancedNotYet);
+            IReadOnlyList<NerdctlStats> rows;
+            try
+            {
+                rows = NerdctlJson.Parse<NerdctlStats>(stdout);
+            }
+            catch (JsonException ex)
+            {
+                throw new EngineException(
+                    $"nerdctl returned output for '{_backend}' that could not be parsed: {ex.Message}", ex);
+            }
+
+            // Nothing to report means the container has stopped or been removed: `stats` answers with an
+            // empty body rather than an error for an id that no longer has a running task. Ending the
+            // stream is the honest reading of that — polling on would ask the same question of something
+            // that can never answer again, and leave the caller's `await foreach` running forever.
+            if (rows.Count == 0)
+                yield break;
+
+            foreach (var row in rows)
+                yield return row.ToStats(id);
+
+            await Task.Delay(StatsInterval, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Streams <c>events --format json</c>, one record per line with a blank line between them
+    /// (Notes/nerdctl-advanced-formats.md). What comes out is containerd's event vocabulary, not
+    /// Docker's — see <see cref="NerdctlMap.ToEvent"/> for the mapping and for the two resource kinds
+    /// this backend can never report.
+    /// <para>
+    /// A line that will not parse is skipped, not fatal. Unlike a listing command — where garbled output
+    /// means the whole answer is wrong — this stream is the UI's activity feed: killing it over one
+    /// unfamiliar record would silently stop every later event, which is a worse failure than missing
+    /// the one line nobody could read.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<EngineEvent> StreamEventsAsync(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var line in StreamOrThrowAsync(Failed, ct, "events", "--format", "json")
+                           .ConfigureAwait(false))
+        {
+            // Stderr here is nerdctl's own logrus narration, not an event record.
+            if (line.Stream != ToolOutputKind.Out || string.IsNullOrWhiteSpace(line.Text))
+                continue;
+
+            IReadOnlyList<NerdctlEvent> rows;
+            try
+            {
+                rows = NerdctlJson.Parse<NerdctlEvent>(line.Text);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            foreach (var row in rows)
+                yield return row.ToEvent();
+        }
+    }
 }

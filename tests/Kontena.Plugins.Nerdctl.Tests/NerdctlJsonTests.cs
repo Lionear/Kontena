@@ -105,4 +105,105 @@ public sealed class NerdctlJsonTests
     {
         Assert.Empty(NerdctlJson.Labels(""));
     }
+
+    // ── stats: binary units, paired fields, percentages ─────────────────────────────────────────
+
+    [Fact]
+    public void BinarySize_reads_stats_units_as_powers_of_1024()
+    {
+        Assert.Equal(1024, NerdctlJson.BinarySize("1KiB"));
+        Assert.Equal(2 * 1024 * 1024, NerdctlJson.BinarySize("2MiB"));
+        Assert.Equal(1024L * 1024 * 1024, NerdctlJson.BinarySize("1GiB"));
+        Assert.Equal(0, NerdctlJson.BinarySize("0B"));
+    }
+
+    [Fact]
+    public void BinarySize_and_Size_disagree_because_stats_and_images_disagree()
+    {
+        // The whole reason two parsers exist: MiB is 1024-based, MB is 1000-based, and reading one with
+        // the other is off by ~5% with nothing in the output to reveal it.
+        Assert.Equal(1_048_576, NerdctlJson.BinarySize("1MiB"));
+        Assert.Equal(1_000_000, NerdctlJson.Size("1MB"));
+        Assert.NotEqual(NerdctlJson.Size("1MB"), NerdctlJson.BinarySize("1MiB"));
+    }
+
+    [Fact]
+    public void BinarySize_does_not_accept_the_decimal_units_images_prints()
+    {
+        // "MB" is not a unit `stats` ever prints; reading it as 1024-based would quietly invent a value.
+        Assert.Equal(0, NerdctlJson.BinarySize("53.98MB"));
+    }
+
+    [Fact]
+    public void A_real_stats_memory_figure_lands_between_13_and_14_megabytes()
+    {
+        var bytes = NerdctlJson.BinarySize("13.11MiB");
+
+        Assert.InRange(bytes, 13_000_000, 14_000_000);
+    }
+
+    [Fact]
+    public void Pair_splits_the_two_values_stats_packs_into_one_field()
+    {
+        Assert.Equal(("13.11MiB", "62.7GiB"), NerdctlJson.Pair("13.11MiB / 62.7GiB"));
+        Assert.Equal(("0B", "0B"), NerdctlJson.Pair("0B / 0B"));
+    }
+
+    [Fact]
+    public void Pair_without_a_separator_keeps_the_whole_text_as_the_first_half()
+    {
+        Assert.Equal(("whatever", ""), NerdctlJson.Pair("whatever"));
+    }
+
+    [Fact]
+    public void Percent_strips_the_sign_nerdctl_prints()
+    {
+        Assert.Equal(0, NerdctlJson.Percent("0.00%"));
+        Assert.Equal(12.5, NerdctlJson.Percent("12.5%"));
+        Assert.Equal(0, NerdctlJson.Percent(""));
+    }
+
+    // ── compose: logrus lines ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Logrus_unwraps_the_message_compose_narrates_with()
+    {
+        var (level, message) = NerdctlJson.Logrus("level=info msg=\"Creating container cmp-web-1\"");
+
+        Assert.Equal("info", level);
+        Assert.Equal("Creating container cmp-web-1", message);
+    }
+
+    [Fact]
+    public void Logrus_leaves_a_line_that_is_not_logrus_shaped_alone()
+    {
+        var (level, message) = NerdctlJson.Logrus("just a line");
+
+        Assert.Null(level);
+        Assert.Equal("just a line", message);
+    }
+
+    // ── events: the id nested in an escaped JSON string ─────────────────────────────────────────
+
+    [Fact]
+    public void NestedId_reads_the_id_out_of_a_containers_event_payload()
+    {
+        Assert.Equal("62091b25", NerdctlJson.NestedId("""{"id":"62091b25","image":"nginx:latest"}"""));
+    }
+
+    [Fact]
+    public void NestedId_falls_back_to_name_then_key_for_the_topics_that_use_those()
+    {
+        Assert.Equal("docker.io/library/nginx:latest", NerdctlJson.NestedId("""{"name":"docker.io/library/nginx:latest"}"""));
+        Assert.Equal("62091b25", NerdctlJson.NestedId("""{"key":"62091b25","snapshotter":"overlayfs"}"""));
+    }
+
+    [Fact]
+    public void NestedId_of_something_unreadable_is_empty_rather_than_a_throw()
+    {
+        // An event stream that dies on one unfamiliar payload stops reporting every later event too.
+        Assert.Equal(string.Empty, NerdctlJson.NestedId("not json"));
+        Assert.Equal(string.Empty, NerdctlJson.NestedId(""));
+        Assert.Equal(string.Empty, NerdctlJson.NestedId("""{"runtime":{"name":"io.containerd.runc.v2"}}"""));
+    }
 }

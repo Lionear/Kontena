@@ -1,5 +1,14 @@
 namespace Kontena.Plugins.Nerdctl;
 
+// The `--format json` row shapes: one type per listing command, each mirroring a captured fixture
+// field for field (Notes/nerdctl-cli-formats.md, Notes/nerdctl-advanced-formats.md). They belong
+// together because they share one trait that decides how every one of them is read — nerdctl formats
+// these for a terminal column, so a field that looks numeric is a string, and a size or timestamp
+// needs NerdctlJson before it means anything.
+//
+// `nerdctl inspect`'s payload is a different animal — Docker's own shape, nested, and typed — so it
+// lives in NerdctlInspectModels.cs instead.
+
 /// <summary>
 /// One row of <c>nerdctl ps -a --format json</c>, deserialized field-for-field — see
 /// Notes/nerdctl-cli-formats.md. Every field is a string because nerdctl prints every field as a
@@ -125,6 +134,70 @@ public sealed class NerdctlNamespace
     public string? Labels { get; init; }
 }
 
+/// <summary>
+/// One row of <c>nerdctl stats --no-stream --format json</c>. Every value is formatted for a terminal
+/// column, not for a caller (Notes/nerdctl-advanced-formats.md): the percentages carry their <c>%</c>,
+/// and three fields pack two values into one string separated by <c>" / "</c>. The sizes here are
+/// <b>binary</b> ("13.11MiB") unlike <see cref="NerdctlImage.Size"/>'s decimal ones — read them with
+/// <see cref="NerdctlJson.BinarySize"/>, never <see cref="NerdctlJson.Size"/>.
+/// </summary>
+public sealed class NerdctlStats
+{
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>The <b>short</b> id, not the 64-character one — see <see cref="NerdctlMap.ToStats"/> for why it is not used as the sample's id.</summary>
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>e.g. <c>"0.00%"</c> — read with <see cref="NerdctlJson.Percent"/>.</summary>
+    public string CpuPerc { get; init; } = string.Empty;
+
+    /// <summary>Used and limit in one string: <c>"13.11MiB / 62.7GiB"</c> — split with <see cref="NerdctlJson.Pair"/>.</summary>
+    public string MemUsage { get; init; } = string.Empty;
+
+    /// <summary>Already derivable from <see cref="MemUsage"/>; <see cref="Kontena.Sdk.Models.ContainerStats"/> computes its own fraction, so this is kept only so the row round-trips.</summary>
+    public string MemPerc { get; init; } = string.Empty;
+
+    /// <summary>Received and transmitted in one string: <c>"0B / 0B"</c>.</summary>
+    public string NetIo { get; init; } = string.Empty;
+
+    /// <summary>Read and written in one string: <c>"0B / 0B"</c>.</summary>
+    public string BlockIo { get; init; } = string.Empty;
+
+    /// <summary>A number as a string. <see cref="Kontena.Sdk.Models.ContainerStats"/> has no field for it, so it is not mapped.</summary>
+    public string Pids { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// One record of <c>nerdctl events --format json</c> — NDJSON with a blank line between records. Three
+/// of these fields lie about what they look like (Notes/nerdctl-advanced-formats.md), which is why this
+/// DTO carries doc comments where the other row types do not.
+/// </summary>
+public sealed class NerdctlEvent
+{
+    public string Timestamp { get; init; } = string.Empty;
+
+    /// <summary>
+    /// <b>Empty on every observed event.</b> The real id is nested inside <see cref="Event"/>; reading
+    /// this field gives an empty string with no error anywhere — see <see cref="NerdctlJson.NestedId"/>.
+    /// </summary>
+    public string Id { get; init; } = string.Empty;
+
+    public string Namespace { get; init; } = string.Empty;
+
+    /// <summary>
+    /// containerd's own topic (<c>/containers/create</c>, <c>/tasks/start</c>, <c>/snapshot/prepare</c>),
+    /// <b>not</b> Docker's action name — matching on "start"/"die"/"stop" finds nothing. This is the only
+    /// field that says what happened; <see cref="NerdctlMap.ToEvent"/> maps it.
+    /// </summary>
+    public string Topic { get; init; } = string.Empty;
+
+    /// <summary>Literally <c>"unknown"</c> on every observed event — carried for round-tripping, never read.</summary>
+    public string Status { get; init; } = string.Empty;
+
+    /// <summary>The topic's payload as an <b>escaped JSON string</b>, not an object — parse with <see cref="NerdctlJson.NestedId"/>.</summary>
+    public string Event { get; init; } = string.Empty;
+}
+
 /// <summary>Log and storage drivers <c>nerdctl info</c> reports as supported.</summary>
 public sealed class NerdctlInfoPlugins
 {
@@ -160,110 +233,4 @@ public sealed class NerdctlInfo
 
     public IReadOnlyList<string> SecurityOptions { get; init; } = [];
     public IReadOnlyList<string>? Warnings { get; init; }
-}
-
-// ── `nerdctl inspect` — Docker-compatible payload ──────────────────────────────────────────────
-//
-// `nerdctl inspect <id>` prints a JSON array with one object, not NDJSON like every other command
-// here (see Notes/nerdctl-cli-formats.md). Its shape is Docker's own container-inspect shape, so
-// these DTOs mirror only the fields Kontena.Adapters.Docker.DockerEngine.MapInspect reads off
-// Docker.DotNet's equivalent types — this plugin cannot reference Docker.DotNet itself (it may only
-// reference Kontena.Sdk), so the same fields are re-declared here against nerdctl's own JSON.
-
-/// <summary>Restart policy as nerdctl's inspect reports it: a bare name, not Docker.DotNet's enum.</summary>
-public sealed class NerdctlInspectRestartPolicy
-{
-    public string Name { get; init; } = string.Empty;
-}
-
-/// <summary>The subset of <c>HostConfig</c> <see cref="NerdctlMap.ToInspect"/> needs.</summary>
-public sealed class NerdctlInspectHostConfig
-{
-    /// <summary>Bytes; 0 means "no limit", same convention as Docker.</summary>
-    public long Memory { get; init; }
-
-    public NerdctlInspectRestartPolicy RestartPolicy { get; init; } = new();
-}
-
-/// <summary>A mount entry — same fields Docker's mapping reads, nerdctl adds more (Mode, Propagation) that are not needed.</summary>
-public sealed class NerdctlInspectMount
-{
-    public string Type { get; init; } = string.Empty;
-    public string Source { get; init; } = string.Empty;
-    public string Destination { get; init; } = string.Empty;
-    public bool RW { get; init; }
-}
-
-/// <summary>
-/// The subset of <c>Config</c> <see cref="NerdctlMap.ToInspect"/> needs. <see cref="Cmd"/> and
-/// <see cref="Entrypoint"/> exist for Docker-compatibility but were absent entirely on every CRI
-/// container observed — <see cref="NerdctlMap.ToInspect"/> builds the real command from the
-/// container's top-level <c>Path</c>/<c>Args</c> instead, which were always present.
-/// </summary>
-public sealed class NerdctlInspectConfig
-{
-    public IReadOnlyList<string>? Env { get; init; }
-    public string Image { get; init; } = string.Empty;
-    public IReadOnlyDictionary<string, string>? Labels { get; init; }
-    public string? WorkingDir { get; init; }
-    public string? User { get; init; }
-    public IReadOnlyList<string>? Cmd { get; init; }
-    public IReadOnlyList<string>? Entrypoint { get; init; }
-}
-
-/// <summary>One entry of <c>NetworkSettings.Networks</c>. No <c>Gateway</c> key was present on any observed CRI container.</summary>
-public sealed class NerdctlInspectNetworkEndpoint
-{
-    public string? IPAddress { get; init; }
-    public string? Gateway { get; init; }
-}
-
-/// <summary>The subset of <c>NetworkSettings</c> <see cref="NerdctlMap.ToInspect"/> needs.</summary>
-public sealed class NerdctlInspectNetworkSettings
-{
-    public IReadOnlyDictionary<string, NerdctlInspectNetworkEndpoint> Networks { get; init; } =
-        new Dictionary<string, NerdctlInspectNetworkEndpoint>();
-}
-
-/// <summary>The subset of <c>State</c> <see cref="NerdctlMap.ToInspect"/> needs. No <c>OOMKilled</c> key — unlike Docker, nerdctl's inspect does not report it.</summary>
-public sealed class NerdctlInspectState
-{
-    public string Status { get; init; } = string.Empty;
-    public bool Running { get; init; }
-    public bool Paused { get; init; }
-    public bool Restarting { get; init; }
-    public int Pid { get; init; }
-    public int ExitCode { get; init; }
-    public string Error { get; init; } = string.Empty;
-    public string StartedAt { get; init; } = string.Empty;
-    public string FinishedAt { get; init; } = string.Empty;
-}
-
-/// <summary>
-/// One element of the array <c>nerdctl inspect &lt;id&gt;</c> prints — Docker's own container-inspect
-/// shape (see the remarks on this file's inspect section for why these DTOs exist rather than reusing
-/// Docker.DotNet's).
-/// </summary>
-public sealed class NerdctlInspectContainer
-{
-    public string Id { get; init; } = string.Empty;
-    public string Created { get; init; } = string.Empty;
-
-    /// <summary>The binary that was run — combined with <see cref="Args"/> for the real command line; see <see cref="NerdctlInspectConfig"/>.</summary>
-    public string Path { get; init; } = string.Empty;
-
-    public IReadOnlyList<string> Args { get; init; } = [];
-    public NerdctlInspectState State { get; init; } = new();
-
-    /// <summary>The image reference actually resolved/used.</summary>
-    public string Image { get; init; } = string.Empty;
-
-    /// <summary>Observed empty ("") for every CRI-managed container in the captured fixture — see <see cref="NerdctlMap.ToInspect"/> for the fallback this forces.</summary>
-    public string Name { get; init; } = string.Empty;
-
-    public int RestartCount { get; init; }
-    public NerdctlInspectHostConfig HostConfig { get; init; } = new();
-    public IReadOnlyList<NerdctlInspectMount> Mounts { get; init; } = [];
-    public NerdctlInspectConfig Config { get; init; } = new();
-    public NerdctlInspectNetworkSettings NetworkSettings { get; init; } = new();
 }
