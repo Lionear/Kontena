@@ -43,29 +43,34 @@ public sealed class NerdctlEngineVolumeNetworkTests
         await Engine(runner).CreateVolumeAsync(new CreateVolumeRequest
         {
             Name = "probe-vol",
-            Driver = "overlayfs",
             Labels = new Dictionary<string, string> { ["team"] = "kontena" },
         });
 
         Assert.Equal(
-            ["--namespace", "k8s.io", "volume", "create", "--driver", "overlayfs", "--label", "team=kontena", "probe-vol"],
+            ["--namespace", "k8s.io", "volume", "create", "--label", "team=kontena", "probe-vol"],
             runner.Invocations[0].Arguments);
     }
 
     [Fact]
-    public async Task CreateVolumeAsync_with_the_default_driver_omits_the_dash_dash_driver_flag()
+    public async Task CreateVolumeAsync_never_sends_a_dash_dash_driver_flag_even_when_the_request_names_one()
     {
+        // A real capture against nerdctl 2.3.5 shows `volume create --help` lists only `--label` — no
+        // `--driver` at all — and passing `--driver` anyway is fatal ("unknown flag: --driver"), not
+        // silently ignored by nerdctl. A request naming a driver other than the SDK default must
+        // therefore never reach the command line; nerdctl only ever creates the one driver it has.
         var runner = Installed()
             .When(inv => inv.Arguments.Contains("ls"), output: [
                 $$"""{"Driver":"local","Labels":"","Mountpoint":"{{DummyMountpoint}}","Name":"probe-vol","Scope":"local","Size":""}""",
             ])
             .When(_ => true, output: ["probe-vol"]);
 
-        await Engine(runner).CreateVolumeAsync(new CreateVolumeRequest { Name = "probe-vol" });
+        await Engine(runner).CreateVolumeAsync(new CreateVolumeRequest { Name = "probe-vol", Driver = "overlayfs" });
 
         Assert.Equal(
             ["--namespace", "k8s.io", "volume", "create", "probe-vol"],
             runner.Invocations[0].Arguments);
+        Assert.DoesNotContain("--driver", runner.Invocations[0].Arguments);
+        Assert.DoesNotContain("overlayfs", runner.Invocations[0].Arguments);
     }
 
     [Fact]
@@ -134,33 +139,29 @@ public sealed class NerdctlEngineVolumeNetworkTests
     }
 
     [Fact]
-    public async Task RemoveVolumeAsync_for_an_unknown_name_throws_ResourceNotFoundException()
+    public async Task RemoveVolumeAsync_tells_a_missing_volume_apart_from_a_busy_one_despite_the_identical_fatal_line()
     {
-        var runner = Installed().When(_ => true, errorOutput: ["no such volume: bogus"], exitCode: 1);
+        // A real capture against nerdctl 2.3.5 shows both cases end in the exact same fatal line —
+        // "some volumes could not be removed" — whether the volume never existed or is still mounted.
+        // Only the warning line above it differs ("...": not found" versus "is in use (failed
+        // precondition)"). This test pins that RemoveVolumeAsync still tells the two apart correctly by
+        // matching on that warning, not the shared fatal line a naive implementation might key on.
+        const string fatal = "level=fatal msg=\"some volumes could not be removed\"";
 
-        await Assert.ThrowsAsync<ResourceNotFoundException>(
-            () => Engine(runner).RemoveVolumeAsync("bogus").AsTask());
-    }
-
-    [Fact]
-    public async Task RemoveVolumeAsync_on_a_volume_in_use_throws_EngineException_not_ResourceNotFoundException()
-    {
-        // The observed sequence: a warning naming the volume as in use, then a fatal line that names no
-        // volume at all. Neither carries "no such volume" — this is a conflict over the volume's current
-        // state, not a missing resource, so it must fall through to the base EngineException the same
-        // way RemoveContainerAsync's "is in running status" case does.
-        var runner = Installed().When(_ => true,
-            errorOutput: [
-                "WARN[0000] volume \"probe-vol\" is in use (failed precondition)",
-                "FATA[0000] some volumes could not be removed",
-            ],
+        var missing = Installed().When(_ => true,
+            errorOutput: ["level=warning msg=\"volume \\\"bogus\\\": not found\"", fatal],
+            exitCode: 1);
+        var busy = Installed().When(_ => true,
+            errorOutput: ["level=warning msg=\"volume \\\"probe-vol\\\" is in use (failed precondition)\"", fatal],
             exitCode: 1);
 
-        var ex = await Assert.ThrowsAsync<EngineException>(
-            () => Engine(runner).RemoveVolumeAsync("probe-vol").AsTask());
+        await Assert.ThrowsAsync<ResourceNotFoundException>(
+            () => Engine(missing).RemoveVolumeAsync("bogus").AsTask());
 
-        Assert.IsNotType<ResourceNotFoundException>(ex);
-        Assert.Contains("could not be removed", ex.Message, StringComparison.Ordinal);
+        var busyEx = await Assert.ThrowsAsync<EngineException>(
+            () => Engine(busy).RemoveVolumeAsync("probe-vol").AsTask());
+        Assert.IsNotType<ResourceNotFoundException>(busyEx);
+        Assert.Contains("could not be removed", busyEx.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -267,7 +268,14 @@ public sealed class NerdctlEngineVolumeNetworkTests
     [Fact]
     public async Task RemoveNetworkAsync_for_an_unknown_id_throws_ResourceNotFoundException()
     {
-        var runner = Installed().When(_ => true, errorOutput: ["no such network: bogus"], exitCode: 1);
+        // Real capture against nerdctl 2.3.5: unlike volume rm, the not-found case here is unambiguous
+        // on its own — "no network found matching:" appears in no other observed failure.
+        var runner = Installed().When(_ => true,
+            errorOutput: [
+                "level=error msg=\"no network found matching: bogus\"",
+                "level=fatal msg=\"no network could be removed\"",
+            ],
+            exitCode: 1);
 
         await Assert.ThrowsAsync<ResourceNotFoundException>(
             () => Engine(runner).RemoveNetworkAsync("bogus").AsTask());

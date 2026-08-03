@@ -504,16 +504,21 @@ public sealed class NerdctlEngine : IContainerEngine
     /// — no driver, no mountpoint — so building the summary from <paramref name="request"/> would report
     /// <see cref="VolumeSummary.Driver"/> and <see cref="VolumeSummary.Mountpoint"/> as whatever was
     /// asked for rather than what nerdctl actually created. Reading it back is what proves this.
+    /// <para>
+    /// <see cref="CreateVolumeRequest.Driver"/> is never sent to nerdctl: <c>volume create --help</c>
+    /// lists only <c>--label</c>, and passing <c>--driver</c> anyway is fatal ("unknown flag: --driver"),
+    /// not silently ignored by nerdctl itself — a real capture against nerdctl 2.3.5 caught this after
+    /// this method first shipped assuming Docker-compatible flag parity. nerdctl only ever creates the
+    /// one driver it has, so a request naming a different one is honoured the same way
+    /// <see cref="NerdctlMap.ToNetwork"/> already handles a field nerdctl has no way to set: silently,
+    /// with the gap documented here rather than guessed at or thrown on a value this method has no way
+    /// to act on regardless.
+    /// </para>
     /// </summary>
     public async ValueTask<VolumeSummary> CreateVolumeAsync(
         CreateVolumeRequest request, CancellationToken ct = default)
     {
         List<string> args = ["volume", "create"];
-
-        // "local" is nerdctl's own default — spelling it out on every command line would be noise, the
-        // same choice BuildCreateArgs makes for RestartPolicy.No.
-        if (request.Driver != "local")
-            args.AddRange(["--driver", request.Driver]);
 
         foreach (var (key, value) in request.Labels)
             args.AddRange(["--label", $"{key}={value}"]);
@@ -547,16 +552,25 @@ public sealed class NerdctlEngine : IContainerEngine
 
     /// <summary>
     /// Runs <c>nerdctl volume rm &lt;name&gt;</c>, adding <c>-f</c> only when <paramref name="force"/>
-    /// is true — mirrors <see cref="RemoveContainerAsync"/>'s own flag. A volume still mounted by a
-    /// container fails with a warning ("is in use (failed precondition)") followed by
-    /// "some volumes could not be removed"; that names no "no such volume" marker, so it falls through
-    /// <see cref="RunLifecycleAsync"/>'s generic case as a conflict, not a not-found — the same
-    /// treatment that method already gives "is in running status" for containers.
+    /// is true — mirrors <see cref="RemoveContainerAsync"/>'s own flag.
+    /// <para>
+    /// <b>The fatal line alone cannot tell a missing volume apart from a busy one.</b> A real capture
+    /// against nerdctl 2.3.5 shows both cases end in the identical fatal line
+    /// <c>"some volumes could not be removed"</c> — a missing volume warns
+    /// <c>volume "x": not found</c> first, a mounted one warns
+    /// <c>volume "x" is in use (failed precondition)</c> first, and only that warning line
+    /// distinguishes them. <see cref="RunLifecycleAsync"/> is therefore given <c>": not found"</c> — a
+    /// fragment of the warning, not the shared fatal line — as its marker; matching on the fatal line
+    /// instead (as an earlier version of this method did, before this was captured) would report every
+    /// in-use volume as not-found, which is a wrong answer stated as fact. The in-use warning names no
+    /// <c>": not found"</c> substring, so it still falls through to the generic conflict case, the same
+    /// treatment <see cref="RunLifecycleAsync"/> already gives "is in running status" for containers.
+    /// </para>
     /// </summary>
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default) =>
         force
-            ? RunLifecycleAsync("Volume", name, "no such volume", ct, "volume", "rm", "-f", name)
-            : RunLifecycleAsync("Volume", name, "no such volume", ct, "volume", "rm", name);
+            ? RunLifecycleAsync("Volume", name, "\": not found", ct, "volume", "rm", "-f", name)
+            : RunLifecycleAsync("Volume", name, "\": not found", ct, "volume", "rm", name);
 
     public ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default) =>
@@ -624,12 +638,16 @@ public sealed class NerdctlEngine : IContainerEngine
 
     /// <summary>
     /// Runs <c>nerdctl network rm &lt;id&gt;</c> — see <see cref="RunLifecycleAsync"/> for how its
-    /// failures are told apart. No force flag exists here: <see cref="IContainerEngine.RemoveNetworkAsync"/>
-    /// does not take one, and nothing in Notes/nerdctl-write-formats.md observed a conflict case for
-    /// network removal the way <see cref="RemoveVolumeAsync"/> has one.
+    /// failures are told apart. Unlike <see cref="RemoveVolumeAsync"/>'s ambiguous fatal line, a real
+    /// capture against nerdctl 2.3.5 shows the not-found case here is unambiguous on its own: an unknown
+    /// id or name answers <c>"no network found matching: &lt;id&gt;"</c>, a marker that appears in no
+    /// other observed network-removal failure, so no warning-line workaround is needed the way
+    /// <see cref="RemoveVolumeAsync"/> needs one. No force flag exists here:
+    /// <see cref="IContainerEngine.RemoveNetworkAsync"/> does not take one, and nothing observed named a
+    /// conflict case for network removal the way <see cref="RemoveVolumeAsync"/> has one.
     /// </summary>
     public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>
-        RunLifecycleAsync("Network", id, "no such network", ct, "network", "rm", id);
+        RunLifecycleAsync("Network", id, "no network found matching:", ct, "network", "rm", id);
 
     public ValueTask ConnectNetworkAsync(
         string containerId, string networkId, CancellationToken ct = default) =>
