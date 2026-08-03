@@ -544,6 +544,11 @@ public partial class MainWindowViewModel
         Navigate("containers");
 
         IsReady = true;
+
+        // The badges follow the engine's events too (KON-339). Containers is the only engine page
+        // that watches, and the count it moves is not only its own: a Compose project appears when
+        // its first container does.
+        Containers.Changed = () => _ = RefreshNavCountsAsync();
         Containers.StartWatching();
         _activityLog.Attach(_engine, _activeBackend, ResolveEventName);
 

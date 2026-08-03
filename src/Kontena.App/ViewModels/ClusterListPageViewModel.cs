@@ -20,6 +20,9 @@ public interface IClusterListPage : IDisposable
     /// <inheritdoc cref="ClusterListPageViewModel{TRow}.WatchedKind"/>
     GroupVersionKind? WatchedKind { get; }
 
+    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.Changed"/>
+    Action? Changed { get; set; }
+
     /// <inheritdoc cref="ClusterListPageViewModel{TRow}.StartWatching"/>
     void StartWatching();
 }
@@ -81,6 +84,18 @@ public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel
     [ObservableProperty] private bool _isLive;
 
     /// <summary>
+    /// Told after a watch event has been folded in, for whatever else on screen was reading the same
+    /// cluster (KON-339). The sidebar's counts sit beside this list and were not following anything,
+    /// so a workload that appeared showed up as a new row next to a badge that still said the old
+    /// number — two figures contradicting each other, which is worse than one that is merely old.
+    /// <para>
+    /// A callback the shell sets, like <c>RequestConfirm</c> elsewhere, rather than the page reaching
+    /// for the counts itself: a list page knows what it lists and nothing about what else is drawn.
+    /// </para>
+    /// </summary>
+    public Action? Changed { get; set; }
+
+    /// <summary>
     /// Why it is not live, when it is not. Never null-and-silent: a list that has quietly stopped
     /// moving is indistinguishable from a cluster where nothing is happening, and those two want
     /// opposite reactions.
@@ -121,6 +136,7 @@ public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel
                 // reload once. Task.Delay is the wait; the enumerator resumes on the UI thread.
                 await Task.Delay(Settle, ct);
                 await LoadAsync();
+                Changed?.Invoke();
             }
 
             // The stream ended without being cancelled. An apiserver closes a watch on its own
