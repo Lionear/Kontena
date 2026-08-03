@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Styling;
@@ -400,6 +401,37 @@ public partial class MainWindowViewModel
                 IsSelected = _clusterPageKey == key,
             });
         }
+
+        MovePodsUnderDeployments(items);
+    }
+
+    /// <summary>
+    /// Put Pods directly under Deployments (Rick, 2026-08-03). The pods you go looking for are nearly
+    /// always a Deployment's, and Pods sat at the foot of the kinds with everything else between them.
+    /// <para>
+    /// With no Deployments in this namespace it stays where it was, at the end: the entry it belongs
+    /// under is not there to belong under. Redone on every rebuild rather than fixed at construction,
+    /// because the kind above it comes and goes with the namespace.
+    /// </para>
+    /// </summary>
+    private static void MovePodsUnderDeployments(ObservableCollection<NavItem> items)
+    {
+        var pods = items.FirstOrDefault(i => i.Key == "pods");
+        var deployments = items.FirstOrDefault(i => i.Key == WorkloadNavGroups.KeyFor(WorkloadKind.Deployment));
+        if (pods is null || deployments is null)
+            return;
+
+        var to = items.IndexOf(deployments) + 1;
+        var from = items.IndexOf(pods);
+
+        // A rebuild leaves Pods at the end, so it only ever slides up. Guarding on the whole range
+        // rather than on equality keeps that assumption from being load-bearing.
+        if (from <= to)
+            return;
+
+        // Move rather than remove-and-insert: the sidebar is bound to this collection, and a Move is
+        // one row sliding where a Remove plus an Add is a row that blinks out and comes back.
+        items.Move(from, to);
     }
 
     // Keyed rather than indexed: the nav gained an entry in the middle once already, and an index-based
