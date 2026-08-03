@@ -35,6 +35,25 @@ public interface IBackendProvider
     BackendKind Kind { get; }
 
     /// <summary>
+    /// Whether there is any sign of this backend on this machine — a socket, a binary, an environment
+    /// variable pointing at one. It is not "is it running": an engine that is installed but stopped
+    /// must still answer true, because "it is here, it is not running" is exactly what someone opens
+    /// the switcher to find out (KON-255).
+    /// <para>
+    /// True by default, which means "always listed". Everything a user added themselves — a remote, a
+    /// kube-context, a plugin's backends — is there because they asked for it, and asking a provider
+    /// to prove it exists before showing it would be the wrong question. The two engines the catalog
+    /// offers unasked are the ones that answer this honestly: on a machine with only Docker, Podman
+    /// used to sit in the switcher as an unclickable "Not connected" row forever.
+    /// </para>
+    /// <para>
+    /// Cheap and local: no daemon start, no network. It is read while building a list a user is
+    /// waiting on, and its answer only decides whether a row is worth drawing.
+    /// </para>
+    /// </summary>
+    bool IsInstalled => true;
+
+    /// <summary>
     /// How long this provider gets to answer a probe before it counts as unreachable.
     /// <para>
     /// Two seconds by default, which is a local socket's budget: a probe round sits between the user
