@@ -161,9 +161,20 @@ public partial class MainWindowViewModel
 
         if (real is null)
         {
+            // Two different situations wear the same "nothing connected" (KON-255). Telling someone
+            // with no engine installed that theirs "may be stopped or still starting" sends them
+            // looking for a daemon that was never there — and since that machine's switcher is now
+            // empty rather than full of dead rows, this text is the only thing left saying why.
+            var anyInstalled = _probes.Any(p =>
+                p.Provider.Kind == BackendKind.Engine
+                && p.Provider.Backend != FakeBackend
+                && p.Provider.IsInstalled);
+
             EnterBackendDown(
-                "Can't reach a container engine",
-                "No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.",
+                anyInstalled ? "Can't reach a container engine" : "No container engine found",
+                anyInstalled
+                    ? "No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it."
+                    : "Kontena found no sign of Docker or Podman on this machine. Install one, or add an engine on another host from Settings.",
                 UnreachablePodmanProbe());
             return;
         }
@@ -865,6 +876,10 @@ public partial class MainWindowViewModel
         foreach (var probe in _probes)
         {
             var isActive = probe.Provider.Backend == _activeBackend;
+
+            if (!BelongsInSwitcher(probe, isActive))
+                continue;
+
             if (isActive)
             {
                 // Detail is "{version} · {endpoint}" — split it so the endpoint sits on its own line.
@@ -903,4 +918,36 @@ public partial class MainWindowViewModel
 
         OnPropertyChanged(nameof(HasClusters));
     }
+
+    /// <summary>
+    /// Whether a probed backend is worth a row in the switcher (KON-255). Everything is, except a
+    /// built-in engine this machine shows no sign of having: the catalog offers Docker and Podman
+    /// whether or not they are installed, so on a Docker-only machine Podman sat there permanently as
+    /// an unclickable "Not connected" row — noise next to the Clusters group, which leaves itself out
+    /// when there is no kubeconfig.
+    /// <para>
+    /// Four things keep a row that <see cref="IBackendProvider.IsInstalled"/> says no about:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>It answered. Whatever the provider thinks, something is there.</description></item>
+    /// <item><description>It is the active backend — the shell is connected to it right now.</description></item>
+    /// <item><description>It is what startup would open (pinned, or last used): <c>ConnectPreferredAsync</c>
+    /// says "… is gone" about that backend, and the row is where the user goes to look.</description></item>
+    /// </list>
+    /// <para>
+    /// Remotes, kube-contexts and anything a plugin contributes never reach the question:
+    /// <see cref="IBackendProvider.IsInstalled"/> defaults to true, and they are in the list because
+    /// someone added them. Nothing here needs to name them separately.
+    /// </para>
+    /// <para>
+    /// Settings › Engines is deliberately not filtered: there, "Podman is not installed here" is the
+    /// answer to a question the page exists to ask. This is the switcher only.
+    /// </para>
+    /// </summary>
+    private bool BelongsInSwitcher(BackendProbe probe, bool isActive) =>
+        probe.Provider.IsInstalled
+        || probe.Connected
+        || isActive
+        || probe.Provider.Backend == _settings.ResolvedPinnedBackend
+        || probe.Provider.Backend == _settings.LastBackend;
 }
