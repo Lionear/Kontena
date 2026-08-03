@@ -77,6 +77,20 @@
             <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
+        <!-- Where a remote's own row lands after "Manage below" (KON-264). It is a pointer, not a
+             selection: the tint fades on its own after a moment, because nothing was chosen and
+             leaving it lit would say otherwise. -->
+        <Style Selector="ItemsControl#RemoteRows > ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.45"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ItemsControl#RemoteRows > ContentPresenter.revealed">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid ColumnDefinitions="216,*">
@@ -348,14 +362,24 @@
                                                 </StackPanel>
                                                 <TextBlock Text="{Binding Detail}" FontSize="12" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextDim}"/>
                                             </StackPanel>
-                                            <!-- This list was read-only, which made it the wrong place to
-                                                 be when an engine was down (KON-328): an engine started
-                                                 after Kontena had nothing to click, anywhere. -->
-                                            <Button Grid.Column="2" Classes="ghost" VerticalAlignment="Center"
-                                                    Content="{Binding RetryLabel}"
-                                                    IsVisible="{Binding CanRetry}" IsEnabled="{Binding RetryEnabled}"
-                                                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RetryBackendCommand}"
-                                                    CommandParameter="{Binding Backend}"/>
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
+                                                        VerticalAlignment="Center">
+                                                <!-- This list was read-only, which made it the wrong place to
+                                                     be when an engine was down (KON-328): an engine started
+                                                     after Kontena had nothing to click, anywhere. -->
+                                                <Button Classes="ghost"
+                                                        Content="{Binding RetryLabel}"
+                                                        IsVisible="{Binding CanRetry}" IsEnabled="{Binding RetryEnabled}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RetryBackendCommand}"
+                                                        CommandParameter="{Binding Backend}"/>
+                                                <!-- A remote also has a row further down, and that is the
+                                                     one carrying Edit and Remove. This row keeps no actions
+                                                     of its own — it points at where they live (KON-264). -->
+                                                <Button Classes="ghost" Content="Manage below"
+                                                        IsVisible="{Binding IsRemote}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RevealRemoteCommand}"
+                                                        CommandParameter="{Binding Backend}"/>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -583,7 +607,7 @@
                     </Border>
 
                     <Border Classes="card" Padding="0" IsVisible="{Binding RemoteEngines.Count}">
-                        <ItemsControl ItemsSource="{Binding RemoteEngines}">
+                        <ItemsControl x:Name="RemoteRows" ItemsSource="{Binding RemoteEngines}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RemoteEngineRow">
                                     <Grid Margin="18,14" ColumnDefinitions="*,Auto">

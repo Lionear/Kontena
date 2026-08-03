@@ -323,6 +323,41 @@ public partial class SettingsViewModel
         }
     }
 
+    // ── Finding a remote's own row from the inventory above it (KON-264) ────
+
+    /// <summary>
+    /// A detected-engine row asked for the remote it stands for. The view answers by scrolling that
+    /// row into view and marking it briefly — this is a "where does this live", not a state change,
+    /// so nothing on the page moves and there is nothing to undo.
+    /// </summary>
+    public event EventHandler<RemoteEngineRow>? RevealRemoteRequested;
+
+    /// <summary>
+    /// Sends the page to a remote's own entry, further down under REMOTE ENGINES, where its Edit and
+    /// Remove live. Both lists show the same remote: the inventory above (everything Kontena can
+    /// reach, without actions, because you do not remove Docker from an inventory) and the list of
+    /// what the user added (with actions). Someone wanting to remove theirs clicked the first one they
+    /// saw, found nothing, and concluded it could not be done (KON-264).
+    /// <para>
+    /// Duplicating Edit and Remove into the inventory was the alternative, and is worse: the same two
+    /// actions in two places, and a list that then has to explain why Docker does not have them.
+    /// </para>
+    /// <para>
+    /// A backend with no row — a remote deleted between building the list and the click — is ignored
+    /// rather than reported. Nothing was asked for that could fail; the row it pointed at is simply
+    /// gone, and the list it would have scrolled to no longer holds it.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private void RevealRemote(string? backend)
+    {
+        if (backend is not { Length: > 0 })
+            return;
+
+        if (RemoteEngines.FirstOrDefault(r => r.Remote.Backend == backend) is { } row)
+            RevealRemoteRequested?.Invoke(this, row);
+    }
+
     // ── Retrying a backend that did not answer (KON-328) ────────────────────
 
     private readonly Func<string, Task>? _retryBackend;

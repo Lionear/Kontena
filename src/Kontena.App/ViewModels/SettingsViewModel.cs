@@ -79,9 +79,15 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected, bool R
 /// <paramref name="Name"/> so the rename field can show the original as its placeholder.
 /// </param>
 /// <param name="Retrying">True while this engine is being probed again (KON-328).</param>
+/// <param name="IsRemote">
+/// Whether this row is one of the remotes the user configured, and therefore has a row of its own
+/// further down the page with Edit and Remove on it (KON-264). Detected engines carry no actions
+/// themselves — you do not remove Docker from an inventory — but a row whose actions live elsewhere
+/// has to say where.
+/// </param>
 public sealed record EngineListItem(
     string Backend, string Name, BackendChipInfo Chip, string Detail, bool Connected, bool IsDefault,
-    string SourceName = "", bool Retrying = false)
+    string SourceName = "", bool Retrying = false, bool IsRemote = false)
 {
     /// <summary>
     /// An unreachable engine gets a way to be asked again (KON-328). This list was entirely read-only,
