@@ -64,6 +64,28 @@ public sealed class NerdctlEngineReadTests
             runner.Invocations[^1].Arguments);
     }
 
+    [Fact]
+    public async Task ListContainersAsync_on_malformed_json_throws_EngineException_not_a_raw_JsonException()
+    {
+        // A JSON syntax error escaping NerdctlJson.Parse would otherwise reach the caller as a raw
+        // System.Text.Json.JsonException — a tooling-layer type, same class of leak ToolFailedException
+        // is already translated away from at this boundary.
+        var runner = Installed().When(_ => true, output: ["{not valid json"]);
+
+        await Assert.ThrowsAsync<EngineException>(() => Engine(runner).ListContainersAsync(all: true).AsTask());
+    }
+
+    [Fact]
+    public async Task ListContainersAsync_on_a_literal_null_line_throws_EngineException_not_a_raw_NullReferenceException()
+    {
+        // NerdctlJson.Parse's `!` trusts every line deserializes to a real object; the literal line
+        // "null" instead produces a null NerdctlContainer that throws NullReferenceException the moment
+        // ToSummary reads a property off it. That must not reach the caller unwrapped either.
+        var runner = Installed().When(_ => true, output: ["null"]);
+
+        await Assert.ThrowsAsync<EngineException>(() => Engine(runner).ListContainersAsync(all: true).AsTask());
+    }
+
     // ── ListImagesAsync ─────────────────────────────────────────────────────────────────────────
 
     [Fact]

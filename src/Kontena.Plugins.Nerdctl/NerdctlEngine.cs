@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Kontena.Sdk;
 using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
@@ -130,17 +131,28 @@ public sealed class NerdctlEngine : IContainerEngine
     }
 
     /// <summary>
-    /// Runs a listing command (<c>ps</c>, <c>images</c>, <c>network ls</c>, <c>volume ls</c>) and
-    /// translates the two ways nerdctl can fail to the exceptions the rest of the CEAL already expects —
-    /// the same translation <see cref="ReadInfoAsync"/> applies to <c>info</c>, so a caller sees one
-    /// consistent pair of failures from this engine rather than a tooling exception for some commands
-    /// and an engine exception for others.
+    /// Runs a listing command (<c>ps</c>, <c>images</c>, <c>network ls</c>, <c>volume ls</c>), then
+    /// hands stdout to <paramref name="parse"/> — the caller's own <c>NerdctlJson.Parse</c> + mapping —
+    /// and translates every way either step can fail to the exceptions the rest of the CEAL already
+    /// expects: the same translation <see cref="ReadInfoAsync"/> applies to <c>info</c>, so a caller
+    /// sees one consistent family of failures from this engine, never a raw tooling exception or a raw
+    /// <see cref="JsonException"/>.
+    /// <para>
+    /// <c>NerdctlJson.Parse</c>'s <c>!</c> trusts that every NDJSON line deserializes to a real object;
+    /// a malformed line throws <see cref="JsonException"/>, and the literal line <c>"null"</c> instead
+    /// produces a null entry that throws <see cref="NullReferenceException"/> the moment the mapping
+    /// below reads a property off it. Either way this is nerdctl printing something this plugin did not
+    /// expect, not a tooling failure, so it gets the same kind of engine exception the CLI-level
+    /// failures above do rather than a raw <c>System.Text.Json</c> type reaching the UI.
+    /// </para>
     /// </summary>
-    private async ValueTask<string> RunListAsync(CancellationToken ct, params string[] args)
+    private async ValueTask<IReadOnlyList<T>> RunListAsync<T>(
+        Func<string, IReadOnlyList<T>> parse, CancellationToken ct, params string[] args)
     {
+        string stdout;
         try
         {
-            return await _cli.RunAsync(ct, args).ConfigureAwait(false);
+            stdout = await _cli.RunAsync(ct, args).ConfigureAwait(false);
         }
         catch (ToolNotFoundException ex)
         {
@@ -149,6 +161,15 @@ public sealed class NerdctlEngine : IContainerEngine
         catch (ToolFailedException ex)
         {
             throw new EngineException($"nerdctl failed for '{_backend}': {ex.Message}", ex);
+        }
+
+        try
+        {
+            return parse(stdout);
+        }
+        catch (Exception ex) when (ex is JsonException or NullReferenceException)
+        {
+            throw new EngineException($"nerdctl returned output for '{_backend}' that could not be parsed: {ex.Message}", ex);
         }
     }
 
@@ -163,11 +184,12 @@ public sealed class NerdctlEngine : IContainerEngine
     public async ValueTask<IReadOnlyList<ContainerSummary>> ListContainersAsync(
         bool all = true, CancellationToken ct = default)
     {
-        var stdout = all
-            ? await RunListAsync(ct, "ps", "-a", "--format", "json").ConfigureAwait(false)
-            : await RunListAsync(ct, "ps", "--format", "json").ConfigureAwait(false);
+        string[] args = all ? ["ps", "-a", "--format", "json"] : ["ps", "--format", "json"];
 
-        return [.. NerdctlJson.Parse<NerdctlContainer>(stdout).Select(c => c.ToSummary(_backend))];
+        return await RunListAsync<ContainerSummary>(
+            stdout => [.. NerdctlJson.Parse<NerdctlContainer>(stdout).Select(c => c.ToSummary(_backend))],
+            ct,
+            args).ConfigureAwait(false);
     }
 
     public ValueTask<string> CreateContainerAsync(
@@ -235,11 +257,11 @@ public sealed class NerdctlEngine : IContainerEngine
 
     // ── Images ──────────────────────────────────────────────────────────────
 
-    public async ValueTask<IReadOnlyList<ImageSummary>> ListImagesAsync(CancellationToken ct = default)
-    {
-        var stdout = await RunListAsync(ct, "images", "--format", "json").ConfigureAwait(false);
-        return [.. NerdctlJson.Parse<NerdctlImage>(stdout).Select(i => i.ToImage())];
-    }
+    public async ValueTask<IReadOnlyList<ImageSummary>> ListImagesAsync(CancellationToken ct = default) =>
+        await RunListAsync<ImageSummary>(
+            stdout => [.. NerdctlJson.Parse<NerdctlImage>(stdout).Select(i => i.ToImage())],
+            ct,
+            "images", "--format", "json").ConfigureAwait(false);
 
     public IAsyncEnumerable<PullProgress> PullImageAsync(
         string reference, RegistryCredential? credential = null, CancellationToken ct = default) =>
@@ -272,11 +294,11 @@ public sealed class NerdctlEngine : IContainerEngine
     /// treats zero bytes as zero rows, so that ordinary case reaches here as an empty list rather than
     /// as something this method needs to special-case or that could throw.
     /// </summary>
-    public async ValueTask<IReadOnlyList<VolumeSummary>> ListVolumesAsync(CancellationToken ct = default)
-    {
-        var stdout = await RunListAsync(ct, "volume", "ls", "--format", "json").ConfigureAwait(false);
-        return [.. NerdctlJson.Parse<NerdctlVolume>(stdout).Select(v => v.ToVolume())];
-    }
+    public async ValueTask<IReadOnlyList<VolumeSummary>> ListVolumesAsync(CancellationToken ct = default) =>
+        await RunListAsync<VolumeSummary>(
+            stdout => [.. NerdctlJson.Parse<NerdctlVolume>(stdout).Select(v => v.ToVolume())],
+            ct,
+            "volume", "ls", "--format", "json").ConfigureAwait(false);
 
     public ValueTask<VolumeSummary> CreateVolumeAsync(
         CreateVolumeRequest request, CancellationToken ct = default) =>
@@ -294,11 +316,11 @@ public sealed class NerdctlEngine : IContainerEngine
 
     // ── Networks ────────────────────────────────────────────────────────────
 
-    public async ValueTask<IReadOnlyList<NetworkSummary>> ListNetworksAsync(CancellationToken ct = default)
-    {
-        var stdout = await RunListAsync(ct, "network", "ls", "--format", "json").ConfigureAwait(false);
-        return [.. NerdctlJson.Parse<NerdctlNetwork>(stdout).Select(n => n.ToNetwork())];
-    }
+    public async ValueTask<IReadOnlyList<NetworkSummary>> ListNetworksAsync(CancellationToken ct = default) =>
+        await RunListAsync<NetworkSummary>(
+            stdout => [.. NerdctlJson.Parse<NerdctlNetwork>(stdout).Select(n => n.ToNetwork())],
+            ct,
+            "network", "ls", "--format", "json").ConfigureAwait(false);
 
     public ValueTask<NetworkSummary> CreateNetworkAsync(
         CreateNetworkRequest request, CancellationToken ct = default) =>
