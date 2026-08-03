@@ -112,6 +112,22 @@ public sealed class NerdctlEngineReadTests
         Assert.Empty(volumes);
     }
 
+    [Fact]
+    public async Task ListVolumesAsync_maps_driver_and_mountpoint_from_the_real_populated_capture()
+    {
+        var runner = Installed().When(_ => true, output: [Fixture("volume-ls.json")]);
+
+        var volume = Assert.Single(await Engine(runner).ListVolumesAsync());
+
+        Assert.Equal("kontena-probe", volume.Name);
+        // VolumeSummary.Driver already defaults to "local", and nerdctl's real capture also happens to
+        // say "local" — so Driver alone would pass even if ToVolume never read it. Mountpoint has no
+        // such coincidental default, so it is the assertion that actually discriminates a working
+        // mapping from a silently unmapped field.
+        Assert.Equal("/var/lib/nerdctl/1935db59/volumes/default/kontena-probe/_data", volume.Mountpoint);
+        Assert.Equal("local", volume.Driver);
+    }
+
     // ── InspectContainerAsync ───────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -172,18 +188,26 @@ public sealed class NerdctlEngineReadTests
     [Fact]
     public async Task StreamLogsAsync_yields_bare_lines_with_no_wrapper()
     {
-        var runner = Installed().When(_ => true,
-            output: ["2026-08-02T08:42:00.860762129Z Serving on :80"],
-            errorOutput: ["2026-08-02T08:42:01.000000000Z listen error"]);
+        // logs-timestamped.txt is a real `nerdctl logs --timestamps` capture — pins the line shape
+        // (RFC3339 with nanoseconds, one space, then the message) against observed output rather than
+        // a hand-typed string built to match the assumption.
+        var rawLines = Fixture("logs-timestamped.txt")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.TrimEnd('\r'))
+            .ToArray();
+        var runner = Installed().When(_ => true, output: rawLines);
 
-        var lines = await CollectAsync(Engine(runner).StreamLogsAsync("281c109b7ece", follow: false));
+        var entries = await CollectAsync(Engine(runner).StreamLogsAsync("281c109b7ece", follow: false));
 
-        var stdout = Assert.Single(lines, l => l.Source == LogSource.Stdout);
-        Assert.Equal("Serving on :80", stdout.Message);
-        Assert.Equal(new DateTimeOffset(2026, 8, 2, 8, 42, 0, TimeSpan.Zero), stdout.Timestamp, TimeSpan.FromSeconds(1));
+        Assert.Equal(2, entries.Count);
+        Assert.All(entries, e => Assert.Equal(LogSource.Stdout, e.Source));
 
-        var stderr = Assert.Single(lines, l => l.Source == LogSource.Stderr);
-        Assert.Equal("listen error", stderr.Message);
+        var first = entries[0];
+        Assert.Equal(
+            "I0802 08:42:00.944686       1 controller.go:838] \"Starting provisioner controller\"",
+            first.Message);
+        Assert.Equal(
+            new DateTimeOffset(2026, 8, 2, 8, 42, 0, TimeSpan.Zero), first.Timestamp, TimeSpan.FromSeconds(1));
     }
 
     [Fact]

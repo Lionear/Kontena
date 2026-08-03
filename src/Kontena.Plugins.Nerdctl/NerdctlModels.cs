@@ -90,16 +90,23 @@ public sealed class NerdctlNetwork
 }
 
 /// <summary>
-/// One row of <c>nerdctl volume ls --format json</c>. Only <see cref="Name"/> is declared: every other
-/// command's populated shape here was captured against a real nerdctl (Notes/nerdctl-cli-formats.md),
-/// but <c>volume ls</c> was only ever observed with zero volumes — its empty case is the one edge that
-/// capture caught. Guessing a driver/mountpoint field name from nerdctl's docs rather than an actual
-/// capture is exactly the risk this file exists to avoid, so those are left unmapped until a populated
-/// capture exists (KON-141 PR 3/4).
+/// One row of <c>nerdctl volume ls --format json</c>, matching the populated row captured in
+/// <c>Fixtures/volume-ls.json</c> (<c>{"Driver":"local","Labels":"","Mountpoint":"...","Name":"...",
+/// "Scope":"local","Size":""}</c>). <see cref="Size"/> is left as the raw string: it was empty even for
+/// a real volume in that capture, so there is no observed non-empty case to parse against, and
+/// inventing a byte count from nothing would be a wrong answer stated as fact.
 /// </summary>
 public sealed class NerdctlVolume
 {
     public string Name { get; init; } = string.Empty;
+    public string Driver { get; init; } = string.Empty;
+    public string Mountpoint { get; init; } = string.Empty;
+
+    /// <summary>Comma-joined, same shape as <see cref="NerdctlContainer.Labels"/>. Observed empty in the capture.</summary>
+    public string Labels { get; init; } = string.Empty;
+
+    /// <summary>Observed as the literal empty string even for a real volume — see <see cref="NerdctlMap.ToVolume"/>.</summary>
+    public string Size { get; init; } = string.Empty;
 }
 
 /// <summary>

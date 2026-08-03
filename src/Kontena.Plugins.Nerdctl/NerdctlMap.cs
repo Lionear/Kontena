@@ -82,10 +82,20 @@ public static class NerdctlMap
     };
 
     /// <summary>
-    /// Maps one <c>volume ls</c> row. Only <see cref="NerdctlVolume.Name"/> exists to map — see that
-    /// type's remarks for why driver/mountpoint are not guessed at.
+    /// Maps one <c>volume ls</c> row, against the populated capture in <c>Fixtures/volume-ls.json</c>.
+    /// <see cref="VolumeSummary.Driver"/> defaults to <c>"local"</c> — the same value nerdctl's real
+    /// capture happens to report — so a missed mapping here would look correct while reading nothing;
+    /// <see cref="VolumeSummary.Mountpoint"/> has no such coincidental default, so it is the field that
+    /// actually proves this mapping runs. <see cref="NerdctlVolume.Labels"/> is left unmapped:
+    /// <see cref="VolumeSummary"/> has no label map to put it in. <see cref="NerdctlVolume.Size"/> is
+    /// also left unmapped — see that field's remarks.
     /// </summary>
-    public static VolumeSummary ToVolume(this NerdctlVolume volume) => new() { Name = volume.Name };
+    public static VolumeSummary ToVolume(this NerdctlVolume volume) => new()
+    {
+        Name = volume.Name,
+        Driver = volume.Driver,
+        Mountpoint = volume.Mountpoint,
+    };
 
     /// <summary>
     /// Maps one <c>network ls</c> row. <c>kindnet</c>, <c>host</c> and <c>none</c> were all observed
