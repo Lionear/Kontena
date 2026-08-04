@@ -1,0 +1,59 @@
+using System.Reflection;
+using System.Runtime.Loader;
+
+namespace Kontena.Engines.Plugins;
+
+/// <summary>
+/// One load context per plugin directory, so two plugins may depend on different versions of the same
+/// library without either being told about the other — <em>for libraries the host does not itself
+/// load</em>. Where a plugin and the host both carry a copy, the host's copy wins (see the refusal in
+/// <see cref="Load"/> below) and the plugin's own copy is discarded, version and all.
+/// <para>
+/// The rule that carries the whole design is that <em>refusal</em>: anything the host has already
+/// loaded — <c>Kontena.Sdk</c> above all — resolves to null here and comes from the default context
+/// instead. A plugin ships its own <c>Kontena.Sdk.dll</c> as a matter of course, and loading it would
+/// give the plugin an <c>IEnginePlugin</c> that is a different type from the host's: the cast yields
+/// null, nothing registers, and nothing is thrown. That is the one failure in this subsystem that
+/// leaves no trace, which is why it is prevented here rather than detected later.
+/// </para>
+/// <para>
+/// The cost of that choice: isolation holds only where the host has no opinion. For a library the host
+/// does load, a plugin built against a newer version does not get its own copy — it gets the host's,
+/// silently — and calling a member that exists only in the newer one throws
+/// <c>MissingMethodException</c> at the call site. <c>BackendRegistry.ConnectAsync</c>'s catch-all turns
+/// that into "Not connected", which reads as the plugin simply being unreachable — the same shape of
+/// silent failure this file otherwise exists to prevent. The rule stays as it is regardless: it is the
+/// one thing that keeps a mismatched SDK from producing a wrong-type cast instead of a clean rejection.
+/// </para>
+/// </summary>
+public sealed class PluginLoadContext : AssemblyLoadContext
+{
+    private readonly AssemblyDependencyResolver _resolver;
+
+    public PluginLoadContext(string pluginAssemblyPath)
+        : base(name: Path.GetFileNameWithoutExtension(pluginAssemblyPath), isCollectible: false)
+        => _resolver = new AssemblyDependencyResolver(pluginAssemblyPath);
+
+    /// <summary>
+    /// Resolve a dependency out of the plugin's own directory — unless the default context already has
+    /// it, in which case return null so the runtime falls back to that one shared copy.
+    /// </summary>
+    protected override Assembly? Load(AssemblyName assemblyName)
+    {
+        if (IsLoadedByHost(assemblyName))
+            return null;
+
+        var path = _resolver.ResolveAssemblyToPath(assemblyName);
+        return path is null ? null : LoadFromAssemblyPath(path);
+    }
+
+    protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
+    {
+        var path = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+        return path is null ? IntPtr.Zero : LoadUnmanagedDllFromPath(path);
+    }
+
+    private static bool IsLoadedByHost(AssemblyName assemblyName) =>
+        Default.Assemblies.Any(a =>
+            string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
+}

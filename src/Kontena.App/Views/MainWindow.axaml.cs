@@ -1,11 +1,15 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Kontena.App.Services;
+using Kontena.App.ViewModels;
 using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Views;
@@ -13,6 +17,14 @@ namespace Kontena.App.Views;
 public partial class MainWindow : Window
 {
     private readonly SettingsStore _store = new();
+
+    /// <summary>Copy the suggested fix command from the engine-down card. Same reasoning as the port
+    /// forward copy button: the clipboard hangs off the window, so this stays in the view.</summary>
+    private async void OnCopyFixCommandClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string command } && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+            await clipboard.SetValueAsync(DataFormat.Text, command);
+    }
 
     private void OnPointerPressedPreview(object? sender, PointerPressedEventArgs e)
     {
@@ -198,8 +210,69 @@ public partial class MainWindow : Window
     // inside a Flyout doesn't close it on its own. Defer the close to the next dispatcher tick so
     // the button's Command (the actual switch) runs first; hiding synchronously here cancels the
     // click before the command executes.
-    private void OnSwitcherItemClick(object? sender, RoutedEventArgs e) =>
+    //
+    // Retrying an unreachable backend is the exception (KON-328): that click starts a probe that can
+    // take ten seconds, the row it was made on is where "Connecting…" and the result appear, and
+    // closing the flyout over it would look exactly like the nothing that used to happen.
+    private void OnSwitcherItemClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: EngineOption { IsConnected: false } })
+            return;
+
         Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
+    }
+
+    // The drawer grows leftwards, so a drag towards the left — a negative X — widens it (KON-307).
+    // The clamp and the saving live in the view model; this only turns a gesture into a delta.
+    private void OnDetailResize(object? sender, VectorEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.ResizeDetail(-e.Vector.X);
+    }
+
+    // Saved when the drag ends, not while it runs: every pointer move raises a delta, and each save
+    // is a whole-file rewrite of settings.json.
+    private void OnDetailResized(object? sender, VectorEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            vm.SaveDetailWidth();
+    }
+
+    /// <summary>
+    /// Pull the drawer's detail into a window of its own (KON-308). If one is already open for the same
+    /// object, that window comes forward instead of a second one opening — which would also mean a
+    /// second live stream for the same container or pod.
+    /// </summary>
+    private void OnDetachDetailClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        // Read off the detail actually in the drawer, not off a remembered domain object: the list
+        // rebuilds its records on every watch-driven reload, so the second detach of the same pod
+        // carries a different instance and reference identity would open a second window (KON-308).
+        var key = (vm.Detail as IDetachableDetail)?.DetailKey;
+        if (key is { Length: > 0 } && FindOpenWindowFor(key) is { } existing)
+        {
+            existing.Activate();
+            vm.CloseDetailCommand.Execute(null);
+            return;
+        }
+
+        var label = vm.DetailLabel;
+        if (vm.DetachDetailForWindow() is { } detail)
+            new DetailWindow(detail, label, key ?? string.Empty).Show();
+    }
+
+    /// <summary>
+    /// Found by the key it was opened for rather than by a handle kept here: the drawer is rebuilt on
+    /// every visit, so a page that never detached anything still has to be able to find a window a
+    /// different visit opened (same reasoning as ClusterTerminalsView.WindowFor, KON-217).
+    /// </summary>
+    private static DetailWindow? FindOpenWindowFor(string key) =>
+        (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Windows
+            .OfType<DetailWindow>()
+            .FirstOrDefault(w => string.Equals(w.Key, key, StringComparison.Ordinal));
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {

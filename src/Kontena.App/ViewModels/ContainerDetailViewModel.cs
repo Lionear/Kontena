@@ -18,27 +18,29 @@ namespace Kontena.App.ViewModels;
 /// (Terminal and Inspect are placeholders pending KON-35 / KON-36). Streams logs
 /// and stats from the active engine over the CEAL for as long as it is on screen.
 /// </summary>
-public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITerminalHost
+public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITerminalHost, IDetachableDetail
 {
     private const int MaxLogLines = 2000;
 
     private readonly IContainerEngine _engine;
-    /// <summary>
-    /// How this page leaves when the container it shows is gone — removed here, or removed elsewhere
-    /// and noticed on a refresh. Not a Back button: Back belongs to the shell's history now (KON-173).
-    /// </summary>
-    private readonly Action _onBack;
     private ContainerSummary _c;
     private CancellationTokenSource? _cts;
 
     private readonly List<LogLineViewModel> _all = [];
 
+    /// <summary>Whether the container this page describes is known to be gone (KON-308) — removed here,
+    /// or removed elsewhere and noticed on a refresh from within this page.</summary>
+    [ObservableProperty] private bool _isSourceGone;
+
+    /// <summary>The container id — stable across the list reloads that hand this page a brand new
+    /// ContainerSummary record for the same container (KON-308).</summary>
+    public string DetailKey => _c.Id;
+
     public ContainerDetailViewModel(
-        IContainerEngine engine, ContainerSummary container, Action onBack, TerminalFont terminalFont)
+        IContainerEngine engine, ContainerSummary container, TerminalFont terminalFont)
     {
         _engine = engine;
         _c = container;
-        _onBack = onBack;
 
         SupportsStats = engine.Capabilities.SupportsStats;
         SupportsExec = engine.Capabilities.SupportsExec;
@@ -357,6 +359,49 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
 
         if (SupportsStats && IsRunning)
             _ = StreamStatsAsync(_cts.Token);
+
+        if (_engine.Capabilities.SupportsEvents)
+            _ = FollowForGoneAsync(_cts.Token);
+    }
+
+    /// <summary>
+    /// The container-side counterpart of ClusterObjectDetailViewModel.FollowForGoneAsync (KON-308).
+    /// Without it this page only learns about a removal it performed itself, so a container killed
+    /// from a terminal, another window or plain <c>docker rm</c> left a detached window silently
+    /// stale — the exact failure the detached window exists to avoid.
+    /// </summary>
+    private async Task FollowForGoneAsync(CancellationToken ct)
+    {
+        // A stream that ends cleanly is re-subscribed rather than read as "gone" the way the cluster
+        // side reads it: this is the engine-wide event stream ActivityLog and the container list
+        // already share, and both treat an end as reconnectable — an engine restart is not a removal.
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await foreach (var ev in _engine.StreamEventsAsync(ct))
+                {
+                    if (ev is { Type: EngineEventType.Removed, ResourceKind: ResourceKind.Container }
+                        && string.Equals(ev.ResourceId, _c.Id, StringComparison.Ordinal))
+                    {
+                        IsSourceGone = true;
+                        return;
+                    }
+                }
+
+                await Task.Delay(1000, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return; // page closed
+            }
+            catch
+            {
+                // Engine hiccup (e.g. restart) — back off, then try to re-subscribe.
+                try { await Task.Delay(2000, ct); }
+                catch (OperationCanceledException) { return; }
+            }
+        }
     }
 
     private async Task StreamLogsAsync(CancellationToken ct)
@@ -431,7 +476,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     private async Task RemoveAsync()
     {
         await _engine.RemoveContainerAsync(_c.Id, force: true);
-        _onBack();
+        IsSourceGone = true;
     }
 
     [RelayCommand]
@@ -461,8 +506,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
         var fresh = list.FirstOrDefault(c => c.Id == _c.Id);
         if (fresh is null)
         {
-            // Container vanished (e.g. removed elsewhere) — leave the detail page.
-            _onBack();
+            // Container vanished (e.g. removed elsewhere) — say so; the host decides what that means.
+            IsSourceGone = true;
             return;
         }
 

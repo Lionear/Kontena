@@ -5,43 +5,90 @@ using Kontena.Sdk.Orchestration.Models;
 namespace Kontena.App.Tests;
 
 /// <summary>
-/// ConfigMaps and Secrets (KON-249). Both were already browsable through the generic resource
-/// browser — as raw YAML, which for a Secret means base64: unreadable and fully exposed at the same
-/// time. What is worth pinning is the pairing these pages replace it with: a value is never on
-/// screen unless it was asked for, and it does not stay there once it is hidden.
+/// ConfigMaps and Secrets (KON-249, opened as a detail in KON-330). Both were already browsable
+/// through the generic resource browser — as raw YAML, which for a Secret means base64: unreadable
+/// and fully exposed at the same time. What is worth pinning is the pairing these pages replace it
+/// with: a value is never on screen unless it was asked for, and it does not stay there once it is
+/// hidden.
+/// <para>
+/// The keys moved from an expander in the list to the object's own detail, so these assertions came
+/// with them. The discipline did not change — where it is enforced did.
+/// </para>
 /// </summary>
 public sealed class ConfigAndSecretTests
 {
-    private static ClusterSecretsViewModel Secrets() => new(new FakeClusterEngine(), "app");
-    private static ClusterConfigMapsViewModel ConfigMaps() => new(new FakeClusterEngine(), "app");
+    private static ClusterSecretsViewModel Secrets(FakeClusterEngine cluster) => new(cluster, "app");
 
-    private static async Task<ConfigObjectRow> SecretAsync(string name)
+    /// <summary>The detail for one secret, opened the way the shell opens it: from the row the list
+    /// built, against the same cluster the list read.</summary>
+    private static async Task<ClusterConfigDetailViewModel> SecretDetailAsync(string name)
     {
-        var page = Secrets();
+        var cluster = new FakeClusterEngine();
+        var page = Secrets(cluster);
         await page.LoadAsync();
-        return page.Items.Single(r => r.Name == name);
+
+        return new ClusterConfigDetailViewModel(cluster, page.Items.Single(r => r.Name == name));
+    }
+
+    private static async Task<ClusterConfigDetailViewModel> ConfigMapDetailAsync(string name)
+    {
+        var cluster = new FakeClusterEngine();
+        var page = new ClusterConfigMapsViewModel(cluster, "app");
+        await page.LoadAsync();
+
+        return new ClusterConfigDetailViewModel(cluster, page.Items.Single(r => r.Name == name));
     }
 
     [Fact]
     public async Task Listing_secrets_carries_keys_and_sizes_and_no_values()
     {
         // The whole design rests on this: a page showing fifty secrets holds none of their values.
-        var row = await SecretAsync("postgres-credentials");
+        var page = Secrets(new FakeClusterEngine());
+        await page.LoadAsync();
+
+        var row = page.Items.Single(r => r.Name == "postgres-credentials");
 
         Assert.Equal("2 keys", row.KeyCount);
-        Assert.All(row.Keys, key => Assert.Null(key.Value));
-        Assert.All(row.Keys, key => Assert.False(key.IsRevealed));
 
         // The size is worth knowing and gives nothing away — a 24-byte key is a password and a
         // 1.7 kB one is a certificate.
-        Assert.Equal("24 B", row.Keys.Single(k => k.Name == "password").Size);
+        Assert.Equal(24, row.Keys.Single(k => k.Name == "password").SizeBytes);
+    }
+
+    /// <summary>
+    /// The list asks the cluster for nothing beyond the listing (KON-330). It used to build a
+    /// fetcher-backed row per key up front, and for ConfigMaps — whose values need no asking — that
+    /// meant a page of a hundred objects pulling every value of every one of them on load.
+    /// </summary>
+    [Fact]
+    public void A_list_row_fetches_nothing_until_its_detail_asks()
+    {
+        var fetches = 0;
+        var row = new ConfigObjectRow(
+            new ResourceRef(GroupVersionKind.ConfigMap, "app", "web-config"),
+            type: null,
+            keys: [new ConfigKey("LOG_LEVEL", 4)],
+            age: TimeSpan.FromDays(1),
+            fetch: (_, _) =>
+            {
+                fetches++;
+                return ValueTask.FromResult<IReadOnlyList<ConfigEntry>>(
+                    [new ConfigEntry { Key = "LOG_LEVEL", Text = "info", SizeBytes = 4 }]);
+            },
+            secret: false);
+
+        // Everything the list itself does: show the count, and search by key name.
+        Assert.Equal("1 key", row.KeyCount);
+        Assert.True(row.MatchesKey("LOG"));
+
+        Assert.Equal(0, fetches);
     }
 
     [Fact]
     public async Task A_secret_value_arrives_only_when_it_is_asked_for()
     {
-        var row = await SecretAsync("postgres-credentials");
-        var key = row.Keys.Single(k => k.Name == "password");
+        var detail = await SecretDetailAsync("postgres-credentials");
+        var key = detail.Keys.Single(k => k.Name == "password");
 
         Assert.Null(key.Value);
 
@@ -57,8 +104,8 @@ public sealed class ConfigAndSecretTests
         // A cache would leave a secret in this process for as long as the page is open, having been
         // shown once. That is the state these pages exist to avoid, so Hide clears and the next Show
         // asks the cluster again.
-        var row = await SecretAsync("postgres-credentials");
-        var key = row.Keys.Single(k => k.Name == "password");
+        var detail = await SecretDetailAsync("postgres-credentials");
+        var key = detail.Keys.Single(k => k.Name == "password");
 
         await key.ToggleCommand.ExecuteAsync(null);
         await key.ToggleCommand.ExecuteAsync(null);
@@ -72,8 +119,8 @@ public sealed class ConfigAndSecretTests
     {
         // Half a TLS key drawn as characters is noise, it can put a terminal into a state nobody
         // asked for, and it is not what the value is.
-        var row = await SecretAsync("app-tls");
-        var key = row.Keys.Single(k => k.Name == "tls.key");
+        var detail = await SecretDetailAsync("app-tls");
+        var key = detail.Keys.Single(k => k.Name == "tls.key");
 
         await key.ToggleCommand.ExecuteAsync(null);
 
@@ -88,8 +135,8 @@ public sealed class ConfigAndSecretTests
     {
         // Copy and reveal are separate acts: a password goes into a terminal far more often than
         // onto a screen someone else can see.
-        var row = await SecretAsync("postgres-credentials");
-        var key = row.Keys.Single(k => k.Name == "password");
+        var detail = await SecretDetailAsync("postgres-credentials");
+        var key = detail.Keys.Single(k => k.Name == "password");
 
         var copied = await key.ForClipboardAsync();
 
@@ -103,13 +150,10 @@ public sealed class ConfigAndSecretTests
     {
         // Making someone press Show on a LOG_LEVEL of "info" teaches them to press it without
         // reading, which is the habit the secrets page depends on them not having.
-        var page = ConfigMaps();
-        await page.LoadAsync();
+        var detail = await ConfigMapDetailAsync("web-config");
+        var key = detail.Keys.Single(k => k.Name == "LOG_LEVEL");
 
-        var row = page.Items.Single(r => r.Name == "web-config");
-        var key = row.Keys.Single(k => k.Name == "LOG_LEVEL");
-
-        // The value is fetched in the row's constructor for ConfigMaps, so give it a moment.
+        // The value is fetched in the key row's constructor for ConfigMaps, so give it a moment.
         for (var i = 0; i < 50 && !key.IsRevealed; i++)
             await Task.Delay(5);
 
@@ -123,7 +167,7 @@ public sealed class ConfigAndSecretTests
     {
         // "Which secret holds tls.key" is a question the object name cannot answer, and it is the
         // one you actually have.
-        var page = Secrets();
+        var page = Secrets(new FakeClusterEngine());
         await page.LoadAsync();
 
         page.SearchText = "tls.key";
@@ -134,7 +178,7 @@ public sealed class ConfigAndSecretTests
     [Fact]
     public async Task A_type_the_cluster_did_not_give_reads_as_a_dash_rather_than_as_empty()
     {
-        var page = Secrets();
+        var page = Secrets(new FakeClusterEngine());
         await page.LoadAsync();
 
         Assert.All(page.Items, row => Assert.NotEqual(string.Empty, row.Type));

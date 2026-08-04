@@ -51,6 +51,24 @@ public sealed class ExtensionBoundaryTests
     }
 
     /// <summary>
+    /// A plugin (KON-286, Manifest Studio is the first) has no sibling to lean on the way Podman leans
+    /// on Docker — it never touches another backend, so unlike <see cref="IsAllowedFromAdapter"/> the
+    /// only allowed reference is the SDK itself.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(PluginProjects))]
+    public void A_plugin_references_only_the_sdk(string plugin)
+    {
+        var offenders = ProjectReferences(Path.Combine(SourceDirectory(), plugin, plugin + ".csproj"))
+            .Where(r => r != "Kontena.Sdk")
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"{plugin} may only reference Kontena.Sdk, but also references: " + string.Join(", ", offenders));
+    }
+
+    /// <summary>
     /// A type shipped in the SDK assembly announces itself as SDK. Moving files is easy and moving the
     /// namespace with them is easy to forget, and the result compiles: a <c>Kontena.Core.Models</c> type
     /// living in <c>Kontena.Sdk.dll</c> reads to an adapter author exactly like the confusion this
@@ -73,6 +91,16 @@ public sealed class ExtensionBoundaryTests
         var data = new TheoryData<string>();
 
         foreach (var dir in Directory.GetDirectories(SourceDirectory(), "Kontena.Adapters.*").Order(StringComparer.Ordinal))
+            data.Add(Path.GetFileName(dir));
+
+        return data;
+    }
+
+    public static TheoryData<string> PluginProjects()
+    {
+        var data = new TheoryData<string>();
+
+        foreach (var dir in Directory.GetDirectories(SourceDirectory(), "Kontena.Plugins.*").Order(StringComparer.Ordinal))
             data.Add(Path.GetFileName(dir));
 
         return data;

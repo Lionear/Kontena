@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- nerdctl plugin (KON-141): a real plugin, referencing only Kontena.Sdk (CONTRIBUTING.md §4,
+       enforced the same way as every other plugin — see ExtensionBoundaryTests). nerdctl has no
+       socket, so everything this plugin knows comes from parsing what the CLI prints. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kontena.Sdk\Kontena.Sdk.csproj" />
+  </ItemGroup>
+
+  <!-- The loader reads plugin.json before it touches the assembly, and rejects the plugin outright
+       if the two disagree about id or version (KON-141 PR 5). It travels with the dll, so it is
+       copied on build and again on publish — the release zip is packed straight from the publish
+       output, and a zip without this file is a plugin the host will not look at. -->
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

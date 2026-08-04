@@ -17,6 +17,17 @@ namespace Kontena.App;
 public static class BackendCatalog
 {
     /// <summary>
+    /// <see cref="Build"/>'s own signature — the seam a test rebuilds through instead of the real
+    /// Docker/Podman engines. A rebuild-triggering test (KON-306) only needs to reach a settings page
+    /// again, not probe a real socket to do it.
+    /// </summary>
+    public delegate List<IBackendProvider> CatalogBuilder(
+        bool includeDemo,
+        IReadOnlyList<RemoteEngine>? remotes,
+        IReadOnlyList<string>? kubeconfigPaths,
+        Func<string, bool>? showsCluster);
+
+    /// <summary>
     /// Whether demo backends may be offered at all. They exist for development and screenshots and
     /// are never shipped to users: available in a debug build, or opted into from a release build
     /// for demos (<c>KONTENA_FAKE_ENGINE=1</c>).
@@ -31,6 +42,34 @@ public static class BackendCatalog
     /// <summary>What <see cref="KontenaSettings.ShowDemoBackends"/> means when it has not been set:
     /// on where demo backends are permitted, off otherwise.</summary>
     public static bool DemoDefault => DemoAllowed;
+
+    private static readonly List<IBackendProvider> Plugins = [];
+
+    /// <summary>
+    /// Backends contributed by loaded plugins. Set once at startup and once more after the user agrees
+    /// to something new (see <c>MainWindowViewModel.AskPluginConsent</c>) — never per
+    /// <see cref="Build"/>, which runs again on every settings change. Loading a plugin directory twice
+    /// would mean a second <c>AssemblyLoadContext</c> over the same files, so where the providers live
+    /// has to outlast the call that builds the list.
+    /// </summary>
+    public static IReadOnlyList<IBackendProvider> PluginProviders => Plugins;
+
+    /// <summary>
+    /// Add what the loader produced. Adds rather than replaces, because the loader runs twice and the
+    /// second run only knows about what consent just unlocked. A backend id already present is skipped:
+    /// a directory is only ever loaded once, so a repeat means the same providers, not new ones.
+    /// </summary>
+    public static void SetPluginProviders(IEnumerable<IBackendProvider> providers)
+    {
+        foreach (var provider in providers)
+        {
+            if (!Plugins.Any(p => p.Backend == provider.Backend))
+                Plugins.Add(provider);
+        }
+    }
+
+    /// <summary>Forget every plugin provider. For tests, which must not leak into one another.</summary>
+    internal static void ResetPluginProviders() => Plugins.Clear();
 
     /// <summary>Resolve the stored preference against the build, so a release build never shows demo
     /// backends because a development settings file said so.</summary>
@@ -73,6 +112,10 @@ public static class BackendCatalog
             if (remote.Problem is null)
                 providers.Add(new RemoteDockerEngineProvider(remote, SshPasswordPrompt.For(remote)));
         }
+
+        // After what is on this machine, before the clusters: the switcher reads top-down and a plugin
+        // backend is still an engine on this host.
+        providers.AddRange(Plugins);
 
         // One cluster backend per chosen kube-context. Yields nothing when there is no kubeconfig, so a
         // machine that only runs containers simply shows no Clusters group.

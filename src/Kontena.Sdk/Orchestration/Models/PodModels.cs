@@ -196,6 +196,54 @@ public sealed record Pod
     }
 
     public TimeSpan Age { get; init; }
+
+    /// <summary>
+    /// The ConfigMaps and Secrets this pod reads, and how (KON-330) — what answers "is anything still
+    /// using this?" from the other side, on a secret's own page.
+    /// <para>
+    /// Carried on the pod rather than asked per object, because the pod spec already says it: a listing
+    /// contains every one of these fields, so filling this costs nothing and asking the other way round
+    /// would be a manifest fetch per pod.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ConfigUse> ConfigUses { get; init; } = [];
+}
+
+/// <summary>How a pod reaches a ConfigMap or a Secret.</summary>
+public enum ConfigUseKind
+{
+    /// <summary>Mounted as a volume — the pod sees files.</summary>
+    Volume,
+
+    /// <summary>One environment variable from one key.</summary>
+    EnvironmentVariable,
+
+    /// <summary>Every key as environment variables (<c>envFrom</c>).</summary>
+    EnvironmentFrom,
+
+    /// <summary>A registry credential the kubelet uses to pull images. Secrets only.</summary>
+    ImagePullSecret,
+}
+
+/// <summary>
+/// One ConfigMap or Secret a pod reads (KON-330).
+/// <para>
+/// The <i>how</i> is kept because it decides what deleting the object breaks and when: a volume mount
+/// stops the next pod from starting at all, while a single missing environment key may only surface
+/// as a confusing error deep inside the app.
+/// </para>
+/// </summary>
+public sealed record ConfigUse
+{
+    /// <summary>Secret or ConfigMap.</summary>
+    public required GroupVersionKind Kind { get; init; }
+
+    public required string Name { get; init; }
+
+    public required ConfigUseKind How { get; init; }
+
+    /// <summary>Which container reads it; empty for volumes and pull secrets, which are pod-wide.</summary>
+    public string Container { get; init; } = string.Empty;
 }
 
 /// <summary>

@@ -282,6 +282,14 @@ public partial class ClusterNamespacesViewModel : ClusterListPageViewModel<Names
         [.. (await _cluster.ListNamespacesAsync()).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
 
     protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
+
+    protected override IReadOnlyDictionary<string, Func<NamespaceRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<NamespaceRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["STATUS"] = r => r.Status,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 /// <summary>Workloads view — the controllers (Deployment/StatefulSet/DaemonSet/Job/CronJob).</summary>
@@ -354,12 +362,34 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         ? $"No {k}s in this namespace."
         : "No workloads in this namespace.";
 
+    /// <summary>Delete a workload, always confirmed (KON-332).</summary>
+    private void ConfirmDelete(WorkloadRow row)
+    {
+        var (title, message) = ClusterDeleteWording.Workload(row.Kind, row.Name, row.Namespace);
+
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
+    }
+
     protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync() =>
         [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace))
-            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail))];
+            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(WorkloadRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Kind, term) || Contains(row.Namespace, term);
+
+    protected override IReadOnlyDictionary<string, Func<WorkloadRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<WorkloadRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["KIND"] = r => r.Kind,
+            ["STATUS"] = r => r.Status,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 /// <summary>Pods view.</summary>
@@ -388,6 +418,22 @@ public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
 
     public override string SearchPlaceholder => "Search pods…";
 
+    /// <summary>The phase filter dropdown's options — "All" plus every value a pod's phase actually
+    /// takes (KON-320). Not an enum-wide list: Unknown exists in the type and essentially never on a
+    /// real pod, and an option nothing ever matches is worse than no option.</summary>
+    public IReadOnlyList<string> PhaseFilterOptions { get; } =
+        ["All", "Running", "Pending", "Succeeded", "Failed"];
+
+    /// <summary>
+    /// Same idea as the events page's "warnings only" (KON-248): a filter the page owns, distinct
+    /// from the search box, applied whether or not anything has been typed.
+    /// </summary>
+    [ObservableProperty] private string _phaseFilter = "All";
+
+    partial void OnPhaseFilterChanged(string value) => ApplyFilter();
+
+    protected override bool Include(PodRow row) => PhaseFilter == "All" || row.PhaseRaw.ToString() == PhaseFilter;
+
     protected override async Task<IReadOnlyList<PodRow>> LoadRowsAsync() =>
         [.. (await _cluster.ListPodsAsync(_namespace)).Select(p => new PodRow(p, _onOpenDetail, _onDelete))];
 
@@ -396,6 +442,18 @@ public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
     protected override bool Matches(PodRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
         || Contains(row.Node, term) || Contains(row.Phase, term);
+
+    protected override IReadOnlyDictionary<string, Func<PodRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<PodRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["READY"] = r => r.ReadyRaw,
+            ["STATUS"] = r => r.Phase,
+            ["RESTARTS"] = r => r.RestartsRaw,
+            ["NODE"] = r => r.Node,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 /// <summary>Services view.</summary>
@@ -422,12 +480,35 @@ public partial class ClusterServicesViewModel : ClusterListPageViewModel<Service
 
     public override string SearchPlaceholder => "Search services…";
 
+    /// <summary>Delete a service, always confirmed (KON-332).</summary>
+    private void ConfirmDelete(ServiceRow row)
+    {
+        var (title, message) = ClusterDeleteWording.Service(row.Name, row.Namespace, row.IsLoadBalancer);
+
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
+    }
+
     protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListServicesAsync(_namespace)).Select(s => new ServiceRow(s, _onForward, _onOpenDetail))];
+        [.. (await _cluster.ListServicesAsync(_namespace))
+            .Select(s => new ServiceRow(s, _onForward, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(ServiceRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
         || Contains(row.Type, term) || Contains(row.Ports, term);
+
+    protected override IReadOnlyDictionary<string, Func<ServiceRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<ServiceRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["TYPE"] = r => r.Type,
+            ["CLUSTER IP"] = r => r.ClusterIp,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 /// <summary>Ingresses view — what is reachable from outside, and through which class (KON-247).</summary>
@@ -447,14 +528,37 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
 
     public override string SearchPlaceholder => "Search ingresses…";
 
+    /// <summary>Delete an ingress, always confirmed (KON-332).</summary>
+    private void ConfirmDelete(IngressRow row)
+    {
+        var (title, message) = ClusterDeleteWording.Ingress(row.Name, row.Namespace);
+
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
+    }
+
     protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListIngressesAsync(_namespace)).Select(i => new IngressRow(i))];
+        [.. (await _cluster.ListIngressesAsync(_namespace)).Select(i => new IngressRow(i, ConfirmDelete))];
 
     // The host is the thing you know: someone reports that app.example.com is down and the ingress is
     // what you go looking for. The class matters when a cluster runs more than one controller.
     protected override bool Matches(IngressRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
         || Contains(row.Class, term) || Contains(row.Hosts, term);
+
+    protected override IReadOnlyDictionary<string, Func<IngressRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<IngressRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["CLASS"] = r => r.Class,
+            ["HOSTS"] = r => r.Hosts,
+            ["ADDRESS"] = r => r.Address,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 /// <summary>PersistentVolumeClaims view — what asked for storage, and whether it got any (KON-247).</summary>
@@ -492,6 +596,18 @@ public partial class ClusterPvcsViewModel : ClusterListPageViewModel<PvcRow>
     protected override bool Matches(PvcRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
         || Contains(row.Status, term) || Contains(row.StorageClass, term);
+
+    protected override IReadOnlyDictionary<string, Func<PvcRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<PvcRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["STATUS"] = r => r.Status,
+            ["VOLUME"] = r => r.Volume,
+            ["CAPACITY"] = r => r.CapacityBytes,
+            ["STORAGECLASS"] = r => r.StorageClass,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 
@@ -523,6 +639,19 @@ public partial class ClusterVolumesViewModel : ClusterListPageViewModel<Persiste
     protected override bool Matches(PersistentVolumeRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Claim, term)
         || Contains(row.Status, term) || Contains(row.StorageClass, term);
+
+    protected override IReadOnlyDictionary<string, Func<PersistentVolumeRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<PersistentVolumeRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["STATUS"] = r => r.Status,
+            ["CAPACITY"] = r => r.CapacityBytes,
+            ["CLAIM"] = r => r.Claim,
+            ["STORAGECLASS"] = r => r.StorageClass,
+            ["RECLAIM"] = r => r.Reclaim,
+            ["DRIVER"] = r => r.Driver,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 /// <summary>StorageClasses — where a Pending claim's reason lives (KON-254).</summary>
@@ -545,6 +674,15 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
 
     protected override bool Matches(StorageClassRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Provisioner, term);
+
+    protected override IReadOnlyDictionary<string, Func<StorageClassRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<StorageClassRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["PROVISIONER"] = r => r.Provisioner,
+            ["RECLAIM"] = r => r.Reclaim,
+            ["AGE"] = r => r.AgeSpan,
+        };
 }
 
 // ── Row view-models ─────────────────────────────────────────────────────────
@@ -704,11 +842,16 @@ public sealed partial class NamespaceRow
         Name = ns.Name;
         Status = ns.Phase;
         Age = Format.Duration(ns.Age);
+        AgeSpan = ns.Age;
     }
 
     public string Name { get; }
     public string Status { get; }
     public string Age { get; }
+
+    /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
+    public TimeSpan AgeSpan { get; }
+
     public bool CanOpen { get; }
 
     [RelayCommand]
@@ -731,12 +874,14 @@ public sealed partial class PersistentVolumeRow
         Name = v.Name;
         Status = v.Phase.ToString();
         Capacity = Format.Quantity(v.CapacityBytes);
+        CapacityBytes = v.CapacityBytes;
         AccessModes = v.AccessModes.Count == 0 ? "—" : string.Join(", ", v.AccessModes);
         Reclaim = v.ReclaimPolicy.ToString();
         StorageClass = string.IsNullOrEmpty(v.StorageClass) ? "—" : v.StorageClass;
         Claim = string.IsNullOrEmpty(v.Claim) ? "—" : v.Claim;
         Driver = string.IsNullOrEmpty(v.Driver) ? "—" : v.Driver;
         Age = Format.Duration(v.Age);
+        AgeSpan = v.Age;
 
         // The claim column is a route back, and only where there is a claim to route to.
         _claimName = v.Claim.Contains('/', StringComparison.Ordinal)
@@ -768,12 +913,18 @@ public sealed partial class PersistentVolumeRow
     public string Name { get; }
     public string Status { get; }
     public string Capacity { get; }
+
+    /// <summary>What a column sort orders CAPACITY/AGE by — the formatted text is for reading, not
+    /// for comparing (KON-318).</summary>
+    public long CapacityBytes { get; }
+
     public string AccessModes { get; }
     public string Reclaim { get; }
     public string StorageClass { get; }
     public string Claim { get; }
     public string Driver { get; }
     public string Age { get; }
+    public TimeSpan AgeSpan { get; }
     public IBrush StatusBrush { get; }
     public bool CanOpenClaim { get; }
     public bool CanOpenClass { get; }
@@ -817,6 +968,7 @@ public sealed class StorageClassRow
         // A class with no provisioner never provisions anything. It is a legitimate configuration —
         // it means volumes are made by hand — and it is also what a typo produces.
         NoProvisioner = string.IsNullOrEmpty(c.Provisioner) || c.Provisioner == "kubernetes.io/no-provisioner";
+        AgeSpan = c.Age;
     }
 
     public string Name { get; }
@@ -829,17 +981,26 @@ public sealed class StorageClassRow
     public bool NoProvisioner { get; }
     public string Age { get; }
 
+    /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
+    public TimeSpan AgeSpan { get; }
+
     public string NoProvisionerDetail { get; } =
         "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
         + " creates by hand.";
 }
 
 
-public sealed class IngressRow
+public sealed partial class IngressRow
 {
-    public IngressRow(Ingress i)
+    private readonly Action<IngressRow>? _onDelete;
+
+    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null)
     {
         ArgumentNullException.ThrowIfNull(i);
+
+        _onDelete = onDelete;
+        CanDelete = onDelete is not null;
+        Reference = new ResourceRef(GroupVersionKind.Ingress, i.Namespace, i.Name);
 
         Name = i.Name;
         Namespace = i.Namespace;
@@ -877,6 +1038,7 @@ public sealed class IngressRow
         HasNoRules = i.Rules.Count == 0;
 
         Age = Format.Duration(i.Age);
+        AgeSpan = i.Age;
     }
 
     public string Name { get; }
@@ -896,6 +1058,18 @@ public sealed class IngressRow
     public bool HasNoRules { get; }
 
     public string Age { get; }
+
+    /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
+    public TimeSpan AgeSpan { get; }
+
+    /// <summary>What the delete addresses (KON-332).</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>Whether the page wired a delete handler (KON-332).</summary>
+    public bool CanDelete { get; }
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 }
 
 public sealed partial class PvcRow
@@ -926,9 +1100,11 @@ public sealed partial class PvcRow
         Volume = string.IsNullOrEmpty(p.Volume) ? "—" : p.Volume;
         // Binary units, not Format.Size: this column sits next to someone's kubectl output.
         Capacity = Format.Quantity(p.CapacityBytes);
+        CapacityBytes = p.CapacityBytes;
         StorageClass = string.IsNullOrEmpty(p.StorageClass) ? "—" : p.StorageClass;
         AccessModes = p.AccessModes.Count == 0 ? "—" : string.Join(", ", p.AccessModes);
         Age = Format.Duration(p.Age);
+        AgeSpan = p.Age;
 
         // Same status palette as pods and workloads, so a colour means the same thing on every page.
         StatusBrush = new SolidColorBrush(Color.Parse(p.Phase switch
@@ -953,9 +1129,15 @@ public sealed partial class PvcRow
     public string Status { get; }
     public string Volume { get; }
     public string Capacity { get; }
+
+    /// <summary>What a column sort orders CAPACITY/AGE by — the formatted text is for reading, not
+    /// for comparing (KON-318).</summary>
+    public long CapacityBytes { get; }
+
     public string StorageClass { get; }
     public string AccessModes { get; }
     public string Age { get; }
+    public TimeSpan AgeSpan { get; }
     public IBrush StatusBrush { get; }
 
     /// <summary>Why a Pending claim is pending, as far as a list row can honestly say.</summary>
@@ -979,16 +1161,20 @@ public sealed partial class WorkloadRow
     private readonly Action<Workload>? _onScale;
     private readonly Action<Workload>? _onRestart;
     private readonly Action<Workload>? _onOpenDetail;
+    private readonly Action<WorkloadRow>? _onDelete;
 
     public WorkloadRow(
         Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null)
+        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null)
     {
         _workload = w;
         _onScale = onScale;
         _onRestart = onRestart;
         _onOpenDetail = onOpenDetail;
+        _onDelete = onDelete;
         CanOpen = onOpenDetail is not null;
+        CanDelete = onDelete is not null;
+        Reference = w.Reference;
 
         Name = w.Name;
         Namespace = w.Namespace;
@@ -997,6 +1183,7 @@ public sealed partial class WorkloadRow
         Schedule = w.Schedule.Length == 0 ? "—" : w.Schedule;
         Status = w.RolloutStatus.ToString();
         Age = Format.Duration(w.Age);
+        AgeSpan = w.Age;
         CanScale = w.IsScalable;
         CanRestart = w.Kind is WorkloadKind.Deployment or WorkloadKind.StatefulSet or WorkloadKind.DaemonSet;
         StatusBrush = new SolidColorBrush(Color.Parse(w.RolloutStatus switch
@@ -1015,9 +1202,20 @@ public sealed partial class WorkloadRow
     public string Schedule { get; }
     public string Status { get; }
     public string Age { get; }
+
+    /// <summary>What the delete addresses — the kind is the row's, not the page's (KON-332).</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
+    public TimeSpan AgeSpan { get; }
+
     public bool CanScale { get; }
     public bool CanRestart { get; }
     public bool CanOpen { get; }
+
+    /// <summary>Whether the page wired a delete handler (KON-332).</summary>
+    public bool CanDelete { get; }
+
     public IBrush StatusBrush { get; }
 
     [RelayCommand]
@@ -1028,6 +1226,9 @@ public sealed partial class WorkloadRow
 
     [RelayCommand]
     private void Restart() => _onRestart?.Invoke(_workload);
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 
     /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250).</summary>
     private string Signature =>
@@ -1057,9 +1258,13 @@ public sealed partial class PodRow
         // "Init:0/2" rather than a bare "Pending" while init containers run — the difference between a
         // pod starting up and one wedged on its first init container (KON-168).
         Phase = p.StatusText;
+        PhaseRaw = p.Phase;
         Restarts = p.Restarts.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        RestartsRaw = p.Restarts;
+        ReadyRaw = p.ReadyContainers;
         Node = string.IsNullOrEmpty(p.Node) ? "—" : p.Node;
         Age = Format.Duration(p.Age);
+        AgeSpan = p.Age;
         StatusBrush = new SolidColorBrush(Color.Parse(p.Phase switch
         {
             PodPhase.Running => "#34D399",
@@ -1074,10 +1279,22 @@ public sealed partial class PodRow
     public string Namespace { get; }
     public string Ready { get; }
     public string Phase { get; }
+
+    /// <summary>What the STATUS filter dropdown matches on (KON-320) — <see cref="Phase"/> carries
+    /// the "Init:0/2" detail this does not need.</summary>
+    public PodPhase PhaseRaw { get; }
+
     public string Restarts { get; }
     public string Node { get; }
     public string Age { get; }
     public IBrush StatusBrush { get; }
+
+    /// <summary>What a column sort orders READY/RESTARTS/AGE by — the formatted text is for reading,
+    /// not for comparing (KON-318).</summary>
+    public int ReadyRaw { get; }
+
+    public int RestartsRaw { get; }
+    public TimeSpan AgeSpan { get; }
 
     /// <summary>Whether the shell wired a delete handler (KON-69).</summary>
     public bool CanDelete { get; }
@@ -1114,13 +1331,20 @@ public sealed partial class ServiceRow
     private readonly Service _service;
     private readonly Action<Service>? _onForward;
     private readonly Action<Service>? _onOpenDetail;
+    private readonly Action<ServiceRow>? _onDelete;
 
-    public ServiceRow(Service s, Action<Service>? onForward = null, Action<Service>? onOpenDetail = null)
+    public ServiceRow(
+        Service s, Action<Service>? onForward = null, Action<Service>? onOpenDetail = null,
+        Action<ServiceRow>? onDelete = null)
     {
         _service = s;
         _onForward = onForward;
         _onOpenDetail = onOpenDetail;
+        _onDelete = onDelete;
         CanOpen = onOpenDetail is not null;
+        CanDelete = onDelete is not null;
+        Reference = new ResourceRef(GroupVersionKind.Service, s.Namespace, s.Name);
+        IsLoadBalancer = s.Type == ServiceType.LoadBalancer;
 
         Name = s.Name;
         Namespace = s.Namespace;
@@ -1134,6 +1358,7 @@ public sealed partial class ServiceRow
         Ports = ports.Count == 0 ? "—" : string.Join("  ", ports);
         PortsTooltip = ports.Count == 0 ? null : string.Join("\n", ports);
         Age = Format.Duration(s.Age);
+        AgeSpan = s.Age;
         CanForward = s.Ports.Count > 0;
     }
 
@@ -1144,14 +1369,33 @@ public sealed partial class ServiceRow
     public string Ports { get; }
     public string? PortsTooltip { get; }
     public string Age { get; }
+
+    /// <summary>What the delete addresses (KON-332).</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>
+    /// Whether deleting this one also gives up an external address — the part of a service delete
+    /// that cannot be undone by applying the same manifest again (KON-332).
+    /// </summary>
+    public bool IsLoadBalancer { get; }
+
+    /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by (KON-318).</summary>
+    public TimeSpan AgeSpan { get; }
+
     public bool CanForward { get; }
     public bool CanOpen { get; }
+
+    /// <summary>Whether the page wired a delete handler (KON-332).</summary>
+    public bool CanDelete { get; }
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_service);
 
     [RelayCommand]
     private void Forward() => _onForward?.Invoke(_service);
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 
     /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250).</summary>
     private string Signature => string.Join('\u001f', Name, Namespace, Type, ClusterIp, Ports, Age);
@@ -1160,4 +1404,68 @@ public sealed partial class ServiceRow
         obj is ServiceRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
 
     public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
+}
+
+/// <summary>
+/// What a confirm says before deleting a workload, a service or an ingress (KON-332), in one place
+/// because two places say it (KON-334): the list row and the detail page of the same object.
+/// <para>
+/// Pulled out for the same reason as <c>ConfigDelete</c>: the delete itself is one call, the wording
+/// is the whole feature, and a sentence written twice about the same act is a sentence that will
+/// disagree with itself the first time either copy is improved. The mechanism differs by where you
+/// are — a list page raises its own confirm, a detail page goes through the shell so the drawer can
+/// close and the history step can go — so this returns the words rather than raising anything.
+/// </para>
+/// </summary>
+internal static class ClusterDeleteWording
+{
+    /// <summary>
+    /// Kind-aware on purpose. "Delete" on a controller is not the same act on every kind: a
+    /// StatefulSet leaves its volume claims behind, a CronJob takes a schedule with it, and a
+    /// DaemonSet's pods are on every node rather than in one place. One sentence for all five would
+    /// have to be vague about exactly the part someone is deciding on.
+    /// </summary>
+    public static (string Title, string Message) Workload(string kind, string name, string @namespace)
+    {
+        var consequence = kind switch
+        {
+            "CronJob" => "Its schedule stops, and the jobs it already created go with it.",
+            "Job" => "Its pods go with it, the finished ones included.",
+            "StatefulSet" => "Its pods are terminated with it. The volume claims it made are not —"
+                + " those stay, and a StatefulSet applied again under this name picks them back up.",
+            "DaemonSet" => "Its pods are terminated on every node that runs one.",
+            _ => "Its pods are terminated with it and nothing recreates them.",
+        };
+
+        return ($"Delete {kind}",
+            $"Delete {kind} \"{name}\" in {@namespace}? {consequence} Kontena keeps no copy, so"
+            + " bringing it back means applying its manifest again.");
+    }
+
+    /// <summary>
+    /// What breaks is one step away from what is deleted — the pods keep running and keep looking
+    /// healthy, and it is everything that reached them by name that stops. A LoadBalancer adds the
+    /// part that re-applying the same manifest does not undo: the address goes back to the provider.
+    /// </summary>
+    public static (string Title, string Message) Service(string name, string @namespace, bool loadBalancer)
+    {
+        var address = loadBalancer
+            ? " Its external address is released, and a service created again does not get the same one back."
+            : string.Empty;
+
+        return ("Delete service",
+            $"Delete service \"{name}\" in {@namespace}? The pods behind it keep running, but nothing"
+            + " reaches them by this name any more: clients in the cluster stop resolving it, and any"
+            + $" ingress routing to it starts failing.{address}");
+    }
+
+    /// <summary>
+    /// The smallest blast radius of the three and the one most likely to be misread as bigger:
+    /// nothing inside the cluster changes, and what stops is the way in from outside.
+    /// </summary>
+    public static (string Title, string Message) Ingress(string name, string @namespace) =>
+        ("Delete ingress",
+            $"Delete ingress \"{name}\" in {@namespace}? The service and its pods keep running — what"
+            + " goes is the route in from outside, so the hosts it routes stop reaching them as soon as"
+            + " the controller drops the rule.");
 }

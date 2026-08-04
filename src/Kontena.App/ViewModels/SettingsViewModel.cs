@@ -23,7 +23,8 @@ public sealed record RegistryRow(string Host, string Username, bool IsInherited)
 /// <summary>A configured remote engine, as shown in Settings › Engines.</summary>
 /// <param name="Remote">The stored configuration.</param>
 /// <param name="Connected">Whether it answered the last time backends were probed.</param>
-public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
+/// <param name="Retrying">True while this remote is being asked again (KON-328).</param>
+public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected, bool Retrying = false)
 {
     public string Name => Remote.Name;
     public string Endpoint => Remote.Endpoint;
@@ -51,7 +52,25 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
 
     public string Status => Problem is not null
         ? "not used"
-        : Connected ? "connected" : "not reachable";
+        : Retrying ? "connecting…" : Connected ? "connected" : "not reachable";
+
+    /// <summary>
+    /// Whether to offer a connect attempt on the saved row (KON-328). Withheld only from a remote whose
+    /// details are refused before anything is dialled — there is nothing there to reach.
+    /// <para>
+    /// Present on a connected remote too, which is the "Test connection" that only ever existed inside
+    /// the add/edit form: re-testing a stored engine meant Edit → Test → Save, a trip through a form to
+    /// do something that changes nothing.
+    /// </para>
+    /// </summary>
+    public bool CanRetry => Problem is null;
+
+    /// <summary>False while the attempt is out, so a second click cannot start a second tunnel.</summary>
+    public bool RetryEnabled => !Retrying;
+
+    /// <summary>Naming what the click is for: proving a working one still works is a test, getting a
+    /// failed one back is a retry.</summary>
+    public string RetryLabel => Retrying ? "Connecting…" : Connected ? "Test" : "Retry";
 }
 
 /// <summary>One engine as shown in the Settings › Engines list.</summary>
@@ -59,9 +78,30 @@ public sealed record RemoteEngineRow(RemoteEngine Remote, bool Connected)
 /// What the backend calls itself, before any name the user gave it (KON-119). Kept alongside
 /// <paramref name="Name"/> so the rename field can show the original as its placeholder.
 /// </param>
+/// <param name="Retrying">True while this engine is being probed again (KON-328).</param>
+/// <param name="IsRemote">
+/// Whether this row is one of the remotes the user configured, and therefore has a row of its own
+/// further down the page with Edit and Remove on it (KON-264). Detected engines carry no actions
+/// themselves — you do not remove Docker from an inventory — but a row whose actions live elsewhere
+/// has to say where.
+/// </param>
 public sealed record EngineListItem(
     string Backend, string Name, BackendChipInfo Chip, string Detail, bool Connected, bool IsDefault,
-    string SourceName = "");
+    string SourceName = "", bool Retrying = false, bool IsRemote = false)
+{
+    /// <summary>
+    /// An unreachable engine gets a way to be asked again (KON-328). This list was entirely read-only,
+    /// so an engine that started after Kontena did — Docker Desktop is routinely still coming up — had
+    /// nothing to click anywhere, and restarting the app was the only way to be seen.
+    /// </summary>
+    public bool CanRetry => !Connected;
+
+    /// <summary>False while the probe is out, so a second click cannot start a second one.</summary>
+    public bool RetryEnabled => !Retrying;
+
+    /// <summary>The button says what is happening, since a probe can take seconds to come back.</summary>
+    public string RetryLabel => Retrying ? "Connecting…" : "Retry";
+}
 
 /// <summary>
 /// One row of Settings › Engines › Names — a backend and what to call it (KON-119).
@@ -161,6 +201,65 @@ public partial class ClusterChoiceRow : ViewModelBase
 }
 
 /// <summary>
+/// Everything the Settings page needs beyond the three things every caller has — the store, the
+/// settings and the engine list. Services it leans on, and callbacks it fires when a change has to
+/// reach the shell.
+/// <para>
+/// A record rather than optional constructor parameters (KON-305). The constructor had grown to
+/// fourteen parameters over four separate features, and every branch that added a dependency touched
+/// the same signature lines — the changelog problem in another form: both sides add, the resolution
+/// is always "keep both", and the conflict carries no information. Adding one here is one property,
+/// and no existing call site changes.
+/// </para>
+/// </summary>
+public sealed record SettingsContext
+{
+    /// <summary>Everything that can be pinned — engines and clusters both. Defaults to the engine
+    /// list, so design-time and tests need not supply it.</summary>
+    public IReadOnlyList<EngineListItem>? Backends { get; init; }
+
+    /// <summary>Invoked when the demo toggle flips so the shell can rebuild the backend set.</summary>
+    public Func<bool, Task>? OnDemoBackendsChanged { get; init; }
+
+    /// <summary>The updater, for the Updates category. Null in design-time and tests.</summary>
+    public UpdateViewModel? Update { get; init; }
+
+    /// <summary>Login-item registration; defaults to this platform's mechanism.</summary>
+    public IAutostart? Autostart { get; init; }
+
+    /// <summary>Keychain access; defaults to this platform's mechanism.</summary>
+    public ISecretStore? Secrets { get; init; }
+
+    /// <summary>Resolves registry logins for the Registries category.</summary>
+    public RegistryCredentials? Registries { get; init; }
+
+    /// <summary>The engine to verify a registry login against, read on demand.</summary>
+    public Func<IContainerEngine?>? Engine { get; init; }
+
+    /// <summary>Adding or removing a remote changes the provider list the switcher is built from.</summary>
+    public Func<Task>? OnRemotesChanged { get; init; }
+
+    /// <summary>A rename changes no connection, so it must not cost a re-probe.</summary>
+    public Action? OnNamesChanged { get; init; }
+
+    /// <summary>
+    /// Probe one backend again on request (KON-328). The shell owns the probe cache, so the answer has
+    /// to be folded in there — a retry that only lit up this page would leave the switcher still
+    /// refusing the engine the user just proved was running.
+    /// </summary>
+    public Func<string, Task>? RetryBackend { get; init; }
+
+    /// <summary>Every cluster in every kubeconfig, not only the chosen ones (KON-120).</summary>
+    public IReadOnlyList<DiscoveredCluster> Clusters { get; init; } = [];
+
+    /// <summary>Invoked when a cluster is shown or hidden.</summary>
+    public Func<Task>? OnClustersChanged { get; init; }
+
+    /// <summary>The kubeconfigs Kontena reads (KON-122).</summary>
+    public IReadOnlyList<KubeconfigSource> Kubeconfigs { get; init; } = [];
+}
+
+/// <summary>
 /// The Settings page: General (appearance + startup), Engines (auto-detect, default engine, engine
 /// list), Registries, Updates and Local clusters. Every change persists immediately via the
 /// <see cref="SettingsStore"/>; theme changes apply live.
@@ -179,45 +278,33 @@ public partial class SettingsViewModel : ViewModelBase
     private KontenaSettings _settings;
 
     /// <param name="engines">Container engines, for the detected-engines list.</param>
-    /// <param name="backends">Everything that can be pinned — engines and clusters both. Defaults
-    /// to <paramref name="engines"/> so design-time and tests need not supply it.</param>
-    /// <param name="onDemoBackendsChanged">Invoked when the demo toggle flips so the shell can
-    /// rebuild the backend set. Null in design-time and test contexts.</param>
-    /// <param name="update">The updater, for the Updates category. Null in design-time and tests.</param>
-    /// <param name="autostart">Login-item registration; defaults to this platform's mechanism.</param>
+    /// <param name="context">The services and callbacks the page leans on — see
+    /// <see cref="SettingsContext"/>. Optional as a whole: design-time and most tests want none of it.</param>
     public SettingsViewModel(
         SettingsStore store, KontenaSettings settings, IReadOnlyList<EngineListItem> engines,
-        IReadOnlyList<EngineListItem>? backends = null,
-        Func<bool, Task>? onDemoBackendsChanged = null,
-        UpdateViewModel? update = null,
-        IAutostart? autostart = null,
-        ISecretStore? secrets = null,
-        RegistryCredentials? registries = null,
-        Func<IContainerEngine?>? engine = null,
-        Func<Task>? onRemotesChanged = null,
-        Action? onNamesChanged = null,
-        IReadOnlyList<DiscoveredCluster>? clusters = null,
-        Func<Task>? onClustersChanged = null,
-        IReadOnlyList<KubeconfigSource>? kubeconfigs = null)
+        SettingsContext? context = null)
     {
-        _registries = registries;
-        _engineForVerify = engine;
-        _autostart = autostart ?? Autostart.Create();
-        _secrets = secrets ?? SecretStore.Create();
-        _onRemotesChanged = onRemotesChanged;
-        _onNamesChanged = onNamesChanged;
-        _discoveredClusters = clusters ?? [];
-        Kubeconfigs = [.. kubeconfigs ?? []];
-        _onClustersChanged = onClustersChanged;
-        _backends = [.. backends ?? engines];
+        context ??= new SettingsContext();
+
+        _registries = context.Registries;
+        _engineForVerify = context.Engine;
+        _autostart = context.Autostart ?? Autostart.Create();
+        _secrets = context.Secrets ?? SecretStore.Create();
+        _onRemotesChanged = context.OnRemotesChanged;
+        _onNamesChanged = context.OnNamesChanged;
+        _retryBackend = context.RetryBackend;
+        _discoveredClusters = context.Clusters;
+        Kubeconfigs = [.. context.Kubeconfigs];
+        _onClustersChanged = context.OnClustersChanged;
+        _backends = [.. context.Backends ?? engines];
         _store = store;
         _settings = settings;
         Engines = [.. engines];
-        _onDemoBackendsChanged = onDemoBackendsChanged;
-        Update = update;
+        _onDemoBackendsChanged = context.OnDemoBackendsChanged;
+        Update = context.Update;
         // Resolved, not raw: the dropdown shows what updates will actually follow. Choosing one in the
         // page then stores it, which is exactly when "not chosen" should become a choice (KON-123).
-        _buildChannel = update?.BuildChannel ?? UpdateChannel.Stable;
+        _buildChannel = context.Update?.BuildChannel ?? UpdateChannel.Stable;
         _updateChannel = settings.ResolvedUpdateChannel(_buildChannel);
         _channelWasChosen = settings.UpdateChannel is not null;
         _autoDownloadUpdates = settings.AutoDownloadUpdates;

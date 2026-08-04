@@ -104,6 +104,25 @@ public class KubernetesClusterEngineTests
     }
 
     [SkippableFact]
+    public async Task The_core_groups_openapi_schema_is_reachable()
+    {
+        using var engine = await RequireClusterAsync();
+
+        var schema = await engine.GetOpenApiSchemaAsync(string.Empty, "v1");
+
+        Assert.NotNull(schema);
+        Assert.Contains("io.k8s.api.core.v1.Pod", schema);
+    }
+
+    [SkippableFact]
+    public async Task An_unserved_group_version_is_unverifiable_not_an_error()
+    {
+        using var engine = await RequireClusterAsync();
+
+        Assert.Null(await engine.GetOpenApiSchemaAsync("not-a-real-group.example.com", "v1"));
+    }
+
+    [SkippableFact]
     public async Task Capabilities_reflect_what_this_cut_actually_does()
     {
         using var engine = await RequireClusterAsync();

@@ -9,19 +9,52 @@ namespace Kontena.Adapters.Kubernetes;
 /// </summary>
 public sealed class KubernetesClusterProvider : IBackendProvider
 {
+    /// <summary>
+    /// What a cluster off this machine gets to answer a probe in, against the two seconds
+    /// <see cref="IBackendProvider.ProbeTimeout"/> gives a local socket. Same number
+    /// <c>RemoteDockerEngineProvider</c> takes, for the same reason: TLS to a host in some region, and
+    /// often an <c>exec:</c> credential plugin (<c>gke-gcloud-auth-plugin</c>, <c>aws eks get-token</c>)
+    /// started cold before the first call. Cut off at two seconds, such a cluster is unreachable by
+    /// construction — it reads as "Not connected" in the switcher no matter how healthy it is (KON-329).
+    /// </summary>
+    private static readonly TimeSpan OffMachineProbeTimeout = TimeSpan.FromSeconds(10);
+
     private readonly string _context;
     private readonly string? _kubeconfigPath;
+    private readonly bool _loopbackServer;
 
     /// <param name="context">The kube-context name.</param>
     /// <param name="kubeconfigPath">
     /// The file it came from, or null for the default kubeconfig (KON-118).
     /// </param>
-    public KubernetesClusterProvider(string context, string? kubeconfigPath = null)
+    /// <param name="loopbackServer">
+    /// Whether this context's apiserver is on this machine (<c>kind</c>, <c>k3d</c>, minikube on
+    /// docker). Only <see cref="ProbeTimeout"/> reads it, and <see cref="DiscoverAll"/> is what fills it
+    /// in from the kubeconfig. It defaults to false so that a provider built from a bare context name —
+    /// which is how the wizard builds one, only ever to read <see cref="Backend"/> — errs towards the
+    /// longer deadline rather than towards declaring a cluster dead.
+    /// </param>
+    public KubernetesClusterProvider(
+        string context, string? kubeconfigPath = null, bool loopbackServer = false)
     {
         _context = context;
         _kubeconfigPath = string.IsNullOrWhiteSpace(kubeconfigPath) ? null : kubeconfigPath;
+        _loopbackServer = loopbackServer;
         Chip = ChipFor(context);
     }
+
+    /// <summary>
+    /// A cluster crosses a network before it can answer, so it gets a remote's deadline rather than a
+    /// local socket's — unless its apiserver is on this machine, where the default is right and a longer
+    /// one would be paid by every probe round: they run together, so the round costs whatever its
+    /// slowest member costs, and a stopped <c>kind</c> cluster is exactly the member that would hold it.
+    /// <para>
+    /// The local value is written out rather than inherited because a class that implements the property
+    /// cannot reach the interface's default; <c>ClusterProbeBudgetTests</c> compares the two so they
+    /// cannot drift apart unnoticed.
+    /// </para>
+    /// </summary>
+    public TimeSpan ProbeTimeout => _loopbackServer ? TimeSpan.FromSeconds(2) : OffMachineProbeTimeout;
 
     /// <summary>
     /// Stable id. A context name is only unique within one kubeconfig — two files can both hold
@@ -61,13 +94,22 @@ public sealed class KubernetesClusterProvider : IBackendProvider
     /// </param>
     public static IReadOnlyList<KubernetesClusterProvider> DiscoverAll(IReadOnlyList<string>? extraPaths = null)
     {
+        // One extra read per file, not per context: which contexts are local decides only their probe
+        // deadline (see ProbeTimeout), and asking that question per provider would re-parse the same
+        // kubeconfig once for every context in it.
+        var localContexts = Kubeconfig.LoadLoopbackContexts();
+
         var providers = new List<KubernetesClusterProvider>(
-            Kubeconfig.LoadContexts().Select(c => new KubernetesClusterProvider(c.Name)));
+            Kubeconfig.LoadContexts().Select(
+                c => new KubernetesClusterProvider(c.Name, null, localContexts.Contains(c.Name))));
 
         foreach (var path in extraPaths ?? [])
         {
+            var localInFile = Kubeconfig.LoadLoopbackContexts(path);
+
             providers.AddRange(
-                Kubeconfig.LoadContexts(path).Select(c => new KubernetesClusterProvider(c.Name, path)));
+                Kubeconfig.LoadContexts(path).Select(
+                    c => new KubernetesClusterProvider(c.Name, path, localInFile.Contains(c.Name))));
         }
 
         return providers;

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
@@ -9,6 +10,7 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="Volume claims" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
             <!-- Never silent about not being live: a list that has quietly stopped moving looks
                  exactly like a cluster where nothing is happening, and those want opposite
                  reactions (KON-250). -->
@@ -22,14 +24,14 @@
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
                         <Grid ColumnDefinitions="1.5*,1*,0.9*,1.3*,0.8*,1.1*,0.8*,0.7*">
-                            <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
-                            <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
-                            <TextBlock Grid.Column="2" Text="STATUS" Classes="colhead"/>
-                            <TextBlock Grid.Column="3" Text="VOLUME" Classes="colhead"/>
-                            <TextBlock Grid.Column="4" Text="CAPACITY" Classes="colhead"/>
-                            <TextBlock Grid.Column="5" Text="STORAGECLASS" Classes="colhead"/>
+                            <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="1" Text="NAMESPACE" Key="NAMESPACE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="2" Text="STATUS" Key="STATUS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="3" Text="VOLUME" Key="VOLUME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="4" Text="CAPACITY" Key="CAPACITY" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="5" Text="STORAGECLASS" Key="STORAGECLASS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <TextBlock Grid.Column="6" Text="ACCESS" Classes="colhead"/>
-                            <TextBlock Grid.Column="7" Text="AGE" Classes="colhead"/>
+                            <controls:SortableHeader Grid.Column="7" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Items}">

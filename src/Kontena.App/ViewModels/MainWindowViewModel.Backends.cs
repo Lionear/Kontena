@@ -1,10 +1,14 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Adapters.Podman;
 using Kontena.App.Services;
 using Kontena.Sdk;
 using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Core.Models;
+using Kontena.Engines;
+using Kontena.Engines.Plugins;
 
 namespace Kontena.App.ViewModels;
 
@@ -34,11 +38,69 @@ public partial class MainWindowViewModel
             // After the shell is usable, never before: a slow or unreachable update server must not
             // hold up connecting to an engine, which is what the user actually opened Kontena for.
             _ = Update.CheckAsync();
+
+            AskPluginConsent();
         }
         catch (Exception ex)
         {
             EnterBackendDown("Can't reach a container engine", ex.Message);
         }
+    }
+    /// <summary>
+    /// Ask about a plugin that was found but never agreed to (KON-279). Startup only loads what already
+    /// has consent, so this is where a newly dropped-in plugin gets its answer — after the window
+    /// exists, because a modal before there is one is not a thing Avalonia does gracefully.
+    /// <para>
+    /// One at a time: the shell has a single modal slot, and a second request would overwrite the first
+    /// unasked. The next one comes up on the next launch. Cheap, and there is one plugin to install.
+    /// </para>
+    /// </summary>
+    internal void AskPluginConsent()
+    {
+        // Both conditions guard the same thing — arbitrary code — so neither is redundant: Status is
+        // the snapshot taken at the last Discover(), _settings is updated the moment the user answers.
+        // Checking both is what stops a reconnect from re-asking about something already approved this
+        // session, without waiting for _plugins to catch up.
+        var pending = _plugins.FirstOrDefault(p =>
+            p.Status == PluginStatus.AwaitingConsent && p.Manifest is not null
+            && !_settings.AllowsPlugin(p.Manifest.Id, p.Manifest.Version));
+
+        if (pending?.Manifest is not { } manifest)
+            return;
+
+        ShowConfirm(new ConfirmRequest(
+            Title: "Run this plugin?",
+            Message: $"{manifest.Name} was found in your plugins folder. It runs inside Kontena with "
+                     + "the same access you have. Only allow it if you put it there.",
+            ConfirmLabel: "Allow",
+            // Nothing is destroyed here. The question is whether to trust, and the danger styling
+            // would answer a different one.
+            Destructive: false,
+            Details:
+            [
+                new ConfirmDetail("IconPlug", manifest.Name, $"{manifest.Id} · {manifest.Version}"),
+                new ConfirmDetail("IconInfo", "Published by", manifest.Author),
+                new ConfirmDetail("IconFolder", "Loaded from", pending.Directory),
+            ],
+            OnConfirm: async () =>
+            {
+                var stored = _store.Update(s => s.WithAllowedPlugin(manifest.Id, manifest.Version));
+                _settings = _settings.WithAllowedPlugin(manifest.Id, manifest.Version);
+
+                // Load again rather than reaching into the loader for this one directory: the same call
+                // that ran at startup now sees the consent, and there is one path by which a plugin
+                // becomes a provider.
+                var loaded = PluginLoader.Discover(
+                    _pluginRoot, m => stored.AllowsPlugin(m.Id, m.Version));
+
+                // Replace the snapshot, not just the providers: this plugin's entry is now Loaded
+                // rather than AwaitingConsent, so a later reconnect's InitAsync (which reuses _plugins,
+                // not a fresh scan) does not ask about it again or hand it to another PluginLoadContext.
+                _plugins = loaded;
+
+                BackendCatalog.SetPluginProviders(loaded.SelectMany(p => p.Providers));
+                await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));
+            }));
     }
     /// <summary>
     /// Open what the user was last on, or pinned, or — failing both — the first engine that answers
@@ -89,7 +151,8 @@ public partial class MainWindowViewModel
 
             EnterBackendDown(
                 $"Can't reach {NameOf(wanted.Provider)}",
-                Unreachable(wanted));
+                Unreachable(wanted),
+                wanted);
             return;
         }
 
@@ -98,9 +161,21 @@ public partial class MainWindowViewModel
 
         if (real is null)
         {
+            // Two different situations wear the same "nothing connected" (KON-255). Telling someone
+            // with no engine installed that theirs "may be stopped or still starting" sends them
+            // looking for a daemon that was never there — and since that machine's switcher is now
+            // empty rather than full of dead rows, this text is the only thing left saying why.
+            var anyInstalled = _probes.Any(p =>
+                p.Provider.Kind == BackendKind.Engine
+                && p.Provider.Backend != FakeBackend
+                && p.Provider.IsInstalled);
+
             EnterBackendDown(
-                "Can't reach a container engine",
-                "No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it.");
+                anyInstalled ? "Can't reach a container engine" : "No container engine found",
+                anyInstalled
+                    ? "No Docker or Podman socket answered. The engine may be stopped, still starting, or you may not have permission to access it."
+                    : "Kontena found no sign of Docker or Podman on this machine. Install one, or add an engine on another host from Settings.",
+                UnreachablePodmanProbe());
             return;
         }
 
@@ -110,6 +185,10 @@ public partial class MainWindowViewModel
     private string Unreachable(BackendProbe probe) => probe.Provider.Kind == BackendKind.Cluster
         ? $"The apiserver for {NameOf(probe.Provider)} did not answer. The cluster may be stopped, unreachable from this network, or your credentials may have expired."
         : $"The {NameOf(probe.Provider)} socket did not answer. It may be stopped, still starting, or you may not have permission to access it.";
+    /// <summary>The probe behind a "no engine answered" message, when it was Podman that failed —
+    /// the one case there is a specific fix to check for.</summary>
+    private BackendProbe? UnreachablePodmanProbe() =>
+        _probes.FirstOrDefault(p => p.Provider.Backend == "podman" && !p.Connected);
     /// <summary>What this backend is called here — the user's name for it, or the source's own (KON-119).</summary>
     private string NameOf(IBackendProvider provider) =>
         _settings.NameFor(provider.Backend, provider.DisplayName);
@@ -132,7 +211,11 @@ public partial class MainWindowViewModel
     /// </summary>
     private static string Pretty(string backend) =>
         backend.Split(':') is [_, var context] && context.Length > 0 ? context : backend;
-    private void EnterOnboarding()
+    /// <param name="autoDetect">
+    /// The toggle to open with. Passed on a rescan, which builds a fresh view model: without it the
+    /// switch would silently spring back to the stored value every time the user probed again.
+    /// </param>
+    private void EnterOnboarding(bool? autoDetect = null)
     {
         IsReady = false;
         IsBackendDown = false;
@@ -140,28 +223,123 @@ public partial class MainWindowViewModel
         Onboarding = new OnboardingViewModel(
             _probes.Where(p => p.Provider.Kind == BackendKind.Engine).ToList(),
             FakeBackend,
-            _settings.AutoDetectEngines,
+            autoDetect ?? _settings.AutoDetectEngines,
             onContinue: backend => _ = CompleteOnboardingAsync(backend),
             onSkip: () => _ = CompleteOnboardingAsync(null),
             onInstallPodman: () => Browser.OpenUrl("https://podman.io/docs/installation"),
-            nameOf: NameOf);
+            onRescan: RunSetupAsync,
+            onStartEngine: StartWizardEngineAsync,
+            nameOf: NameOf,
+            // Read from the kubeconfig, not from the probes: which clusters are providers at all is
+            // itself the answer this screen is asking for, so at first run there are none (KON-336).
+            clusters: BackendCatalog.DiscoverClusters(_settings.KubeconfigPaths),
+            // New arrives ticked, declined comes back unticked rather than hidden — the same three
+            // states the switcher's "new clusters" row keeps (KON-120).
+            clusterTicked: id => _settings.ShowsCluster(id) || _settings.NewClusters([id]).Count > 0);
         IsOnboarding = true;
+
+        _ = OfferWizardEngineStartAsync(Onboarding);
+    }
+    /// <summary>
+    /// Offer to start the engine the wizard is waiting on, when there is a checked fix for it
+    /// (KON-335). The same <see cref="PodmanSocketFix"/> the engine-down card uses: `podman ps` works
+    /// from a terminal but the API socket answers nothing, because the user socket unit was never
+    /// enabled.
+    /// <para>
+    /// It belongs here more than on the down card. The wizard is where a first run meets a stopped
+    /// engine, it is the screen that asks you to start one, and until now it was the screen with no
+    /// way to do it — the error card offered more help than the screen meant to prevent the error.
+    /// </para>
+    /// </summary>
+    private async Task OfferWizardEngineStartAsync(OnboardingViewModel wizard)
+    {
+        if (!_probes.Any(p => p.Provider.Backend == "podman" && !p.Connected))
+            return;
+
+        if (!await PodmanSocketFix.IsFixableAsync(_toolRunner))
+            return;
+
+        // A rescan replaces the view model, and the user may have left the wizard entirely while
+        // systemd was being asked. Offering the fix on a screen that is gone would do nothing; worse,
+        // it would keep a stale wizard alive.
+        if (IsOnboarding && ReferenceEquals(Onboarding, wizard))
+            wizard.FixCommandLine = PodmanSocketFix.EnableSocket.CommandLine;
+    }
+    /// <summary>
+    /// Runs that fix, then rescans so the row goes from "Not running" to selectable in place. On
+    /// failure it says what went wrong and leaves the screen alone: a rescan would only redraw the
+    /// same stopped engine and read as if nothing had been tried.
+    /// </summary>
+    private async Task StartWizardEngineAsync()
+    {
+        var wizard = Onboarding;
+        if (wizard is null)
+            return;
+
+        try
+        {
+            var result = await _toolRunner.RunAsync(PodmanSocketFix.EnableSocket);
+            if (result.Ok)
+            {
+                await RunSetupAsync();
+                return;
+            }
+
+            wizard.FixError = $"Starting it failed: {result.Complaint}";
+        }
+        catch (Exception ex)
+        {
+            wizard.FixError = $"Starting it failed: {ex.Message}";
+        }
+    }
+    /// <summary>
+    /// Probe again and hand the first-run wizard back, whether or not it has run before.
+    /// <para>
+    /// Reached from the engine-down card and from the wizard's own rescan. Skipping used to be a
+    /// one-way door: <c>Onboarded</c> is a latch, so the app went on picking the first engine that
+    /// answered and never asked again — fine when there is one engine, silent when there are two.
+    /// Reconnect restores the connection but not the choice, which is what this restores.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task RunSetupAsync()
+    {
+        _probes = await _registry.ProbeAllAsync();
+        RebuildEngineList();
+        RefreshNewClusters();
+        EnterOnboarding(Onboarding?.AutoDetect);
     }
     private async Task CompleteOnboardingAsync(string? backend)
     {
         var autoDetect = Onboarding?.AutoDetect ?? _settings.AutoDetectEngines;
 
+        // Only on Continue. Skipping is "not now", and writing a decline for every context would turn
+        // it into "never", which is the one thing the three states exist to avoid.
+        var clusters = backend is null ? [] : Onboarding?.Clusters ?? [];
+
         // Onboarding no longer pins: picking an engine here says "start me here", not "and never
         // follow me anywhere else". Activating it records it as last used, which is enough.
-        _settings = _store.Update(s => s with
+        _settings = _store.Update(s =>
         {
-            Onboarded = true,
-            AutoDetectEngines = autoDetect,
+            var next = s with { Onboarded = true, AutoDetectEngines = autoDetect };
+
+            // Both answers are recorded, not just yes: a cluster ticked off here is declined, and a
+            // declined cluster must not be offered again on every launch (KON-120).
+            foreach (var cluster in clusters)
+                next = next.WithCluster(cluster.Backend, cluster.IsSelected);
+
+            return next;
         });
         BuildSettingsPage(); // reflect the just-chosen default in Settings
 
         IsOnboarding = false;
         Onboarding = null;
+
+        // The chosen clusters have no provider yet — the catalog was built before anyone said which
+        // ones belong in the switcher. Rebuilding is what makes the choice real.
+        if (clusters.Any(c => c.IsSelected))
+            await RebuildBackendsAsync(
+                BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends), _settings);
 
         if (backend is not null)
         {
@@ -175,12 +353,18 @@ public partial class MainWindowViewModel
 
         await ConnectPreferredAsync();
     }
-    private void EnterBackendDown(string title, string detail)
+    /// <summary>Which backend the down card is currently about, so a fix suggestion that resolves
+    /// after the user has already moved on (reconnected, switched) knows to keep quiet.</summary>
+    private string? _backendDownFor;
+
+    private void EnterBackendDown(string title, string detail, BackendProbe? probe = null)
     {
         IsReady = false;
         IsBackendDown = true;
         BackendDownTitle = title;
         BackendDownDetail = detail;
+        BackendDownFixCommand = null;
+        _backendDownFor = probe?.Provider.Backend;
         IsClusterMode = false;
         EngineName = "Not connected";
         EngineChip = new BackendChipInfo("!");
@@ -188,6 +372,56 @@ public partial class MainWindowViewModel
         EngineEndpoint = string.Empty;
         CurrentPage = null;
         OnPropertyChanged(nameof(HasAlternatives));
+
+        if (probe is { Connected: false, Provider.Backend: "podman" })
+            _ = SuggestPodmanFixAsync(probe.Provider.Backend);
+    }
+    /// <summary>
+    /// Checked after the down card is already showing — asking systemctl takes a moment, and the
+    /// reason Podman is unreachable should never hold up saying that it is.
+    /// </summary>
+    private async Task SuggestPodmanFixAsync(string backend)
+    {
+        if (!await PodmanSocketFix.IsFixableAsync(_toolRunner))
+            return;
+
+        // The user may have reconnected, or switched to something else, while this was running.
+        if (IsBackendDown && _backendDownFor == backend)
+            BackendDownFixCommand = PodmanSocketFix.EnableSocket.CommandLine;
+    }
+    /// <summary>The suggested fix command for the current down state, or null when there is none —
+    /// binds the "Run it" / "Copy" row in the down card.</summary>
+    [ObservableProperty] private string? _backendDownFixCommand;
+    /// <summary>True while <see cref="ApplyBackendFixAsync"/> is running.</summary>
+    [ObservableProperty] private bool _isFixingBackend;
+    /// <summary>
+    /// Runs the suggested fix on explicit request — never on its own. `systemctl --user enable --now
+    /// podman.socket` needs no elevation (it manages a user unit), so there is no password prompt to
+    /// wire up here; a system-wide fix would need one and does not exist yet.
+    /// </summary>
+    [RelayCommand]
+    private async Task ApplyBackendFixAsync()
+    {
+        if (BackendDownFixCommand is null || IsFixingBackend)
+            return;
+
+        IsFixingBackend = true;
+        try
+        {
+            var result = await _toolRunner.RunAsync(PodmanSocketFix.EnableSocket);
+            if (result.Ok)
+                await ReconnectAsync();
+            else
+                BackendDownDetail = $"{BackendDownDetail} Running the command failed: {result.Complaint}";
+        }
+        catch (Exception ex)
+        {
+            BackendDownDetail = $"{BackendDownDetail} Running the command failed: {ex.Message}";
+        }
+        finally
+        {
+            IsFixingBackend = false;
+        }
     }
     [RelayCommand]
     private async Task ReconnectAsync()
@@ -215,7 +449,7 @@ public partial class MainWindowViewModel
         EngineChip = BackendChipInfo.For(provider);
 
         RebuildEngineList();
-        DisposeDetail();
+        CloseDetail();
         CloseDialog();
 
         if (backend is IClusterEngine cluster)
@@ -321,6 +555,11 @@ public partial class MainWindowViewModel
         Navigate("containers");
 
         IsReady = true;
+
+        // The badges follow the engine's events too (KON-339). Containers is the only engine page
+        // that watches, and the count it moves is not only its own: a Compose project appears when
+        // its first container does.
+        Containers.Changed = () => _ = RefreshNavCountsAsync();
         Containers.StartWatching();
         _activityLog.Attach(_engine, _activeBackend, ResolveEventName);
 
@@ -424,11 +663,17 @@ public partial class MainWindowViewModel
         // them back on General each time is the shell losing their place.
         var category = SettingsPage?.Category;
 
+        // Which of these are remotes the user configured decides whether the row can point at its own
+        // entry further down the page (KON-264). Read from settings rather than from the backend id's
+        // shape: the id format is the remote adapter's business, not this list's.
+        var remoteBackends = _settings.RemoteEngines.Select(r => r.Backend).ToHashSet(StringComparer.Ordinal);
+
         var all = _probes.Select(p => new EngineListItem(
             p.Provider.Backend, NameOf(p.Provider), BackendChipInfo.For(p.Provider),
             p.Detail ?? string.Empty, p.Connected,
             p.Provider.Backend == _settings.ResolvedPinnedBackend,
-            p.Provider.DisplayName)).ToList();
+            p.Provider.DisplayName,
+            IsRemote: remoteBackends.Contains(p.Provider.Backend))).ToList();
 
         // The detected-engines list stays engine-only; what you can pin does not — a cluster is a
         // perfectly reasonable thing to always start on.
@@ -436,22 +681,35 @@ public partial class MainWindowViewModel
             .Where(e => _probes.First(p => p.Provider.Backend == e.Backend).Provider.Kind == BackendKind.Engine)
             .ToList();
 
-        SettingsPage = new SettingsViewModel(
-            _store, _settings, engines, all, ReloadBackendsAsync, Update,
-            secrets: _secrets, registries: _registryCredentials, engine: () => _engine,
+        SettingsPage = new SettingsViewModel(_store, _settings, engines, new SettingsContext
+        {
+            Backends = all,
+            OnDemoBackendsChanged = ReloadBackendsAsync,
+            Update = Update,
+            Secrets = _secrets,
+            Registries = _registryCredentials,
+            Engine = () => _engine,
+
             // Adding or removing a remote changes the provider list, which is what the switcher is built
             // from — so the same rebuild the demo toggle uses (KON-46).
-            onRemotesChanged: () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+            OnRemotesChanged = () => ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
+
             // A rename changes no connection, so it must not cost a re-probe: re-read the names and
             // redraw. Probing on every keystroke would make typing a name feel like a reconnect.
-            onNamesChanged: RefreshBackendNames,
+            OnNamesChanged = RefreshBackendNames,
+
+            // Settings retries in place: it re-probes and shows the answer, but does not switch. Someone
+            // fixing a connection from this page is not asking to be taken out of it — that choice is
+            // the switcher's, where clicking a row means "open this" (KON-328).
+            RetryBackend = ReprobeAsync,
 
             // Every cluster in every kubeconfig, not only the chosen ones — the hidden ones are exactly
             // what this list is for (KON-120).
-            clusters: DiscoveredClusters(),
-            onClustersChanged: () =>
+            Clusters = DiscoveredClusters(),
+            OnClustersChanged = () =>
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
-            kubeconfigs: Kubeconfigs())
+            Kubeconfigs = Kubeconfigs(),
+        })
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
             LocalClusters = _localClusters ??= BuildLocalClustersPage(),
@@ -523,14 +781,7 @@ public partial class MainWindowViewModel
         stored = _store.Update(s => s.PruneClusters(known)
             .PruneBackendNames([.. known, .. s.RemoteEngines.Select(r => r.Backend), "docker", "podman"]));
 
-        _registry.Replace(BackendCatalog.Build(
-            BackendCatalog.ShouldIncludeDemo(includeDemo),
-            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
-        BackendChips.Learn(_registry.Providers);
-        _probes = await _registry.ProbeAllAsync();
-        RefreshNewClusters();
-
-        RebuildEngineList();
+        await RebuildBackendsAsync(includeDemo, stored);
         BuildSettingsPage();
 
         if (_registry.Providers.Any(p => p.Backend == _activeBackend))
@@ -541,8 +792,28 @@ public partial class MainWindowViewModel
         if (replacement is not null)
             await ActivateAsync(replacement.Provider);
         else
-            EnterBackendDown("No backend is reachable", "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.");
+            EnterBackendDown(
+                "No backend is reachable",
+                "Nothing answered after the backend list changed. Start an engine, or turn the demo backends back on in Settings.",
+                UnreachablePodmanProbe());
     }
+    /// <summary>
+    /// Build the provider set from what is stored now, probe it, and refresh the switcher. Shared by
+    /// the demo toggle, a created cluster, and the first-run wizard — all three change <i>which</i>
+    /// backends exist, which is the one thing the registry cannot notice by itself.
+    /// </summary>
+    private async Task RebuildBackendsAsync(bool includeDemo, KontenaSettings stored)
+    {
+        _registry.Replace(_buildCatalog(
+            BackendCatalog.ShouldIncludeDemo(includeDemo),
+            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
+        BackendChips.Learn(_registry.Providers);
+        _probes = await _registry.ProbeAllAsync();
+        RefreshNewClusters();
+
+        RebuildEngineList();
+    }
+
     [RelayCommand]
     private async Task SwitchEngineAsync(string backend)
     {
@@ -553,6 +824,62 @@ public partial class MainWindowViewModel
         if (probe is not null)
             await ActivateAsync(probe.Provider);
     }
+
+    /// <summary>The backend currently being re-probed, or null — the switcher row that was clicked says
+    /// so rather than looking ignored while a remote takes its ten seconds.</summary>
+    private string? _retryingBackend;
+
+    /// <summary>
+    /// Ask one backend again, and open it if it answers this time (KON-327/KON-328).
+    /// <para>
+    /// The probe result used to be a one-off cache with no reachable refresh: an engine that was still
+    /// starting when Kontena launched stayed dead in the switcher for the rest of the session, and the
+    /// only button that re-probed lived in the down card — which is not on screen when something else
+    /// did connect. So the retry belongs on the row itself, where the user is standing when they notice.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task RetryBackendAsync(string backend)
+    {
+        if (_retryingBackend is not null)
+            return;
+
+        _retryingBackend = backend;
+        RebuildEngineList();
+        try
+        {
+            if (!await ReprobeAsync(backend))
+                return;
+        }
+        finally
+        {
+            _retryingBackend = null;
+            RebuildEngineList();
+        }
+
+        await SwitchEngineAsync(backend);
+    }
+
+    /// <summary>
+    /// Probe one provider again and fold the answer into the cached round, so the switcher and the
+    /// Settings rows both stop describing a failure that is over. Returns whether it answered.
+    /// </summary>
+    private async Task<bool> ReprobeAsync(string backend)
+    {
+        if (_registry.Providers.FirstOrDefault(p => p.Backend == backend) is not { } provider)
+            return false;
+
+        var probe = await BackendRegistry.ProbeAsync(provider);
+        _probes = [.. _probes.Select(p => p.Provider.Backend == backend ? probe : p)];
+
+        RebuildEngineList();
+
+        // The rows in place rather than a fresh Settings page: rebuilding it while the user is standing
+        // on it would throw away a remote form half-typed next to the row they just retried.
+        SettingsPage?.SetBackendConnected(backend, probe.Connected, probe.Detail ?? string.Empty);
+
+        return probe.Connected;
+    }
     private void RebuildEngineList()
     {
         Engines.Clear();
@@ -560,6 +887,10 @@ public partial class MainWindowViewModel
         foreach (var probe in _probes)
         {
             var isActive = probe.Provider.Backend == _activeBackend;
+
+            if (!BelongsInSwitcher(probe, isActive))
+                continue;
+
             if (isActive)
             {
                 // Detail is "{version} · {endpoint}" — split it so the endpoint sits on its own line.
@@ -585,7 +916,12 @@ public partial class MainWindowViewModel
                 Detail = probe.Detail ?? string.Empty,
                 IsActive = isActive,
                 IsConnected = probe.Connected,
-                SwitchCommand = probe.Connected && !isActive ? SwitchEngineCommand : null,
+                IsRetrying = probe.Provider.Backend == _retryingBackend,
+
+                // A row that cannot be switched to is a row that can be asked again — never a dead
+                // button (KON-117, KON-328). Clicking an unreachable backend is the most direct way a
+                // user can say "it is running now", and before this it did nothing at all.
+                SwitchCommand = isActive ? null : probe.Connected ? SwitchEngineCommand : RetryBackendCommand,
             };
 
             (probe.Provider.Kind == BackendKind.Cluster ? Clusters : Engines).Add(option);
@@ -593,4 +929,36 @@ public partial class MainWindowViewModel
 
         OnPropertyChanged(nameof(HasClusters));
     }
+
+    /// <summary>
+    /// Whether a probed backend is worth a row in the switcher (KON-255). Everything is, except a
+    /// built-in engine this machine shows no sign of having: the catalog offers Docker and Podman
+    /// whether or not they are installed, so on a Docker-only machine Podman sat there permanently as
+    /// an unclickable "Not connected" row — noise next to the Clusters group, which leaves itself out
+    /// when there is no kubeconfig.
+    /// <para>
+    /// Four things keep a row that <see cref="IBackendProvider.IsInstalled"/> says no about:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>It answered. Whatever the provider thinks, something is there.</description></item>
+    /// <item><description>It is the active backend — the shell is connected to it right now.</description></item>
+    /// <item><description>It is what startup would open (pinned, or last used): <c>ConnectPreferredAsync</c>
+    /// says "… is gone" about that backend, and the row is where the user goes to look.</description></item>
+    /// </list>
+    /// <para>
+    /// Remotes, kube-contexts and anything a plugin contributes never reach the question:
+    /// <see cref="IBackendProvider.IsInstalled"/> defaults to true, and they are in the list because
+    /// someone added them. Nothing here needs to name them separately.
+    /// </para>
+    /// <para>
+    /// Settings › Engines is deliberately not filtered: there, "Podman is not installed here" is the
+    /// answer to a question the page exists to ask. This is the switcher only.
+    /// </para>
+    /// </summary>
+    private bool BelongsInSwitcher(BackendProbe probe, bool isActive) =>
+        probe.Provider.IsInstalled
+        || probe.Connected
+        || isActive
+        || probe.Provider.Backend == _settings.ResolvedPinnedBackend
+        || probe.Provider.Backend == _settings.LastBackend;
 }

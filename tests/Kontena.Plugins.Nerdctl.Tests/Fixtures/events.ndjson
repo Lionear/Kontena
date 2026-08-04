@@ -1,0 +1,3 @@
+{"Timestamp":"2026-08-03T12:28:22.93384869Z","ID":"","Namespace":"default","Topic":"/snapshot/prepare","Status":"unknown","Event":"{\"key\":\"62091b25…\",\"parent\":\"sha256:2b3d10d9…\",\"snapshotter\":\"overlayfs\"}"}
+
+{"Timestamp":"2026-08-03T12:28:22.949015516Z","ID":"","Namespace":"default","Topic":"/containers/create","Status":"unknown","Event":"{\"id\":\"62091b25…\",\"image\":\"docker.io/library/nginx:latest\",\"runtime\":{\"name\":\"io.containerd.runc.v2\"}}"}

@@ -31,6 +31,11 @@ public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObject
 
     private void Edit(ConfigObjectRow row) => RequestEdit?.Invoke(row.Reference);
 
+    /// <summary>Opens the detail in the drawer; the shell owns that too (KON-330).</summary>
+    public Action<ConfigObjectRow>? RequestOpenDetail { get; set; }
+
+    private void Open(ConfigObjectRow row) => RequestOpenDetail?.Invoke(row);
+
     public override string SearchPlaceholder => "Search config maps…";
 
     protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
@@ -39,7 +44,7 @@ public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObject
             .Select(c => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.ConfigMap, c.Namespace, c.Name),
                 type: null, c.Keys, c.Age, _cluster.GetConfigDataAsync, secret: false,
-                onDelete: ConfirmDelete, onEdit: Edit)),
+                onDelete: ConfirmDelete, onEdit: Edit, onOpen: Open)),
     ];
 
     // The key names too: "which config map holds nginx.conf" is a question the name alone cannot
@@ -68,6 +73,11 @@ public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow
 
     private void Edit(ConfigObjectRow row) => RequestEdit?.Invoke(row.Reference);
 
+    /// <summary>Opens the detail in the drawer; the shell owns that too (KON-330).</summary>
+    public Action<ConfigObjectRow>? RequestOpenDetail { get; set; }
+
+    private void Open(ConfigObjectRow row) => RequestOpenDetail?.Invoke(row);
+
     public override string SearchPlaceholder => "Search secrets…";
 
     protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
@@ -76,7 +86,7 @@ public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow
             .Select(s => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.Secret, s.Namespace, s.Name),
                 s.Type, s.Keys, s.Age, _cluster.GetConfigDataAsync, secret: true,
-                onDelete: ConfirmDelete, onEdit: Edit)),
+                onDelete: ConfirmDelete, onEdit: Edit, onOpen: Open)),
     ];
 
     protected override bool Matches(ConfigObjectRow row, string term) =>
@@ -84,18 +94,20 @@ public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow
         || Contains(row.Type, term) || row.MatchesKey(term);
 }
 
-/// <summary>One ConfigMap or Secret: a row that opens to show its keys.</summary>
+/// <summary>One ConfigMap or Secret in the list: what it is, and the way in to its detail.</summary>
 public sealed partial class ConfigObjectRow : ObservableObject
 {
     private readonly Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> _fetch;
 
     private readonly Action<ConfigObjectRow>? _onDelete;
     private readonly Action<ConfigObjectRow>? _onEdit;
+    private readonly Action<ConfigObjectRow>? _onOpen;
 
     public ConfigObjectRow(
         ResourceRef reference, string? type, IReadOnlyList<ConfigKey> keys, TimeSpan age,
         Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> fetch,
-        bool secret, Action<ConfigObjectRow>? onDelete = null, Action<ConfigObjectRow>? onEdit = null)
+        bool secret, Action<ConfigObjectRow>? onDelete = null, Action<ConfigObjectRow>? onEdit = null,
+        Action<ConfigObjectRow>? onOpen = null)
     {
         ArgumentNullException.ThrowIfNull(keys);
 
@@ -103,14 +115,17 @@ public sealed partial class ConfigObjectRow : ObservableObject
         _fetch = fetch;
         _onDelete = onDelete;
         _onEdit = onEdit;
+        _onOpen = onOpen;
         IsSecret = secret;
         CanDelete = onDelete is not null;
         CanEdit = onEdit is not null;
+        CanOpen = onOpen is not null;
 
         Name = reference.Name;
         Namespace = reference.Namespace ?? "default";
         Type = string.IsNullOrEmpty(type) ? "—" : type;
         Age = Format.Duration(age);
+        Keys = keys;
 
         KeyCount = keys.Count switch
         {
@@ -118,8 +133,6 @@ public sealed partial class ConfigObjectRow : ObservableObject
             1 => "1 key",
             var n => $"{n} keys",
         };
-
-        Keys = [.. keys.Select(k => new ConfigKeyRow(k, ResolveAsync, secret))];
     }
 
     public ResourceRef Reference { get; }
@@ -133,29 +146,12 @@ public sealed partial class ConfigObjectRow : ObservableObject
     /// <summary>Whether the object's type column applies at all — ConfigMaps have none.</summary>
     public bool HasType => IsSecret;
 
-    public ObservableCollection<ConfigKeyRow> Keys { get; }
-
-    /// <summary>An object with no keys at all: valid, and worth seeing rather than an empty drawer.</summary>
-    public bool HasKeys => Keys.Count > 0;
-
-    [ObservableProperty] private bool _isExpanded;
-
-    partial void OnIsExpandedChanged(bool value)
-    {
-        OnPropertyChanged(nameof(CanExpand));
-        OnPropertyChanged(nameof(CanCollapse));
-    }
-
     /// <summary>
-    /// Which way the chevron points, and whether there is one at all. An object with no keys has
-    /// nothing to open, and a control that opens onto nothing is a dead button (KON-117).
+    /// The key names and sizes that came with the listing. Names only — the list holds no values at
+    /// all, which is what lets a page of fifty secrets exist without any of them being anywhere in
+    /// this process. Asking for one is the detail's job (KON-330).
     /// </summary>
-    public bool CanExpand => HasKeys && !IsExpanded;
-
-    public bool CanCollapse => HasKeys && IsExpanded;
-
-    [RelayCommand]
-    private void Toggle() => IsExpanded = !IsExpanded;
+    public IReadOnlyList<ConfigKey> Keys { get; }
 
     /// <summary>Whether the page wired a delete handler (KON-253).</summary>
     public bool CanDelete { get; }
@@ -169,8 +165,25 @@ public sealed partial class ConfigObjectRow : ObservableObject
     [RelayCommand]
     private void Edit() => _onEdit?.Invoke(this);
 
+    /// <summary>Whether the page wired the detail (KON-330).</summary>
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpen?.Invoke(this);
+
     public bool MatchesKey(string term) =>
         Keys.Any(k => k.Name.Contains(term, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The key rows for this object's detail, each able to fetch its own value.
+    /// <para>
+    /// Built on request rather than held on the row: a list page would otherwise carry a fetcher per
+    /// key for every object on screen, and for ConfigMaps — whose values are shown without asking —
+    /// that meant the list itself pulling every value of every object it listed.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ConfigKeyRow> BuildKeyRows() =>
+        [.. Keys.Select(k => new ConfigKeyRow(k, ResolveAsync, IsSecret))];
 
     /// <summary>
     /// Fetch one key's value, now.
@@ -317,8 +330,11 @@ public sealed partial class ConfigKeyRow : ObservableObject
 /// </summary>
 internal static class ConfigDelete
 {
-    public static void Confirm(
-        ViewModelBase page, IClusterEngine cluster, ConfigObjectRow row, Func<Task> reload)
+    /// <summary>
+    /// The words alone, for the caller that raises the confirm itself — the detail page's delete goes
+    /// through the shell so the drawer can close behind it (KON-334).
+    /// </summary>
+    public static (string Title, string Message) Words(ConfigObjectRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
 
@@ -333,14 +349,22 @@ internal static class ConfigDelete
             : "Pods already running keep the values they started with, so nothing breaks now. The next"
               + " pod that tries to mount it, or read it as environment, will not start.";
 
-        page.ConfirmDelete(
-            $"Delete {kind}",
+        return ($"Delete {kind}",
             $"Delete {kind} \"{row.Name}\" in {row.Namespace}? This cannot be undone — Kontena does not"
-            + $" keep a copy. {mounted}",
-            async () =>
-            {
-                await cluster.DeleteAsync(row.Reference);
-                await reload();
-            });
+            + $" keep a copy. {mounted}");
+    }
+
+    public static void Confirm(
+        ViewModelBase page, IClusterEngine cluster, ConfigObjectRow row, Func<Task> reload)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var (title, message) = Words(row);
+
+        page.ConfirmDelete(title, message, async () =>
+        {
+            await cluster.DeleteAsync(row.Reference);
+            await reload();
+        });
     }
 }

@@ -30,6 +30,8 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <Button Classes="pill" Command="{Binding ScaleCommand}" IsVisible="{Binding CanScale}">Scale</Button>
                         <Button Classes="pill" Command="{Binding RestartCommand}" IsVisible="{Binding CanRestart}">Restart</Button>
+                        <!-- Last, after the reversible ones: the page closes behind this one (KON-334). -->
+                        <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
                     </StackPanel>
                 </Grid>
 

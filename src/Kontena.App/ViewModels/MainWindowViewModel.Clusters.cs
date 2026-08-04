@@ -45,36 +45,85 @@ public partial class MainWindowViewModel
             "Restart",
             onConfirm: async () =>
             {
-                var reference = new ResourceRef(new GroupVersionKind("apps", "v1", workload.Kind.ToString()), workload.Namespace, workload.Name);
-                await _cluster.RolloutRestartAsync(reference);
+                await _cluster.RolloutRestartAsync(workload.Reference);
                 CloseDialog();
-                ReloadCurrentClusterPage();
+
+                // A restart changes the workload's pods, not its identity — if this is the drawer the
+                // user just clicked Restart from, refresh its pods tab in place rather than closing it
+                // out from under them via the blanket page rebuild (KON-323).
+                if (Detail is ClusterWorkloadDetailViewModel detail && detail.DetailKey == workload.Reference.ToString())
+                    _ = detail.RefreshPodsAsync();
+                else
+                    ReloadCurrentClusterPage();
             },
             onClose: CloseDialog);
     }
     /// <summary>Delete a pod (KON-69) — destructive, so it always goes through a confirm.</summary>
-    private void ConfirmDeletePod(Pod pod)
+    private void ConfirmDeletePod(Pod pod) =>
+        ConfirmDeleteObject(
+            new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name), pod,
+            "Delete pod",
+            $"Delete pod \"{pod.Name}\" in {pod.Namespace}? If a controller owns it, a replacement is"
+            + " scheduled straight away; if not, it is gone for good.");
+
+    /// <summary>Delete a workload from its detail page (KON-334); the list row has its own (KON-332).</summary>
+    private void ConfirmDeleteWorkload(Workload workload)
+    {
+        var (title, message) = ClusterDeleteWording.Workload(
+            workload.Kind.ToString(), workload.Name, workload.Namespace);
+
+        ConfirmDeleteObject(workload.Reference, workload, title, message);
+    }
+
+    /// <summary>Delete a service from its detail page (KON-334).</summary>
+    private void ConfirmDeleteService(Service service)
+    {
+        var (title, message) = ClusterDeleteWording.Service(
+            service.Name, service.Namespace, service.Type == ServiceType.LoadBalancer);
+
+        ConfirmDeleteObject(
+            new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name),
+            service, title, message);
+    }
+
+    /// <summary>Delete a config map or secret from its detail page (KON-334).</summary>
+    private void ConfirmDeleteConfigObject(ConfigObjectRow row)
+    {
+        var (title, message) = ConfigDelete.Words(row);
+
+        ConfirmDeleteObject(row.Reference, row, title, message);
+    }
+
+    /// <summary>
+    /// Delete one object, from wherever the shell was asked to (KON-334).
+    /// <para>
+    /// This is what a detail page's Delete needs that a list row's does not, and why these do not go
+    /// through the page's own confirm the way the list pages do (KON-332): the history step that
+    /// leads back to the object has to be dropped, and that is not the page's to do.
+    /// </para>
+    /// <para>
+    /// Nothing here closes the detail, which the delete plainly has to do — <see cref="ReloadCurrentClusterPage"/>
+    /// already does it, because rebuilding a cluster page starts by closing the drawer and by replacing
+    /// whatever <c>CurrentPage</c> was. A second close alongside it was written first and removed: it
+    /// passed every test with it commented out, which is the definition of a line that is not doing
+    /// the work it claims. The behaviour is pinned by <c>DeleteFromDetailTests</c> either way, so a
+    /// reload that stops closing details fails there rather than silently leaving a page up.
+    /// </para>
+    /// </summary>
+    private void ConfirmDeleteObject(ResourceRef reference, object target, string title, string message)
     {
         if (_cluster is null)
             return;
 
-        Dialog = new ConfirmViewModel(
-            "Delete pod",
-            $"Delete pod \"{pod.Name}\" in {pod.Namespace}? If a controller owns it, a replacement is" +
-            " scheduled straight away; if not, it is gone for good.",
-            "Delete",
-            onConfirm: async () =>
-            {
-                await _cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name));
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(reference);
 
-                // Back must not lead to the detail page of something that no longer exists — and only
-                // this moment knows the step was ever valid (KON-173).
-                ForgetSteps(pod);
-                CloseDialog();
-                ReloadCurrentClusterPage();
-            },
-            onClose: CloseDialog,
-            destructive: true);
+            // Back must not lead to the detail page of something that no longer exists — and only
+            // this moment knows the step was ever valid (KON-173).
+            ForgetSteps(target);
+            ReloadCurrentClusterPage();
+        });
     }
     /// <summary>
     /// The node-detail page (KON-197). Until this existed a node was a dead end: the card summarised
@@ -85,9 +134,6 @@ public partial class MainWindowViewModel
     {
         if (_cluster is null)
             return;
-
-        Arrived($"node {node.Name}", () => ShowNodeDetail(node), node);
-        DisposeDetail();
 
         // The apiserver version is what a kubelet version means anything against (KON-95), and a
         // failed lookup costs the warning rather than the page.
@@ -101,11 +147,12 @@ public partial class MainWindowViewModel
             // No version, no skew warning; everything else on the page stands.
         }
 
-        CurrentPage = new ClusterNodeDetailViewModel(
+        ShowDetail(new ClusterNodeDetailViewModel(
             _cluster, node, apiServer,
             onOpenPod: ShowPodDetail,
             onCordon: (name, cordoned) => _cluster.CordonNodeAsync(name, cordoned).AsTask(),
-            onDrain: ShowDrainNode);
+            onDrain: ShowDrainNode),
+            $"node {node.Name}", node);
     }
 
     /// <summary>
@@ -117,13 +164,11 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"namespace {ns.Name}", () => ShowNamespaceDetail(ns), ns);
-        DisposeDetail();
-
-        CurrentPage = new ClusterNamespaceDetailViewModel(
+        ShowDetail(new ClusterNamespaceDetailViewModel(
             _cluster, ns,
             onOpenPod: ShowPodDetail,
-            onOpenKind: OpenKindInNamespace);
+            onOpenKind: OpenKindInNamespace),
+            $"namespace {ns.Name}", ns);
     }
 
     /// <summary>
@@ -402,11 +447,11 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"pod {pod.Name}", () => ShowPodDetail(pod), pod);
-        DisposeDetail();
-
-        _podDetail = new ClusterPodDetailViewModel(_cluster, pod, CurrentTerminalFont(), ShowPodPortForward);
-        CurrentPage = _podDetail;
+        ShowDetail(
+            new ClusterPodDetailViewModel(
+                _cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards, OpenEventObjectAsync,
+                onDelete: () => ConfirmDeletePod(pod)),
+            $"pod {pod.Name}", pod);
     }
 
     /// <summary>
@@ -418,14 +463,29 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"{workload.Kind} {workload.Name}", () => ShowWorkloadDetail(workload), workload);
-        DisposeDetail();
-
-        CurrentPage = new ClusterWorkloadDetailViewModel(
+        ShowDetail(new ClusterWorkloadDetailViewModel(
             _cluster, workload,
             onOpenPod: ShowPodDetail,
             onScale: ShowScaleDialog,
-            onRestart: ConfirmRestartWorkload);
+            onRestart: ConfirmRestartWorkload,
+            onDelete: () => ConfirmDeleteWorkload(workload)),
+            $"{workload.Kind} {workload.Name}", workload);
+    }
+
+    /// <summary>
+    /// Open a ConfigMap's or a Secret's detail (KON-330). The row's own object is handed over rather
+    /// than a reference, because it already carries the key names, the sizes and the fetcher — asking
+    /// the cluster again for what the list just read would be a second answer to the same question.
+    /// </summary>
+    private void ShowConfigDetail(ConfigObjectRow row)
+    {
+        if (_cluster is null || row is null)
+            return;
+
+        ShowDetail(
+            new ClusterConfigDetailViewModel(
+                _cluster, row, onOpenPod: ShowPodDetail, onDelete: () => ConfirmDeleteConfigObject(row)),
+            $"{(row.IsSecret ? "secret" : "config map")} {row.Name}", row);
     }
 
     /// <summary>Open the service-detail page (KON-167).</summary>
@@ -434,13 +494,13 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        Arrived($"service {service.Name}", () => ShowServiceDetail(service), service);
-        DisposeDetail();
-
-        CurrentPage = new ClusterServiceDetailViewModel(
+        ShowDetail(new ClusterServiceDetailViewModel(
             _cluster, service,
             onOpenPod: ShowPodDetail,
-            onForward: ShowServicePortForward);
+            onForward: ShowServicePortForward,
+            portForwards: _portForwards,
+            onDelete: () => ConfirmDeleteService(service)),
+            $"service {service.Name}", service);
     }
 
     /// <summary>

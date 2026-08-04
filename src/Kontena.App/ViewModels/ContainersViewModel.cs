@@ -391,6 +391,13 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
         }
     }
 
+    /// <summary>
+    /// Told after an engine event has been folded in, for whatever else on screen was reading the same
+    /// engine (KON-339). The same gap the cluster side had: a container started from the CLI showed up
+    /// as a new row beside a sidebar badge that still held the old total.
+    /// </summary>
+    public Action? Changed { get; set; }
+
     /// <summary>Start reacting to engine events so external changes (CLI, other apps) show up live.</summary>
     public void StartWatching()
     {
@@ -467,6 +474,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
                 _dirty = false;
                 await Dispatcher.UIThread.InvokeAsync(LoadAsync);
+                Dispatcher.UIThread.Post(() => Changed?.Invoke());
             }
         }
         catch (OperationCanceledException)

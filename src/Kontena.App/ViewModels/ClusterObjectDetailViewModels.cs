@@ -23,22 +23,96 @@ namespace Kontena.App.ViewModels;
 /// that here for two pages that need none of it.
 /// </para>
 /// </summary>
-public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
+public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDisposable, IDetachableDetail
 {
     private readonly IClusterEngine _cluster;
     private readonly Action<Pod>? _onOpenPod;
+    private readonly Action? _onDelete;
+    private CancellationTokenSource? _watch;
 
     // No onBack: Back is the shell's history now, and a page that carried its own would be a second
     // way out that has to be kept in step with the first (KON-173).
+    /// <param name="onDelete">Invoked by the header's Delete (KON-334). The shell's, not the page's:
+    /// deleting what a detail shows also has to close that detail and drop the history step that
+    /// leads back to it, and neither is the page's to do. Left null by the kinds this page shape also
+    /// serves but that have no business offering a delete — a Node and a Namespace.</param>
     protected ClusterObjectDetailViewModel(
-        IClusterEngine cluster, ResourceRef reference, Action<Pod>? onOpenPod)
+        IClusterEngine cluster, ResourceRef reference, Action<Pod>? onOpenPod, Action? onDelete = null)
     {
         _cluster = cluster;
         _onOpenPod = onOpenPod;
+        _onDelete = onDelete;
         Reference = reference;
+
+        if (cluster.Capabilities.Watch)
+        {
+            _watch = new CancellationTokenSource();
+            _ = FollowForGoneAsync(_watch.Token);
+        }
+    }
+
+    /// <summary>
+    /// Whether this object is known to be gone (KON-308) — a Deleted event for it on the same watch
+    /// the list pages already follow (KON-250), or that watch ending on its own. A cluster this fake
+    /// or the real Kubernetes adapter can't watch never sets this; there is simply no signal.
+    /// </summary>
+    [ObservableProperty] private bool _isSourceGone;
+
+    private async Task FollowForGoneAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var e in _cluster.WatchAsync(Reference.Kind, Reference.Namespace, ct))
+            {
+                if (e.Resource.Name != Reference.Name)
+                    continue;
+
+                if (e.Type == WatchEventType.Deleted)
+                {
+                    IsSourceGone = true;
+                    return;
+                }
+            }
+
+            // The stream ended without being cancelled. An apiserver closes a watch on its own
+            // schedule, and there is no more specific answer left than "this can no longer be checked".
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
+        catch (OperationCanceledException)
+        {
+            // Page closed.
+        }
+        catch (Exception)
+        {
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
+    }
+
+    /// <summary>Stop following. Cluster pages are rebuilt on every visit, so a watch that outlived its
+    /// page would be a stream nobody reads holding a connection open for the life of the app.
+    /// Virtual so <see cref="ClusterServiceDetailViewModel"/> can drop its own subscription first
+    /// (KON-321).</summary>
+    public virtual void Dispose()
+    {
+        _watch?.Cancel();
+        _watch?.Dispose();
+        _watch = null;
+        GC.SuppressFinalize(this);
     }
 
     protected ResourceRef Reference { get; }
+
+    /// <summary>Kind/name(/namespace) — stable across the list reloads that hand this page a brand
+    /// new record for the same object (KON-308). Shared by all four subclasses, like IsSourceGone.</summary>
+    public string DetailKey => Reference.ToString();
+
+    /// <summary>Whether the shell wired a delete for this kind (KON-334).</summary>
+    public bool CanDelete => _onDelete is not null;
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke();
 
     // Taken from the reference rather than declared abstract: it is the same fact twice, and a
     // subclass that answered differently from the reference it was constructed with would read its
@@ -100,6 +174,13 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase
 
     /// <summary>Ready pods out of matched pods — the distinction between "none" and "none working".</summary>
     [ObservableProperty] private string _podsSummary = string.Empty;
+
+    /// <summary>
+    /// Refresh the pods tab in place (KON-323): a restart or a scale changes what is running under
+    /// this object, not the object's own identity, so there is nothing to gain from closing the
+    /// drawer and rebuilding it just to show the new pods arrive.
+    /// </summary>
+    public Task RefreshPodsAsync() => LoadPodsAsync();
 
     protected async Task LoadPodsAsync()
     {
@@ -219,8 +300,9 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
 
     public ClusterWorkloadDetailViewModel(
         IClusterEngine cluster, Workload workload,
-        Action<Pod>? onOpenPod = null, Action<Workload>? onScale = null, Action<Workload>? onRestart = null)
-        : base(cluster, workload.Reference, onOpenPod)
+        Action<Pod>? onOpenPod = null, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
+        Action? onDelete = null)
+        : base(cluster, workload.Reference, onOpenPod, onDelete)
     {
         _workload = workload;
         _onScale = onScale;
@@ -290,19 +372,29 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
 {
     private readonly Service _service;
     private readonly Action<Service>? _onForward;
+    private readonly PortForwardRegistry? _portForwards;
 
     public ClusterServiceDetailViewModel(
         IClusterEngine cluster, Service service,
-        Action<Pod>? onOpenPod = null, Action<Service>? onForward = null)
-        : base(cluster, new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name), onOpenPod)
+        Action<Pod>? onOpenPod = null, Action<Service>? onForward = null,
+        PortForwardRegistry? portForwards = null, Action? onDelete = null)
+        : base(
+            cluster, new ResourceRef(GroupVersionKind.Service, service.Namespace, service.Name),
+            onOpenPod, onDelete)
     {
         _service = service;
         _onForward = onForward;
+        _portForwards = portForwards;
 
         foreach (var p in service.Ports)
         {
             Ports.Add(new ServicePortRow(p));
         }
+
+        // KON-321: same reasoning as the pod-detail page — the place a forward was started from is
+        // where someone looks to stop it, not only the global Port forwards page.
+        if (_portForwards is not null)
+            _portForwards.Changed += OnPortForwardsChanged;
 
         _ = LoadPodsAsync();
     }
@@ -317,9 +409,37 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
     public ObservableCollection<ServicePortRow> Ports { get; } = [];
     public bool HasPorts => Ports.Count > 0;
 
-    public bool CanForward => _onForward is not null;
+    public bool CanForward => _onForward is not null && ActiveForward is null;
 
     [RelayCommand] private void Forward() => _onForward?.Invoke(_service);
+
+    /// <summary>The forward this page started, if it is still running (KON-321).</summary>
+    public ActivePortForward? ActiveForward =>
+        _portForwards?.Forwards.FirstOrDefault(f => f.Target == Reference && f.IsActive);
+
+    public bool CanStopForward => ActiveForward is not null;
+
+    [RelayCommand]
+    private async Task StopForward()
+    {
+        if (ActiveForward is { } forward && _portForwards is not null)
+            await _portForwards.StopAsync(forward);
+    }
+
+    private void OnPortForwardsChanged()
+    {
+        OnPropertyChanged(nameof(ActiveForward));
+        OnPropertyChanged(nameof(CanStopForward));
+        OnPropertyChanged(nameof(CanForward));
+    }
+
+    public override void Dispose()
+    {
+        if (_portForwards is not null)
+            _portForwards.Changed -= OnPortForwardsChanged;
+
+        base.Dispose();
+    }
 
     public override string PodsTabLabel => "Endpoints";
 

@@ -73,7 +73,8 @@ public sealed class SshCredentialFormTests : IDisposable
         store.Save(settings);
 
         return new SettingsViewModel(
-            store, settings, [], autostart: new UnsupportedAutostart(), secrets: secrets)
+            store, settings, [],
+            new SettingsContext { Autostart = new UnsupportedAutostart(), Secrets = secrets })
         {
             RemoteName = "Build server",
             RemoteHost = "build-01",

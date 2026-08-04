@@ -27,15 +27,18 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
     private readonly string? _namespace;
     private readonly Action<WorkloadKind>? _onOpenKind;
     private readonly Action<Workload>? _onOpenWorkload;
+    private readonly Action? _onOpenPods;
 
     public ClusterWorkloadsDashboardViewModel(
         IClusterEngine cluster, string? @namespace,
-        Action<WorkloadKind>? onOpenKind = null, Action<Workload>? onOpenWorkload = null)
+        Action<WorkloadKind>? onOpenKind = null, Action<Workload>? onOpenWorkload = null,
+        Action? onOpenPods = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onOpenKind = onOpenKind;
         _onOpenWorkload = onOpenWorkload;
+        _onOpenPods = onOpenPods;
 
         _ = LoadAsync();
     }
@@ -72,13 +75,29 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
     {
         // Both lists once. The cards are a rollup of the workloads and the reasons come from the pods,
         // so fetching them separately per section is two sources for one screen — and two chances to
-        // disagree with each other.
-        var workloads = await _cluster.ListWorkloadsAsync(null, _namespace);
-        var pods = await _cluster.ListPodsAsync(_namespace);
+        // disagree with each other. Side by side rather than one after the other (KON-338).
+        var workloadsTask = _cluster.ListWorkloadsAsync(null, _namespace).AsTask();
+        var podsTask = _cluster.ListPodsAsync(_namespace).AsTask();
+        await Task.WhenAll(workloadsTask, podsTask);
+        var workloads = workloadsTask.Result;
+        var pods = podsTask.Result;
 
         Kinds.Clear();
         foreach (var group in WorkloadNavGroups.For(workloads))
+        {
             Kinds.Add(new KindCard(group.Kind, workloads.Where(w => w.Kind == group.Kind).ToList(), _onOpenKind));
+
+            // Pods directly after Deployments, the same rule the sidebar follows (KON-342), so the two
+            // views tell one story about where Pods belongs.
+            if (group.Kind == WorkloadKind.Deployment)
+                Kinds.Add(new KindCard(pods, _onOpenPods));
+        }
+
+        // No Deployments here, so nothing to sit under and it goes last — the sidebar's answer too.
+        if (!workloads.Any(w => w.Kind == WorkloadKind.Deployment))
+            Kinds.Add(new KindCard(pods, _onOpenPods));
+
+        _hasWorkloads = workloads.Count > 0;
 
         Attention.Clear();
         foreach (var w in workloads.Where(WorkloadTrouble.NeedsAttention))
@@ -104,8 +123,13 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
 
     public bool HasAttention => Attention.Count > 0;
 
-    /// <summary>No workloads at all — a different thing from "none are healthy".</summary>
-    public bool IsEmpty => Kinds.Count == 0;
+    /// <summary>
+    /// No workloads at all — a different thing from "none are healthy", and since KON-341 also a
+    /// different thing from "no cards": the Pods card is drawn whether or not anything owns them.
+    /// </summary>
+    public bool IsEmpty => !_hasWorkloads;
+
+    private bool _hasWorkloads;
 }
 
 /// <summary>
@@ -115,14 +139,15 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
 /// </summary>
 public sealed partial class KindCard : ObservableObject
 {
-    private readonly WorkloadKind _kind;
-    private readonly Action<WorkloadKind>? _onOpen;
+    private readonly Action? _onOpen;
 
     public KindCard(WorkloadKind kind, IReadOnlyList<Workload> workloads, Action<WorkloadKind>? onOpen)
     {
-        _kind = kind;
-        _onOpen = onOpen;
+        _onOpen = () => onOpen?.Invoke(kind);
 
+        // The same icon the sidebar's per-kind entries carry, so a card and its nav row are the
+        // same thing seen twice.
+        IconKey = "IconLayers";
         Label = WorkloadNavGroups.LabelFor(kind);
         Count = workloads.Count.ToString(CultureInfo.InvariantCulture);
         Unit = workloads.Count == 1
@@ -156,6 +181,52 @@ public sealed partial class KindCard : ObservableObject
     }
 
     /// <summary>
+    /// The Pods card (KON-341). Pods are not a workload kind — they are what a workload produces — but
+    /// they sit in this section of the sidebar, and a page that says "pick a kind" while leaving out
+    /// one of the entries in its own section is a promise it does not keep.
+    /// <para>
+    /// The split is the pod phase rather than a rollout state, because a pod has none. Same four
+    /// slots and the same colours the Pods page already gives each phase, so a pod that is amber in
+    /// the list is amber in this bar too. <see cref="PodPhase.Unknown"/> rides with Failed: the
+    /// question this card answers is "is something wrong", and a pod whose state the cluster cannot
+    /// report is not a reassurance.
+    /// </para>
+    /// </summary>
+    public KindCard(IReadOnlyList<Pod> pods, Action? onOpen)
+    {
+        _onOpen = onOpen;
+
+        // The sidebar's Pods icon, not the kinds' stack of layers.
+        IconKey = "IconContainer";
+        Label = "Pods";
+        Count = pods.Count.ToString(CultureInfo.InvariantCulture);
+        Unit = pods.Count == 1 ? "pod" : "pods";
+
+        var running = pods.Count(p => p.Phase == PodPhase.Running);
+        var succeeded = pods.Count(p => p.Phase == PodPhase.Succeeded);
+        var failed = pods.Count(p => p.Phase is PodPhase.Failed or PodPhase.Unknown);
+        var pending = pods.Count(p => p.Phase == PodPhase.Pending);
+
+        var scale = Math.Max(1, pods.Count);
+        CompleteWidth = new GridLength(running / (double)scale, GridUnitType.Star);
+        ProgressingWidth = new GridLength(succeeded / (double)scale, GridUnitType.Star);
+        DegradedWidth = new GridLength(failed / (double)scale, GridUnitType.Star);
+        PausedWidth = new GridLength(pending / (double)scale, GridUnitType.Star);
+
+        var entries = new List<LegendEntry>();
+        if (running > 0)
+            entries.Add(new LegendEntry("#34D399", $"{running} running"));
+        if (succeeded > 0)
+            entries.Add(new LegendEntry("#5AB8FF", $"{succeeded} completed"));
+        if (failed > 0)
+            entries.Add(new LegendEntry("#F87171", $"{failed} failed"));
+        if (pending > 0)
+            entries.Add(new LegendEntry("#F5B14C", $"{pending} pending"));
+
+        Legend = entries;
+    }
+
+    /// <summary>
     /// What "healthy" is called for this kind. A CronJob that is not suspended has not <i>completed</i>
     /// anything — it is waiting for its next run, and saying "complete" claims a run that never
     /// happened. A Job, by contrast, really did finish.
@@ -166,6 +237,13 @@ public sealed partial class KindCard : ObservableObject
         WorkloadKind.Job => "completed",
         _ => "complete",
     };
+
+    /// <summary>
+    /// Which Lucide geometry the card wears, resolved through the same converter the sidebar uses. The
+    /// icon was fixed in the template until KON-341 put a card here that is not a workload kind, and a
+    /// Pods card under a stack-of-layers is the one thing on this page that would be lying.
+    /// </summary>
+    public string IconKey { get; }
 
     public string Label { get; }
     public string Count { get; }
@@ -178,7 +256,7 @@ public sealed partial class KindCard : ObservableObject
     public GridLength PausedWidth { get; }
 
     [RelayCommand]
-    private void Open() => _onOpen?.Invoke(_kind);
+    private void Open() => _onOpen?.Invoke();
 }
 
 /// <summary>One segment of a kind card's health bar, with the word that goes with the colour.</summary>

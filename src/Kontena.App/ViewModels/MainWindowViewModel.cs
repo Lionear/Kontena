@@ -4,10 +4,12 @@ using Kontena.App.Services;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
 using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
 using Kontena.Engines;
+using Kontena.Engines.Plugins;
 
 namespace Kontena.App.ViewModels;
 
@@ -23,15 +25,22 @@ namespace Kontena.App.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly BackendRegistry _registry;
+    private readonly IToolRunner _toolRunner;
+    private readonly BackendCatalog.CatalogBuilder _buildCatalog;
     private readonly SettingsStore _store;
     private KontenaSettings _settings;
     private IReadOnlyList<BackendProbe> _probes = [];
+    // Not readonly: InitAsync runs again on reconnect (ReconnectAsync), and AskPluginConsent's OnConfirm
+    // replaces this with the fresh Discover() result so an approved plugin's AwaitingConsent entry is
+    // gone from the snapshot — otherwise every reconnect would ask again and load another context for
+    // it (KON-279).
+    private IReadOnlyList<DiscoveredPlugin> _plugins;
+    // Where AskPluginConsent's OnConfirm re-scans — see the pluginRoot constructor parameter.
+    private readonly string _pluginRoot;
     private readonly ClusterTerminals _terminals = new();
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
-    private ContainerDetailViewModel? _detail;
-    private ClusterPodDetailViewModel? _podDetail;
     private readonly ActivityLog _activityLog = new();
 
     // Port forwards outlive the modal that starts them and belong to the cluster connection, so the
@@ -58,16 +67,43 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <param name="updateService">The updater. Defaults to the real one; the screenshot harness
     /// passes a fake, because the card's interesting states need a packaged install that is behind
     /// — which a development run never is.</param>
+    /// <param name="buildCatalog">How a rebuild (demo toggle, remote added, cluster created) rebuilds
+    /// the provider list. Defaults to the real <see cref="BackendCatalog.Build"/>, which always probes
+    /// Docker and Podman; a test that only cares about the rebuild itself passes one that doesn't
+    /// (KON-306) — a rebuild-triggering view-model test has no business reaching a real engine.</param>
+    /// <param name="plugins">What the loader found at startup (KON-279). Those already agreed to are
+    /// loaded and their providers are in the registry; the rest is asked about in <c>InitAsync</c>,
+    /// once there is a window to ask in.</param>
+    /// <param name="pluginRoot">Where <c>AskPluginConsent</c>'s <c>OnConfirm</c> re-runs
+    /// <see cref="PluginLoader.Discover"/> after the user agrees to something new. Defaults to
+    /// <see cref="PluginLoader.DefaultRoot"/>, same as <paramref name="buildCatalog"/>'s default: a test
+    /// pointing at a real directory would either find nothing (a machine with no plugins folder) or the
+    /// developer's actual plugins (a machine with one) — neither is what a test of the consent flow
+    /// itself is asking about.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
-        IUpdateService? updateService = null)
+        IUpdateService? updateService = null, IToolRunner? toolRunner = null,
+        BackendCatalog.CatalogBuilder? buildCatalog = null,
+        IReadOnlyList<DiscoveredPlugin>? plugins = null,
+        string? pluginRoot = null)
     {
+        // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
+        // seam to its own dialog host means those read like every other confirm in the app rather
+        // than hand-rolling a second ConfirmViewModel next to ShowConfirm.
+        RequestConfirm = ShowConfirm;
+
         _registry = registry;
+        _toolRunner = toolRunner ?? new ToolRunner();
+        _buildCatalog = buildCatalog ?? BackendCatalog.Build;
         // Rows carry a backend id, not a provider, so the logos the providers declare are remembered
         // here and again whenever the set changes (KON-80).
         BackendChips.Learn(registry.Providers);
         _store = store;
         _settings = settings;
+
+        // Clamped on read, not only on drag: the file can carry a width from a wider screen, or one a
+        // hand-edit put outside anything usable (KON-307).
+        _detailWidth = Math.Clamp(settings.DetailDrawerWidth, MinDetailWidth, MaxDetailWidth);
         _updateService = updateService ?? new VelopackUpdateService();
 
         NavGroups = [];
@@ -97,6 +133,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Activity = new ActivityViewModel(_activityLog);
 
         SyncThemeToggleIcon();
+        _plugins = plugins ?? [];
+        _pluginRoot = pluginRoot ?? PluginLoader.DefaultRoot;
         _ = InitAsync();
     }
 
@@ -331,16 +369,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (!ct.IsCancellationRequested && ReferenceEquals(CurrentPage, target))
             target.SearchText = value;
     }
-    private void DisposeDetail()
-    {
-        _detail?.Dispose();
-        _detail = null;
-        _podDetail?.Dispose();
-        _podDetail = null;
-    }
     public void Dispose()
     {
-        DisposeDetail();
+        CloseDetail();
         CloseDialog();
         StopPortForwardsAsync().GetAwaiter().GetResult();
         _terminals.DisposeAsync().AsTask().GetAwaiter().GetResult();

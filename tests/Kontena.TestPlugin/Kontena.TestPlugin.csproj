@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Straight into the test project's output. The loader test needs a directory it can point at,
+         and computing one by walking up from AppContext.BaseDirectory would encode the build layout
+         in the test instead of in the build. -->
+    <OutDir>$(MSBuildThisFileDirectory)..\Kontena.Engines.Tests\bin\$(Configuration)\net10.0\plugin-fixture\</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kontena.Sdk\Kontena.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>

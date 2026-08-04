@@ -44,6 +44,15 @@ public sealed class RemoteDockerEngineProvider : IBackendProvider
 
     public BackendKind Kind => BackendKind.Engine;
 
+    /// <summary>
+    /// Ten seconds, not the local default of two (KON-327). Everything this provider does crosses a
+    /// network first: TCP plus key exchange plus auth for SSH, TLS for TCP, and on a real host that
+    /// routinely costs more than two seconds. Cut off there, a remote could not pass a probe at all —
+    /// so Settings said "Connected" about the same engine the switcher showed as dead and refused to
+    /// open. This is the budget the tunnel below already worked to; now they are the same number.
+    /// </summary>
+    public TimeSpan ProbeTimeout => TimeSpan.FromSeconds(10);
+
     public IBackend CreateBackend()
     {
         if (_remote.Problem is { } problem)
@@ -51,7 +60,7 @@ public sealed class RemoteDockerEngineProvider : IBackendProvider
 
         return _remote.Transport switch
         {
-            RemoteEngineTransport.Ssh => SshEngineFactory.Create(_remote, _askpass),
+            RemoteEngineTransport.Ssh => SshEngineFactory.Create(_remote, ProbeTimeout, _askpass),
             _ => new DockerEngine(
                 new Uri($"tcp://{_remote.Host}:{_remote.Port ?? RemoteEngine.DefaultTlsPort}"),
                 _remote.Backend,
@@ -65,16 +74,17 @@ public sealed class RemoteDockerEngineProvider : IBackendProvider
 /// Opens the tunnel for an SSH remote and returns an engine speaking through it.
 /// <para>
 /// Blocking, because <see cref="IBackendProvider.CreateBackend"/> is: the registry probes backends off the
-/// UI thread, so a host that is asleep costs the probe its timeout rather than freezing the window. Ten
-/// seconds is that budget — long enough for a real connection, short enough that an unreachable remote
-/// does not hold up the switcher.
+/// UI thread, so a host that is asleep costs the probe its timeout rather than freezing the window. The
+/// budget comes from the caller — <see cref="RemoteDockerEngineProvider.ProbeTimeout"/>, the same deadline
+/// the registry races the probe against, because a tunnel given longer than the probe that awaits it is a
+/// connection that can never be allowed to finish (KON-327).
 /// </para>
 /// </summary>
 internal static class SshEngineFactory
 {
-    public static IBackend Create(RemoteEngine remote, SshAskpass? askpass = null)
+    public static IBackend Create(RemoteEngine remote, TimeSpan timeout, SshAskpass? askpass = null)
     {
-        var tunnel = SshTunnel.OpenAsync(remote, TimeSpan.FromSeconds(10), askpass)
+        var tunnel = SshTunnel.OpenAsync(remote, timeout, askpass)
             .GetAwaiter()
             .GetResult();
 

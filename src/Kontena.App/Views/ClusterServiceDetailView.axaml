@@ -23,6 +23,9 @@
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <Button Classes="pill" Command="{Binding ForwardCommand}" IsVisible="{Binding CanForward}">Port forward</Button>
+                        <Button Classes="pill" Command="{Binding StopForwardCommand}" IsVisible="{Binding CanStopForward}"
+                                ToolTip.Tip="{Binding ActiveForward.Address}">Stop forward</Button>
+                        <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
                     </StackPanel>
                 </Grid>
 

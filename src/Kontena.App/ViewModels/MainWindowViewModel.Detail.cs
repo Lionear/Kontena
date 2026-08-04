@@ -1,0 +1,269 @@
+using System.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+
+namespace Kontena.App.ViewModels;
+
+/// <summary>
+/// The detail drawer: a panel that slides over the list rather than replacing it (KON-307).
+/// <para>
+/// A detail page used to be a page swap, which answers "what is this and is it healthy?" by taking
+/// away the list you were reading. The drawer leaves the list where it was, and closing it returns
+/// you to exactly the scroll position and filter you had, without the shell having to remember any
+/// of that.
+/// </para>
+/// <para>
+/// Its own slot rather than a second use of <see cref="Dialog"/>. A dialog is a question that must be
+/// answered before anything else happens; a drawer is something you read and dismiss, and the two
+/// stack — a Remove from inside the drawer opens a confirmation <i>over</i> it. One slot could not
+/// hold both without one of them closing the other.
+/// </para>
+/// </summary>
+public partial class MainWindowViewModel
+{
+    /// <summary>Set while the drawer hands its detail to another host, so closing does not dispose it.</summary>
+    private bool _handingOverDetail;
+
+    /// <summary>What the drawer shows, remembered so the full page can be labelled and replayed.</summary>
+    private string _detailLabel = string.Empty;
+    private object? _detailTarget;
+
+    /// <summary>A detail buried under a later one opened from inside it (KON-324) — a Deployment's
+    /// drawer holding a Pod opened from its related-pods list, for instance.</summary>
+    private sealed record DetailStep(ViewModelBase Detail, string Label, object? Target);
+
+    /// <summary>
+    /// Detail-to-detail navigation within the drawer, oldest first. Separate from <see cref="_history"/>
+    /// on purpose — that stack is page navigation and deliberately does not know the drawer exists (see
+    /// <see cref="ShowDetail"/>); this one only knows the drawer.
+    /// </summary>
+    private readonly List<DetailStep> _detailStack = [];
+
+    /// <summary>The detail showing in the drawer, or null when it is closed.</summary>
+    [ObservableProperty] private ViewModelBase? _detail;
+
+    public bool IsDetailOpen => Detail is not null;
+
+    /// <summary>
+    /// The drawer's width, dragged by its left edge and remembered across launches. Not a Settings
+    /// field: how much of the list you want kept in view depends on the list you are looking at.
+    /// </summary>
+    [ObservableProperty] private double _detailWidth = 500;
+
+    /// <summary>Narrow enough to leave a list usable, wide enough that a detail header still fits.</summary>
+    private const double MinDetailWidth = 460;
+    private const double MaxDetailWidth = 1200;
+
+    /// <summary>The label the drawer's detail would carry onto the full page or a window (KON-308).</summary>
+    public string DetailLabel => _detailLabel;
+
+    /// <summary>
+    /// The object behind the drawer's detail — reference identity, not the view model instance, so a
+    /// caller can recognise "the same item" even across a rebuild (KON-308: detaching the same row
+    /// twice should focus one window, not open a second).
+    /// </summary>
+    public object? DetailTarget => _detailTarget;
+
+    partial void OnDetailChanged(ViewModelBase? oldValue, ViewModelBase? newValue)
+    {
+        // The drawer owns what it shows unless it is handing it over. Opening a second detail without
+        // this leaks the first — and for the pages that stream (KON-309, KON-310) that is a live log
+        // subscription, not just an object.
+        if (!_handingOverDetail)
+            (oldValue as IDisposable)?.Dispose();
+
+        OnPropertyChanged(nameof(IsDetailOpen));
+
+        // Escape closes the drawer when no dialog is over it — same reason the dialog notifies here
+        // (KON-201): a CanExecute that is never re-asked keeps answering "no".
+        DismissCommand.NotifyCanExecuteChanged();
+        OpenDetailAsPageCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Open a detail in the drawer.
+    /// <para>
+    /// Deliberately not recorded on the nav stack. A drawer is not somewhere you navigated to —
+    /// Escape is the way out of it, and Back should still mean "the page before this list". Putting an
+    /// overlay on the history would make Back close the drawer once and then leave the page, which is
+    /// the mistimed-Escape problem the Dismiss command already avoids.
+    /// </para>
+    /// </summary>
+    /// <param name="label">For the history, once it is opened as a full page — "node gke-prod-cp-1".</param>
+    /// <param name="target">The object shown, so the step can be dropped when it is deleted.</param>
+    private void ShowDetail(ViewModelBase detail, string label, object? target = null)
+    {
+        // Opening a second detail from inside the first — a Pod clicked from a Deployment's
+        // related-pods list — buries the first rather than disposing it (KON-324), so closing back
+        // out returns to the Deployment instead of falling through to whatever page was open before
+        // Deployments existed on the drawer's radar at all.
+        if (Detail is { } current)
+            _detailStack.Add(new DetailStep(current, _detailLabel, _detailTarget));
+
+        _detailLabel = label;
+        _detailTarget = target;
+
+        if (detail is IDetachableDetail)
+            detail.PropertyChanged += OnDetailSourceGone;
+
+        SetDetail(detail);
+        NotifyHistoryChanged();
+    }
+
+    /// <summary>Assign <see cref="Detail"/> without disposing whatever it held — used whenever the old
+    /// value is being kept somewhere (the buried stack, a full page, a window) rather than discarded.</summary>
+    private void SetDetail(ViewModelBase? detail)
+    {
+        _handingOverDetail = true;
+        try
+        {
+            Detail = detail;
+        }
+        finally
+        {
+            _handingOverDetail = false;
+        }
+    }
+
+    /// <summary>
+    /// Reacts to any detail's <see cref="IDetachableDetail.IsSourceGone"/> going true, wherever it is
+    /// currently shown — <see cref="DismissDetail"/> already checks both the drawer and the full page.
+    /// Stays subscribed across a hand-over to the full page (<see cref="OpenDetailAsPage"/>), which is
+    /// still this shell's responsibility to close. <see cref="DetachDetailForWindow"/> is the one hand-
+    /// over that unsubscribes, because a window wants a banner instead of a close.
+    /// </summary>
+    private void OnDetailSourceGone(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IDetachableDetail.IsSourceGone) && sender is IDetachableDetail { IsSourceGone: true })
+            DismissDetail(sender);
+    }
+
+    /// <summary>
+    /// Close the top of the drawer. The scrim, the ✕ and Escape all land here. With something buried
+    /// underneath (KON-324) this uncovers it instead of closing the whole drawer — the same one-layer-
+    /// at-a-time feel as Escape already has with a confirmation over the drawer.
+    /// </summary>
+    [RelayCommand]
+    private void CloseDetail() => PopDetail();
+
+    /// <summary>Uncover the buried detail, if there is one; otherwise actually close the drawer.</summary>
+    private void PopDetail()
+    {
+        if (_detailStack.Count == 0)
+        {
+            Detail = null;
+            NotifyHistoryChanged();
+            return;
+        }
+
+        var previous = _detailStack[^1];
+        _detailStack.RemoveAt(_detailStack.Count - 1);
+
+        _detailLabel = previous.Label;
+        _detailTarget = previous.Target;
+
+        SetDetail(previous.Detail);
+        NotifyHistoryChanged();
+    }
+
+    /// <summary>
+    /// A detail asking to be got rid of, from wherever it is being shown — the container it describes
+    /// was removed, or vanished while the page was open (KON-309).
+    /// <para>
+    /// It has to name itself because by then it may have been handed to the full page, and a plain
+    /// "close the drawer" would leave a page describing something that no longer exists. Which was the
+    /// old <c>GoBack</c> callback's whole job, back when a detail could only ever be a page.
+    /// </para>
+    /// </summary>
+    private void DismissDetail(object? detail)
+    {
+        if (detail is null)
+            return;
+
+        if (ReferenceEquals(Detail, detail))
+            PopDetail();
+        else if (ReferenceEquals(CurrentPage, detail) && CanGoBack)
+            GoBack();
+    }
+
+    /// <summary>
+    /// Take the detail out of the drawer without disposing it, for a host that is taking it over —
+    /// the full page here, its own window in KON-308.
+    /// </summary>
+    private ViewModelBase? TakeDetail()
+    {
+        var detail = Detail;
+        if (detail is null)
+            return null;
+
+        // Whatever is buried belongs to this drawer session (KON-324) — handing the top layer to a
+        // full page or a window ends that session, and there is nothing left for a buried layer to be
+        // uncovered back onto.
+        foreach (var step in _detailStack)
+            (step.Detail as IDisposable)?.Dispose();
+        _detailStack.Clear();
+
+        SetDetail(null);
+        NotifyHistoryChanged();
+        return detail;
+    }
+
+    /// <summary>
+    /// Show the drawer's detail as a full page (KON-307).
+    /// <para>
+    /// The drawer is deliberately narrow, and some of what these pages show — a YAML tab, a wide
+    /// events table — wants the window. This is the same view model, moved: no reload, and whatever
+    /// tab you were on stays the tab you are on.
+    /// </para>
+    /// <para>
+    /// <i>This</i> is a navigation, so it does go on the history: from a full page, Back means the
+    /// list you came from.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsDetailOpen))]
+    private void OpenDetailAsPage()
+    {
+        if (TakeDetail() is not { } detail)
+            return;
+
+        Arrived(_detailLabel, () => CurrentPage = detail, _detailTarget);
+        CurrentPage = detail;
+    }
+
+    /// <summary>Widen or narrow the drawer by a drag on its left edge.</summary>
+    public void ResizeDetail(double delta) =>
+        DetailWidth = Math.Clamp(DetailWidth + delta, MinDetailWidth, MaxDetailWidth);
+
+    /// <summary>
+    /// Remember where the drag was let go.
+    /// <para>
+    /// Separate from <see cref="ResizeDetail"/> because a drag raises a delta per pointer move, and
+    /// <c>SettingsStore.Update</c> is a read, a full serialise and a whole-file write each time —
+    /// saving as you drag would rewrite settings.json a hundred times to answer one gesture.
+    /// </para>
+    /// </summary>
+    public void SaveDetailWidth()
+    {
+        var width = DetailWidth;
+        if (Math.Abs(width - _store.Load().DetailDrawerWidth) < 0.5)
+            return;
+
+        _store.Update(s => s with { DetailDrawerWidth = width });
+    }
+
+    /// <summary>
+    /// Take the drawer's detail for a window of its own (KON-308). Unlike <see cref="OpenDetailAsPage"/>,
+    /// this shell stops reacting to <see cref="IDetachableDetail.IsSourceGone"/> for it — from here on,
+    /// the window decides what "gone" looks like.
+    /// </summary>
+    public ViewModelBase? DetachDetailForWindow()
+    {
+        if (TakeDetail() is not { } detail)
+            return null;
+
+        if (detail is IDetachableDetail)
+            detail.PropertyChanged -= OnDetailSourceGone;
+
+        return detail;
+    }
+}

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
@@ -9,6 +10,7 @@
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
             <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
             <!-- Never silent about not being live: a list that has quietly stopped moving looks
                  exactly like a cluster where nothing is happening, and those want opposite
                  reactions (KON-250). -->
@@ -22,26 +24,26 @@
                     IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,168">
-                            <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
-                            <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
+                        <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,232">
+                            <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="1" Text="NAMESPACE" Key="NAMESPACE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <!-- On a single-kind page the KIND column repeats the heading on every row;
                                  that space goes to the columns the kind actually has (KON-169). -->
                             <!-- Auto rather than star: a star column reserves its width even when its
                                  content is hidden, which left a gap where KIND and SCHEDULE used to be. -->
-                            <TextBlock Grid.Column="2" Text="KIND" Classes="colhead" MinWidth="110" IsVisible="{Binding ShowKindColumn}"/>
+                            <controls:SortableHeader Grid.Column="2" Text="KIND" Key="KIND" MinWidth="110" IsVisible="{Binding ShowKindColumn}" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <TextBlock Grid.Column="3" Text="SCHEDULE" Classes="colhead" MinWidth="130" IsVisible="{Binding ShowScheduleColumn}"/>
                             <TextBlock Grid.Column="4" Text="{Binding ReadyHeader}" Classes="colhead"/>
-                            <TextBlock Grid.Column="5" Text="STATUS" Classes="colhead"/>
-                            <TextBlock Grid.Column="6" Text="AGE" Classes="colhead"/>
-                            <TextBlock Grid.Column="7" Text="" Classes="colhead" MinWidth="150"/>
+                            <controls:SortableHeader Grid.Column="5" Text="STATUS" Key="STATUS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="6" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <TextBlock Grid.Column="7" Text="" Classes="colhead" MinWidth="214"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:WorkloadRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,168">
+                                    <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,232">
                                         <!-- Same link affordance the pods grid uses, so the two lists
                                              behave the same way (KON-166). -->
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}"
@@ -63,6 +65,9 @@
                                         <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
                                             <Button Classes="pill" Command="{Binding ScaleCommand}" IsVisible="{Binding CanScale}">Scale</Button>
                                             <Button Classes="pill" Command="{Binding RestartCommand}" IsVisible="{Binding CanRestart}">Restart</Button>
+                                            <!-- Last, and after the two reversible ones: the only action on this
+                                                 row that cannot be taken back (KON-332). -->
+                                            <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
                                         </StackPanel>
                                     </Grid>
                                 </Border>

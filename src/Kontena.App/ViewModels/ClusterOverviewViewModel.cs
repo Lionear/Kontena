@@ -33,19 +33,33 @@ public partial class ClusterOverviewViewModel : ViewModelBase
 
     public ObservableCollection<NodeRow> Nodes { get; } = [];
 
+    /// <summary>
+    /// Six reads that know nothing of each other, so all six are started before any is awaited
+    /// (KON-338). Sequentially they were six round-trips deep, and this page is the first thing a
+    /// cluster shows — on a remote one that wait is the whole first impression.
+    /// </summary>
     private async Task LoadAsync()
     {
-        var info = await _cluster.GetInfoAsync();
+        var infoTask = _cluster.GetInfoAsync().AsTask();
+        var nodesTask = _cluster.ListNodesAsync().AsTask();
+        var namespacesTask = _cluster.ListNamespacesAsync().AsTask();
+        var workloadsTask = _cluster.ListWorkloadsAsync().AsTask();
+        var podsTask = _cluster.ListPodsAsync().AsTask();
+        var servicesTask = _cluster.ListServicesAsync().AsTask();
+
+        await Task.WhenAll(infoTask, nodesTask, namespacesTask, workloadsTask, podsTask, servicesTask);
+
+        var info = infoTask.Result;
         ClusterName = info.DisplayName;
         Version = info.Version;
         Distribution = info is ClusterInfo ci ? ci.Distribution : "cluster";
 
-        var nodes = await _cluster.ListNodesAsync();
+        var nodes = nodesTask.Result;
         NodeCount = nodes.Count;
-        NamespaceCount = (await _cluster.ListNamespacesAsync()).Count;
-        WorkloadCount = (await _cluster.ListWorkloadsAsync()).Count;
-        PodCount = (await _cluster.ListPodsAsync()).Count;
-        ServiceCount = (await _cluster.ListServicesAsync()).Count;
+        NamespaceCount = namespacesTask.Result.Count;
+        WorkloadCount = workloadsTask.Result.Count;
+        PodCount = podsTask.Result.Count;
+        ServiceCount = servicesTask.Result.Count;
 
         Nodes.Clear();
         foreach (var n in nodes)

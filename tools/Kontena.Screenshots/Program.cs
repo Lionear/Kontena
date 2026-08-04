@@ -11,12 +11,15 @@ using Avalonia.Threading;
 using System.Collections.Generic;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
+using Kontena.Adapters.Podman;
 using Kontena.App;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
 using Kontena.Sdk.Models;
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
+using Kontena.Sdk.Tooling.Fakes;
 using Kontena.Engines.Fakes;
 using HostApp = Kontena.App.App;
 using Kontena.Core.Models;
@@ -47,9 +50,16 @@ namespace Kontena.Screenshots;
 //         cluster / cluster-{nodes,namespaces,workloads,pods,services} (the cluster browsers),
 //         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
 //         reached by really switching backend and back, so it exercises the save/restore path),
+//         cluster-node-drawer / cluster-namespace-drawer (the detail drawer over its list, KON-307),
 //         pod / pod-logs / pod-yaml (pod detail),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
+//         onboarding (the first-run wizard) and onboarding-again (the same wizard reached back from
+//         the engine-down card by running its own "Set up again" command, so the shot cannot show a
+//         route that the button does not really take),
+//         onboarding-start-assist (the wizard's offer to start a stopped Podman — a scripted
+//         systemctl and an unreachable Podman, driven through the real PodmanSocketFix; Linux-only,
+//         because the fix itself is, and on other systems the block correctly never appears),
 //         settings-clusters (KON-109/KON-76 — the local-cluster page; reads this machine, so the
 //         shot differs per box by design), settings-clusters-new (the create form, reached by running
 //         the page's own command),
@@ -78,7 +88,8 @@ internal static class Program
         Environment.SetEnvironmentVariable("APPDATA", sandbox);
         // The app's ConnectPreferred honours this to boot straight into the demo engine — except
         // for the one scene whose whole subject is what happens when that does not work out.
-        if (opts.Scene != "backend-down")
+        // onboarding-again starts life on the down card, so it needs the same "no shortcut" treatment.
+        if (opts.Scene is not ("backend-down" or "onboarding-again"))
             Environment.SetEnvironmentVariable("KONTENA_SCREENSHOT", "1");
 
         try
@@ -96,12 +107,16 @@ internal static class Program
             var settings = new KontenaSettings
             {
                 Theme = theme,
-                Onboarded = true,
+
+                // The scenes that are about not having been here before.
+                Onboarded = opts.Scene is not ("onboarding" or "onboarding-start-assist"),
 
                 // Pinned, not "last used": a capture must not depend on what a previous capture
-                // happened to leave behind. The backend-down scene is the exception — it asks to
+                // happened to leave behind. The down-card scenes are the exception — they ask to
                 // return to a backend that is deliberately not in the list.
-                Startup = opts.Scene == "backend-down" ? StartupBackend.LastUsed : StartupBackend.Pinned,
+                Startup = opts.Scene is "backend-down" or "onboarding-again"
+                    ? StartupBackend.LastUsed
+                    : StartupBackend.Pinned,
                 PinnedBackend = "docker",
                 LastBackend = "kubernetes:corp-cluster",
                 AutoDetectEngines = true,
@@ -150,6 +165,15 @@ internal static class Program
             if (opts.Scene.StartsWith("real-", StringComparison.Ordinal))
                 providers.AddRange(KubernetesClusterProvider.DiscoverAll());
 
+            // A machine whose only engine is a Podman that will not answer. Nothing reachable, because
+            // the subject of the scene is the row that cannot be picked and what the wizard offers to
+            // do about it.
+            if (opts.Scene == "onboarding-start-assist")
+            {
+                providers.Clear();
+                providers.Add(new StoppedPodmanProvider());
+            }
+
             var registry = new BackendRegistry(providers);
 
             // Persist the scene's settings before anything reads them: parts of the app deliberately
@@ -174,7 +198,17 @@ internal static class Program
                         : UpdateChannel.Stable)
                 : null;
 
-            var viewModel = new MainWindowViewModel(registry, store, settings, updates);
+            // Scripted systemd state for the start-assist scene. The check itself is the real
+            // PodmanSocketFix — only systemctl's answer is supplied, the way the update scenes supply
+            // an update source. Asking the renderer's own machine would make the shot depend on
+            // whether the person capturing it happens to run Podman.
+            var tools = opts.Scene == "onboarding-start-assist"
+                ? new FakeToolRunner()
+                    .Install(new ExternalTool("systemctl", "systemctl", ["--version"], []))
+                    .When(i => i.Arguments.Contains("is-active"), output: ["inactive"], exitCode: 3)
+                : null;
+
+            var viewModel = new MainWindowViewModel(registry, store, settings, updates, tools);
 
             var window = new MainWindow
             {
@@ -192,7 +226,8 @@ internal static class Program
 
             // Let the fire-and-forget InitAsync → ConnectPreferred → ActivateAsync settle so the
             // container list (and its live log/stat streams) is populated before we drive the scene.
-            SettleUntil(() => viewModel.IsReady || viewModel.IsBackendDown, maxRounds: 120);
+            SettleUntil(() => viewModel.IsReady || viewModel.IsBackendDown || viewModel.IsOnboarding,
+                maxRounds: 120);
 
             ApplyScene(opts.Scene, viewModel);
             Settle(rounds: 40);
@@ -300,7 +335,21 @@ internal static class Program
         switch (scene)
         {
             case "containers":
+            case "onboarding": // the launch state already is the wizard
                 break; // default page
+
+            // The offer arrives after the screen is already up — systemd is asked in the background,
+            // on purpose, so a slow answer cannot hold up drawing the wizard.
+            case "onboarding-start-assist":
+                SettleUntil(() => vm.Onboarding?.FixCommandLine is not null, maxRounds: 120);
+                break;
+
+            // The way back: run the down card's own command rather than calling EnterOnboarding, so
+            // a button wired to nothing would show up here as a shot still on the down card.
+            case "onboarding-again":
+                vm.RunSetupCommand.Execute(null);
+                SettleUntil(() => vm.IsOnboarding, maxRounds: 120);
+                break;
 
             // No scene for the switcher's "n new clusters found" row (KON-120): it lives in a flyout,
             // and a flyout renders into its own popup window rather than into this frame. Its count
@@ -656,6 +705,54 @@ internal static class Program
                 }
                 break;
 
+            case "cluster-node-drawer":
+            case "cluster-namespace-drawer":
+                // The detail drawer over the list it was opened from (KON-307). Reached through the
+                // row's own Open command, so the shot cannot show a drawer the card does not raise.
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(scene == "cluster-node-drawer" ? "nodes" : "namespaces");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNodesViewModel drawerNodes)
+                    drawerNodes.Items.FirstOrDefault()?.OpenCommand.Execute(null);
+                else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNamespacesViewModel drawerNs)
+                    drawerNs.Items.FirstOrDefault()?.OpenCommand.Execute(null);
+                Settle(rounds: 30);
+                break;
+
+            // KON-330: a Secret or ConfigMap opened as a detail, where its keys now live. The list
+            // behind it is the shot's other half — the expander that used to unfold the keys in place
+            // is gone, so the row is a link like every other cluster list.
+            case "cluster-secrets":
+            case "secret-detail":
+            case "secret-detail-used-by":
+            case "configmap-detail":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(scene == "configmap-detail" ? "configmaps" : "secrets");
+                Settle(rounds: 30);
+
+                if (scene != "cluster-secrets")
+                {
+                    // The one the ticket is about: an Opaque secret with two text values, and four
+                    // pods reading it two different ways.
+                    var wanted = scene == "configmap-detail" ? "web-config" : "postgres-credentials";
+                    if (vm.CurrentPage is Kontena.App.ViewModels.ClusterSecretsViewModel secrets)
+                        secrets.Items.FirstOrDefault(r => r.Name == wanted)?.OpenCommand.Execute(null);
+                    else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterConfigMapsViewModel maps)
+                        maps.Items.FirstOrDefault(r => r.Name == wanted)?.OpenCommand.Execute(null);
+
+                    Settle(rounds: 30);
+                }
+
+                if (scene == "secret-detail-used-by" && vm.Detail is Kontena.App.ViewModels.ClusterConfigDetailViewModel used)
+                {
+                    used.SelectTabCommand.Execute("pods");
+                    Settle(rounds: 30);
+                }
+
+                break;
+
             case "pod":
             case "pod-logs":
             case "pod-logs-tail":
@@ -713,9 +810,9 @@ internal static class Program
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 // Clicking Workloads opens the group; it does not load every kind at once (KON-169).
                 vm.NavigateCommand.Execute("overview");
-                SettleUntil(() => vm.NavItems.Any(i => i.Key == "workloads" && i.HasChildren), maxRounds: 60);
+                SettleUntil(() => vm.NavGroups.SelectMany(g => g.Items).Any(i => i.Key == "workloads"), maxRounds: 60);
                 vm.NavigateCommand.Execute("workloads");
-                SettleUntil(() => vm.NavItems.Any(i => i.IsChild), maxRounds: 60);
+                SettleUntil(() => vm.NavGroups.SelectMany(g => g.Items).Any(i => i.IsChild), maxRounds: 60);
 
                 if (scene == "cluster-cronjobs")
                     vm.NavigateCommand.Execute("workloads:CronJob");
@@ -1045,6 +1142,26 @@ internal static class Program
             }
 
             return new Options(scene, theme, @out, width, height, scale);
+        }
+    }
+
+    /// <summary>A Podman that is installed but will not answer — the probe behind a "Not running" row.</summary>
+    private sealed class StoppedPodmanProvider : IBackendProvider
+    {
+        public string Backend => "podman";
+        public string DisplayName => "Podman";
+        public string Chip => "P";
+        public BackendChipStyle? ChipStyle => new(PodmanBrand.Glyph, PodmanBrand.Accent);
+        public BackendKind Kind => BackendKind.Engine;
+        public IBackend CreateBackend() => new StoppedBackend();
+
+        private sealed class StoppedBackend : IBackend
+        {
+            public string Backend => "podman";
+            public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default)
+                => throw new InvalidOperationException("the socket did not answer");
+            public ValueTask PingAsync(CancellationToken ct = default)
+                => throw new InvalidOperationException("the socket did not answer");
         }
     }
 }

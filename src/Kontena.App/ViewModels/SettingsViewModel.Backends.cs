@@ -323,6 +323,118 @@ public partial class SettingsViewModel
         }
     }
 
+    // ── Finding a remote's own row from the inventory above it (KON-264) ────
+
+    /// <summary>
+    /// A detected-engine row asked for the remote it stands for. The view answers by scrolling that
+    /// row into view and marking it briefly — this is a "where does this live", not a state change,
+    /// so nothing on the page moves and there is nothing to undo.
+    /// </summary>
+    public event EventHandler<RemoteEngineRow>? RevealRemoteRequested;
+
+    /// <summary>
+    /// Sends the page to a remote's own entry, further down under REMOTE ENGINES, where its Edit and
+    /// Remove live. Both lists show the same remote: the inventory above (everything Kontena can
+    /// reach, without actions, because you do not remove Docker from an inventory) and the list of
+    /// what the user added (with actions). Someone wanting to remove theirs clicked the first one they
+    /// saw, found nothing, and concluded it could not be done (KON-264).
+    /// <para>
+    /// Duplicating Edit and Remove into the inventory was the alternative, and is worse: the same two
+    /// actions in two places, and a list that then has to explain why Docker does not have them.
+    /// </para>
+    /// <para>
+    /// A backend with no row — a remote deleted between building the list and the click — is ignored
+    /// rather than reported. Nothing was asked for that could fail; the row it pointed at is simply
+    /// gone, and the list it would have scrolled to no longer holds it.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private void RevealRemote(string? backend)
+    {
+        if (backend is not { Length: > 0 })
+            return;
+
+        if (RemoteEngines.FirstOrDefault(r => r.Remote.Backend == backend) is { } row)
+            RevealRemoteRequested?.Invoke(this, row);
+    }
+
+    // ── Retrying a backend that did not answer (KON-328) ────────────────────
+
+    private readonly Func<string, Task>? _retryBackend;
+
+    /// <summary>
+    /// Ask one backend again from the row that shows it as unreachable.
+    /// <para>
+    /// The reason this exists is the failure only a person can clear: an engine that has to be started,
+    /// a VPN that has to come up, an SSH agent waiting on a fingerprint in 1Password. Those attempts
+    /// succeed on the second try by definition — and until now the second try meant restarting Kontena.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task RetryBackendAsync(string? backend)
+    {
+        if (backend is null || _retryBackend is null || _retrying is not null)
+            return;
+
+        _retrying = backend;
+        MarkRetrying(backend, true);
+        try
+        {
+            // The shell re-probes and calls SetBackendConnected back with the answer — one probe cache,
+            // written in one place, whichever row asked.
+            await _retryBackend(backend);
+        }
+        finally
+        {
+            _retrying = null;
+            MarkRetrying(backend, false);
+        }
+    }
+
+    /// <summary>The backend being retried, so a click on another row cannot start a second probe.</summary>
+    private string? _retrying;
+
+    /// <summary>
+    /// Fold a fresh probe result into the rows already on screen (KON-328). In place rather than by
+    /// rebuilding the page, following <see cref="Relabel"/>: a rebuild would empty a remote form that is
+    /// halfway typed, and the user retrying a connection is often exactly the user filling one in.
+    /// </summary>
+    internal void SetBackendConnected(string backend, bool connected, string detail)
+    {
+        for (var i = 0; i < _backends.Count; i++)
+        {
+            if (_backends[i].Backend == backend)
+                _backends[i] = _backends[i] with { Connected = connected, Detail = detail };
+        }
+
+        for (var i = 0; i < Engines.Count; i++)
+        {
+            if (Engines[i].Backend == backend)
+                Engines[i] = Engines[i] with { Connected = connected, Detail = detail };
+        }
+
+        for (var i = 0; i < RemoteEngines.Count; i++)
+        {
+            if (RemoteEngines[i].Remote.Backend == backend)
+                RemoteEngines[i] = RemoteEngines[i] with { Connected = connected };
+        }
+    }
+
+    private void MarkRetrying(string backend, bool retrying)
+    {
+        for (var i = 0; i < Engines.Count; i++)
+        {
+            if (Engines[i].Backend == backend)
+                Engines[i] = Engines[i] with { Retrying = retrying };
+        }
+
+        for (var i = 0; i < RemoteEngines.Count; i++)
+        {
+            if (RemoteEngines[i].Remote.Backend == backend)
+                RemoteEngines[i] = RemoteEngines[i] with { Retrying = retrying };
+        }
+    }
+
     /// <summary>
     /// Actually connects, before anything is saved. For SSH that means opening the tunnel and asking the
     /// daemon through it — the only way to tell "the host is reachable" from "the engine answers", which are

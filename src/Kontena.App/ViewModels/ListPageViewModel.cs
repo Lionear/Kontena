@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
@@ -28,21 +29,46 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _hasLoaded;
 
+    /// <summary>
+    /// Set for the duration of the first fetch (KON-319). A large cluster's list can take a real,
+    /// visible while to come back — without this the page looks frozen rather than working, and "did
+    /// it hang" is a worse question than a spinner answers for free.
+    /// <para>
+    /// Only the first fetch, not every one: a live cluster page reloads itself on every settled watch
+    /// event (<see cref="ClusterListPageViewModel{TRow}"/>), which on an active cluster can be every
+    /// few seconds. A spinner on each of those is not "loading", it is noise — the exact flicker
+    /// <see cref="ListSync"/> exists to avoid on the rows themselves.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isLoading;
+
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
     public abstract string SearchPlaceholder { get; }
 
     public async Task LoadAsync()
     {
-        var rows = await LoadRowsAsync();
+        var isFirstLoad = !HasLoaded;
+        if (isFirstLoad)
+            IsLoading = true;
 
-        _all.Clear();
-        _all.AddRange(rows);
-        HasLoaded = true;
+        try
+        {
+            var rows = await LoadRowsAsync();
 
-        // Re-applied on every load, so a refresh under an active search does not quietly show
-        // everything again.
-        ApplyFilter();
+            _all.Clear();
+            _all.AddRange(rows);
+            HasLoaded = true;
+
+            // Re-applied on every load, so a refresh under an active search does not quietly show
+            // everything again.
+            ApplyFilter();
+        }
+        finally
+        {
+            if (isFirstLoad)
+                IsLoading = false;
+        }
     }
 
     /// <summary>Fetch this page's rows, in the order they should appear.</summary>
@@ -57,6 +83,40 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     /// no existing page changes behaviour.
     /// </summary>
     protected virtual bool Include(TRow row) => true;
+
+    /// <summary>
+    /// Columns this page can be sorted by, keyed by the header text shown to the user (KON-318).
+    /// Empty by default — a page that declares none is not sortable, rather than every page needing
+    /// to opt out.
+    /// </summary>
+    protected virtual IReadOnlyDictionary<string, Func<TRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<TRow, IComparable>>(StringComparer.Ordinal);
+
+    /// <summary>The column currently sorted by, or null for load order (newest-first pages, etc).</summary>
+    [ObservableProperty] private string? _sortColumn;
+
+    [ObservableProperty] private bool _sortDescending;
+
+    /// <summary>
+    /// Sort by a column, or flip direction if it is already the active one. The key comes off a
+    /// clicked header, so an unknown one (a page mid-redesign) is ignored rather than thrown.
+    /// </summary>
+    [RelayCommand]
+    private void SortBy(string column)
+    {
+        if (!SortColumns.ContainsKey(column))
+            return;
+
+        if (SortColumn == column)
+            SortDescending = !SortDescending;
+        else
+        {
+            SortColumn = column;
+            SortDescending = false;
+        }
+
+        ApplyFilter();
+    }
 
     /// <summary>Whether there is a list to draw at all — false hides the table rather than leaving a
     /// header floating above a "no matches" line.</summary>
@@ -78,8 +138,12 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     protected void ApplyFilter()
     {
         var term = SearchText.Trim();
-        List<TRow> matches =
-            [.. _all.Where(r => Include(r) && (term.Length == 0 || Matches(r, term)))];
+        IEnumerable<TRow> matching = _all.Where(r => Include(r) && (term.Length == 0 || Matches(r, term)));
+
+        if (SortColumn is { } column && SortColumns.TryGetValue(column, out var key))
+            matching = SortDescending ? matching.OrderByDescending(key) : matching.OrderBy(key);
+
+        List<TRow> matches = [.. matching];
 
         ListSync.Apply(Items, matches);
 

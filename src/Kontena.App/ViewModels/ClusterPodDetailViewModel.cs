@@ -20,30 +20,61 @@ namespace Kontena.App.ViewModels;
 /// active cluster over the OAL, and opens an interactive shell reusing the CEAL's
 /// <see cref="IExecSession"/>. The container picker chooses which container the logs and shell target.
 /// </summary>
-public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITerminalHost
+public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITerminalHost, IDetachableDetail
 {
     private const int MaxLogLines = 2000;
 
     private readonly IClusterEngine _cluster;
     private readonly Pod _pod;
     private readonly Action<Pod>? _onForward;
+    private readonly PortForwardRegistry? _portForwards;
+    private readonly Func<ResourceRef, Task<bool>>? _onOpenController;
+    private readonly Action? _onDelete;
     private readonly ResourceRef _ref;
     private readonly List<LogLineViewModel> _all = [];
 
-    private CancellationTokenSource? _cts;         // page lifetime (metrics)
+    /// <summary>Whether this pod is known to be gone (KON-308) — see ClusterObjectDetailViewModel's
+    /// FollowForGoneAsync for the same mechanism on the other five kinds.</summary>
+    [ObservableProperty] private bool _isSourceGone;
+
+    /// <summary>Pod/name (ns:…) — stable across the list reloads that hand this page a brand new Pod
+    /// record for the same pod (KON-308).</summary>
+    public string DetailKey => _ref.ToString();
+
+    /// <summary>Whether the shell wired a delete (KON-334).</summary>
+    public bool CanDelete => _onDelete is not null;
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke();
+
+    private CancellationTokenSource? _cts;         // page lifetime (metrics, watch)
     private CancellationTokenSource? _logCts;      // per-container log stream
 
+    /// <param name="onDelete">Invoked by the header's Delete (KON-334). The shell's, for the same
+    /// reason as on the other detail pages: deleting the pod this page describes also has to close
+    /// the page and drop the history step that leads back to it (KON-173).</param>
     public ClusterPodDetailViewModel(
-        IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null)
+        IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null,
+        PortForwardRegistry? portForwards = null, Func<ResourceRef, Task<bool>>? onOpenController = null,
+        Action? onDelete = null)
     {
         _cluster = cluster;
         _pod = pod;
         _onForward = onForward;
+        _portForwards = portForwards;
+        _onOpenController = onOpenController;
+        _onDelete = onDelete;
         _ref = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
 
         SupportsExec = cluster.Capabilities.Exec;
         SupportsMetrics = cluster.Capabilities.Metrics;
         SupportsPortForward = cluster.Capabilities.PortForward;
+
+        // KON-321: the modal that starts a forward is not the only place someone looks to stop one —
+        // the page they started it from is where they go first, and until now it had no idea a forward
+        // for this pod even existed.
+        if (_portForwards is not null)
+            _portForwards.Changed += OnPortForwardsChanged;
 
         TerminalFontFamily = $"{terminalFont.Family}, monospace";
         TerminalFontSize = terminalFont.Size;
@@ -89,6 +120,24 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     public string RestartsText => _pod.Restarts.ToString(CultureInfo.InvariantCulture);
     public string QosText => _pod.Qos.ToString();
     public string ControlledBy => string.IsNullOrEmpty(_pod.ControlledBy) ? "—" : _pod.ControlledBy;
+
+    /// <summary>The owner as a ref, when its kind is one of the pages that exist to open (KON-322).
+    /// <see cref="Pod.ControlledBy"/> is a plain "Kind/name" string — the adapter already rolls a
+    /// ReplicaSet up to its Deployment, so every kind that reaches here is a workload kind.</summary>
+    private ResourceRef? ControllerRef =>
+        _pod.ControlledBy.Split('/', 2) is [var kind, var name] && name.Length > 0
+        && Enum.TryParse<WorkloadKind>(kind, out var workloadKind)
+            ? new ResourceRef(GroupVersionKind.For(workloadKind), _pod.Namespace, name)
+            : null;
+
+    public bool CanOpenController => _onOpenController is not null && ControllerRef is not null;
+
+    [RelayCommand]
+    private async Task OpenController()
+    {
+        if (ControllerRef is { } target && _onOpenController is not null)
+            await _onOpenController(target);
+    }
     public string AgeText => Format.Duration(_pod.Age);
     /// <summary>Reports the init phase while it runs — "Init:1/2" says what "Pending" cannot.</summary>
     public string PhaseText => _pod.StatusText;
@@ -475,6 +524,38 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
         if (SupportsMetrics && IsRunning)
             _ = StreamMetricsAsync(_cts.Token);
+
+        if (_cluster.Capabilities.Watch)
+            _ = FollowForGoneAsync(_cts.Token);
+    }
+
+    /// <summary>Same mechanism as ClusterObjectDetailViewModel's FollowForGoneAsync (KON-308): a
+    /// Deleted event for this pod on the watch, or that watch ending on its own.</summary>
+    private async Task FollowForGoneAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var e in _cluster.WatchAsync(_ref.Kind, _ref.Namespace, ct))
+            {
+                if (e.Resource.Name != _ref.Name)
+                    continue;
+
+                if (e.Type == WatchEventType.Deleted)
+                {
+                    IsSourceGone = true;
+                    return;
+                }
+            }
+
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
+        catch (OperationCanceledException) { /* page closed */ }
+        catch (Exception)
+        {
+            if (!ct.IsCancellationRequested)
+                IsSourceGone = true;
+        }
     }
 
     private void RestartLogs()
@@ -530,14 +611,39 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
             Tty = true,
         }, ct);
 
-    /// <summary>Whether a port-forward can be started (a running pod on a cluster that supports it).</summary>
-    public bool CanPortForward => _onForward is not null && SupportsPortForward && IsRunning;
+    /// <summary>Whether a port-forward can be started (a running pod on a cluster that supports it).
+    /// False while one is already active — starting a second one for the same pod is what
+    /// <see cref="StopForward"/> is for.</summary>
+    public bool CanPortForward => _onForward is not null && SupportsPortForward && IsRunning && ActiveForward is null;
 
     [RelayCommand]
     private void PortForward() => _onForward?.Invoke(_pod);
 
+    /// <summary>The forward this page started, if it is still running (KON-321).</summary>
+    public ActivePortForward? ActiveForward =>
+        _portForwards?.Forwards.FirstOrDefault(f => f.Target == _ref && f.IsActive);
+
+    public bool CanStopForward => ActiveForward is not null;
+
+    [RelayCommand]
+    private async Task StopForward()
+    {
+        if (ActiveForward is { } forward && _portForwards is not null)
+            await _portForwards.StopAsync(forward);
+    }
+
+    private void OnPortForwardsChanged()
+    {
+        OnPropertyChanged(nameof(ActiveForward));
+        OnPropertyChanged(nameof(CanStopForward));
+        OnPropertyChanged(nameof(CanPortForward));
+    }
+
     public void Dispose()
     {
+        if (_portForwards is not null)
+            _portForwards.Changed -= OnPortForwardsChanged;
+
         _logCts?.Cancel();
         _logCts?.Dispose();
         _cts?.Cancel();
