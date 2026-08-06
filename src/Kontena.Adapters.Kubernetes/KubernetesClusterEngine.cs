@@ -472,6 +472,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "Deployment", "StatefulSet", "DaemonSet",
         "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
         "ConfigMap", "Secret", "Event",
+        "Job", "CronJob",
     };
 
     /// <summary>
@@ -504,6 +505,14 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "PersistentVolumeClaim" => Box(ns is null
             ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
             : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),
+        // The batch kinds, missing since KON-250 (KON-344). The per-kind Jobs page always claimed to
+        // follow batch/v1 Job, got an empty stream back, and blamed the cluster for closing it.
+        "Job" => Box(ns is null
+            ? _client.BatchV1.WatchListJobForAllNamespacesAsync(cancellationToken: ct)
+            : _client.BatchV1.WatchListNamespacedJobAsync(ns, cancellationToken: ct)),
+        "CronJob" => Box(ns is null
+            ? _client.BatchV1.WatchListCronJobForAllNamespacesAsync(cancellationToken: ct)
+            : _client.BatchV1.WatchListNamespacedCronJobAsync(ns, cancellationToken: ct)),
         "ConfigMap" => Box(ns is null
             ? _client.CoreV1.WatchListConfigMapForAllNamespacesAsync(cancellationToken: ct)
             : _client.CoreV1.WatchListNamespacedConfigMapAsync(ns, cancellationToken: ct)),

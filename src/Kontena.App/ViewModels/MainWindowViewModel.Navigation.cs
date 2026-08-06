@@ -221,7 +221,7 @@ public partial class MainWindowViewModel
         // on each of the constructors above: one place that knows a page is on screen, and the watch
         // having already started in the constructor costs nothing — the callback is read when it
         // fires, not when the stream opens.
-        if (CurrentPage is IClusterListPage live)
+        if (CurrentPage is IClusterLivePage live)
             live.Changed = () => _ = RefreshClusterNavCountsAsync();
 
         // Only the open page's stream drives that callback, so the badges stop following the moment
