@@ -94,6 +94,54 @@ public sealed class LiveNavCountsTests
             shell.NavGroups.SelectMany(g => g.Items).Single(i => i.Key == "pods").Count);
     }
 
+    [Fact]
+    public async Task A_namespace_created_after_the_cluster_opened_can_be_picked()
+    {
+        // Found by driving the real app (KON-343): the picker was filled once when the cluster
+        // opened, so a namespace created afterwards had no way of being selected — while the list
+        // beside it was already showing that namespace's contents. Two pieces of UI over one
+        // cluster, disagreeing, which is the shape KON-339 was about too.
+        var cluster = new FakeClusterEngine();
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(cluster));
+        Assert.DoesNotContain("payments", shell.Namespaces);
+
+        await foreach (var _ in cluster.ApplyAsync(new ManifestBundle
+        {
+            Yaml = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: payments\n",
+        }))
+        {
+            // Drained for its effect on the cluster; the apply's own progress is not what is on trial.
+        }
+
+        // The same refresh the badges ride on, which is why this costs no call of its own.
+        shell.NavigateCommand.Execute("pods");
+        await Task.Yield();
+
+        Assert.Contains("payments", shell.Namespaces);
+    }
+
+    [Fact]
+    public async Task A_namespace_that_disappears_takes_the_filter_with_it()
+    {
+        // Reconciling the picker means the selection can be deleted out from under it. Left alone,
+        // the ComboBox shows nothing while every list stays filtered to a namespace that is gone —
+        // an empty screen with no visible reason for being empty.
+        var cluster = new FakeClusterEngine();
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(cluster));
+
+        shell.SelectedNamespace = "monitoring";
+        Assert.Contains("monitoring", shell.Namespaces);
+
+        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Namespace, null, "monitoring"));
+        shell.NavigateCommand.Execute("pods");
+        await Task.Yield();
+
+        Assert.DoesNotContain("monitoring", shell.Namespaces);
+        Assert.Equal("All namespaces", shell.SelectedNamespace);
+    }
+
     /// <summary>Re-read <paramref name="read"/> until it says <paramref name="want"/> or time is up.</summary>
     private static async Task<string> EventuallyAsync(Func<string> read, string want)
     {
