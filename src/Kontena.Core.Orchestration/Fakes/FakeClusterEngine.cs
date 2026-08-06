@@ -35,11 +35,28 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     // simultaneous watches of the *same* kind on one engine would only deliver a pushed event to
     // whichever reads it first (a Channel<T> is a queue, not pub/sub). No test needs that yet; if one
     // ever does, key this per (kind, namespace) instead.
-    private readonly Channel<ResourceEvent> _watchEvents = Channel.CreateUnbounded<ResourceEvent>();
+    /// <summary>
+    /// One channel per open watch, because a cluster broadcasts and a channel does not.
+    /// <para>
+    /// This was a single shared channel, which delivers each event to exactly one reader — so with
+    /// two watches open an event reached one of them at random, and a reader whose kind did not match
+    /// swallowed it on the way past. Nothing noticed while every page followed at most one kind and
+    /// tests opened one watch at a time; the pages that summarise a cluster follow seven at once
+    /// (KON-340), and then it is every event that goes missing.
+    /// </para>
+    /// </summary>
+    private readonly List<Channel<ResourceEvent>> _watchers = [];
 
     /// <summary>Test hook (KON-308): push one more event into any watch already following this kind,
     /// after its initial snapshot. Filtered to matching kind/namespace the same way the snapshot is.</summary>
-    public void EmitWatchEvent(ResourceEvent evt) => _watchEvents.Writer.TryWrite(evt);
+    public void EmitWatchEvent(ResourceEvent evt)
+    {
+        lock (_watchers)
+        {
+            foreach (var watcher in _watchers)
+                watcher.Writer.TryWrite(evt);
+        }
+    }
 
     private string _activeContext;
 
@@ -461,20 +478,35 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             _ => _workloads.Where(w => Match(ns, w.Namespace)).Select(w => new ResourceRef(kind, w.Namespace, w.Name)),
         };
 
-        foreach (var r in refs)
-        {
-            ct.ThrowIfCancellationRequested();
-            await Task.Yield();
-            yield return new ResourceEvent { Type = WatchEventType.Added, Resource = r };
-        }
+        // Subscribed before the snapshot is yielded, the way a real informer is: registering after it
+        // would drop anything emitted while the snapshot was still being drained.
+        var mine = Channel.CreateUnbounded<ResourceEvent>();
+        lock (_watchers)
+            _watchers.Add(mine);
 
-        // A real adapter stays open past the initial snapshot (KON-308); this fake now does too, reading
-        // whatever a test pushes via EmitWatchEvent. ReadAllAsync throws OperationCanceledException on
-        // ct — that is the "stays open until you stop watching" behaviour callers already rely on.
-        await foreach (var evt in _watchEvents.Reader.ReadAllAsync(ct))
+        try
         {
-            if (evt.Resource.Kind.Kind == kind.Kind && Match(ns, evt.Resource.Namespace))
-                yield return evt;
+            foreach (var r in refs)
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Yield();
+                yield return new ResourceEvent { Type = WatchEventType.Added, Resource = r };
+            }
+
+            // A real adapter stays open past the initial snapshot (KON-308); this fake now does too,
+            // reading whatever a test pushes via EmitWatchEvent. ReadAllAsync throws
+            // OperationCanceledException on ct — that is the "stays open until you stop watching"
+            // behaviour callers already rely on.
+            await foreach (var evt in mine.Reader.ReadAllAsync(ct))
+            {
+                if (evt.Resource.Kind.Kind == kind.Kind && Match(ns, evt.Resource.Namespace))
+                    yield return evt;
+            }
+        }
+        finally
+        {
+            lock (_watchers)
+                _watchers.Remove(mine);
         }
     }
 
