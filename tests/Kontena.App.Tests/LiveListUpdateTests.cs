@@ -106,9 +106,18 @@ public sealed class LiveListUpdateTests
     /// <summary>
     /// Every list page, not the three that happened to get it first. Six of the nine were still
     /// list-plus-Refresh, which is the state the notice exists to make impossible to mistake.
+    /// <para>
+    /// Twelve since KON-340. Config maps, secrets and events were the last three left behind, and
+    /// only because the adapter had no watcher for their kinds — nothing about the pages. A page
+    /// added here without a watcher fails <see cref="The_kubernetes_adapter_can_actually_watch_what_each_page_claims_to_follow"/>
+    /// rather than shipping as a list that silently never moves.
+    /// </para>
     /// </summary>
     public static TheoryData<string, Func<IClusterEngine, IClusterListPage>> AllListPages() => new()
     {
+        { "config maps", c => new ClusterConfigMapsViewModel(c, "app") },
+        { "secrets", c => new ClusterSecretsViewModel(c, "app") },
+        { "events", c => new ClusterEventsViewModel(c, "app") },
         { "nodes", c => new ClusterNodesViewModel(c) },
         { "namespaces", c => new ClusterNamespacesViewModel(c) },
         { "workloads", c => new ClusterWorkloadsViewModel(c, "app", kind: WorkloadKind.Deployment) },

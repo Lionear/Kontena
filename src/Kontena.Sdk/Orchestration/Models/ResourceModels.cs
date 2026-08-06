@@ -21,6 +21,13 @@ public readonly record struct GroupVersionKind(string Group, string Version, str
     public static GroupVersionKind Node => new(string.Empty, "v1", "Node");
     public static GroupVersionKind ConfigMap => new(string.Empty, "v1", "ConfigMap");
     public static GroupVersionKind Secret => new(string.Empty, "v1", "Secret");
+
+    /// <summary>
+    /// The core-group Event, not <c>events.k8s.io/v1</c>. Both exist and describe the same happenings;
+    /// this is the one the listing reads, and a page must follow the API it lists from or it would be
+    /// reloading on one feed's events while showing another's.
+    /// </summary>
+    public static GroupVersionKind Event => new(string.Empty, "v1", "Event");
     public static GroupVersionKind PersistentVolumeClaim => new(string.Empty, "v1", "PersistentVolumeClaim");
     public static GroupVersionKind PersistentVolume => new(string.Empty, "v1", "PersistentVolume");
     public static GroupVersionKind Ingress => new("networking.k8s.io", "v1", "Ingress");
