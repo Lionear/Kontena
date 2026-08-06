@@ -471,6 +471,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "Pod", "Service", "Node", "Namespace",
         "Deployment", "StatefulSet", "DaemonSet",
         "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
+        "ConfigMap", "Secret", "Event",
     };
 
     /// <summary>
@@ -503,6 +504,18 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "PersistentVolumeClaim" => Box(ns is null
             ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
             : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),
+        "ConfigMap" => Box(ns is null
+            ? _client.CoreV1.WatchListConfigMapForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedConfigMapAsync(ns, cancellationToken: ct)),
+        // Only the metadata travels either way — the watch carries what the listing carries, and the
+        // page holds key names and sizes, never a value (KON-249).
+        "Secret" => Box(ns is null
+            ? _client.CoreV1.WatchListSecretForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedSecretAsync(ns, cancellationToken: ct)),
+        // Core v1, matching ListEventsAsync above rather than events.k8s.io.
+        "Event" => Box(ns is null
+            ? _client.CoreV1.WatchListEventForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedEventAsync(ns, cancellationToken: ct)),
         // Cluster-scoped, so no namespaced variant to choose between.
         "PersistentVolume" => Box(_client.CoreV1.WatchListPersistentVolumeAsync(cancellationToken: ct)),
         "StorageClass" => Box(_client.StorageV1.WatchListStorageClassAsync(cancellationToken: ct)),
