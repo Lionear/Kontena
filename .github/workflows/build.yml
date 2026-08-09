@@ -324,6 +324,53 @@ jobs:
             --channel "$CHANNEL" \
             --outputDir artifacts
 
+      # A second macOS download, alongside the .pkg vpk makes (KON-348). Not a duplicate: Gatekeeper
+      # treats the two completely differently. A .pkg is *executed* by Installer.app, so an unsigned one
+      # is refused before its payload is touched — and there is nothing for the user to clear, because
+      # the app does not exist yet. A .dmg is passive data: it mounts, the app is dragged out, and the
+      # ordinary unsigned-app path applies (right-click → Open, or xattr -cr). Until KON-53 buys a
+      # Developer ID, this is the only macOS download that works without a terminal.
+      #
+      # Built from the Portable.zip rather than a fresh publish, so the image carries exactly what the
+      # portable download carries, ad-hoc seal included. Re-signing here would be a second
+      # implementation of that, free to drift from the one in the pack step above.
+      - name: Package (macOS dmg)
+        if: matrix.platform == 'osx'
+        shell: bash
+        env:
+          CHANNEL: ${{ matrix.platform }}-${{ needs.setup.outputs.channel }}
+        run: |
+          set -euo pipefail
+          ZIP="artifacts/Kontena-$CHANNEL-Portable.zip"
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::expected $ZIP from the pack step" >&2
+            ls -la artifacts >&2
+            exit 1
+          fi
+
+          STAGE="$(mktemp -d)"
+          # -x __MACOSX/*: zip keeps resource forks in a sibling directory, which would otherwise sit
+          # next to the app in the mounted image.
+          unzip -q "$ZIP" -d "$STAGE" -x '__MACOSX/*'
+          ln -s /Applications "$STAGE/Applications"   # the drag-to-install gesture people expect
+
+          DMG="artifacts/Kontena-$CHANNEL.dmg"
+
+          # hdiutil intermittently fails with "Resource busy" on CI — Spotlight indexing the freshly
+          # written staging directory is the usual suspect. The same retry the DataTray workflow carries,
+          # for the same reason: the step is otherwise deterministic, so a race must not fail a build.
+          for attempt in 1 2 3; do
+            if hdiutil create -volname Kontena -srcfolder "$STAGE" -ov -format UDZO "$DMG"; then
+              echo "dmg created on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::hdiutil attempt $attempt failed; retrying in 10s"
+            sleep 10
+          done
+
+          echo "::error::hdiutil failed three times" >&2
+          exit 1
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -443,9 +490,10 @@ jobs:
 
           These builds are unsigned / not notarized.
           Linux: the .AppImage is self-contained — chmod +x and run it.
-          macOS: clear quarantine on what you downloaded, before opening it — xattr -cr on the .pkg
-          itself, or on Kontena.app after unzipping the portable build. Clearing it afterwards does
-          not help the .pkg: macOS checks the installer package before it unpacks anything.
+          macOS: use the .dmg — mount it, drag Kontena to Applications, then right-click → Open the
+          first time (or xattr -cr /Applications/Kontena.app). The .pkg is there for anyone who wants
+          it, but macOS refuses to run an unsigned installer package, and clearing quarantine
+          afterwards cannot help it: the package is checked before it unpacks anything.
           Windows: run the Setup .exe, or unzip the portable build; SmartScreen may warn on first launch.
 
           Installed copies update themselves from here — see Settings → Updates.
