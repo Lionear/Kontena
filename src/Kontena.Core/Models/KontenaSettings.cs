@@ -262,6 +262,7 @@ public sealed record KontenaSettings
     /// <summary>Enable programming-font ligatures in the terminal.</summary>
     public bool TerminalLigatures { get; init; } = true;
 
+
     /// <summary>
     /// How wide the detail drawer is, in layout pixels (KON-307). Dragged rather than chosen in
     /// Settings: how much of the list you want to keep in view depends on the list, and the answer
@@ -291,6 +292,37 @@ public sealed record KontenaSettings
 
 /// <summary>Terminal font settings resolved for a session (family carries a mono fallback).</summary>
 public sealed record TerminalFont(string Family, double Size, bool Ligatures);
+
+/// <summary>
+/// What the pod-detail usage charts can and cannot reach (KON-345).
+/// <para>
+/// No placement setting: the sparkline in the header and the Metrics tab are both always there.
+/// They answer different questions — one is a glance, the other is where you go to dig — so making
+/// them alternatives only forced a choice between two things you want at once.
+/// </para>
+/// </summary>
+public static class UsageGraphs
+{
+    /// <summary>
+    /// The furthest back the in-session buffer is kept. Not a display choice: sampling every 15s,
+    /// an hour of history is 240 points held per open pod for a chart nobody asked to see, and
+    /// anything past the buffer belongs to a real history source anyway (KON-84).
+    /// </summary>
+    public static readonly TimeSpan LiveBuffer = TimeSpan.FromMinutes(15);
+
+    /// <summary>Ranges the range selector offers, in minutes.</summary>
+    public static readonly IReadOnlyList<int> Ranges = [5, 15, 60, 360, 1440, 10080];
+
+    /// <summary>What a pod opens on — the whole buffer, so nothing sampled is hidden by default.</summary>
+    public const int DefaultRangeMinutes = 15;
+
+    /// <summary>Whether a range is reachable from the live buffer alone.</summary>
+    public static bool IsLive(int minutes) => minutes <= LiveBuffer.TotalMinutes;
+
+    /// <summary>The range to actually chart — never further back than the buffer can answer.</summary>
+    public static TimeSpan Range(int minutes) =>
+        TimeSpan.FromMinutes(Math.Clamp(minutes, 1, (int)LiveBuffer.TotalMinutes));
+}
 
 /// <summary>
 /// One port forward as it is remembered between launches: what it pointed at and which ports it

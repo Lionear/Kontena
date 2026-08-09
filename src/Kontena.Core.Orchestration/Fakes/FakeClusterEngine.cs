@@ -12,7 +12,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -250,7 +250,37 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public ClusterCapabilities Capabilities => _capabilities;
 
     /// <summary>What answers for usage, so the UI can explain the gauges it is not drawing.</summary>
-    public IMetricsSource Metrics => _capabilities.Metrics ? FakeMetricsSource.Instance : NoMetricsSource.Instance;
+    /// <summary>
+    /// Per engine rather than the shared instance, so node usage can answer for the nodes this
+    /// cluster actually has. A source that returned an empty node map made the node page look as
+    /// though metrics were on and nothing was ever sampled (KON-347).
+    /// </summary>
+    private FakeMetricsSource? _metricsSource;
+
+    public IMetricsSource Metrics => _capabilities.Metrics
+        ? _metricsSource ??= new FakeMetricsSource(
+            () => [.. _nodes.Select(n => n.Name)],
+            () => [.. _pods.Select(p => (p.Namespace, p.Name))])
+        : NoMetricsSource.Instance;
+
+    /// <summary>
+    /// Whether this fake cluster pretends to have a Prometheus. Off by default: history is the
+    /// exceptional case on a real cluster, and a fake that always has it would let the "no history,
+    /// longer ranges disabled" path go untested everywhere it is used (KON-345).
+    /// </summary>
+    public bool HasHistory { get; init; }
+
+    /// <summary>
+    /// Make the history source answer with nothing, the way a real one does for an object younger
+    /// than its first scrape. That path has its own behaviour — fall back to the buffer rather than
+    /// report an empty answer — so it needs to be reachable (KON-347).
+    /// </summary>
+    public bool HistoryIsEmpty { get; init; }
+
+    public IMetricsHistory History =>
+        HasHistory && _capabilities.Metrics
+            ? (HistoryIsEmpty ? FakeMetricsHistory.Empty : FakeMetricsHistory.Instance)
+            : NoMetricsHistory.Instance;
 
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<BackendInfo>(new ClusterInfo
@@ -802,7 +832,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
                 Namespace = pod.Namespace ?? "default",
                 CpuMillicores = 40 + i * 12,
                 MemoryBytes = (128 + i * 4) * 1024L * 1024,
-                Timestamp = DateTimeOffset.UtcNow,
+
+                // A scrape interval apart, ending now, the way a real source reports. Stamping all
+                // three with UtcNow would make them one instant to anything that charts a series
+                // (KON-345) — and on a coarse system clock they might genuinely be equal.
+                Timestamp = DateTimeOffset.UtcNow.AddSeconds(-15 * (2 - i)),
             };
         }
     }
@@ -1066,7 +1100,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             new NodeCondition("NetworkUnavailable", false, "RouteCreated", string.Empty),
         ],
         Capacity = new NodeCapacity { CpuMillicores = 4000, MemoryBytes = 16L * 1024 * 1024 * 1024, Pods = 110 },
-        Usage = new NodeUsage { CpuMillicores = 1200, MemoryBytes = 6L * 1024 * 1024 * 1024 },
+        // Disk included: the kubelet source reports it on a real cluster, and a fake that leaves it
+        // out means the one measure only a node has never gets exercised anywhere (KON-347).
+        Usage = new NodeUsage
+        {
+            CpuMillicores = 1200,
+            MemoryBytes = 6L * 1024 * 1024 * 1024,
+            DiskUsedBytes = 34L * 1024 * 1024 * 1024,
+        },
         ScheduledPods = 24,
         Age = TimeSpan.FromDays(9),
     };
@@ -1194,9 +1235,73 @@ public sealed class FakePortForward(int localPort, int remotePort) : IPortForwar
 /// A usage backend that answers, for the fake cluster. Only its name matters here — the numbers the
 /// gauges draw come from <see cref="FakeClusterEngine"/>'s own node and pod listings.
 /// </summary>
+/// <summary>
+/// A stand-in Prometheus (KON-345). Generates a deterministic series for any range, so the long
+/// ranges can be driven end to end without a cluster.
+/// </summary>
+internal sealed class FakeMetricsHistory : IMetricsHistory
+{
+    public static readonly FakeMetricsHistory Instance = new();
+
+    /// <summary>Available, and holding nothing — a target younger than the first scrape.</summary>
+    public static readonly FakeMetricsHistory Empty = new() { ReturnsNothing = true };
+
+    public bool ReturnsNothing { get; init; }
+
+    public string Name => "Prometheus";
+    public bool IsAvailable => true;
+
+    public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(true);
+
+    public TimeSpan RefreshInterval(TimeSpan range) =>
+        TimeSpan.FromSeconds(Math.Clamp(range.TotalSeconds / 120, 30, 300));
+
+    /// <summary>Everything but the node, mirroring what a real Prometheus source can express.</summary>
+    public bool Supports(UsageScope scope) => scope != UsageScope.Node;
+
+    public ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
+        UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
+    {
+        if (!Supports(target.Scope) || ReturnsNothing)
+            return ValueTask.FromResult<IReadOnlyList<UsageSample>>([]);
+
+        const int points = 60;
+        var end = DateTimeOffset.UtcNow;
+        var step = range / points;
+
+        // Seeded off the pod name so the same pod draws the same shape twice running — a chart that
+        // reshuffles on every refresh is a chart nobody can compare against the last look.
+        var seed = target.Name.Aggregate(17, (a, c) => a * 31 + c);
+        var samples = new List<UsageSample>(points);
+
+        for (var i = 0; i < points; i++)
+        {
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            var wobble = seed / (double)0x7fffffff;
+
+            samples.Add(new UsageSample(
+                end - step * (points - 1 - i),
+                metric == UsageMetric.Cpu
+                    ? 40 + wobble * 60
+                    : (150 + wobble * 30) * 1024 * 1024));
+        }
+
+        return ValueTask.FromResult<IReadOnlyList<UsageSample>>(samples);
+    }
+}
+
 internal sealed class FakeMetricsSource : IMetricsSource
 {
-    public static readonly FakeMetricsSource Instance = new();
+    private readonly Func<IReadOnlyList<string>> _nodeNames;
+    private readonly Func<IReadOnlyList<(string Namespace, string Name)>> _pods;
+
+    public FakeMetricsSource(
+        Func<IReadOnlyList<string>>? nodeNames = null,
+        Func<IReadOnlyList<(string Namespace, string Name)>>? pods = null)
+    {
+        _nodeNames = nodeNames ?? (() => []);
+        _pods = pods ?? (() => []);
+    }
 
     public string Name => "metrics-server";
 
@@ -1204,9 +1309,46 @@ internal sealed class FakeMetricsSource : IMetricsSource
 
     public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(true);
 
-    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(new Dictionary<string, NodeUsage>());
+    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default)
+    {
+        var usage = new Dictionary<string, NodeUsage>(StringComparer.Ordinal);
+        var i = 0;
 
-    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<PodMetrics>>([]);
+        foreach (var name in _nodeNames())
+        {
+            // Spread across the nodes so a cluster of them does not draw one flat line repeated.
+            usage[name] = new NodeUsage
+            {
+                CpuMillicores = 900 + i * 260,
+                MemoryBytes = (5L + i) * 1024 * 1024 * 1024,
+                DiskUsedBytes = (30L + i * 4) * 1024 * 1024 * 1024,
+            };
+            i++;
+        }
+
+        return ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(usage);
+    }
+
+    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default)
+    {
+        // Seeded off the pod name so a pod reads the same twice running, and so the namespace and
+        // workload sums over them are worth comparing (KON-347).
+        var now = DateTimeOffset.UtcNow;
+        var pods = _pods()
+            .Where(p => ns is null || p.Namespace == ns)
+            .Select(p =>
+            {
+                var seed = Math.Abs(p.Name.Aggregate(17, (a, c) => a * 31 + c));
+                return new PodMetrics
+                {
+                    Pod = p.Name,
+                    Namespace = p.Namespace,
+                    CpuMillicores = 20 + seed % 130,
+                    MemoryBytes = (60L + seed % 200) * 1024 * 1024,
+                    Timestamp = now,
+                };
+            });
+
+        return ValueTask.FromResult<IReadOnlyList<PodMetrics>>([.. pods]);
+    }
 }

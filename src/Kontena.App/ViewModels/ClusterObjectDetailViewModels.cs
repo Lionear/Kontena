@@ -3,6 +3,7 @@ using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Controls;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
@@ -29,6 +30,7 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     private readonly Action<Pod>? _onOpenPod;
     private readonly Action? _onDelete;
     private CancellationTokenSource? _watch;
+    private CancellationTokenSource? _usage;
 
     // No onBack: Back is the shell's history now, and a page that carried its own would be a second
     // way out that has to be kept in step with the first (KON-173).
@@ -99,7 +101,78 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
         _watch?.Cancel();
         _watch?.Dispose();
         _watch = null;
+        _usage?.Cancel();
+        _usage?.Dispose();
+        _usage = null;
         GC.SuppressFinalize(this);
+    }
+
+    // ── Usage graphs (KON-347) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// The usage charts, on the kinds that configured them. Null where the page has none — a config
+    /// map has no CPU — and the Metrics tab hides itself accordingly.
+    /// </summary>
+    public UsageTrackViewModel? Usage { get; private set; }
+
+    public bool ShowUsageGraphs => Usage is not null;
+
+    /// <summary>
+    /// Give this page usage charts, fed by <paramref name="sample"/> every scrape interval.
+    /// <para>
+    /// A poll rather than a stream because there is no node or workload equivalent of
+    /// <c>StreamMetricsAsync</c>: <see cref="IMetricsSource"/> answers one snapshot at a time, and
+    /// adding a stream per kind to <see cref="IClusterEngine"/> would change the interface for every
+    /// backend to move a loop that belongs here anyway.
+    /// </para>
+    /// </summary>
+    /// <param name="sample">Returns one value per chart, or null when this tick has no answer.</param>
+    protected void ConfigureUsage(
+        IEnumerable<UsageChartSpec> charts, UsageTarget target,
+        Func<CancellationToken, Task<double[]?>> sample)
+    {
+        if (!_cluster.Capabilities.Metrics)
+            return;
+
+        Usage = new UsageTrackViewModel(
+            charts, target,
+            _cluster is IMetricsHistoryAware historyAware ? historyAware.History : null,
+            _cluster is IMetricsAware metricsAware ? metricsAware.Metrics.Name : "the metrics source");
+
+        OnPropertyChanged(nameof(ShowUsageGraphs));
+
+        _usage = new CancellationTokenSource();
+        _ = Usage.ProbeAsync(_usage.Token);
+        _ = PollUsageAsync(sample, _usage.Token);
+    }
+
+    private async Task PollUsageAsync(Func<CancellationToken, Task<double[]?>> sample, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (await sample(ct).ConfigureAwait(true) is { } values && Usage is { } usage)
+                    usage.Add(DateTimeOffset.UtcNow, values);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // One failed read is a gap, not the end of the page's charts.
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(15), ct).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
     }
 
     protected ResourceRef Reference { get; }
@@ -142,6 +215,7 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
         OnPropertyChanged(nameof(IsOverviewSelected));
         OnPropertyChanged(nameof(IsPodsSelected));
         OnPropertyChanged(nameof(IsEventsSelected));
+        OnPropertyChanged(nameof(IsMetricsSelected));
         OnPropertyChanged(nameof(IsYamlSelected));
 
         if (value == "events" && !_eventsLoaded)
@@ -153,6 +227,7 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     public bool IsOverviewSelected => SelectedTab == "overview";
     public bool IsPodsSelected => SelectedTab == "pods";
     public bool IsEventsSelected => SelectedTab == "events";
+    public bool IsMetricsSelected => SelectedTab == "metrics";
     public bool IsYamlSelected => SelectedTab == "yaml";
 
     [RelayCommand]
@@ -307,6 +382,32 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
         _workload = workload;
         _onScale = onScale;
         _onRestart = onRestart;
+
+        // Live is the sum over the pods this workload has right now; history traces them through
+        // kube_pod_owner, so a rollout's replaced pods still count (KON-347).
+        ConfigureUsage(
+            [
+                new UsageChartSpec("CPU", UsageChartUnit.Millicores, "Primary", UsageMetric.Cpu, "millicores"),
+                new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", UsageMetric.Memory, "working set"),
+            ],
+            UsageTarget.Workload(workload.Namespace, workload.Name, workload.Kind.ToString()),
+            async ct =>
+            {
+                if (cluster is not IMetricsAware aware)
+                    return null;
+
+                var usage = await aware.Metrics.GetPodUsageAsync(workload.Namespace, ct).ConfigureAwait(false);
+
+                // Matched against the pods the page already lists rather than by name pattern: the
+                // list comes from the apiserver's own ownership chain, which is the answer a regex
+                // over pod names is only guessing at.
+                var mine = Pods.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+                var rows = usage.Where(u => mine.Contains(u.Pod)).ToList();
+
+                return rows.Count == 0
+                    ? null
+                    : [rows.Sum(p => (double)p.CpuMillicores), rows.Sum(p => (double)p.MemoryBytes)];
+            });
 
         _ = LoadPodsAsync();
     }

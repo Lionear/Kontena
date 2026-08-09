@@ -41,6 +41,14 @@
                     <Button Classes="tab" Classes.on="{Binding IsEventsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="events">
                         <TextBlock Text="Events" VerticalAlignment="Center"/>
                     </Button>
+                    <!-- Usage over time (KON-347) -->
+                    <Button Classes="tab" Classes.on="{Binding IsMetricsSelected}" IsVisible="{Binding ShowUsageGraphs}"
+                            Command="{Binding SelectTabCommand}" CommandParameter="metrics">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconGauge}"/>
+                            <TextBlock Text="Metrics" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Classes="tab" Classes.on="{Binding IsYamlSelected}" Command="{Binding SelectTabCommand}" CommandParameter="yaml">
                         <TextBlock Text="YAML" VerticalAlignment="Center"/>
                     </Button>
@@ -90,6 +98,9 @@
 
             <views:RelatedPodsView IsVisible="{Binding IsPodsSelected}"/>
             <views:ObjectEventsView IsVisible="{Binding IsEventsSelected}"/>
+            <ScrollViewer IsVisible="{Binding IsMetricsSelected}">
+                <views:UsagePanel DataContext="{Binding Usage}"/>
+            </ScrollViewer>
             <views:ObjectYamlView IsVisible="{Binding IsYamlSelected}"/>
         </Panel>
     </Grid>
