@@ -105,11 +105,14 @@ public sealed class AppleEngineLifecycleTests
 
         Assert.False(capabilities.SupportsCompose);
         Assert.False(capabilities.SupportsEvents);
-        Assert.False(capabilities.SupportsExec);
-        Assert.False(capabilities.SupportsStats);
         Assert.False(capabilities.SupportsBuild);
         Assert.False(capabilities.SupportsPrune);
         Assert.False(capabilities.SupportsVolumeBrowse);
+
+        // Exec and stats are built now, and the flags say so — the terminal and the usage graphs are
+        // gated on exactly these two.
+        Assert.True(capabilities.SupportsExec);
+        Assert.True(capabilities.SupportsStats);
 
         // Containers run in per-container VMs from a user-level service: there is no root daemon.
         Assert.True(capabilities.Rootless);

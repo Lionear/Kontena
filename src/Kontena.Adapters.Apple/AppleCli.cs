@@ -53,6 +53,53 @@ internal sealed class AppleCli(IToolRunner runner)
         runner.StreamAsync(new ToolInvocation(AppleTool.Definition, args), ct);
 
     /// <summary>
+    /// Runs a command whose non-zero exit is an <b>answer</b> rather than a failure, and hands the code
+    /// back instead of throwing. Only <c>exec</c> is like this: <c>container exec</c> exits with the
+    /// exit code of the process it ran, so <c>sh -c 'exit 3'</c> gives 3.
+    /// <para>
+    /// That leaves exit 1 ambiguous — it is what a command that returned 1 gives, and also what a
+    /// refusal gives. The complaint text is what separates them, so a refusal is still raised: a
+    /// container that is not running, or a binary that is not in the image, must not come back as "your
+    /// command exited 1".
+    /// </para>
+    /// </summary>
+    public async ValueTask<int> RunForExitCodeAsync(CancellationToken ct, params string[] args)
+    {
+        var invocation = new ToolInvocation(AppleTool.Definition, args);
+        var result = await runner.RunAsync(invocation, ct).ConfigureAwait(false);
+
+        if (!result.Ok && Refused(result.Complaint))
+            throw Failure(invocation.CommandLine, result.Complaint);
+
+        return result.ExitCode;
+    }
+
+    /// <summary>
+    /// Whether a complaint is the CLI refusing to run the command at all, rather than the command
+    /// itself having failed. Both observed refusals name what went wrong before the process started —
+    /// "container X is not running", and a nested "failed to start process" for a binary the image does
+    /// not have.
+    /// </summary>
+    private static bool Refused(string complaint) =>
+        complaint.Contains("is not running", StringComparison.OrdinalIgnoreCase) ||
+        complaint.Contains("failed to start process", StringComparison.OrdinalIgnoreCase) ||
+        complaint.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+        complaint.Contains("notFound", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Where the <c>container</c> binary is. The pseudo-terminal spawns it directly rather than through
+    /// <see cref="IToolRunner"/> — that seam reads output and cannot type — so the terminal needs the
+    /// path the runner would have used, not a bare name resolved against whatever PATH the app inherited.
+    /// </summary>
+    /// <exception cref="ToolNotFoundException">The binary is not on this machine.</exception>
+    public async ValueTask<string> LocateAsync(CancellationToken ct)
+    {
+        var location = await runner.FindAsync(AppleTool.Definition, ct).ConfigureAwait(false);
+
+        return location.Path ?? throw new ToolNotFoundException(AppleTool.Definition.Name);
+    }
+
+    /// <summary>
     /// Runs a command whose output is a JSON array and deserializes it. Every <c>--format json</c>
     /// command in this CLI prints a genuine array — not the NDJSON nerdctl prints — so one parser
     /// covers all of them.
