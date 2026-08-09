@@ -21,8 +21,9 @@ namespace Kontena.Adapters.Apple;
 /// exist (<see cref="PauseUnsupported"/>, <see cref="ComposeUnsupported"/>,
 /// <see cref="EventsUnsupported"/>, <see cref="NetworkAttachUnsupported"/>). Where a capability flag
 /// exists for it, <see cref="Capabilities"/> already says so, and the UI does not offer it.</description></item>
-/// <item><description><b>Not built yet.</b> Image builds and browsing a volume land in the last stage
-/// of KON-31 (<see cref="NotYetBuilt"/>). No capability flag promises either in the meantime.</description></item>
+/// <item><description><b>The credential boundary.</b> A registry login cannot be used for a single
+/// operation without the runtime keeping the secret, so both paths that would need one are refused
+/// (<see cref="RegistryCredentialUnsupported"/>).</description></item>
 /// </list>
 /// </summary>
 internal sealed class AppleEngine(AppleCli cli, string backend, string displayName) : IContainerEngine
@@ -41,9 +42,6 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     private const string NetworkAttachUnsupported =
         "Apple container attaches networks when a container is created, not afterwards: the CLI has no " +
         "network connect/disconnect subcommand (verified against 1.2.2).";
-
-    private const string NotYetBuilt =
-        "This part of the Apple container adapter is not built yet (KON-31).";
 
     private const string RegistryCredentialUnsupported =
         "Apple container cannot use a registry login for a single operation: `container image pull` takes " +
@@ -72,16 +70,15 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     /// simplification: containers run in per-container VMs launched by a user-level launchd service, so
     /// there is no root daemon on the host to speak of — that is the runtime's whole design.
     /// <para>
-    /// Build and volume browsing exist in this CLI but are reported as unsupported until their stage of
-    /// KON-31 lands. A flag that promises what the adapter cannot yet do would put a live button in
-    /// front of an exception, which is worse than a feature arriving one PR later. Compose and events
-    /// are false for the other reason: the runtime has neither, and no PR will change that.
+    /// Everything this adapter can do now says so. What stays false is what the runtime itself lacks:
+    /// Compose and an event stream do not exist here, and no PR will change that. GPU passthrough is
+    /// false for every backend Kontena has.
     /// </para>
     /// </summary>
     public EngineCapabilities Capabilities => new()
     {
         Rootless = true,
-        SupportsBuild = false,
+        SupportsBuild = true,
         SupportsCompose = false,
         SupportsExec = true,
 
@@ -89,7 +86,7 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         // restart-policy option at all — see RestartPolicyUnsupported.
         SupportsRestartPolicy = false,
         SupportsPrune = true,
-        SupportsVolumeBrowse = false,
+        SupportsVolumeBrowse = true,
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = false,
@@ -444,10 +441,105 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         RegistryCredential credential, CancellationToken ct = default) =>
         throw new NotSupportedException(RegistryCredentialUnsupported);
 
-    /// <summary>Builds land in a later stage of KON-31; the CLI has its own BuildKit builder.</summary>
-    public IAsyncEnumerable<BuildProgress> BuildImageAsync(
-        BuildRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Builds an image through the runtime's own BuildKit builder, streaming its output.
+    /// <para>
+    /// Unlike the nerdctl plugin, this needs no reachability check first. There, <c>build</c> exists
+    /// whether or not a buildkitd does, so the plugin looks for the socket before promising anything;
+    /// here the builder is part of the runtime and the first build starts it — <c>builder status</c>
+    /// reports nothing until then, and the build works anyway.
+    /// </para>
+    /// <para>
+    /// A failure is yielded rather than thrown: the build console is where a failed build belongs, and
+    /// the caller has already shown twenty lines of it by the time the last one says why it stopped.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<BuildProgress> BuildImageAsync(
+        BuildRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (!Directory.Exists(request.ContextPath))
+        {
+            var missing = $"Build context not found: {request.ContextPath}";
+            yield return new BuildProgress(missing, missing);
+            yield break;
+        }
+
+        var lines = cli.StreamAsync(ct, [.. BuildArguments(request)]);
+        var failed = false;
+
+        // The tool seam signals a non-zero exit by throwing once the output is drained, which cannot be
+        // caught around a `yield` — so the enumerator is stepped by hand and the failure becomes the
+        // last line of the console instead of an exception out of an async stream.
+        await using var enumerator = lines.GetAsyncEnumerator(ct);
+
+        while (true)
+        {
+            string? failure = null;
+            var more = false;
+
+            try
+            {
+                more = await enumerator.MoveNextAsync().ConfigureAwait(false);
+            }
+            catch (ToolFailedException error)
+            {
+                failure = error.Complaint.Length > 0 ? error.Complaint : error.Message;
+            }
+
+            // Yielding cannot happen inside the catch, so the failure is carried out of it first.
+            if (failure is not null)
+            {
+                failed = true;
+                yield return new BuildProgress(failure, failure);
+                break;
+            }
+
+            if (!more)
+                break;
+
+            yield return new BuildProgress(enumerator.Current.Text);
+        }
+
+        if (!failed)
+            yield return new BuildProgress($"Built {request.Tag}");
+    }
+
+    /// <summary>
+    /// Every flag here exists on this CLI — <c>--target</c> and <c>--pull</c> included, which is worth
+    /// saying because the neutral request carries both and a silently dropped one is a build that did
+    /// something other than what was asked.
+    /// </summary>
+    private static List<string> BuildArguments(BuildRequest request)
+    {
+        var dockerfile = string.IsNullOrWhiteSpace(request.Dockerfile) ? "Dockerfile" : request.Dockerfile;
+
+        List<string> arguments =
+        [
+            "build",
+
+            // Plain so the output does not depend on whether the process was given a terminal, and so
+            // the caller's step parser sees BuildKit's own "#3 [2/4] RUN ..." lines.
+            "--progress", "plain",
+            "--file", Path.IsPathRooted(dockerfile) ? dockerfile : Path.Combine(request.ContextPath, dockerfile),
+            "--tag", request.Tag,
+        ];
+
+        if (!string.IsNullOrWhiteSpace(request.Target))
+            arguments.AddRange(["--target", request.Target]);
+
+        if (request.NoCache)
+            arguments.Add("--no-cache");
+
+        if (request.Pull)
+            arguments.Add("--pull");
+
+        foreach (var (key, value) in request.BuildArgs)
+            arguments.AddRange(["--build-arg", $"{key}={value}"]);
+
+        arguments.Add(request.ContextPath);
+
+        return arguments;
+    }
 
     /// <summary>
     /// Removes an image. There is no force flag here; an image a container still uses is refused with a
@@ -537,10 +629,124 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         string name, bool force = false, CancellationToken ct = default) =>
         await cli.RunAsync(ct, "volume", "delete", name).ConfigureAwait(false);
 
-    /// <summary>Volume browsing lands in a later stage of KON-31.</summary>
-    public ValueTask<VolumeListing> BrowseVolumeAsync(
-        string name, string path = "/", CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Lists what is inside a volume, by mounting it read-only into a throwaway container and asking
+    /// that container.
+    /// <para>
+    /// The Docker adapter does this without running anything — it creates a container and reads its
+    /// filesystem through the archive endpoint. This CLI has no such endpoint, so here the container
+    /// genuinely <b>runs</b>, for as long as one <c>find</c> takes, and <c>--rm</c> takes it away
+    /// afterwards. That is the honest cost of the same feature on a runtime driven by its CLI.
+    /// </para>
+    /// <para>
+    /// <c>stat</c> rather than <c>ls</c>: its format string is a contract, while <c>ls -l</c> output
+    /// varies with locale, column widths and the age of a file. Every entry comes back as
+    /// <c>type|size|mtime|path</c>, which cannot be misread.
+    /// </para>
+    /// </summary>
+    public async ValueTask<VolumeListing> BrowseVolumeAsync(
+        string name, string path = "/", CancellationToken ct = default)
+    {
+        var target = NormalizeBrowsePath(path);
+        var image = await SmallestLocalImageAsync(ct).ConfigureAwait(false);
+
+        var listing = $"find {MountPoint}{target} -maxdepth 1 -mindepth 1 -exec stat -c '%F|%s|%Y|%n' {{}} +";
+
+        string stdout;
+
+        try
+        {
+            stdout = await cli.RunAsync(
+                ct,
+                "run", "--rm",
+                "--volume", $"{name}:{MountPoint}",
+                image,
+                "sh", "-c", listing).ConfigureAwait(false);
+        }
+        catch (EngineException error) when (error.Message.Contains(
+            "No such file or directory", StringComparison.OrdinalIgnoreCase))
+        {
+            // `find` says this, and it is the one failure with an ordinary cause: someone opened a
+            // folder that has since been deleted. Everything the CLI printed before it is the VM
+            // starting up, which is noise in front of a one-line answer.
+            throw new ResourceNotFoundException(
+                $"There is no '{(target.Length == 0 ? "/" : target)}' in volume '{name}'.", error);
+        }
+
+        var entries = new List<VolumeEntry>();
+        var truncated = false;
+
+        foreach (var line in stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (AppleMap.VolumeEntry(line, MountPoint + target) is not { } entry)
+                continue;
+
+            if (entries.Count >= MaxEntries)
+            {
+                truncated = true;
+                break;
+            }
+
+            entries.Add(entry);
+        }
+
+        return new VolumeListing(target.Length == 0 ? "/" : target, entries, truncated);
+    }
+
+    /// <summary>
+    /// An image to mount the volume into. The smallest one, because it has to start: on this runtime
+    /// that means booting a virtual machine, and a 4 MB image boots faster than a 200 MB one.
+    /// </summary>
+    private async ValueTask<string> SmallestLocalImageAsync(CancellationToken ct)
+    {
+        var images = await ListImagesAsync(ct).ConfigureAwait(false);
+
+        return images
+            .Where(i => i.Tag != "<none>")
+            .OrderBy(i => i.SizeBytes)
+            .Select(i => $"{i.Repository}:{i.Tag}")
+            .FirstOrDefault()
+            ?? throw new EngineException(
+                "Browsing a volume needs an image to mount it into, and this engine has none. "
+                + "Pull any image first — nothing of your own runs in it.");
+    }
+
+    /// <summary>Where the volume is mounted inside the throwaway container.</summary>
+    private const string MountPoint = "/kontena-volume";
+
+    /// <summary>
+    /// A directory with more entries than this is listed up to here and says so. The same ceiling the
+    /// Docker adapter uses, for the same reason: past a few thousand rows the wait is the feature.
+    /// </summary>
+    private const int MaxEntries = 5_000;
+
+    /// <summary>
+    /// The path inside the volume: absolute, no trailing slash, and with no way out of the mount.
+    /// <c>..</c> is resolved here rather than passed on — the command runs inside a container whose own
+    /// filesystem sits right outside that mount point.
+    /// </summary>
+    internal static string NormalizeBrowsePath(string path)
+    {
+        var stack = new List<string>();
+
+        foreach (var part in (path ?? string.Empty).Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part == ".")
+                continue;
+
+            if (part == "..")
+            {
+                if (stack.Count > 0)
+                    stack.RemoveAt(stack.Count - 1);
+
+                continue;
+            }
+
+            stack.Add(part);
+        }
+
+        return stack.Count == 0 ? string.Empty : "/" + string.Join('/', stack);
+    }
 
     /// <summary>Removes every volume no container uses.</summary>
     public ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default) =>

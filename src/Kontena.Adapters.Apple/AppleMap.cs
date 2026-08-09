@@ -246,6 +246,45 @@ internal static class AppleMap
     }
 
     /// <summary>
+    /// Reads one line of the volume listing: <c>type|size|mtime|path</c>, as <c>stat -c</c> printed it
+    /// inside the throwaway container. Returns null for anything that does not parse, and for the
+    /// <c>lost+found</c> the filesystem itself put at the root.
+    /// </summary>
+    /// <param name="line">One <c>stat</c> line.</param>
+    /// <param name="root">The directory that was listed, so the entry can be reduced to its own name.</param>
+    public static VolumeEntry? VolumeEntry(string line, string root)
+    {
+        var parts = line.Split('|', 4);
+        if (parts.Length < 4)
+            return null;
+
+        var path = parts[3].Trim();
+        var name = path.StartsWith(root, StringComparison.Ordinal)
+            ? path[root.Length..].TrimStart('/')
+            : path;
+
+        if (name.Length == 0)
+            return null;
+
+        // Volumes here are ext4 images, and every ext4 filesystem has a lost+found at its root that
+        // nobody put there. Only at the root: a directory a user made deeper down keeps its name.
+        if (name == "lost+found" && root == "/kontena-volume")
+            return null;
+
+        _ = long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var size);
+        _ = long.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var seconds);
+
+        return new VolumeEntry(
+            name,
+
+            // `stat -c %F` spells it out: "directory", "regular file", "symbolic link". A link is not a
+            // directory here even when it points at one — following it would leave the mount.
+            parts[0].Trim() == "directory",
+            size,
+            seconds > 0 ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null);
+    }
+
+    /// <summary>
     /// Reads what an image was built with, from the variant that would actually run here — the same
     /// native-first choice <see cref="Image"/> makes for the size.
     /// <para>
