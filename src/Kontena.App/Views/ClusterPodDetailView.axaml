@@ -31,24 +31,8 @@
 
                     <!-- Live metrics (metrics-server capability). The sparkline behind each number is
                          the glance; the Metrics tab is where the same samples get axes (KON-345). -->
-                    <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center" Margin="8,0,0,0" IsVisible="{Binding SupportsMetrics}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Text="CPU" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding CpuText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
-                            <controls:UsageChart Width="78" Height="20" VerticalAlignment="Center"
-                                                 IsVisible="{Binding ShowUsageGraphs}" ShowAxes="False"
-                                                 Values="{Binding CpuSamples}" Stroke="{DynamicResource Primary}"
-                                                 ToolTip.Tip="{Binding CpuSubText}"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Text="MEM" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding MemText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
-                            <controls:UsageChart Width="78" Height="20" VerticalAlignment="Center"
-                                                 IsVisible="{Binding ShowUsageGraphs}" ShowAxes="False"
-                                                 Values="{Binding MemSamples}" Stroke="{DynamicResource Accent}"
-                                                 ToolTip.Tip="{Binding MemSubText}"/>
-                        </StackPanel>
-                    </StackPanel>
+                    <views:UsageStrip DataContext="{Binding Usage}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                      IsVisible="{Binding $parent[UserControl].((vm:ClusterPodDetailViewModel)DataContext).ShowUsageGraphs}"/>
                   </WrapPanel>
 
                   <!-- Actions -->
@@ -336,7 +320,7 @@
 
             <!-- Metrics (KON-345) — the tab placement of the usage charts -->
             <ScrollViewer IsVisible="{Binding IsMetricsSelected}">
-                <views:UsagePanel/>
+                <views:UsagePanel DataContext="{Binding Usage}"/>
             </ScrollViewer>
 
             <!-- YAML — a live editor: patch the resource straight from here (KON-69) -->

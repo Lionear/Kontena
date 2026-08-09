@@ -1,16 +1,22 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="using:Kontena.App.Controls"
+             xmlns:conv="using:Kontena.App.Converters"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="420"
              x:Class="Kontena.App.Views.UsagePanel"
-             x:DataType="vm:ClusterPodDetailViewModel">
+             x:DataType="vm:UsageTrackViewModel">
 
-    <!-- The Metrics tab's body (KON-345).
-         Stacked rather than side by side: the detail also opens as a ~500px drawer (KON-307), and
-         two charts sharing that width are too narrow to read a spike off. -->
+    <UserControl.Resources>
+        <conv:ResourceKeyToBrushConverter x:Key="KeyToBrush"/>
+    </UserControl.Resources>
+
+    <!-- The usage charts, wherever they are hosted (KON-345, KON-347). One panel for the pod,
+         container, node, workload and namespace pages, so a fix to any of it lands on all five.
+         Stacked rather than side by side: a detail also opens as a ~500px drawer (KON-307), and two
+         charts sharing that width are too narrow to read a spike off. -->
     <StackPanel Spacing="14">
 
         <!-- Range + source -->
@@ -26,9 +32,9 @@
                         <Button Classes="pill" Classes.on="{Binding IsSelected}"
                                 IsEnabled="{Binding IsAvailable}"
                                 Content="{Binding Label}"
-                                Command="{Binding $parent[ItemsControl].((vm:ClusterPodDetailViewModel)DataContext).SelectRangeCommand}"
+                                Command="{Binding $parent[ItemsControl].((vm:UsageTrackViewModel)DataContext).SelectRangeCommand}"
                                 CommandParameter="{Binding Minutes}"
-                                ToolTip.Tip="{Binding $parent[ItemsControl].((vm:ClusterPodDetailViewModel)DataContext).UsageRangeHint}"/>
+                                ToolTip.Tip="{Binding $parent[ItemsControl].((vm:UsageTrackViewModel)DataContext).RangeHint}"/>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -37,7 +43,7 @@
                     VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                     <Ellipse Width="6" Height="6" Fill="{DynamicResource Success}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding UsageSourceText}" FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
+                    <TextBlock Text="{Binding SourceText}" FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
                 </StackPanel>
             </Border>
         </Grid>
@@ -50,14 +56,14 @@
             <Grid ColumnDefinitions="Auto,*">
                 <Path Grid.Column="0" Classes="icon" Width="15" Height="15" Margin="0,1,10,0"
                       Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}" VerticalAlignment="Top"/>
-                <TextBlock Grid.Column="1" Text="{Binding UsageRangeHint}" FontSize="12.5"
+                <TextBlock Grid.Column="1" Text="{Binding RangeHint}" FontSize="12.5"
                            Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
             </Grid>
         </Border>
 
         <!-- A query that failed or came back empty. Without this the chart is simply blank, which
-             reads as a pod that used nothing rather than as an answer Kontena never got. -->
-        <Border IsVisible="{Binding HasUsageError}"
+             reads as something that used nothing rather than as an answer Kontena never got. -->
+        <Border IsVisible="{Binding HasError}"
                 Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}" BorderThickness="1"
                 CornerRadius="{StaticResource RadiusSm}" Padding="13,11">
             <Grid ColumnDefinitions="Auto,*">
@@ -68,50 +74,42 @@
             </Grid>
         </Border>
 
-        <!-- CPU -->
-        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                CornerRadius="{StaticResource Radius}" Padding="18,16,18,12">
-            <StackPanel Spacing="2">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Grid.Column="0" Text="CPU" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                    <TextBlock Grid.Column="1" Text="{Binding CpuText}" FontFamily="{StaticResource Mono}"
-                               FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                </Grid>
-                <TextBlock Text="{Binding CpuSubText}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" Margin="0,0,0,8"/>
-                <controls:UsageChart Height="130" TextElement.FontFamily="{StaticResource Mono}"
-                                     Values="{Binding CpuSamples}"
-                                     Unit="Millicores"
-                                     RangeLabel="{Binding RangeLabel}"
-                                     Stroke="{DynamicResource Primary}"
-                                     AxisBrush="{DynamicResource BorderSoft}"
-                                     LabelBrush="{DynamicResource TextFaint}"
-                                     ReadoutBackground="{DynamicResource SurfaceRaised}"/>
-            </StackPanel>
-        </Border>
+        <!-- One card per measure -->
+        <ItemsControl ItemsSource="{Binding Charts}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Spacing="14"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:UsageChartViewModel">
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{StaticResource Radius}" Padding="18,16,18,12">
+                        <StackPanel Spacing="2">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextDim}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding NowText}" FontFamily="{StaticResource Mono}"
+                                           FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                            </Grid>
+                            <TextBlock Text="{Binding SubText}" FontSize="11.5" Foreground="{DynamicResource TextFaint}"
+                                       Margin="0,0,0,8"/>
+                            <controls:UsageChart Height="130" TextElement.FontFamily="{StaticResource Mono}"
+                                                 Values="{Binding Samples}"
+                                                 Unit="{Binding Unit}"
+                                                 RangeLabel="{Binding $parent[ItemsControl].((vm:UsageTrackViewModel)DataContext).RangeLabel}"
+                                                 Stroke="{Binding BrushKey, Converter={StaticResource KeyToBrush}}"
+                                                 AxisBrush="{DynamicResource BorderSoft}"
+                                                 LabelBrush="{DynamicResource TextFaint}"
+                                                 ReadoutBackground="{DynamicResource SurfaceRaised}"/>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
-        <!-- Memory -->
-        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                CornerRadius="{StaticResource Radius}" Padding="18,16,18,12">
-            <StackPanel Spacing="2">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Grid.Column="0" Text="Memory" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                    <TextBlock Grid.Column="1" Text="{Binding MemText}" FontFamily="{StaticResource Mono}"
-                               FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                </Grid>
-                <TextBlock Text="{Binding MemSubText}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" Margin="0,0,0,8"/>
-                <controls:UsageChart Height="130" TextElement.FontFamily="{StaticResource Mono}"
-                                     Values="{Binding MemSamples}"
-                                     Unit="Bytes"
-                                     RangeLabel="{Binding RangeLabel}"
-                                     Stroke="{DynamicResource Accent}"
-                                     AxisBrush="{DynamicResource BorderSoft}"
-                                     LabelBrush="{DynamicResource TextFaint}"
-                                     ReadoutBackground="{DynamicResource SurfaceRaised}"/>
-            </StackPanel>
-        </Border>
-
-        <!-- The first poll is 15s away; an empty frame with no explanation reads as broken. -->
-        <TextBlock IsVisible="{Binding UsageIsEmpty}" Text="Waiting for the first sample…"
+        <!-- The first sample is one poll away; an empty frame with no explanation reads as broken. -->
+        <TextBlock IsVisible="{Binding IsEmpty}" Text="Waiting for the first sample…"
                    FontSize="12" Foreground="{DynamicResource TextFaint}" HorizontalAlignment="Center"/>
     </StackPanel>
 </UserControl>

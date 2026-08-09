@@ -1192,16 +1192,22 @@ internal sealed class FakeMetricsHistory : IMetricsHistory
     public TimeSpan RefreshInterval(TimeSpan range) =>
         TimeSpan.FromSeconds(Math.Clamp(range.TotalSeconds / 120, 30, 300));
 
-    public ValueTask<IReadOnlyList<UsageSample>> GetPodHistoryAsync(
-        ResourceRef pod, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
+    /// <summary>Everything but the node, mirroring what a real Prometheus source can express.</summary>
+    public bool Supports(UsageScope scope) => scope != UsageScope.Node;
+
+    public ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
+        UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
     {
+        if (!Supports(target.Scope))
+            return ValueTask.FromResult<IReadOnlyList<UsageSample>>([]);
+
         const int points = 60;
         var end = DateTimeOffset.UtcNow;
         var step = range / points;
 
         // Seeded off the pod name so the same pod draws the same shape twice running — a chart that
         // reshuffles on every refresh is a chart nobody can compare against the last look.
-        var seed = pod.Name.Aggregate(17, (a, c) => a * 31 + c);
+        var seed = target.Name.Aggregate(17, (a, c) => a * 31 + c);
         var samples = new List<UsageSample>(points);
 
         for (var i = 0; i < points; i++)

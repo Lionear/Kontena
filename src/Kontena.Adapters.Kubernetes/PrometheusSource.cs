@@ -59,23 +59,26 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
         return false;
     }
 
-    public async ValueTask<IReadOnlyList<UsageSample>> GetPodHistoryAsync(
-        ResourceRef pod, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
-    {
-        if (_endpoint is not { } endpoint || pod.Namespace is not { Length: > 0 } ns)
-            return [];
+    /// <summary>
+    /// Every scope but the node. A node's own usage comes from node-exporter, whose series are keyed
+    /// by scrape address rather than by node name; joining the two needs kube_node_info and would
+    /// produce a number that quietly disagrees with the live gauge beside it. Left to its own ticket
+    /// rather than shipped approximately.
+    /// </summary>
+    public bool Supports(UsageScope scope) => scope != UsageScope.Node;
 
-        // Object names are RFC 1123 and cannot contain a quote, but the query is still built from
-        // strings that came off the wire — a name that somehow does gets refused rather than
-        // interpolated into PromQL.
-        if (!IsSafeName(ns) || !IsSafeName(pod.Name))
+    public async ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
+        UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
+    {
+        if (_endpoint is not { } endpoint || !Supports(target.Scope))
             return [];
 
         var end = DateTimeOffset.UtcNow;
         var start = end - range;
         var step = StepFor(range);
 
-        var query = QueryFor(metric, ns, pod.Name, RateWindow(step));
+        if (QueryFor(target, metric, RateWindow(step)) is not { } query)
+            return [];
         var path = "api/v1/query_range"
                    + $"?query={Uri.EscapeDataString(query)}"
                    + $"&start={Unix(start)}&end={Unix(end)}"
@@ -105,20 +108,75 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
         TimeSpan.FromSeconds(Math.Max(120, step.TotalSeconds * 4));
 
     /// <summary>
-    /// The PromQL for one pod's CPU or memory, summed over its containers.
+    /// The PromQL for a target's CPU or memory, summed over its containers, or null when the target
+    /// cannot be expressed — an unsupported scope, or a name no Kubernetes object could carry.
     /// <para>
     /// <c>container!=""</c> drops the pod-level rollup series and <c>container!="POD"</c> drops the
     /// pause container; without both, every value is counted twice.
     /// </para>
     /// </summary>
-    internal static string QueryFor(UsageMetric metric, string ns, string pod, TimeSpan rateWindow)
+    internal static string? QueryFor(UsageTarget target, UsageMetric metric, TimeSpan rateWindow)
     {
-        var selector = $"namespace=\"{ns}\",pod=\"{pod}\",container!=\"\",container!=\"POD\"";
+        // Object names are RFC 1123 and cannot contain a quote, but the query is still built from
+        // strings that came off the wire — a name that somehow does is refused rather than
+        // interpolated into PromQL.
+        if (!IsSafeName(target.Name) || (target.Namespace is { } n && !IsSafeName(n)))
+            return null;
+
+        var cadvisor = "container!=\"\",container!=\"POD\"";
+        var window = (int)rateWindow.TotalSeconds;
+
+        string series = target.Scope switch
+        {
+            UsageScope.Pod =>
+                Metric(metric, $"namespace=\"{target.Namespace}\",pod=\"{target.Name}\",{cadvisor}", window),
+
+            UsageScope.Namespace =>
+                Metric(metric, $"namespace=\"{target.Name}\",{cadvisor}", window),
+
+            // Pods are traced to their workload through kube-state-metrics rather than by matching
+            // pod names: a Deployment called "api" and one called "api-worker" produce pod names
+            // that a prefix match cannot tell apart, and the pods a rollout replaced still count.
+            UsageScope.Workload when OwnerSelector(target) is { } owner =>
+                Metric(metric, $"namespace=\"{target.Namespace}\",{cadvisor}", window)
+                + $" * on(namespace,pod) group_left() kube_pod_owner{{{owner}}}",
+
+            _ => string.Empty,
+        };
+
+        if (series.Length == 0)
+            return null;
 
         return metric == UsageMetric.Cpu
             // Cores × 1000: Kontena counts milli-cores everywhere else.
-            ? $"sum(rate(container_cpu_usage_seconds_total{{{selector}}}[{(int)rateWindow.TotalSeconds}s])) * 1000"
-            : $"sum(container_memory_working_set_bytes{{{selector}}})";
+            ? $"sum({series}) * 1000"
+            : $"sum({series})";
+    }
+
+    private static string Metric(UsageMetric metric, string selector, int window) =>
+        metric == UsageMetric.Cpu
+            ? $"rate(container_cpu_usage_seconds_total{{{selector}}}[{window}s])"
+            : $"container_memory_working_set_bytes{{{selector}}}";
+
+    /// <summary>
+    /// How <c>kube_pod_owner</c> names the owner of this workload's pods. A Deployment does not own
+    /// pods directly — its ReplicaSets do, and they are named <c>&lt;deployment&gt;-&lt;hash&gt;</c>
+    /// — and a CronJob owns them through a Job named <c>&lt;cronjob&gt;-&lt;timestamp&gt;</c>.
+    /// PromQL anchors its regexes, so the hash pattern cannot spill onto a longer name.
+    /// </summary>
+    internal static string? OwnerSelector(UsageTarget target)
+    {
+        var ns = $"namespace=\"{target.Namespace}\"";
+        var name = target.Name.Replace(".", "\\.", StringComparison.Ordinal);
+
+        return target.Kind switch
+        {
+            "Deployment" => $"{ns},owner_kind=\"ReplicaSet\",owner_name=~\"{name}-[a-z0-9]+\"",
+            "CronJob" => $"{ns},owner_kind=\"Job\",owner_name=~\"{name}-[0-9]+\"",
+            "StatefulSet" or "DaemonSet" or "Job" =>
+                $"{ns},owner_kind=\"{target.Kind}\",owner_name=\"{target.Name}\"",
+            _ => null,
+        };
     }
 
     /// <summary>Object names are RFC 1123; anything else never came from a Kubernetes object.</summary>

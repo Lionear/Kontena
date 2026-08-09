@@ -1,5 +1,3 @@
-using Kontena.Sdk.Orchestration.Models;
-
 namespace Kontena.Sdk.Orchestration;
 
 /// <summary>Which measure a history query is about.</summary>
@@ -16,6 +14,44 @@ public enum UsageMetric
 /// <param name="At">When it was measured (UTC).</param>
 /// <param name="Value">Milli-cores or bytes, per the <see cref="UsageMetric"/> asked for.</param>
 public readonly record struct UsageSample(DateTimeOffset At, double Value);
+
+/// <summary>What a history query is about.</summary>
+public enum UsageScope
+{
+    /// <summary>One pod.</summary>
+    Pod = 0,
+
+    /// <summary>Every pod a workload owns, including the ones a rollout has since replaced.</summary>
+    Workload,
+
+    /// <summary>Every pod in a namespace.</summary>
+    Namespace,
+
+    /// <summary>One node.</summary>
+    Node,
+}
+
+/// <summary>
+/// The thing whose usage is being asked for.
+/// </summary>
+/// <param name="Scope">Which kind of thing.</param>
+/// <param name="Name">Its name.</param>
+/// <param name="Namespace">Its namespace; null for cluster-scoped scopes.</param>
+/// <param name="Kind">
+/// For <see cref="UsageScope.Workload"/>, the workload kind — "Deployment", "StatefulSet",
+/// "DaemonSet", "Job" or "CronJob". It decides how the pods are traced back to their owner, which
+/// differs per kind: a Deployment owns its pods through a ReplicaSet and a CronJob through a Job.
+/// </param>
+public readonly record struct UsageTarget(
+    UsageScope Scope, string Name, string? Namespace = null, string? Kind = null)
+{
+    public static UsageTarget Pod(string ns, string name) => new(UsageScope.Pod, name, ns);
+    public static UsageTarget Namespaced(string ns) => new(UsageScope.Namespace, ns, ns);
+    public static UsageTarget Node(string name) => new(UsageScope.Node, name);
+
+    public static UsageTarget Workload(string ns, string name, string kind) =>
+        new(UsageScope.Workload, name, ns, kind);
+}
 
 /// <summary>
 /// A source that can answer for the <b>past</b>, which <see cref="IMetricsSource"/> deliberately
@@ -45,15 +81,24 @@ public interface IMetricsHistory
     ValueTask<bool> ProbeAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// One pod's usage over the last <paramref name="range"/>, oldest first. Empty when the source
-    /// has nothing for that pod — a pod younger than the range, or a scrape that never saw it.
+    /// Whether this source can answer for that kind of thing at all. Not every scope has a series
+    /// behind it: container metrics roll up to pods, workloads and namespaces cleanly, while a
+    /// node's own usage lives in a different exporter keyed by address rather than by node name.
+    /// A page whose scope is unsupported keeps to the live buffer instead of offering ranges that
+    /// come back empty.
+    /// </summary>
+    bool Supports(UsageScope scope);
+
+    /// <summary>
+    /// One target's usage over the last <paramref name="range"/>, oldest first. Empty when the
+    /// source has nothing — a pod younger than the range, or a scrape that never saw it.
     /// <para>
     /// The resolution is the source's to choose: a range query is answered at whatever step keeps
     /// the series a sensible size, and the caller draws what it is given.
     /// </para>
     /// </summary>
-    ValueTask<IReadOnlyList<UsageSample>> GetPodHistoryAsync(
-        ResourceRef pod, UsageMetric metric, TimeSpan range, CancellationToken ct = default);
+    ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
+        UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default);
 
     /// <summary>
     /// How often re-asking is worth it for this range. A 15-minute chart moves every scrape; a
@@ -83,8 +128,10 @@ public sealed class NoMetricsHistory : IMetricsHistory
 
     public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(false);
 
-    public ValueTask<IReadOnlyList<UsageSample>> GetPodHistoryAsync(
-        ResourceRef pod, UsageMetric metric, TimeSpan range, CancellationToken ct = default) =>
+    public bool Supports(UsageScope scope) => false;
+
+    public ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
+        UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<UsageSample>>([]);
 
     public TimeSpan RefreshInterval(TimeSpan range) => TimeSpan.FromMinutes(1);

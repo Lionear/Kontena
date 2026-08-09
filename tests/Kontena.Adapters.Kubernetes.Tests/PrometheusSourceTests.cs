@@ -18,7 +18,7 @@ public sealed class PrometheusSourceTests
     {
         // Both exclusions matter: container="" is the pod-level rollup and container="POD" is the
         // pause container. Leave either in and every pod reads as using twice what it does.
-        var query = PrometheusSource.QueryFor(UsageMetric.Cpu, "payments", "api-7d4f9", TimeSpan.FromMinutes(2));
+        var query = PrometheusSource.QueryFor(UsageTarget.Pod("payments", "api-7d4f9"), UsageMetric.Cpu, TimeSpan.FromMinutes(2))!;
 
         Assert.Contains("container!=\"\"", query, StringComparison.Ordinal);
         Assert.Contains("container!=\"POD\"", query, StringComparison.Ordinal);
@@ -33,7 +33,7 @@ public sealed class PrometheusSourceTests
     [Fact]
     public void The_memory_query_is_a_plain_sum_with_no_rate()
     {
-        var query = PrometheusSource.QueryFor(UsageMetric.Memory, "payments", "api-7d4f9", TimeSpan.FromMinutes(2));
+        var query = PrometheusSource.QueryFor(UsageTarget.Pod("payments", "api-7d4f9"), UsageMetric.Memory, TimeSpan.FromMinutes(2))!;
 
         Assert.Contains("container_memory_working_set_bytes", query, StringComparison.Ordinal);
         Assert.DoesNotContain("rate(", query, StringComparison.Ordinal);

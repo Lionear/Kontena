@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
+             xmlns:conv="using:Kontena.App.Converters"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="24"
+             x:Class="Kontena.App.Views.UsageStrip"
+             x:DataType="vm:UsageTrackViewModel">
+
+    <UserControl.Resources>
+        <conv:ResourceKeyToBrushConverter x:Key="KeyToBrush"/>
+    </UserControl.Resources>
+
+    <!-- The glance (KON-345): each measure's current value with the shape behind it. Beside the
+         charts rather than instead of them — this answers "is it steady", the panel answers
+         "what happened at 14:02". -->
+    <ItemsControl ItemsSource="{Binding Charts}">
+        <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="16"/>
+            </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:UsageChartViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" FontSize="11" Foreground="{DynamicResource TextFaint}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding NowText}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                    <controls:UsageChart Width="78" Height="20" VerticalAlignment="Center" ShowAxes="False"
+                                         Values="{Binding Samples}"
+                                         Unit="{Binding Unit}"
+                                         Stroke="{Binding BrushKey, Converter={StaticResource KeyToBrush}}"
+                                         ToolTip.Tip="{Binding SubText}"/>
+                </StackPanel>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>

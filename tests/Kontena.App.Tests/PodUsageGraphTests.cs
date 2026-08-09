@@ -28,10 +28,10 @@ public sealed class PodUsageGraphTests
     private static async Task<ClusterPodDetailViewModel> WithHistoryAsync()
     {
         var detail = Detail(history: true);
-        for (var i = 0; i < 200 && !detail.HasHistory; i++)
+        for (var i = 0; i < 200 && !detail.Usage.HasHistory; i++)
             await Task.Delay(5);
 
-        Assert.True(detail.HasHistory, "the fake history source never reported itself available");
+        Assert.True(detail.Usage.HasHistory, "the fake history source never reported itself available");
         return detail;
     }
 
@@ -55,6 +55,19 @@ public sealed class PodUsageGraphTests
     }
 
     [Fact]
+    public void A_pod_that_is_not_running_charts_nothing_and_says_so()
+    {
+        // Asserting the empty state on a Running pod raced its own first sample — the stream starts
+        // in the constructor. A pod that never streams is the deterministic way to pin it.
+        using var detail = new ClusterPodDetailViewModel(
+            new FakeClusterEngine(), SamplePod() with { Phase = PodPhase.Pending }, Font());
+
+        Assert.True(detail.Usage.IsEmpty);
+        Assert.Empty(detail.Usage.Charts[0].Samples);
+        Assert.Equal("—", detail.Usage.Charts[0].NowText);
+    }
+
+    [Fact]
     public void A_pod_opens_on_the_whole_live_buffer()
     {
         using var detail = Detail();
@@ -62,7 +75,7 @@ public sealed class PodUsageGraphTests
         // The range that was picked. What the axis says about it is
         // The_axis_says_how_far_back_the_chart_reaches_not_the_range_that_was_picked — asserting the
         // label here raced the first sample, which is the very thing that changes it.
-        Assert.Equal(UsageGraphs.DefaultRangeMinutes, detail.RangeMinutes);
+        Assert.Equal(UsageGraphs.DefaultRangeMinutes, detail.Usage.RangeMinutes);
     }
 
     [Fact]
@@ -72,14 +85,14 @@ public sealed class PodUsageGraphTests
         // needs a source, and a selector that stops at 15m explains nothing.
         using var detail = Detail();
 
-        var day = Assert.Single(detail.RangeOptions, o => o.Minutes == 1440);
+        var day = Assert.Single(detail.Usage.RangeOptions, o => o.Minutes == 1440);
         Assert.False(day.IsAvailable);
 
-        detail.SelectRangeCommand.Execute(1440);
-        Assert.Equal(15, detail.RangeMinutes);
+        detail.Usage.SelectRangeCommand.Execute(1440);
+        Assert.Equal(15, detail.Usage.RangeMinutes);
 
-        detail.SelectRangeCommand.Execute(5);
-        Assert.Equal(5, detail.RangeMinutes);
+        detail.Usage.SelectRangeCommand.Execute(5);
+        Assert.Equal(5, detail.Usage.RangeMinutes);
     }
 
     [Fact]
@@ -90,21 +103,21 @@ public sealed class PodUsageGraphTests
         // exactly like a quarter hour of flat data.
         using var detail = Detail();
 
-        for (var i = 0; i < 200 && detail.CpuSamples.Count < 3; i++)
+        for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count < 3; i++)
             await Task.Delay(5);
 
         // The fake's three samples span 30s, so the axis has to say seconds, not minutes.
-        Assert.EndsWith("s", detail.RangeLabel, StringComparison.Ordinal);
-        Assert.NotEqual("15m", detail.RangeLabel);
+        Assert.EndsWith("s", detail.Usage.RangeLabel, StringComparison.Ordinal);
+        Assert.NotEqual("15m", detail.Usage.RangeLabel);
     }
 
     [Fact]
     public void The_selected_range_is_the_one_marked_in_the_selector()
     {
         using var detail = Detail();
-        detail.SelectRangeCommand.Execute(5);
+        detail.Usage.SelectRangeCommand.Execute(5);
 
-        var selected = Assert.Single(detail.RangeOptions, o => o.IsSelected);
+        var selected = Assert.Single(detail.Usage.RangeOptions, o => o.IsSelected);
         Assert.Equal(5, selected.Minutes);
     }
 
@@ -113,19 +126,17 @@ public sealed class PodUsageGraphTests
     {
         using var detail = Detail();
 
-        Assert.True(detail.UsageIsEmpty);
-
-        for (var i = 0; i < 200 && detail.CpuSamples.Count < 3; i++)
+        for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count < 3; i++)
             await Task.Delay(5);
 
-        Assert.Equal(3, detail.CpuSamples.Count);
-        Assert.Equal(3, detail.MemSamples.Count);
-        Assert.False(detail.UsageIsEmpty);
+        Assert.Equal(3, detail.Usage.Charts[0].Samples.Count);
+        Assert.Equal(3, detail.Usage.Charts[1].Samples.Count);
+        Assert.False(detail.Usage.IsEmpty);
 
         // The subtitle is the chart's own summary of what it drew, so it must follow the samples
         // rather than repeat the bare unit it starts as.
-        Assert.Contains("peak", detail.CpuSubText, StringComparison.Ordinal);
-        Assert.Contains("peak", detail.MemSubText, StringComparison.Ordinal);
+        Assert.Contains("peak", detail.Usage.Charts[0].SubText, StringComparison.Ordinal);
+        Assert.Contains("peak", detail.Usage.Charts[1].SubText, StringComparison.Ordinal);
     }
 
     // ── History (Prometheus) ─────────────────────────────────────────────────
@@ -135,10 +146,10 @@ public sealed class PodUsageGraphTests
     {
         using var detail = await WithHistoryAsync();
 
-        Assert.All(detail.RangeOptions, o => Assert.True(o.IsAvailable, $"{o.Label} stayed disabled"));
+        Assert.All(detail.Usage.RangeOptions, o => Assert.True(o.IsAvailable, $"{o.Label} stayed disabled"));
 
-        detail.SelectRangeCommand.Execute(1440);
-        Assert.Equal(1440, detail.RangeMinutes);
+        detail.Usage.SelectRangeCommand.Execute(1440);
+        Assert.Equal(1440, detail.Usage.RangeMinutes);
     }
 
     [Fact]
@@ -146,16 +157,16 @@ public sealed class PodUsageGraphTests
     {
         using var detail = await WithHistoryAsync();
 
-        detail.SelectRangeCommand.Execute(1440);
-        for (var i = 0; i < 200 && detail.CpuSamples.Count <= 3; i++)
+        detail.Usage.SelectRangeCommand.Execute(1440);
+        for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count <= 3; i++)
             await Task.Delay(5);
 
         // The live buffer cannot hold more than a handful of samples this early; a day's worth of
         // points can only have come from the history source.
-        Assert.True(detail.CpuSamples.Count > 3, $"only {detail.CpuSamples.Count} points — buffer, not history");
-        Assert.Equal(detail.CpuSamples.Count, detail.MemSamples.Count);
-        Assert.Contains("Prometheus", detail.UsageSourceText, StringComparison.Ordinal);
-        Assert.Empty(detail.UsageError);
+        Assert.True(detail.Usage.Charts[0].Samples.Count > 3, $"only {detail.Usage.Charts[0].Samples.Count} points — buffer, not history");
+        Assert.Equal(detail.Usage.Charts[0].Samples.Count, detail.Usage.Charts[1].Samples.Count);
+        Assert.Contains("Prometheus", detail.Usage.SourceText, StringComparison.Ordinal);
+        Assert.Empty(detail.Usage.UsageError);
     }
 
     [Fact]
@@ -165,17 +176,17 @@ public sealed class PodUsageGraphTests
         // series that starts at the moment of switching.
         using var detail = await WithHistoryAsync();
 
-        for (var i = 0; i < 200 && detail.CpuSamples.Count < 3; i++)
+        for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count < 3; i++)
             await Task.Delay(5);
 
-        detail.SelectRangeCommand.Execute(1440);
-        for (var i = 0; i < 200 && detail.CpuSamples.Count <= 3; i++)
+        detail.Usage.SelectRangeCommand.Execute(1440);
+        for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count <= 3; i++)
             await Task.Delay(5);
 
-        detail.SelectRangeCommand.Execute(15);
+        detail.Usage.SelectRangeCommand.Execute(15);
 
-        Assert.Equal(3, detail.CpuSamples.Count);
-        Assert.DoesNotContain("Prometheus", detail.UsageSourceText, StringComparison.Ordinal);
+        Assert.Equal(3, detail.Usage.Charts[0].Samples.Count);
+        Assert.DoesNotContain("Prometheus", detail.Usage.SourceText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -183,8 +194,8 @@ public sealed class PodUsageGraphTests
     {
         using var detail = Detail();
 
-        Assert.False(detail.HasHistory);
-        Assert.Contains("keeps no history", detail.UsageRangeHint, StringComparison.Ordinal);
+        Assert.False(detail.Usage.HasHistory);
+        Assert.Contains("keeps no history", detail.Usage.RangeHint, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -194,15 +205,15 @@ public sealed class PodUsageGraphTests
         // range cannot leave the two telling different stories about the same pod.
         using var detail = Detail();
 
-        for (var i = 0; i < 200 && detail.CpuSamples.Count < 3; i++)
+        for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count < 3; i++)
             await Task.Delay(5);
 
         // The fake's three samples are 15s apart, so a 5-minute window still holds all of them —
         // what matters is that the window is recomputed rather than left at the old range's result.
-        var before = detail.CpuSamples;
-        detail.SelectRangeCommand.Execute(5);
+        var before = detail.Usage.Charts[0].Samples;
+        detail.Usage.SelectRangeCommand.Execute(5);
 
-        Assert.NotSame(before, detail.CpuSamples);
-        Assert.Equal(before.Count, detail.CpuSamples.Count);
+        Assert.NotSame(before, detail.Usage.Charts[0].Samples);
+        Assert.Equal(before.Count, detail.Usage.Charts[0].Samples.Count);
     }
 }

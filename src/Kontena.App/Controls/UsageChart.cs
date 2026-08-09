@@ -16,6 +16,9 @@ public enum UsageChartUnit
 
     /// <summary>Memory in bytes — formatted by <see cref="ByteSize"/>.</summary>
     Bytes,
+
+    /// <summary>A percentage of one core, the way a container engine reports CPU — "12.4%".</summary>
+    Percent,
 }
 
 /// <summary>
@@ -257,6 +260,7 @@ public sealed class UsageChart : Control
     private string Label(double value) => Unit switch
     {
         UsageChartUnit.Bytes => ByteSize.Format((long)Math.Round(value)),
+        UsageChartUnit.Percent => value.ToString("0.0", CultureInfo.InvariantCulture) + "%",
         _ => Math.Round(value).ToString("0", CultureInfo.InvariantCulture) + "m",
     };
 
