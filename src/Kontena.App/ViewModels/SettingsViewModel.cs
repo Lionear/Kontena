@@ -312,8 +312,6 @@ public partial class SettingsViewModel : ViewModelBase
 
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
-        _usageGraphs = settings.UsageGraphs;
-        _usageGraphRangeMinutes = settings.UsageGraphRangeMinutes;
         _autoDetect = settings.AutoDetectEngines;
 
         // Read from the system, not from the file. Someone can delete the autostart entry by hand or
@@ -423,51 +421,6 @@ public partial class SettingsViewModel : ViewModelBase
     {
         DensityApplier.Apply(value);
         Save();
-    }
-
-    // ── Usage graphs (KON-345) ───────────────────────────────────────────────
-
-    [ObservableProperty] private UsageGraphPlacement _usageGraphs;
-
-    partial void OnUsageGraphsChanged(UsageGraphPlacement value)
-    {
-        OnPropertyChanged(nameof(IsUsageTab));
-        OnPropertyChanged(nameof(IsUsageSparkline));
-        OnPropertyChanged(nameof(IsUsageOverview));
-        Save();
-    }
-
-    public bool IsUsageTab => UsageGraphs == UsageGraphPlacement.MetricsTab;
-    public bool IsUsageSparkline => UsageGraphs == UsageGraphPlacement.Sparkline;
-    public bool IsUsageOverview => UsageGraphs == UsageGraphPlacement.Overview;
-
-    [RelayCommand]
-    private void SetUsageGraphs(string placement) => UsageGraphs = placement switch
-    {
-        "sparkline" => UsageGraphPlacement.Sparkline,
-        "overview" => UsageGraphPlacement.Overview,
-        _ => UsageGraphPlacement.MetricsTab,
-    };
-
-    [ObservableProperty] private int _usageGraphRangeMinutes;
-
-    partial void OnUsageGraphRangeMinutesChanged(int value)
-    {
-        OnPropertyChanged(nameof(UsageRangeOptions));
-        Save();
-    }
-
-    /// <summary>The same selector the pod detail shows, with the same ranges disabled (KON-84).</summary>
-    public IReadOnlyList<UsageRangeOption> UsageRangeOptions =>
-        [.. UsageGraphOptions.Ranges.Select(m => new UsageRangeOption(
-            m, Format.Duration(TimeSpan.FromMinutes(m)), UsageGraphOptions.IsLive(m),
-            m == UsageGraphRangeMinutes))];
-
-    [RelayCommand]
-    private void SetUsageRange(int minutes)
-    {
-        if (UsageGraphOptions.IsLive(minutes))
-            UsageGraphRangeMinutes = minutes;
     }
 
     [RelayCommand]
@@ -605,8 +558,6 @@ public partial class SettingsViewModel : ViewModelBase
         {
             Theme = Theme,
             CompactDensity = CompactDensity,
-            UsageGraphs = UsageGraphs,
-            UsageGraphRangeMinutes = UsageGraphRangeMinutes,
             AutoDetectEngines = AutoDetect,
             Startup = startup,
             PinnedBackend = startup == StartupBackend.Pinned ? pinned : null,

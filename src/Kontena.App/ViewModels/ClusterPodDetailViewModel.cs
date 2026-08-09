@@ -53,16 +53,11 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     /// <param name="onDelete">Invoked by the header's Delete (KON-334). The shell's, for the same
     /// reason as on the other detail pages: deleting the pod this page describes also has to close
     /// the page and drop the history step that leads back to it (KON-173).</param>
-    /// <param name="usageGraphs">Where and how far back to chart usage (KON-345).</param>
     public ClusterPodDetailViewModel(
         IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null,
         PortForwardRegistry? portForwards = null, Func<ResourceRef, Task<bool>>? onOpenController = null,
-        Action? onDelete = null, UsageGraphOptions? usageGraphs = null)
+        Action? onDelete = null)
     {
-        var usage = usageGraphs ?? UsageGraphOptions.Default;
-        _placement = usage.Placement;
-        _rangeMinutes = usage.RangeMinutes;
-
         _cluster = cluster;
         _pod = pod;
         _onForward = onForward;
@@ -283,20 +278,22 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     // ── Usage graphs (KON-345) ─────────────────────────────────────────────────
 
-    private readonly UsageSeries _cpuSeries = new(UsageGraphOptions.LiveBuffer);
-    private readonly UsageSeries _memSeries = new(UsageGraphOptions.LiveBuffer);
-    private readonly UsageGraphPlacement _placement;
+    private readonly UsageSeries _cpuSeries = new(UsageGraphs.LiveBuffer);
+    private readonly UsageSeries _memSeries = new(UsageGraphs.LiveBuffer);
 
-    /// <summary>Charts live behind the sparkline, the tab or Overview — never more than one.</summary>
-    public bool ShowSparklines => SupportsMetrics && _placement == UsageGraphPlacement.Sparkline;
-    public bool ShowMetricsTab => SupportsMetrics && _placement == UsageGraphPlacement.MetricsTab;
-    public bool ShowInlineCharts => SupportsMetrics && _placement == UsageGraphPlacement.Overview;
+    /// <summary>
+    /// Both the header sparkline and the Metrics tab, or neither. They are not alternatives: the
+    /// sparkline answers "is it steady", the tab answers "what happened at 14:02". Only a cluster
+    /// with no metrics source has neither.
+    /// </summary>
+    public bool ShowUsageGraphs => SupportsMetrics;
 
     [ObservableProperty] private IReadOnlyList<double> _cpuSamples = [];
     [ObservableProperty] private IReadOnlyList<double> _memSamples = [];
 
-    /// <summary>How far back the charts show, in minutes.</summary>
-    [ObservableProperty] private int _rangeMinutes;
+    /// <summary>How far back the charts show, in minutes. Shared by the tab and the sparkline, so
+    /// narrowing the range in one narrows the story both of them tell.</summary>
+    [ObservableProperty] private int _rangeMinutes = UsageGraphs.DefaultRangeMinutes;
 
     partial void OnRangeMinutesChanged(int value)
     {
@@ -313,13 +310,13 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     /// buttons and their tooltip answer, and a selector that stops at 15m does not raise it.
     /// </summary>
     public IReadOnlyList<UsageRangeOption> RangeOptions =>
-        [.. UsageGraphOptions.Ranges.Select(m => new UsageRangeOption(
-            m, Format.Duration(TimeSpan.FromMinutes(m)), UsageGraphOptions.IsLive(m), m == RangeMinutes))];
+        [.. UsageGraphs.Ranges.Select(m => new UsageRangeOption(
+            m, Format.Duration(TimeSpan.FromMinutes(m)), UsageGraphs.IsLive(m), m == RangeMinutes))];
 
     [RelayCommand]
     private void SelectRange(int minutes)
     {
-        if (UsageGraphOptions.IsLive(minutes))
+        if (UsageGraphs.IsLive(minutes))
             RangeMinutes = minutes;
     }
 
@@ -344,7 +341,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     private void RefreshUsage()
     {
-        var range = new UsageGraphOptions(_placement, RangeMinutes).Range;
+        var range = UsageGraphs.Range(RangeMinutes);
         var now = DateTimeOffset.UtcNow;
 
         CpuSamples = _cpuSeries.Window(range, now);

@@ -29,14 +29,14 @@
                     </Border>
                     <TextBlock Text="{Binding ReadyText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
 
-                    <!-- Live metrics (metrics-server capability). The sparklines behind the numbers are
-                         one of the three placements from KON-345 — see the setting in General. -->
+                    <!-- Live metrics (metrics-server capability). The sparkline behind each number is
+                         the glance; the Metrics tab is where the same samples get axes (KON-345). -->
                     <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center" Margin="8,0,0,0" IsVisible="{Binding SupportsMetrics}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="CPU" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding CpuText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                             <controls:UsageChart Width="78" Height="20" VerticalAlignment="Center"
-                                                 IsVisible="{Binding ShowSparklines}" ShowAxes="False"
+                                                 IsVisible="{Binding ShowUsageGraphs}" ShowAxes="False"
                                                  Values="{Binding CpuSamples}" Stroke="{DynamicResource Primary}"
                                                  ToolTip.Tip="{Binding CpuSubText}"/>
                         </StackPanel>
@@ -44,7 +44,7 @@
                             <TextBlock Text="MEM" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding MemText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                             <controls:UsageChart Width="78" Height="20" VerticalAlignment="Center"
-                                                 IsVisible="{Binding ShowSparklines}" ShowAxes="False"
+                                                 IsVisible="{Binding ShowUsageGraphs}" ShowAxes="False"
                                                  Values="{Binding MemSamples}" Stroke="{DynamicResource Accent}"
                                                  ToolTip.Tip="{Binding MemSubText}"/>
                         </StackPanel>
@@ -124,7 +124,7 @@
                             <TextBlock Text="Events" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <Button Classes="tab" Classes.on="{Binding IsMetricsSelected}" IsVisible="{Binding ShowMetricsTab}"
+                    <Button Classes="tab" Classes.on="{Binding IsMetricsSelected}" IsVisible="{Binding ShowUsageGraphs}"
                             Command="{Binding SelectTabCommand}" CommandParameter="metrics">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconGauge}"/>
@@ -184,12 +184,6 @@
                             </StackPanel>
                         </Grid>
                     </Border>
-
-                    <!-- Inline placement (KON-345): the same panel the Metrics tab hosts. -->
-                    <StackPanel IsVisible="{Binding ShowInlineCharts}" Spacing="12">
-                        <TextBlock Text="Usage" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                        <views:UsagePanel/>
-                    </StackPanel>
 
                     <TextBlock Text="Containers" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">

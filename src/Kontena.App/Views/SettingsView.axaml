@@ -43,23 +43,6 @@
             <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
         </Style>
 
-        <!-- Placement cards for the usage graphs (KON-345): a radio group wide enough to explain itself. -->
-        <Style Selector="Button.place">
-            <Setter Property="Background" Value="{DynamicResource Bg}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
-            <Setter Property="BorderThickness" Value="1.5"/>
-            <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
-            <Setter Property="Padding" Value="13"/>
-            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="VerticalContentAlignment" Value="Top"/>
-        </Style>
-        <Style Selector="Button.place.on">
-            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
-            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
-        </Style>
-
         <!-- Compact switch -->
         <Style Selector="ToggleSwitch.pill">
             <Setter Property="MinWidth" Value="0"/>
@@ -201,80 +184,6 @@
                                 <TextBlock Text="Tighter rows in the container, image, volume and network lists." FontSize="12" Foreground="{DynamicResource TextDim}"/>
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding CompactDensity, Mode=TwoWay}" VerticalAlignment="Center"/>
-                        </Grid>
-                      </StackPanel>
-                    </Border>
-
-                    <!-- Usage graphs (KON-345). The three placements are a visual choice, so each option
-                         carries the shape it produces rather than a word for it. -->
-                    <TextBlock Classes="gh" Text="USAGE GRAPHS"/>
-                    <Border Classes="card" Padding="0" Margin="0,0,0,30">
-                      <StackPanel>
-                        <StackPanel Margin="18,15" Spacing="14">
-                            <StackPanel Spacing="3">
-                                <TextBlock Text="Where to show pod usage over time" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                <TextBlock Text="CPU and memory history on the pod detail. The data is the same in all three — only the place and the room it gets differ."
-                                           FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
-                            </StackPanel>
-                            <UniformGrid Columns="3" HorizontalAlignment="Stretch">
-                                <Button Classes="place" Classes.on="{Binding IsUsageSparkline}" Margin="0,0,6,0"
-                                        Command="{Binding SetUsageGraphsCommand}" CommandParameter="sparkline">
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Text="Sparkline in the strip" FontSize="12.5" FontWeight="SemiBold"/>
-                                        <TextBlock Text="A small line next to the live CPU and MEM readout. Always visible, nothing to click."
-                                                   FontSize="11.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Classes="place" Classes.on="{Binding IsUsageTab}" Margin="3,0"
-                                        Command="{Binding SetUsageGraphsCommand}" CommandParameter="tab">
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Text="Its own Metrics tab" FontSize="12.5" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Full charts with a time range and a crosshair. One click away, Overview stays short."
-                                                   FontSize="11.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Classes="place" Classes.on="{Binding IsUsageOverview}" Margin="6,0,0,0"
-                                        Command="{Binding SetUsageGraphsCommand}" CommandParameter="overview">
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Text="Inline on Overview" FontSize="12.5" FontWeight="SemiBold"/>
-                                        <TextBlock Text="The same charts above the container table. Nothing to click, but Overview gets longer."
-                                                   FontSize="11.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
-                                    </StackPanel>
-                                </Button>
-                            </UniformGrid>
-                        </StackPanel>
-                        <Border Height="1" Background="{DynamicResource Border}"/>
-                        <Grid Margin="18,15" ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
-                                <TextBlock Text="Default time range" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                <TextBlock Text="Which range a pod opens on. Ranges past 15 minutes need a history source such as Prometheus."
-                                           FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
-                            </StackPanel>
-                            <Border Grid.Column="1" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
-                                    BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="3" VerticalAlignment="Center">
-                                <ItemsControl ItemsSource="{Binding UsageRangeOptions}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" Spacing="2"/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:UsageRangeOption">
-                                            <Button Classes="seg" Classes.on="{Binding IsSelected}"
-                                                    IsEnabled="{Binding IsAvailable}" Content="{Binding Label}"
-                                                    Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).SetUsageRangeCommand}"
-                                                    CommandParameter="{Binding Minutes}"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Border>
-                        </Grid>
-                        <Border Height="1" Background="{DynamicResource Border}"/>
-                        <Grid Margin="18,15" ColumnDefinitions="Auto,*">
-                            <Path Grid.Column="0" Classes="icon" Width="15" Height="15" Margin="0,1,10,0"
-                                  Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}" VerticalAlignment="Top"/>
-                            <TextBlock Grid.Column="1" FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
-                                       Text="metrics-server keeps no history, so Kontena can only chart what it sampled while the pod was open — about 15 minutes, and it resets when the page closes."/>
                         </Grid>
                       </StackPanel>
                     </Border>

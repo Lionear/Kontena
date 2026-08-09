@@ -8,8 +8,7 @@
              x:Class="Kontena.App.Views.UsagePanel"
              x:DataType="vm:ClusterPodDetailViewModel">
 
-    <!-- The charts, wherever they are placed (KON-345). One control used by both the Metrics tab and
-         the inline block on Overview, so the two placements cannot drift apart.
+    <!-- The Metrics tab's body (KON-345).
          Stacked rather than side by side: the detail also opens as a ~500px drawer (KON-307), and
          two charts sharing that width are too narrow to read a spike off. -->
     <StackPanel Spacing="14">

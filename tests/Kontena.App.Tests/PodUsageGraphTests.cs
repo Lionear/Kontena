@@ -6,8 +6,9 @@ using Kontena.Sdk.Orchestration.Models;
 namespace Kontena.App.Tests;
 
 /// <summary>
-/// Usage graphs on the pod detail (KON-345): the placement setting decides which of the three hosts
-/// draws them, and the range selector only offers what the live buffer can actually answer.
+/// Usage graphs on the pod detail (KON-345): the header sparkline and the Metrics tab are both
+/// there whenever the cluster has a metrics source, and the range selector only offers what the
+/// live buffer can actually answer.
 /// </summary>
 public sealed class PodUsageGraphTests
 {
@@ -21,22 +22,35 @@ public sealed class PodUsageGraphTests
 
     private static TerminalFont Font() => new("JetBrains Mono", 13, true);
 
-    private static ClusterPodDetailViewModel Detail(UsageGraphPlacement placement, int minutes = 15) =>
-        new(new FakeClusterEngine(), SamplePod(), Font(),
-            usageGraphs: new UsageGraphOptions(placement, minutes));
+    private static ClusterPodDetailViewModel Detail(bool metrics = true) =>
+        new(new FakeClusterEngine(metrics: metrics), SamplePod(), Font());
 
-    [Theory]
-    [InlineData(UsageGraphPlacement.MetricsTab, true, false, false)]
-    [InlineData(UsageGraphPlacement.Sparkline, false, true, false)]
-    [InlineData(UsageGraphPlacement.Overview, false, false, true)]
-    public void Exactly_one_placement_hosts_the_charts(
-        UsageGraphPlacement placement, bool tab, bool sparkline, bool overview)
+    [Fact]
+    public void A_cluster_with_metrics_gets_both_the_sparkline_and_the_tab()
     {
-        using var detail = Detail(placement);
+        // Not alternatives, and never were worth a setting: one is the glance, the other is where
+        // you dig. Making them exclusive forced a choice between two things you want at once.
+        using var detail = Detail();
 
-        Assert.Equal(tab, detail.ShowMetricsTab);
-        Assert.Equal(sparkline, detail.ShowSparklines);
-        Assert.Equal(overview, detail.ShowInlineCharts);
+        Assert.True(detail.ShowUsageGraphs);
+    }
+
+    [Fact]
+    public void A_cluster_without_a_metrics_source_draws_no_charts_at_all()
+    {
+        // No source means no charts, not empty frames — the rule the usage gauges already follow.
+        using var detail = Detail(metrics: false);
+
+        Assert.False(detail.ShowUsageGraphs);
+    }
+
+    [Fact]
+    public void A_pod_opens_on_the_whole_live_buffer()
+    {
+        using var detail = Detail();
+
+        Assert.Equal(UsageGraphs.DefaultRangeMinutes, detail.RangeMinutes);
+        Assert.Equal("15m", detail.RangeLabel);
     }
 
     [Fact]
@@ -44,7 +58,7 @@ public sealed class PodUsageGraphTests
     {
         // Shown and disabled rather than hidden: the greyed-out 24h is what explains that history
         // needs a source, and a selector that stops at 15m explains nothing.
-        using var detail = Detail(UsageGraphPlacement.MetricsTab);
+        using var detail = Detail();
 
         var day = Assert.Single(detail.RangeOptions, o => o.Minutes == 1440);
         Assert.False(day.IsAvailable);
@@ -60,7 +74,8 @@ public sealed class PodUsageGraphTests
     [Fact]
     public void The_selected_range_is_the_one_marked_in_the_selector()
     {
-        using var detail = Detail(UsageGraphPlacement.MetricsTab, minutes: 5);
+        using var detail = Detail();
+        detail.SelectRangeCommand.Execute(5);
 
         var selected = Assert.Single(detail.RangeOptions, o => o.IsSelected);
         Assert.Equal(5, selected.Minutes);
@@ -69,7 +84,7 @@ public sealed class PodUsageGraphTests
     [Fact]
     public async Task Samples_from_the_stream_reach_both_charts()
     {
-        using var detail = Detail(UsageGraphPlacement.MetricsTab);
+        using var detail = Detail();
 
         Assert.True(detail.UsageIsEmpty);
 
@@ -86,20 +101,22 @@ public sealed class PodUsageGraphTests
         Assert.Contains("peak", detail.MemSubText, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(UsageGraphPlacement.MetricsTab)]
-    [InlineData(UsageGraphPlacement.Sparkline)]
-    [InlineData(UsageGraphPlacement.Overview)]
-    public void A_cluster_without_a_metrics_source_draws_no_charts_at_all(UsageGraphPlacement placement)
+    [Fact]
+    public async Task Narrowing_the_range_narrows_what_both_the_tab_and_the_sparkline_show()
     {
-        // Whichever placement is chosen, no source means no charts — not empty frames. Same rule the
-        // usage gauges already follow (ClusterCapabilities.Metrics).
-        using var detail = new ClusterPodDetailViewModel(
-            new FakeClusterEngine(metrics: false), SamplePod(), Font(),
-            usageGraphs: new UsageGraphOptions(placement, 15));
+        // One range for both: the sparkline reads the same CpuSamples the tab does, so a narrowed
+        // range cannot leave the two telling different stories about the same pod.
+        using var detail = Detail();
 
-        Assert.False(detail.ShowSparklines);
-        Assert.False(detail.ShowMetricsTab);
-        Assert.False(detail.ShowInlineCharts);
+        for (var i = 0; i < 200 && detail.CpuSamples.Count < 3; i++)
+            await Task.Delay(5);
+
+        // The fake's three samples are 15s apart, so a 5-minute window still holds all of them —
+        // what matters is that the window is recomputed rather than left at the old range's result.
+        var before = detail.CpuSamples;
+        detail.SelectRangeCommand.Execute(5);
+
+        Assert.NotSame(before, detail.CpuSamples);
+        Assert.Equal(before.Count, detail.CpuSamples.Count);
     }
 }
