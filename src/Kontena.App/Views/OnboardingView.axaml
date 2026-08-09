@@ -127,10 +127,6 @@
                                                     Background="{DynamicResource Surface2}" IsVisible="{Binding ShowNotRunning}">
                                                 <TextBlock Text="Not running" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                                             </Border>
-                                            <Border CornerRadius="20" Padding="8,2" VerticalAlignment="Center"
-                                                    Background="{DynamicResource Surface2}" IsVisible="{Binding ComingSoon}">
-                                                <TextBlock Text="Coming soon" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
-                                            </Border>
                                         </StackPanel>
                                         <TextBlock Text="{Binding Detail}" FontSize="12.5" FontFamily="{StaticResource Mono}"
                                                    Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
