@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Kontena.Adapters.Apple;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Podman;
 using Kontena.App;

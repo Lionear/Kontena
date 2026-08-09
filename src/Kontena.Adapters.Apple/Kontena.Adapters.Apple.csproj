@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Apple's native macOS container runtime (KON-31). Like the nerdctl plugin, and unlike Docker and
+       Podman, there is no daemon socket here: everything this adapter knows comes from parsing what the
+       `container` CLI prints. Only Kontena.Sdk is referenced, which CONTRIBUTING.md requires of every
+       backend and Kontena.Sdk.Tests enforces against the project files. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kontena.Sdk\Kontena.Sdk.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The CLI seam and the mapping from `container`'s JSON to the neutral models are implementation
+         details, and the ones worth testing directly: the tests script a fake CLI rather than requiring
+         macOS 26 and a running apiserver. -->
+    <InternalsVisibleTo Include="Kontena.Adapters.Apple.Tests" />
+  </ItemGroup>
+
+</Project>

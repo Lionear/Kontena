@@ -1,5 +1,6 @@
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Kontena.Adapters.Apple;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Sdk;
 using Kontena.Core.Models;

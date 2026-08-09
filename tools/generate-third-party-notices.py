@@ -44,7 +44,7 @@ as single-path monochrome icons.
 | Docker | `Kontena.Adapters.Docker/DockerBrand.cs` | Docker, Inc. |
 | Podman | `Kontena.Adapters.Podman/PodmanBrand.cs` | the Podman project |
 | Kubernetes | `Kontena.Adapters.Kubernetes/KubernetesBrand.cs` | The Linux Foundation |
-| Apple | `Kontena.App/AppleBrand.cs` | Apple Inc. |
+| Apple | `Kontena.Adapters.Apple/AppleBrand.cs` | Apple Inc. |
 
 CC0 covers simple-icons' packaging of the artwork, not the marks themselves. Each mark remains its
 owner's trademark and is used here nominatively — to name which engine or runtime a backend is. Kontena

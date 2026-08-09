@@ -1,3 +1,4 @@
+using Kontena.Adapters.Apple;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
 using Kontena.Adapters.Podman;
@@ -103,6 +104,12 @@ public static class BackendCatalog
         {
             new DockerEngineProvider(),
             new PodmanEngineProvider(),
+
+            // Apple's native runtime (KON-31). Unlike the two above it is not offered unasked on every
+            // machine: its `IsInstalled` is false off macOS and false without the binary, so it appears
+            // where it can exist and nowhere else. Listing it always, the way Docker and Podman are
+            // listed, would put a permanently unreachable row in every Windows and Linux switcher.
+            new AppleEngineProvider(),
         };
 
         // A misconfigured remote is skipped rather than added as an entry that cannot connect: the

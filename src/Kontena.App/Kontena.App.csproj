@@ -42,6 +42,7 @@
     <ProjectReference Include="..\Kontena.Core\Kontena.Core.csproj" />
     <ProjectReference Include="..\Kontena.Core.Orchestration\Kontena.Core.Orchestration.csproj" />
     <ProjectReference Include="..\Kontena.Engines\Kontena.Engines.csproj" />
+    <ProjectReference Include="..\Kontena.Adapters.Apple\Kontena.Adapters.Apple.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Docker\Kontena.Adapters.Docker.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Podman\Kontena.Adapters.Podman.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Kubernetes\Kontena.Adapters.Kubernetes.csproj" />
