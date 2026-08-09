@@ -158,9 +158,69 @@ public sealed class UsageChart : Control
         return index < 0 || index >= values.Count ? -1 : index;
     }
 
+    private const double AxisLabelSize = 9.5;
+    private const double AxisLabelGap = 8;
+    private const double MinGutter = 44;
+
+    /// <summary>
+    /// Width reserved for the y-axis labels, measured rather than assumed.
+    /// <para>
+    /// A fixed 44px fitted "250m" and silently cropped "659.1 MB" down to "59.1 MB" — a number that
+    /// looks perfectly reasonable and is wrong by an order of magnitude, which is worse than a
+    /// visibly broken label. Quantised to 8px so the plot does not shuffle sideways every time the
+    /// band ticks over a digit.
+    /// </para>
+    /// </summary>
+    internal double Gutter()
+    {
+        if (!ShowAxes)
+            return 0;
+
+        var values = Values;
+        if (values is not { Count: > 0 })
+            return MinGutter;
+
+        var widest = 0d;
+        foreach (var (text, _) in AxisLabels(Band(values)))
+            widest = Math.Max(widest, LabelWidth(text));
+
+        return Math.Max(MinGutter, Math.Ceiling((widest + AxisLabelGap * 1.5) / 8) * 8);
+    }
+
+    /// <summary>The three axis labels, top to bottom, with the fraction of the plot they sit at.</summary>
+    private static IEnumerable<(string Text, double Fraction)> AxisLabelsCore(
+        (double Min, double Max) band, Func<double, string> label)
+    {
+        for (var g = 0; g <= 2; g++)
+            yield return (label(band.Max - (band.Max - band.Min) * g / 2), g / 2d);
+    }
+
+    private IEnumerable<(string Text, double Fraction)> AxisLabels((double Min, double Max) band) =>
+        AxisLabelsCore(band, Label);
+
+    private double LabelWidth(string text) => Text(text, Brushes.Transparent, AxisLabelSize).Width;
+
+    /// <summary>
+    /// The left edge of the widest axis label as it will be drawn. Negative means it is being
+    /// clipped — which is the failure this control had, so the tests assert on it directly.
+    /// </summary>
+    internal double LeftmostLabelX()
+    {
+        var values = Values;
+        if (!ShowAxes || values is not { Count: > 0 })
+            return double.NaN;
+
+        var gutter = Gutter();
+        var leftmost = double.MaxValue;
+        foreach (var (text, _) in AxisLabels(Band(values)))
+            leftmost = Math.Min(leftmost, gutter - AxisLabelGap - LabelWidth(text));
+
+        return leftmost;
+    }
+
     private (double Left, double Top, double Width, double Height) PlotRect()
     {
-        var gutter = ShowAxes ? 44d : 0d;
+        var gutter = Gutter();
         var top = ShowAxes ? 8d : 2d;
         var bottom = ShowAxes ? 18d : 2d;
         var right = ShowAxes ? 6d : 1d;
@@ -283,28 +343,33 @@ public sealed class UsageChart : Control
         double left, double top, double width, double height)
     {
         var grid = new Pen(axis, 1);
-        var (min, max) = values is { Count: > 0 } ? Band(values) : (0d, 0d);
 
         for (var g = 0; g <= 2; g++)
         {
             var y = top + height * g / 2;
             context.DrawLine(grid, new Point(left, y), new Point(left + width, y));
-
-            if (values is not { Count: > 0 } || labels is null)
-                continue;
-
-            var text = Text(Label(max - (max - min) * g / 2), labels, 9.5);
-            context.DrawText(text, new Point(left - 8 - text.Width, y - text.Height / 2));
         }
 
         if (labels is null)
             return;
 
+        if (values is { Count: > 0 })
+        {
+            foreach (var (label, fraction) in AxisLabels(Band(values)))
+            {
+                var text = Text(label, labels, AxisLabelSize);
+                var y = top + height * fraction;
+
+                // left is Gutter(), which was sized off these very labels — so this x is >= 0.
+                context.DrawText(text, new Point(left - AxisLabelGap - text.Width, y - text.Height / 2));
+            }
+        }
+
         var bottom = top + height + 4;
         if (RangeLabel is { Length: > 0 } range)
-            context.DrawText(Text($"{range} ago", labels, 9.5), new Point(left, bottom));
+            context.DrawText(Text($"{range} ago", labels, AxisLabelSize), new Point(left, bottom));
 
-        var now = Text("now", labels, 9.5);
+        var now = Text("now", labels, AxisLabelSize);
         context.DrawText(now, new Point(left + width - now.Width, bottom));
     }
 

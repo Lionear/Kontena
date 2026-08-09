@@ -25,12 +25,15 @@ public sealed class UsageChartTests(HeadlessSessionFixture headless)
         }
     }
 
-    private static UsageChart Show(IReadOnlyList<double>? values, bool axes = true)
+    private static UsageChart Show(
+        IReadOnlyList<double>? values, bool axes = true,
+        UsageChartUnit unit = UsageChartUnit.Millicores)
     {
         var chart = new UsageChart
         {
             Values = values,
             ShowAxes = axes,
+            Unit = unit,
             Stroke = Brushes.Teal,
             AxisBrush = Brushes.Gray,
             LabelBrush = Brushes.DimGray,
@@ -115,6 +118,30 @@ public sealed class UsageChartTests(HeadlessSessionFixture headless)
                 // the last point while the pointer is off in the gutter is a lie about where it is.
                 Assert.Equal(-1, chart.HitTest(0));
                 Assert.Equal(-1, chart.HitTest(chart.Bounds.Width + 40));
+            },
+            CancellationToken.None);
+
+    [Fact]
+    public Task A_byte_axis_label_is_never_clipped_by_the_gutter() =>
+        Session.Dispatch(
+            () =>
+            {
+                // The gutter used to be a fixed 44px, fitted to "250m". A memory axis reading
+                // "659.1 MB" started at a negative x and ClipToBounds ate the leading digit, so the
+                // chart showed "59.1 MB" — a plausible number, wrong by a factor of ten.
+                var bytes = Show([624_000_000, 640_000_000, 654_600_000], unit: UsageChartUnit.Bytes);
+                Assert.True(bytes.LeftmostLabelX() >= 0,
+                    $"byte label starts at {bytes.LeftmostLabelX()}, so it is cropped");
+
+                var millicores = Show([105, 178, 231], unit: UsageChartUnit.Millicores);
+                Assert.True(millicores.LeftmostLabelX() >= 0,
+                    $"millicore label starts at {millicores.LeftmostLabelX()}, so it is cropped");
+
+                // The widths themselves are not asserted — headless measures text with a stub glyph
+                // advance, so they are not the app's numbers. The relationship is: "659.1 MB" needs
+                // more room than "250m", and the gutter has to follow the label rather than a guess.
+                Assert.True(bytes.Gutter() > millicores.Gutter(),
+                    $"byte gutter {bytes.Gutter()} did not grow past millicore gutter {millicores.Gutter()}");
             },
             CancellationToken.None);
 
