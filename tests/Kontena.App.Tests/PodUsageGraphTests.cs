@@ -22,8 +22,18 @@ public sealed class PodUsageGraphTests
 
     private static TerminalFont Font() => new("JetBrains Mono", 13, true);
 
-    private static ClusterPodDetailViewModel Detail(bool metrics = true) =>
-        new(new FakeClusterEngine(metrics: metrics), SamplePod(), Font());
+    private static ClusterPodDetailViewModel Detail(bool metrics = true, bool history = false) =>
+        new(new FakeClusterEngine(metrics: metrics) { HasHistory = history }, SamplePod(), Font());
+
+    private static async Task<ClusterPodDetailViewModel> WithHistoryAsync()
+    {
+        var detail = Detail(history: true);
+        for (var i = 0; i < 200 && !detail.HasHistory; i++)
+            await Task.Delay(5);
+
+        Assert.True(detail.HasHistory, "the fake history source never reported itself available");
+        return detail;
+    }
 
     [Fact]
     public void A_cluster_with_metrics_gets_both_the_sparkline_and_the_tab()
@@ -116,6 +126,65 @@ public sealed class PodUsageGraphTests
         // rather than repeat the bare unit it starts as.
         Assert.Contains("peak", detail.CpuSubText, StringComparison.Ordinal);
         Assert.Contains("peak", detail.MemSubText, StringComparison.Ordinal);
+    }
+
+    // ── History (Prometheus) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_cluster_with_a_history_source_unlocks_the_long_ranges()
+    {
+        using var detail = await WithHistoryAsync();
+
+        Assert.All(detail.RangeOptions, o => Assert.True(o.IsAvailable, $"{o.Label} stayed disabled"));
+
+        detail.SelectRangeCommand.Execute(1440);
+        Assert.Equal(1440, detail.RangeMinutes);
+    }
+
+    [Fact]
+    public async Task Picking_a_long_range_draws_from_history_instead_of_the_buffer()
+    {
+        using var detail = await WithHistoryAsync();
+
+        detail.SelectRangeCommand.Execute(1440);
+        for (var i = 0; i < 200 && detail.CpuSamples.Count <= 3; i++)
+            await Task.Delay(5);
+
+        // The live buffer cannot hold more than a handful of samples this early; a day's worth of
+        // points can only have come from the history source.
+        Assert.True(detail.CpuSamples.Count > 3, $"only {detail.CpuSamples.Count} points — buffer, not history");
+        Assert.Equal(detail.CpuSamples.Count, detail.MemSamples.Count);
+        Assert.Contains("Prometheus", detail.UsageSourceText, StringComparison.Ordinal);
+        Assert.Empty(detail.UsageError);
+    }
+
+    [Fact]
+    public async Task Going_back_to_a_short_range_returns_to_the_live_buffer()
+    {
+        // The buffer keeps filling while history owns the chart, so switching back must not show a
+        // series that starts at the moment of switching.
+        using var detail = await WithHistoryAsync();
+
+        for (var i = 0; i < 200 && detail.CpuSamples.Count < 3; i++)
+            await Task.Delay(5);
+
+        detail.SelectRangeCommand.Execute(1440);
+        for (var i = 0; i < 200 && detail.CpuSamples.Count <= 3; i++)
+            await Task.Delay(5);
+
+        detail.SelectRangeCommand.Execute(15);
+
+        Assert.Equal(3, detail.CpuSamples.Count);
+        Assert.DoesNotContain("Prometheus", detail.UsageSourceText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_history_source_the_hint_explains_the_disabled_ranges()
+    {
+        using var detail = Detail();
+
+        Assert.False(detail.HasHistory);
+        Assert.Contains("keeps no history", detail.UsageRangeHint, StringComparison.Ordinal);
     }
 
     [Fact]

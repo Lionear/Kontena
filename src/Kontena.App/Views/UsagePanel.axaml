@@ -42,13 +42,28 @@
             </Border>
         </Grid>
 
-        <!-- Says why the long ranges are greyed out, rather than leaving it to be guessed. -->
-        <Border Background="{DynamicResource InfoSoft}" BorderBrush="{DynamicResource BorderSoft}" BorderThickness="1"
+        <!-- Says why the long ranges are greyed out, rather than leaving it to be guessed. Once a
+             history source answers there is nothing left to explain, so it goes. -->
+        <Border IsVisible="{Binding !HasHistory}"
+                Background="{DynamicResource InfoSoft}" BorderBrush="{DynamicResource BorderSoft}" BorderThickness="1"
                 CornerRadius="{StaticResource RadiusSm}" Padding="13,11">
             <Grid ColumnDefinitions="Auto,*">
                 <Path Grid.Column="0" Classes="icon" Width="15" Height="15" Margin="0,1,10,0"
                       Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}" VerticalAlignment="Top"/>
                 <TextBlock Grid.Column="1" Text="{Binding UsageRangeHint}" FontSize="12.5"
+                           Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Grid>
+        </Border>
+
+        <!-- A query that failed or came back empty. Without this the chart is simply blank, which
+             reads as a pod that used nothing rather than as an answer Kontena never got. -->
+        <Border IsVisible="{Binding HasUsageError}"
+                Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}" BorderThickness="1"
+                CornerRadius="{StaticResource RadiusSm}" Padding="13,11">
+            <Grid ColumnDefinitions="Auto,*">
+                <Path Grid.Column="0" Classes="icon" Width="15" Height="15" Margin="0,1,10,0"
+                      Stroke="{DynamicResource Warn}" Data="{StaticResource IconWarning}" VerticalAlignment="Top"/>
+                <TextBlock Grid.Column="1" Text="{Binding UsageError}" FontSize="12.5"
                            Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
             </Grid>
         </Border>

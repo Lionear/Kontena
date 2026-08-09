@@ -59,6 +59,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         Action? onDelete = null)
     {
         _cluster = cluster;
+        _history = cluster is IMetricsHistoryAware aware ? aware.History : NoMetricsHistory.Instance;
         _pod = pod;
         _onForward = onForward;
         _portForwards = portForwards;
@@ -297,9 +298,16 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     partial void OnRangeMinutesChanged(int value)
     {
-        OnPropertyChanged(nameof(RangeLabel));
         OnPropertyChanged(nameof(RangeOptions));
-        RefreshUsage();
+
+        // Which source answers depends on the range, so the chip has to move with it — not only
+        // when the probe comes back.
+        UpdateSourceText();
+
+        if (UsesHistory)
+            _ = LoadHistoryAsync(force: true);
+        else
+            RefreshUsage();
     }
 
     /// <summary>
@@ -307,50 +315,131 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     /// has filled. A page open for thirty seconds holds thirty seconds of samples, and an axis
     /// labelled "15m ago" over them claims fourteen and a half minutes that were never sampled.
     /// </summary>
-    // ponytail: points are still spaced evenly rather than by timestamp, so a missed scrape shows
-    // as a slightly wider straight segment instead of a gap. Fine at a steady 15s poll; revisit if
-    // a source with irregular intervals lands (KON-84).
-    public string RangeLabel
-    {
-        get
-        {
-            var selected = UsageGraphs.Range(RangeMinutes);
-            if (_cpuSeries.Oldest is not { } oldest || CpuSamples.Count < 2)
-                return Format.Duration(selected);
-
-            var drawn = DateTimeOffset.UtcNow - oldest;
-            return Format.Duration(drawn < selected ? drawn : selected);
-        }
-    }
+    [ObservableProperty] private string _rangeLabel = Format.Duration(
+        TimeSpan.FromMinutes(UsageGraphs.DefaultRangeMinutes));
 
     /// <summary>
-    /// Every range the selector offers, including the ones that need a history source. Shown and
-    /// disabled rather than hidden: "why can I not see yesterday" is the question the greyed-out
-    /// buttons and their tooltip answer, and a selector that stops at 15m does not raise it.
+    /// Every range the selector offers. The long ones are shown and disabled where nothing can
+    /// answer them, rather than hidden: "why can I not see yesterday" is the question the greyed-out
+    /// buttons and their hint answer, and a selector that stops at 15m does not raise it.
     /// </summary>
     public IReadOnlyList<UsageRangeOption> RangeOptions =>
         [.. UsageGraphs.Ranges.Select(m => new UsageRangeOption(
-            m, Format.Duration(TimeSpan.FromMinutes(m)), UsageGraphs.IsLive(m), m == RangeMinutes))];
+            m, Format.Duration(TimeSpan.FromMinutes(m)),
+            UsageGraphs.IsLive(m) || HasHistory, m == RangeMinutes))];
 
     [RelayCommand]
     private void SelectRange(int minutes)
     {
-        if (UsageGraphs.IsLive(minutes))
+        if (UsageGraphs.IsLive(minutes) || HasHistory)
             RangeMinutes = minutes;
     }
 
+    // ── History (KON-345): a Prometheus in the cluster, when there is one ──────
+
+    private readonly IMetricsHistory _history;
+    private DateTimeOffset _historyFetched = DateTimeOffset.MinValue;
+
+    /// <summary>Whether a source that remembers answered. Set by the probe, not assumed.</summary>
+    [ObservableProperty] private bool _hasHistory;
+
+    partial void OnHasHistoryChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RangeOptions));
+        OnPropertyChanged(nameof(UsageRangeHint));
+        UpdateSourceText();
+    }
+
     /// <summary>
-    /// Where the history comes from, said plainly. Only metrics-server exists today, so this is
-    /// also the explanation for the disabled ranges — see KON-84 for the source that removes them.
+    /// Whether this chart is drawn from history rather than from the live buffer. Never a blend:
+    /// stitching a 15s tail onto a series answered at a 12-minute step draws a spike that is an
+    /// artefact of two resolutions meeting, not of anything the pod did.
     /// </summary>
+    private bool UsesHistory => HasHistory && !UsageGraphs.IsLive(RangeMinutes);
+
+    private async Task ProbeHistoryAsync(CancellationToken ct)
+    {
+        try
+        {
+            var available = await _history.ProbeAsync(ct).ConfigureAwait(true);
+            if (ct.IsCancellationRequested)
+                return;
+
+            HasHistory = available;
+        }
+        catch (Exception)
+        {
+            HasHistory = false;
+        }
+    }
+
+    /// <param name="force">
+    /// True when the user just changed the range and is waiting to see it; false for the periodic
+    /// refresh, which honours the source's own interval rather than re-asking on every 15s tick.
+    /// </param>
+    private async Task LoadHistoryAsync(bool force)
+    {
+        var range = TimeSpan.FromMinutes(RangeMinutes);
+        var now = DateTimeOffset.UtcNow;
+
+        if (!force && now - _historyFetched < _history.RefreshInterval(range))
+            return;
+
+        _historyFetched = now;
+        var wanted = RangeMinutes;
+
+        try
+        {
+            var cpu = await _history.GetPodHistoryAsync(_ref, UsageMetric.Cpu, range).ConfigureAwait(true);
+            var memory = await _history.GetPodHistoryAsync(_ref, UsageMetric.Memory, range).ConfigureAwait(true);
+
+            // The range can be changed again while a query is out; the slower answer must not
+            // overwrite the chart the user is now looking at.
+            if (wanted != RangeMinutes)
+                return;
+
+            CpuSamples = [.. cpu.Select(s => s.Value)];
+            MemSamples = [.. memory.Select(s => s.Value)];
+            RangeLabel = cpu.Count > 1
+                ? Format.Duration(cpu[^1].At - cpu[0].At)
+                : Format.Duration(range);
+
+            UsageError = cpu.Count == 0
+                ? $"{_history.Name} returned nothing for this pod over the last {Format.Duration(range)}."
+                : string.Empty;
+
+            DescribeSamples();
+        }
+        catch (Exception)
+        {
+            UsageError = $"Could not read history from {_history.Name}.";
+        }
+    }
+
+    /// <summary>Set when a history query came back empty or failed — an unexplained blank chart is
+    /// indistinguishable from a pod that used nothing.</summary>
+    [ObservableProperty] private string _usageError = string.Empty;
+
+    public bool HasUsageError => UsageError.Length > 0;
+
+    partial void OnUsageErrorChanged(string value) => OnPropertyChanged(nameof(HasUsageError));
+
     private string MetricsSourceName =>
         _cluster is IMetricsAware aware ? aware.Metrics.Name : "the metrics source";
 
-    public string UsageSourceText => $"{MetricsSourceName} · sampled every 15s";
+    [ObservableProperty] private string _usageSourceText = string.Empty;
 
-    public string UsageRangeHint =>
-        $"Charted from what Kontena sampled since this pod was opened — {MetricsSourceName} keeps no "
-        + "history. Longer ranges need a history source such as Prometheus.";
+    private void UpdateSourceText() =>
+        UsageSourceText = UsesHistory
+            ? $"{_history.Name} · {Format.Duration(TimeSpan.FromMinutes(RangeMinutes))} at "
+              + $"{Format.Duration(_history.RefreshInterval(TimeSpan.FromMinutes(RangeMinutes)))} resolution"
+            : $"{MetricsSourceName} · sampled every 15s";
+
+    public string UsageRangeHint => HasHistory
+        ? $"Longer ranges are read from {_history.Name}; the short ones come from what Kontena "
+          + "sampled itself, which is fresher."
+        : $"Charted from what Kontena sampled since this pod was opened — {MetricsSourceName} keeps no "
+          + "history. Longer ranges need a history source such as Prometheus.";
 
     [ObservableProperty] private string _cpuSubText = "millicores";
     [ObservableProperty] private string _memSubText = "working set";
@@ -366,14 +455,22 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         CpuSamples = _cpuSeries.Window(range, now);
         MemSamples = _memSeries.Window(range, now);
 
+        // Grows with every sample until the buffer is full, so it cannot be set on range changes
+        // alone — that was the bug: the axis kept saying "15m" over thirty seconds of data.
+        RangeLabel = _cpuSeries.Oldest is { } oldest && CpuSamples.Count > 1
+            ? Format.Duration(now - oldest < range ? now - oldest : range)
+            : Format.Duration(range);
+
+        UsageError = string.Empty;
+        DescribeSamples();
+        UpdateSourceText();
+    }
+
+    private void DescribeSamples()
+    {
         CpuSubText = Describe(CpuSamples, "millicores", v => $"{Math.Round(v):0}m");
         MemSubText = Describe(MemSamples, "working set", v => ByteSize.Format((long)Math.Round(v)));
-
         OnPropertyChanged(nameof(UsageIsEmpty));
-
-        // Grows with every sample until the buffer is full, so it cannot be raised on range changes
-        // alone — that was the bug: the axis kept saying "15m" over thirty seconds of data.
-        OnPropertyChanged(nameof(RangeLabel));
     }
 
     private static string Describe(
@@ -631,7 +728,15 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         _ = LoadEventsAsync();
 
         if (SupportsMetrics && IsRunning)
+        {
             _ = StreamMetricsAsync(_cts.Token);
+
+            // Lazily, and never blocking the page: a cluster with no Prometheus should cost nothing
+            // more than one refused request, and the ranges light up if and when it answers.
+            _ = ProbeHistoryAsync(_cts.Token);
+        }
+
+        UpdateSourceText();
 
         if (_cluster.Capabilities.Watch)
             _ = FollowForGoneAsync(_cts.Token);
@@ -702,7 +807,13 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
                 var at = m.Timestamp == default ? DateTimeOffset.UtcNow : m.Timestamp;
                 _cpuSeries.Add(at, m.CpuMillicores);
                 _memSeries.Add(at, m.MemoryBytes);
-                RefreshUsage();
+
+                // The buffer is kept filling either way — switching back to a short range must not
+                // then show a chart that starts at the moment you switched.
+                if (UsesHistory)
+                    _ = LoadHistoryAsync(force: false);
+                else
+                    RefreshUsage();
             }
         }
         catch (OperationCanceledException) { /* page closed */ }
