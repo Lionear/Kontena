@@ -59,13 +59,8 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
         return false;
     }
 
-    /// <summary>
-    /// Every scope but the node. A node's own usage comes from node-exporter, whose series are keyed
-    /// by scrape address rather than by node name; joining the two needs kube_node_info and would
-    /// produce a number that quietly disagrees with the live gauge beside it. Left to its own ticket
-    /// rather than shipped approximately.
-    /// </summary>
-    public bool Supports(UsageScope scope) => scope != UsageScope.Node;
+    /// <summary>Every scope. The node one comes from node-exporter — see <see cref="NodeSeries"/>.</summary>
+    public bool Supports(UsageScope scope) => true;
 
     public async ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
         UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
@@ -134,6 +129,13 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
             UsageScope.Namespace =>
                 Metric(metric, $"namespace=\"{target.Name}\",{cadvisor}", window),
 
+            // Everything running, summed. Deliberately the same cAdvisor series the other scopes
+            // use rather than node-exporter: a cluster total that did not add up to the sum of its
+            // namespaces would be two answers to one question.
+            UsageScope.Cluster => Metric(metric, cadvisor, window),
+
+            UsageScope.Node => NodeSeries(metric, target.Name, window),
+
             // Pods are traced to their workload through kube-state-metrics rather than by matching
             // pod names: a Deployment called "api" and one called "api-worker" produce pod names
             // that a prefix match cannot tell apart, and the pods a rollout replaced still count.
@@ -151,6 +153,26 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
             // Cores × 1000: Kontena counts milli-cores everywhere else.
             ? $"sum({series}) * 1000"
             : $"sum({series})";
+    }
+
+    /// <summary>
+    /// A node's own usage, from node-exporter, joined to the node name through
+    /// <c>node_uname_info</c> — whose <c>nodename</c> is the host's name and whose <c>instance</c>
+    /// is what the exporter's own series carry.
+    /// <para>
+    /// CPU excludes idle, iowait and steal, which is what the standard utilisation rule does and
+    /// what brings it near the kubelet's figure; counting everything but idle reads roughly double.
+    /// Memory is total minus available. Neither matches the kubelet exactly — the two measure a
+    /// node differently — and the panel says so rather than leaving the difference to be noticed.
+    /// </para>
+    /// </summary>
+    internal static string NodeSeries(UsageMetric metric, string node, int window)
+    {
+        var join = $"* on(instance) group_left() node_uname_info{{nodename=\"{node}\"}}";
+
+        return metric == UsageMetric.Cpu
+            ? $"rate(node_cpu_seconds_total{{mode!~\"idle|iowait|steal\"}}[{window}s]) {join}"
+            : $"(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) {join}";
     }
 
     private static string Metric(UsageMetric metric, string selector, int window) =>

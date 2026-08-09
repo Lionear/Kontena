@@ -1256,8 +1256,8 @@ internal sealed class FakeMetricsHistory : IMetricsHistory
     public TimeSpan RefreshInterval(TimeSpan range) =>
         TimeSpan.FromSeconds(Math.Clamp(range.TotalSeconds / 120, 30, 300));
 
-    /// <summary>Everything but the node, mirroring what a real Prometheus source can express.</summary>
-    public bool Supports(UsageScope scope) => scope != UsageScope.Node;
+    /// <summary>Every scope, mirroring what a real Prometheus source can express.</summary>
+    public bool Supports(UsageScope scope) => true;
 
     public ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
         UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default)

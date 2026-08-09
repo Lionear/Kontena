@@ -107,8 +107,8 @@ public sealed class PodUsageGraphTests
             await Task.Delay(5);
 
         // The fake's three samples span 30s, so the axis has to say seconds, not minutes.
-        Assert.EndsWith("s", detail.Usage.RangeLabel, StringComparison.Ordinal);
-        Assert.NotEqual("15m", detail.Usage.RangeLabel);
+        Assert.EndsWith("s", detail.Usage.Charts[0].RangeLabel, StringComparison.Ordinal);
+        Assert.NotEqual("15m", detail.Usage.Charts[0].RangeLabel);
     }
 
     [Fact]

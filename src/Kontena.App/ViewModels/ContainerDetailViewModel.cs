@@ -54,6 +54,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
         Usage = new UsageTrackViewModel(
             [
                 new UsageChartSpec("CPU", UsageChartUnit.Percent, "Primary", null, "percent of a core"),
+                // The limit arrives with the first stats sample — see ApplyStats.
                 new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", null, "used"),
             ],
             // Scope and history are moot here — a container engine has nothing that remembers, so
@@ -268,8 +269,6 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     [ObservableProperty] private string _cpuText = "—";
     [ObservableProperty] private string _memUsedText = "—";
     [ObservableProperty] private string _memLimitText = string.Empty;
-    [ObservableProperty] private double _memPercent;
-    [ObservableProperty] private double _cpuPercent;
     [ObservableProperty] private string _netIoText = "—";
     [ObservableProperty] private string _blockIoText = "—";
 
@@ -284,11 +283,17 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     {
         _lastStats = s;
         Usage.Add(DateTimeOffset.UtcNow, s.CpuPercent, s.MemoryUsedBytes);
+
+        // Only once it is known, and only when there is one: an unlimited container has no ceiling
+        // to draw, which is a different answer than a ceiling of zero.
+        if (s.MemoryLimitBytes > 0 && Usage.Charts[1].Threshold is null)
+        {
+            Usage.Charts[1].Threshold = s.MemoryLimitBytes;
+            Usage.Charts[1].ThresholdLabel = $"limit {ByteSize.Format(s.MemoryLimitBytes)}";
+        }
         CpuText = $"{s.CpuPercent:0.0}%";
-        CpuPercent = Math.Clamp(s.CpuPercent, 0, 100);
         MemUsedText = Format.Size(s.MemoryUsedBytes);
         MemLimitText = s.MemoryLimitBytes > 0 ? $"/ {Format.Size(s.MemoryLimitBytes)}" : string.Empty;
-        MemPercent = Math.Clamp(s.MemoryFraction * 100, 0, 100);
         NetIoText = $"{Format.Size(s.NetRxBytes)} / {Format.Size(s.NetTxBytes)}";
         BlockIoText = $"{Format.Size(s.BlockReadBytes)} / {Format.Size(s.BlockWriteBytes)}";
     }
@@ -297,10 +302,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     {
         Usage.Clear();
         CpuText = "—";
-        CpuPercent = 0;
         MemUsedText = "—";
         MemLimitText = string.Empty;
-        MemPercent = 0;
         NetIoText = "—";
         BlockIoText = "—";
     }

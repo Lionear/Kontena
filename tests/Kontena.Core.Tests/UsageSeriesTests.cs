@@ -63,8 +63,10 @@ public sealed class UsageSeriesTests
         var now = T0.AddSeconds(39 * 15);
         var window = series.Window(TimeSpan.FromMinutes(1), now);
 
-        // One minute back from the last sample: that sample plus the four before it.
-        Assert.Equal([35d, 36d, 37d, 38d, 39d], window);
+        // One minute back from the last sample: that sample plus the four before it. Timestamps
+        // come back with them — the chart places a point by when it was taken, not by its index.
+        Assert.Equal([35d, 36d, 37d, 38d, 39d], window.Select(w => w.Value));
+        Assert.Equal(T0.AddSeconds(35 * 15), window[0].At);
     }
 
     [Fact]

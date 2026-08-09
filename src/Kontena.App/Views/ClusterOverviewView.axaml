@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Kontena.App.Views"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -75,6 +76,14 @@
                     </StackPanel>
                 </Border>
             </Grid>
+
+            <!-- Cluster usage over time (KON-347). Above the node table because "is it busy" comes
+                 before "which node", and summed over pods so it agrees with the namespace and
+                 workload charts rather than being a fourth number to reconcile. -->
+            <StackPanel IsVisible="{Binding ShowUsageGraphs}" Spacing="12">
+                <TextBlock Text="Usage" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <views:UsagePanel DataContext="{Binding Usage}"/>
+            </StackPanel>
 
             <!-- Nodes table -->
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">

@@ -127,9 +127,10 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     /// </para>
     /// </summary>
     /// <param name="sample">Returns one value per chart, or null when this tick has no answer.</param>
+    /// <param name="caveat">Passed to the track — see UsageTrackViewModel's historyCaveat.</param>
     protected void ConfigureUsage(
         IEnumerable<UsageChartSpec> charts, UsageTarget target,
-        Func<CancellationToken, Task<double[]?>> sample)
+        Func<CancellationToken, Task<double[]?>> sample, string? caveat = null)
     {
         if (!_cluster.Capabilities.Metrics)
             return;
@@ -137,7 +138,8 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
         Usage = new UsageTrackViewModel(
             charts, target,
             _cluster is IMetricsHistoryAware historyAware ? historyAware.History : null,
-            _cluster is IMetricsAware metricsAware ? metricsAware.Metrics.Name : "the metrics source");
+            _cluster is IMetricsAware metricsAware ? metricsAware.Metrics.Name : "the metrics source",
+            caveat);
 
         OnPropertyChanged(nameof(ShowUsageGraphs));
 
