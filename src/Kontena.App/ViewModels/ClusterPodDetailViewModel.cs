@@ -302,7 +302,26 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         RefreshUsage();
     }
 
-    public string RangeLabel => Format.Duration(TimeSpan.FromMinutes(RangeMinutes));
+    /// <summary>
+    /// How far back the chart actually reaches — which is not the selected range until the buffer
+    /// has filled. A page open for thirty seconds holds thirty seconds of samples, and an axis
+    /// labelled "15m ago" over them claims fourteen and a half minutes that were never sampled.
+    /// </summary>
+    // ponytail: points are still spaced evenly rather than by timestamp, so a missed scrape shows
+    // as a slightly wider straight segment instead of a gap. Fine at a steady 15s poll; revisit if
+    // a source with irregular intervals lands (KON-84).
+    public string RangeLabel
+    {
+        get
+        {
+            var selected = UsageGraphs.Range(RangeMinutes);
+            if (_cpuSeries.Oldest is not { } oldest || CpuSamples.Count < 2)
+                return Format.Duration(selected);
+
+            var drawn = DateTimeOffset.UtcNow - oldest;
+            return Format.Duration(drawn < selected ? drawn : selected);
+        }
+    }
 
     /// <summary>
     /// Every range the selector offers, including the ones that need a history source. Shown and
@@ -351,6 +370,10 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         MemSubText = Describe(MemSamples, "working set", v => ByteSize.Format((long)Math.Round(v)));
 
         OnPropertyChanged(nameof(UsageIsEmpty));
+
+        // Grows with every sample until the buffer is full, so it cannot be raised on range changes
+        // alone — that was the bug: the axis kept saying "15m" over thirty seconds of data.
+        OnPropertyChanged(nameof(RangeLabel));
     }
 
     private static string Describe(

@@ -49,8 +49,10 @@ public sealed class PodUsageGraphTests
     {
         using var detail = Detail();
 
+        // The range that was picked. What the axis says about it is
+        // The_axis_says_how_far_back_the_chart_reaches_not_the_range_that_was_picked — asserting the
+        // label here raced the first sample, which is the very thing that changes it.
         Assert.Equal(UsageGraphs.DefaultRangeMinutes, detail.RangeMinutes);
-        Assert.Equal("15m", detail.RangeLabel);
     }
 
     [Fact]
@@ -68,7 +70,22 @@ public sealed class PodUsageGraphTests
 
         detail.SelectRangeCommand.Execute(5);
         Assert.Equal(5, detail.RangeMinutes);
-        Assert.Equal("5m", detail.RangeLabel);
+    }
+
+    [Fact]
+    public async Task The_axis_says_how_far_back_the_chart_reaches_not_the_range_that_was_picked()
+    {
+        // A page open for seconds holds seconds of samples. Labelling that axis "15m ago" claimed
+        // history that was never sampled — and with the points spread over the full width it looked
+        // exactly like a quarter hour of flat data.
+        using var detail = Detail();
+
+        for (var i = 0; i < 200 && detail.CpuSamples.Count < 3; i++)
+            await Task.Delay(5);
+
+        // The fake's three samples span 30s, so the axis has to say seconds, not minutes.
+        Assert.EndsWith("s", detail.RangeLabel, StringComparison.Ordinal);
+        Assert.NotEqual("15m", detail.RangeLabel);
     }
 
     [Fact]
