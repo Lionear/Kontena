@@ -286,7 +286,16 @@ jobs:
           set -euo pipefail
           EXTRA=()
           case "$PLATFORM" in
-            osx)   ICON=icon.icns ;;
+            # Ad-hoc sign the bundle vpk builds (KON-348). Without this the .app ships with the
+            # signature the .NET SDK left on the apphost and no seal around it — no
+            # Contents/_CodeSignature, and an identifier of "apphost" rather than com.Lionear.Kontena.
+            # macOS reads a signature that claims resources against a bundle that has none as damaged,
+            # which is the one refusal a user cannot click past. Ad-hoc does not make it trusted, it
+            # makes it ordinary: the verdict drops back to "no usable signature", the state every
+            # unsigned app is in. Real trust needs the Developer ID from KON-53, and the installer
+            # package needs --signInstallIdentity on top of that; this flag signs the app only.
+            osx)   ICON=icon.icns
+                   EXTRA+=(--signAppIdentity -) ;;
             win)   ICON=src/Kontena.App/Assets/icon.ico ;;
             *)     ICON=src/Kontena.App/Assets/icon.png
                    # Same desktop-menu categories the hand-rolled .desktop entry carried.
@@ -426,8 +435,9 @@ jobs:
 
           These builds are unsigned / not notarized.
           Linux: the .AppImage is self-contained — chmod +x and run it.
-          macOS: run the Setup .pkg, or unzip the portable build — then clear quarantine before first
-          launch: xattr -cr Kontena.app.
+          macOS: clear quarantine on what you downloaded, before opening it — xattr -cr on the .pkg
+          itself, or on Kontena.app after unzipping the portable build. Clearing it afterwards does
+          not help the .pkg: macOS checks the installer package before it unpacks anything.
           Windows: run the Setup .exe, or unzip the portable build; SmartScreen may warn on first launch.
 
           Installed copies update themselves from here — see Settings → Updates.
