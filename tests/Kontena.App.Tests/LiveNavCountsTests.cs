@@ -74,6 +74,10 @@ public sealed class LiveNavCountsTests
         // Found by driving the real app (KON-339): only the open page's stream feeds the callback, so
         // the badges froze the moment you navigated to the Workloads dashboard, Config maps or Events.
         // Worse than freezing on an old number — the one caught here was mid-termination.
+        //
+        // Config maps and Events follow the cluster themselves since KON-340, so the overview stands
+        // in for them: it summarises five kinds and follows none, which is why it is the half of
+        // KON-340 still open. This assertion is about the shell, not about which page is on screen.
         var cluster = new FakeClusterEngine();
         var shell = new MainWindowViewModel();
         Assert.True(await shell.EnterClusterModeAsync(cluster));
@@ -81,8 +85,8 @@ public sealed class LiveNavCountsTests
         var before = (await cluster.ListPodsAsync()).Count;
         await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c"));
 
-        // Config maps watches nothing, so nothing here can be the page's own doing.
-        shell.NavigateCommand.Execute("configmaps");
+        // The overview watches nothing, so nothing here can be the page's own doing.
+        shell.NavigateCommand.Execute("overview");
         Assert.IsNotAssignableFrom<IClusterListPage>(shell.CurrentPage);
 
         Assert.Equal(

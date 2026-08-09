@@ -11,16 +11,18 @@ namespace Kontena.App.ViewModels;
 // time, the worst of both. These two pages exist to undo exactly that pairing.
 
 /// <summary>ConfigMaps — the same shape as the secrets page, minus every reason for the masking.</summary>
-public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObjectRow>
+public partial class ClusterConfigMapsViewModel : ClusterListPageViewModel<ConfigObjectRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
 
     public ClusterConfigMapsViewModel(IClusterEngine cluster, string? @namespace)
+        : base(cluster, GroupVersionKind.ConfigMap, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _ = LoadAsync();
+        StartWatching();
     }
 
     /// <summary>Delete, always confirmed (KON-253). Shared with the secrets page below.</summary>
@@ -54,16 +56,21 @@ public partial class ClusterConfigMapsViewModel : ListPageViewModel<ConfigObject
 }
 
 /// <summary>Secrets — keys and sizes, with the values behind a deliberate act.</summary>
-public partial class ClusterSecretsViewModel : ListPageViewModel<ConfigObjectRow>
+public partial class ClusterSecretsViewModel : ClusterListPageViewModel<ConfigObjectRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
 
+    // Following secrets moves no values: the watch carries the same metadata the listing does, and a
+    // reload rebuilds rows of key names and sizes. The page's rule — a value only leaves the cluster
+    // when asked for, one key at a time — is untouched by being live.
     public ClusterSecretsViewModel(IClusterEngine cluster, string? @namespace)
+        : base(cluster, GroupVersionKind.Secret, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _ = LoadAsync();
+        StartWatching();
     }
 
     private void ConfirmDelete(ConfigObjectRow row) => ConfigDelete.Confirm(this, _cluster, row, LoadAsync);
