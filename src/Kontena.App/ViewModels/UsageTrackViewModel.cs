@@ -95,10 +95,8 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(RangeOptions));
 
-        // Which source answers depends on the range, so the chip moves with it — not only when the
-        // probe comes back.
-        UpdateSourceText();
-
+        // The chip is not updated here: it names what drew the picture, and at this moment nothing
+        // has been drawn for the new range yet.
         if (UsesHistory)
             _ = LoadHistoryAsync(force: true);
         else
@@ -178,6 +176,7 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
             : Format.Duration(range);
 
         UsageError = string.Empty;
+        _drewFromHistory = false;
         UpdateSourceText();
         OnPropertyChanged(nameof(IsEmpty));
     }
@@ -192,14 +191,28 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
         OnPropertyChanged(nameof(RangeOptions));
         OnPropertyChanged(nameof(RangeHint));
         UpdateSourceText();
+
+        // Draw from it straight away rather than waiting for the next live tick — the probe coming
+        // back is exactly the moment the page can stop showing its two-point buffer.
+        if (value)
+            _ = LoadHistoryAsync(force: true);
     }
 
     /// <summary>
-    /// Whether the picture comes from history rather than from the live buffer. Never a blend:
-    /// stitching a 15s tail onto a series answered at a 12-minute step draws a spike that is an
-    /// artefact of two resolutions meeting, not of anything that happened.
+    /// Whether the picture comes from history rather than from the live buffer.
+    /// <para>
+    /// Every range, not only the long ones. The short ranges used to be reserved for the buffer on
+    /// the grounds that a 15s poll is fresher than a 30s scrape — true, and the wrong trade: a page
+    /// open for half a minute holds three points, so "fresher" meant a triangle where Prometheus
+    /// could have drawn sixty points of the same quarter hour. Freshness of the latest reading is
+    /// what the header strip is for; the chart is for shape.
+    /// </para>
+    /// <para>
+    /// Never a blend of the two: stitching a 15s tail onto a series answered at a coarser step
+    /// draws a spike that is an artefact of two resolutions meeting, not of anything that happened.
+    /// </para>
     /// </summary>
-    private bool UsesHistory => HasHistory && !UsageGraphs.IsLive(RangeMinutes);
+    private bool UsesHistory => HasHistory;
 
     /// <summary>Look for a history source. Safe to call on a page that will never have one.</summary>
     public async Task ProbeAsync(CancellationToken ct = default)
@@ -266,10 +279,26 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
                 }
             }
 
-            RangeLabel = Format.Duration(any ? drawn : range);
-            UsageError = any
-                ? string.Empty
-                : $"{_history.Name} returned nothing for this over the last {Format.Duration(range)}.";
+            if (!any)
+            {
+                // Nothing stored yet — a pod created a minute ago, or a scrape that has not seen it.
+                // Where the buffer can cover the range itself, draw that instead of an empty frame
+                // with an explanation; only say so when neither source has anything.
+                if (UsageGraphs.IsLive(RangeMinutes) && Charts.Any(c => c.Buffer.Count > 1))
+                {
+                    Refresh();
+                    return;
+                }
+
+                UsageError = $"{_history.Name} returned nothing for this over the last {Format.Duration(range)}.";
+                RangeLabel = Format.Duration(range);
+                OnPropertyChanged(nameof(IsEmpty));
+                return;
+            }
+
+            RangeLabel = Format.Duration(drawn);
+            UsageError = string.Empty;
+            _drewFromHistory = true;
 
             UpdateSourceText();
             OnPropertyChanged(nameof(IsEmpty));
@@ -292,15 +321,21 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
 
     [ObservableProperty] private string _sourceText = string.Empty;
 
+    /// <summary>
+    /// What actually drew the picture on screen, not what was going to. A fallback to the buffer
+    /// left the chip naming Prometheus over a chart Prometheus had not supplied.
+    /// </summary>
+    private bool _drewFromHistory;
+
     private void UpdateSourceText() =>
-        SourceText = UsesHistory
+        SourceText = _drewFromHistory
             ? $"{_history.Name} · {Format.Duration(TimeSpan.FromMinutes(RangeMinutes))} at "
               + $"{Format.Duration(_history.RefreshInterval(TimeSpan.FromMinutes(RangeMinutes)))} resolution"
             : $"{_liveSourceName} · sampled live";
 
     public string RangeHint => HasHistory
-        ? $"Longer ranges are read from {_history.Name}; the short ones come from what Kontena "
-          + "sampled itself, which is fresher."
+        ? $"Every range is read from {_history.Name}. The live readout above still comes from "
+          + $"{_liveSourceName}, which is a scrape ahead of the chart."
         : $"Charted from what Kontena sampled since this page was opened — {_liveSourceName} keeps no "
           + "history. Longer ranges need a history source such as Prometheus.";
 }

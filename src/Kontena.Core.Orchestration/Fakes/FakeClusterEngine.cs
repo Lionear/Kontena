@@ -253,8 +253,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     public bool HasHistory { get; init; }
 
+    /// <summary>
+    /// Make the history source answer with nothing, the way a real one does for an object younger
+    /// than its first scrape. That path has its own behaviour — fall back to the buffer rather than
+    /// report an empty answer — so it needs to be reachable (KON-347).
+    /// </summary>
+    public bool HistoryIsEmpty { get; init; }
+
     public IMetricsHistory History =>
-        HasHistory && _capabilities.Metrics ? FakeMetricsHistory.Instance : NoMetricsHistory.Instance;
+        HasHistory && _capabilities.Metrics
+            ? (HistoryIsEmpty ? FakeMetricsHistory.Empty : FakeMetricsHistory.Instance)
+            : NoMetricsHistory.Instance;
 
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<BackendInfo>(new ClusterInfo
@@ -1202,6 +1211,11 @@ internal sealed class FakeMetricsHistory : IMetricsHistory
 {
     public static readonly FakeMetricsHistory Instance = new();
 
+    /// <summary>Available, and holding nothing — a target younger than the first scrape.</summary>
+    public static readonly FakeMetricsHistory Empty = new() { ReturnsNothing = true };
+
+    public bool ReturnsNothing { get; init; }
+
     public string Name => "Prometheus";
     public bool IsAvailable => true;
 
@@ -1216,7 +1230,7 @@ internal sealed class FakeMetricsHistory : IMetricsHistory
     public ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
         UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
     {
-        if (!Supports(target.Scope))
+        if (!Supports(target.Scope) || ReturnsNothing)
             return ValueTask.FromResult<IReadOnlyList<UsageSample>>([]);
 
         const int points = 60;

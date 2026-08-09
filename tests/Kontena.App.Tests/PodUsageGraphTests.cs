@@ -170,22 +170,36 @@ public sealed class PodUsageGraphTests
     }
 
     [Fact]
-    public async Task Going_back_to_a_short_range_returns_to_the_live_buffer()
+    public async Task The_short_ranges_come_from_history_too_when_there_is_any()
     {
-        // The buffer keeps filling while history owns the chart, so switching back must not show a
-        // series that starts at the moment of switching.
+        // They used to be reserved for the live buffer because a 15s poll is fresher than a scrape.
+        // On a page open for half a minute that meant three points drawn across a quarter-hour axis,
+        // while the same source could answer the whole quarter hour. Freshness of the latest number
+        // is the header strip's job; the chart is for shape.
         using var detail = await WithHistoryAsync();
 
-        for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count < 3; i++)
-            await Task.Delay(5);
-
-        detail.Usage.SelectRangeCommand.Execute(1440);
         for (var i = 0; i < 200 && detail.Usage.Charts[0].Samples.Count <= 3; i++)
             await Task.Delay(5);
 
-        detail.Usage.SelectRangeCommand.Execute(15);
+        Assert.Equal(15, detail.Usage.RangeMinutes);
+        Assert.True(detail.Usage.Charts[0].Samples.Count > 3,
+            $"15m drew {detail.Usage.Charts[0].Samples.Count} points — that is the buffer, not history");
+        Assert.Contains("Prometheus", detail.Usage.SourceText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_short_range_falls_back_to_the_buffer_when_history_has_nothing()
+    {
+        // A pod created a minute ago has no stored series yet. Drawing "returned nothing" over a
+        // buffer that does have points would hide the only data there is.
+        var engine = new FakeClusterEngine { HasHistory = true, HistoryIsEmpty = true };
+        using var detail = new ClusterPodDetailViewModel(engine, SamplePod(), Font());
+
+        for (var i = 0; i < 400 && detail.Usage.Charts[0].Samples.Count < 3; i++)
+            await Task.Delay(5);
 
         Assert.Equal(3, detail.Usage.Charts[0].Samples.Count);
+        Assert.Empty(detail.Usage.UsageError);
         Assert.DoesNotContain("Prometheus", detail.Usage.SourceText, StringComparison.Ordinal);
     }
 
