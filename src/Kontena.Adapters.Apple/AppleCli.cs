@@ -115,6 +115,28 @@ internal sealed class AppleCli(IToolRunner runner)
         return Parse<T>(stdout, ToolCommand.Describe(AppleTool.Definition.Executable, args));
     }
 
+    /// <summary>
+    /// Runs a command whose output is a single JSON object rather than an array. Only
+    /// <c>system df</c> is shaped that way — everything else this adapter reads is a list.
+    /// </summary>
+    public async ValueTask<T?> GetAsync<T>(CancellationToken ct, params string[] args)
+    {
+        var stdout = await RunAsync(ct, args).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(stdout))
+            return default;
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(stdout, JsonOptions);
+        }
+        catch (JsonException error)
+        {
+            var commandLine = ToolCommand.Describe(AppleTool.Definition.Executable, args);
+            throw new EngineException($"Could not read the output of `{commandLine}`.", error);
+        }
+    }
+
     /// <summary>Deserializes one of the CLI's JSON arrays. Internal so the tests can reach it with
     /// captured output without going through a process.</summary>
     internal static IReadOnlyList<T> Parse<T>(string stdout, string commandLine)

@@ -301,6 +301,31 @@ internal sealed record AppleStats
 }
 
 /// <summary>
+/// What <c>container system df --format json</c> reports — one object, not a list, with a block per
+/// category. This is where a prune's byte figure comes from: the CLI announces it as a localised
+/// sentence ("Reclaimed 1,37 GB in disk space" on a Dutch machine, and literally "Reclaimed Zero KB"
+/// when it removed nothing), while these are plain integers.
+/// </summary>
+internal sealed record AppleDiskUsage
+{
+    public AppleDiskUsageEntry? Containers { get; init; }
+
+    public AppleDiskUsageEntry? Images { get; init; }
+
+    public AppleDiskUsageEntry? Volumes { get; init; }
+}
+
+internal sealed record AppleDiskUsageEntry
+{
+    /// <summary>
+    /// Total on disk for this category. The one to measure a prune against — <c>reclaimable</c> is not,
+    /// because pruning containers makes their image reclaimable and that figure then <em>rises</em>
+    /// across a prune that removed nothing from it.
+    /// </summary>
+    public long SizeInBytes { get; init; }
+}
+
+/// <summary>
 /// One entry of <c>container system version --format json</c>. Two are printed: the CLI, whose
 /// <c>version</c> is a bare number, and the apiserver, whose <c>version</c> is a whole sentence.
 /// </summary>
