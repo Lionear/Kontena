@@ -269,8 +269,6 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     [ObservableProperty] private string _cpuText = "—";
     [ObservableProperty] private string _memUsedText = "—";
     [ObservableProperty] private string _memLimitText = string.Empty;
-    [ObservableProperty] private double _memPercent;
-    [ObservableProperty] private double _cpuPercent;
     [ObservableProperty] private string _netIoText = "—";
     [ObservableProperty] private string _blockIoText = "—";
 
@@ -294,10 +292,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
             Usage.Charts[1].ThresholdLabel = $"limit {ByteSize.Format(s.MemoryLimitBytes)}";
         }
         CpuText = $"{s.CpuPercent:0.0}%";
-        CpuPercent = Math.Clamp(s.CpuPercent, 0, 100);
         MemUsedText = Format.Size(s.MemoryUsedBytes);
         MemLimitText = s.MemoryLimitBytes > 0 ? $"/ {Format.Size(s.MemoryLimitBytes)}" : string.Empty;
-        MemPercent = Math.Clamp(s.MemoryFraction * 100, 0, 100);
         NetIoText = $"{Format.Size(s.NetRxBytes)} / {Format.Size(s.NetTxBytes)}";
         BlockIoText = $"{Format.Size(s.BlockReadBytes)} / {Format.Size(s.BlockWriteBytes)}";
     }
@@ -306,10 +302,8 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     {
         Usage.Clear();
         CpuText = "—";
-        CpuPercent = 0;
         MemUsedText = "—";
         MemLimitText = string.Empty;
-        MemPercent = 0;
         NetIoText = "—";
         BlockIoText = "—";
     }

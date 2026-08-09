@@ -304,48 +304,14 @@
             <!-- Stats -->
             <ScrollViewer IsVisible="{Binding IsStatsSelected}">
                 <StackPanel Spacing="16">
-                    <!-- Over time (KON-347); the meters below stay, they answer "how close to the
-                         limit" which a trend line does not. -->
+                    <!-- The tab is the charts (KON-349). It used to be the charts plus a meter
+                         for CPU and one for memory plus cards for the two I/O counters — with the
+                         live strip above already carrying all four numbers, that put CPU and memory
+                         on screen three times and the counters twice. The meters' only unique
+                         contribution was the bar as a fraction, and the strip states the
+                         denominator ("829.3 MB / 67.3 GB") while a chart with a real limit draws
+                         it as a rule. -->
                     <views:UsagePanel DataContext="{Binding Usage}"/>
-                    <Border Classes="card">
-                        <StackPanel Spacing="12">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Memory" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="{Binding MemUsedText}" FontFamily="{StaticResource Mono}" FontSize="13"
-                                               Foreground="{DynamicResource Text}"/>
-                                    <TextBlock Text="{Binding MemLimitText}" FontFamily="{StaticResource Mono}" FontSize="13"
-                                               Foreground="{DynamicResource TextFaint}"/>
-                                </StackPanel>
-                            </Grid>
-                            <ProgressBar Value="{Binding MemPercent}" Maximum="100" Height="8" CornerRadius="4"
-                                         Foreground="{DynamicResource Accent}" Background="{DynamicResource Surface2}"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Classes="card">
-                        <StackPanel Spacing="12">
-                            <TextBlock Text="CPU" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                            <ProgressBar Value="{Binding CpuPercent}" Maximum="100" Height="8" CornerRadius="4"
-                                         Foreground="{DynamicResource Info}" Background="{DynamicResource Surface2}"/>
-                            <TextBlock Text="{Binding CpuText}" FontFamily="{StaticResource Mono}" FontSize="13" Foreground="{DynamicResource TextDim}"/>
-                        </StackPanel>
-                    </Border>
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                        <Border Grid.Column="0" Classes="card">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="Network I/O (rx / tx)" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
-                                <TextBlock Text="{Binding NetIoText}" FontFamily="{StaticResource Mono}" FontSize="15"
-                                           Foreground="{DynamicResource Text}"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Grid.Column="1" Classes="card">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="Block I/O (read / write)" FontSize="12" Foreground="{DynamicResource TextFaint}"/>
-                                <TextBlock Text="{Binding BlockIoText}" FontFamily="{StaticResource Mono}" FontSize="15"
-                                           Foreground="{DynamicResource Text}"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
                 </StackPanel>
             </ScrollViewer>
 
