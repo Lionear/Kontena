@@ -61,6 +61,19 @@
             </Grid>
         </Border>
 
+        <!-- Where the stored series measures the same thing differently from the live one. Stated
+             rather than left to be spotted as an unexplained offset. -->
+        <Border IsVisible="{Binding HasCaveat}"
+                Background="{DynamicResource InfoSoft}" BorderBrush="{DynamicResource BorderSoft}" BorderThickness="1"
+                CornerRadius="{StaticResource RadiusSm}" Padding="13,11">
+            <Grid ColumnDefinitions="Auto,*">
+                <Path Grid.Column="0" Classes="icon" Width="15" Height="15" Margin="0,1,10,0"
+                      Stroke="{DynamicResource Info}" Data="{StaticResource IconInfo}" VerticalAlignment="Top"/>
+                <TextBlock Grid.Column="1" Text="{Binding HistoryCaveat}" FontSize="12.5"
+                           Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Grid>
+        </Border>
+
         <!-- A query that failed or came back empty. Without this the chart is simply blank, which
              reads as something that used nothing rather than as an answer Kontena never got. -->
         <Border IsVisible="{Binding HasError}"
@@ -97,7 +110,9 @@
                             <controls:UsageChart Height="130" TextElement.FontFamily="{StaticResource Mono}"
                                                  Values="{Binding Samples}"
                                                  Unit="{Binding Unit}"
-                                                 RangeLabel="{Binding $parent[ItemsControl].((vm:UsageTrackViewModel)DataContext).RangeLabel}"
+                                                 RangeLabel="{Binding RangeLabel}"
+                                                 Threshold="{Binding Threshold}"
+                                                 ThresholdLabel="{Binding ThresholdLabel}"
                                                  Stroke="{Binding BrushKey, Converter={StaticResource KeyToBrush}}"
                                                  AxisBrush="{DynamicResource BorderSoft}"
                                                  LabelBrush="{DynamicResource TextFaint}"

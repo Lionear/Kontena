@@ -29,6 +29,9 @@ public enum UsageScope
 
     /// <summary>One node.</summary>
     Node,
+
+    /// <summary>Everything running in the cluster, summed.</summary>
+    Cluster,
 }
 
 /// <summary>
@@ -48,6 +51,7 @@ public readonly record struct UsageTarget(
     public static UsageTarget Pod(string ns, string name) => new(UsageScope.Pod, name, ns);
     public static UsageTarget Namespaced(string ns) => new(UsageScope.Namespace, ns, ns);
     public static UsageTarget Node(string name) => new(UsageScope.Node, name);
+    public static UsageTarget Cluster() => new(UsageScope.Cluster, "cluster");
 
     public static UsageTarget Workload(string ns, string name, string kind) =>
         new(UsageScope.Workload, name, ns, kind);

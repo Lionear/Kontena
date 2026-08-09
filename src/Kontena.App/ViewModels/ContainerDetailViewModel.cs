@@ -54,6 +54,7 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
         Usage = new UsageTrackViewModel(
             [
                 new UsageChartSpec("CPU", UsageChartUnit.Percent, "Primary", null, "percent of a core"),
+                // The limit arrives with the first stats sample — see ApplyStats.
                 new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", null, "used"),
             ],
             // Scope and history are moot here — a container engine has nothing that remembers, so
@@ -284,6 +285,14 @@ public partial class ContainerDetailViewModel : ViewModelBase, IDisposable, ITer
     {
         _lastStats = s;
         Usage.Add(DateTimeOffset.UtcNow, s.CpuPercent, s.MemoryUsedBytes);
+
+        // Only once it is known, and only when there is one: an unlimited container has no ceiling
+        // to draw, which is a different answer than a ceiling of zero.
+        if (s.MemoryLimitBytes > 0 && Usage.Charts[1].Threshold is null)
+        {
+            Usage.Charts[1].Threshold = s.MemoryLimitBytes;
+            Usage.Charts[1].ThresholdLabel = $"limit {ByteSize.Format(s.MemoryLimitBytes)}";
+        }
         CpuText = $"{s.CpuPercent:0.0}%";
         CpuPercent = Math.Clamp(s.CpuPercent, 0, 100);
         MemUsedText = Format.Size(s.MemoryUsedBytes);

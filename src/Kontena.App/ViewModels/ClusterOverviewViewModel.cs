@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Kontena.App.Controls;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
@@ -11,14 +12,89 @@ namespace Kontena.App.ViewModels;
 /// <see cref="IClusterEngine"/>. Where a cluster is summarised; the per-resource browsers it links
 /// on to (nodes, pods, workloads, apply/dry-run) are their own pages, built in KON-73.
 /// </summary>
-public partial class ClusterOverviewViewModel : ViewModelBase
+public partial class ClusterOverviewViewModel : ViewModelBase, IDisposable
 {
     private readonly IClusterEngine _cluster;
+    private CancellationTokenSource? _usage;
 
     public ClusterOverviewViewModel(IClusterEngine cluster)
     {
         _cluster = cluster;
+
+        // The page you land on, and until now the only one that could not answer "is the cluster
+        // busy" (KON-347). Summed over pods rather than over nodes, so it agrees with the namespace
+        // and workload charts instead of being a fourth number nobody can reconcile.
+        if (cluster.Capabilities.Metrics)
+        {
+            Usage = new UsageTrackViewModel(
+                [
+                    new UsageChartSpec("CPU", UsageChartUnit.Millicores, "Primary", UsageMetric.Cpu,
+                        "millicores across every pod"),
+                    new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", UsageMetric.Memory,
+                        "working set across every pod"),
+                ],
+                UsageTarget.Cluster(),
+                cluster is IMetricsHistoryAware historyAware ? historyAware.History : null,
+                cluster is IMetricsAware metricsAware ? metricsAware.Metrics.Name : "the metrics source");
+
+            _usage = new CancellationTokenSource();
+            _ = Usage.ProbeAsync(_usage.Token);
+            _ = PollUsageAsync(_usage.Token);
+        }
+
         _ = LoadAsync();
+    }
+
+    /// <summary>Cluster-wide usage, or null where the cluster has no metrics source.</summary>
+    public UsageTrackViewModel? Usage { get; }
+
+    public bool ShowUsageGraphs => Usage is not null;
+
+    private async Task PollUsageAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (_cluster is IMetricsAware aware)
+                {
+                    var pods = await aware.Metrics.GetPodUsageAsync(null, ct).ConfigureAwait(true);
+                    if (pods.Count > 0 && Usage is { } usage)
+                    {
+                        usage.Add(
+                            DateTimeOffset.UtcNow,
+                            pods.Sum(p => (double)p.CpuMillicores),
+                            pods.Sum(p => (double)p.MemoryBytes));
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // One failed read is a gap, not the end of the charts.
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(15), ct).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>The poll outlives nothing: cluster pages are rebuilt on every visit.</summary>
+    public void Dispose()
+    {
+        _usage?.Cancel();
+        _usage?.Dispose();
+        _usage = null;
+        GC.SuppressFinalize(this);
     }
 
     [ObservableProperty] private string _clusterName = string.Empty;

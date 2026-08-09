@@ -71,20 +71,61 @@ public sealed class UsageEverywhereTests
     }
 
     [Fact]
-    public async Task A_node_never_offers_the_long_ranges_even_where_prometheus_answers()
+    public async Task A_node_gets_history_for_cpu_and_memory_but_not_for_disk()
     {
-        // node-exporter keys its series by scrape address rather than by node name. Rather than
-        // join through kube_node_info and risk a number that disagrees with the live gauge beside
-        // it, the node scope is simply unsupported — so the buttons stay shut.
+        // node-exporter answers for CPU and memory once joined on node_uname_info. Disk has no
+        // stored series — only the kubelet reports it — so that chart stays on the live buffer and
+        // keeps its own axis label rather than borrowing the others' range.
         var cluster = new FakeClusterEngine { HasHistory = true };
         using var detail = new ClusterNodeDetailViewModel(cluster, await FirstNodeAsync(cluster), "v1.29.4");
 
-        await Task.Delay(50);
+        for (var i = 0; i < 400 && !detail.Usage!.HasHistory; i++)
+            await Task.Delay(5);
 
-        Assert.False(detail.Usage!.HasHistory);
-        Assert.All(
-            detail.Usage.RangeOptions.Where(o => !UsageGraphs.IsLive(o.Minutes)),
-            o => Assert.False(o.IsAvailable, $"{o.Label} was offered for a node"));
+        Assert.True(detail.Usage!.HasHistory);
+        Assert.All(detail.Usage.RangeOptions, o => Assert.True(o.IsAvailable, $"{o.Label} stayed disabled"));
+
+        var disk = detail.Usage.Charts[2];
+        Assert.Equal("Disk", disk.Title);
+
+        detail.Usage.SelectRangeCommand.Execute(1440);
+        for (var i = 0; i < 400 && detail.Usage.Charts[0].Samples.Count <= 3; i++)
+            await Task.Delay(5);
+
+        Assert.True(detail.Usage.Charts[0].Samples.Count > 3, "CPU did not reach the history source");
+        Assert.NotEqual("1d", disk.RangeLabel);
+    }
+
+    [Fact]
+    public async Task A_node_says_that_its_history_measures_memory_differently()
+    {
+        // node-exporter counts total minus available; the kubelet reports a working set. They sit
+        // about a tenth apart, and an unexplained offset between the chart and the figure above it
+        // is exactly the kind of quiet wrongness this page keeps producing.
+        var cluster = new FakeClusterEngine { HasHistory = true };
+        using var detail = new ClusterNodeDetailViewModel(cluster, await FirstNodeAsync(cluster), "v1.29.4");
+
+        for (var i = 0; i < 400 && !detail.Usage!.HasCaveat; i++)
+            await Task.Delay(5);
+
+        Assert.True(detail.Usage!.HasCaveat, "the node page drew from history without explaining the offset");
+        Assert.Contains("node-exporter", detail.Usage.HistoryCaveat!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_pod_page_has_no_caveat_because_its_two_sources_agree()
+    {
+        // Same cAdvisor series behind both, so there is nothing to warn about — and a note that
+        // appeared everywhere would stop being read where it matters.
+        var cluster = new FakeClusterEngine { HasHistory = true };
+        var pod = (await cluster.ListPodsAsync()).First();
+
+        using var detail = new ClusterPodDetailViewModel(cluster, pod, Font());
+
+        for (var i = 0; i < 400 && !detail.Usage.HasHistory; i++)
+            await Task.Delay(5);
+
+        Assert.False(detail.Usage.HasCaveat);
     }
 
     // ── Workload ─────────────────────────────────────────────────────────────
@@ -125,7 +166,7 @@ public sealed class UsageEverywhereTests
 
         pods = [.. pods.Where(p => p.Namespace == name)];
         Assert.True(
-            usage.Charts[0].Samples[^1] >= pods.Max(p => (double)p.CpuMillicores),
+            usage.Charts[0].Samples[^1].Value >= pods.Max(p => (double)p.CpuMillicores),
             "the namespace total came in under its largest pod");
     }
 

@@ -17,8 +17,14 @@ namespace Kontena.App.ViewModels;
 /// live figure and no stored one, and the chart says so by staying on the buffer.
 /// </param>
 /// <param name="Unavailable">What the subtitle reads before any sample has arrived.</param>
+/// <param name="Threshold">
+/// The ceiling this measure is read against — a memory limit, a node's capacity — or null. Drawn as
+/// a dashed rule so "654 MB" becomes "654 MB of 1 GB".
+/// </param>
+/// <param name="ThresholdLabel">What the rule is called, e.g. "limit 1.0 GB".</param>
 public sealed record UsageChartSpec(
-    string Title, UsageChartUnit Unit, string BrushKey, UsageMetric? Metric, string Unavailable);
+    string Title, UsageChartUnit Unit, string BrushKey, UsageMetric? Metric, string Unavailable,
+    double? Threshold = null, string? ThresholdLabel = null);
 
 /// <summary>One chart in a <see cref="UsageTrackViewModel"/>.</summary>
 public sealed partial class UsageChartViewModel(UsageChartSpec spec) : ViewModelBase
@@ -30,19 +36,60 @@ public sealed partial class UsageChartViewModel(UsageChartSpec spec) : ViewModel
     public string BrushKey => spec.BrushKey;
     internal UsageMetric? Metric => spec.Metric;
 
-    [ObservableProperty] private IReadOnlyList<double> _samples = [];
+    /// <summary>
+    /// Settable, not fixed at construction: a container engine only reports the memory limit on the
+    /// stats sample, which arrives after the page is built.
+    /// </summary>
+    [ObservableProperty] private double? _threshold = spec.Threshold;
+
+    [ObservableProperty] private string? _thresholdLabel = spec.ThresholdLabel;
+
+    [ObservableProperty] private IReadOnlyList<UsagePoint> _samples = [];
     [ObservableProperty] private string _subText = spec.Unavailable;
     [ObservableProperty] private string _nowText = "—";
 
-    internal void Describe()
+    /// <summary>
+    /// Per chart, not per page: on a node the disk stays on the live buffer while CPU and memory
+    /// come from history, so one shared label would put "24h" under fifteen minutes of disk.
+    /// </summary>
+    [ObservableProperty] private string _rangeLabel = Format.Duration(
+        TimeSpan.FromMinutes(UsageGraphs.DefaultRangeMinutes));
+
+    /// <summary>Place samples across the plot by when they were taken (KON-347).</summary>
+    internal void Plot(IReadOnlyList<(DateTimeOffset At, double Value)> samples, TimeSpan range, DateTimeOffset now)
     {
-        NowText = Samples.Count == 0 ? "—" : Format(Samples[^1]);
-        SubText = Samples.Count == 0
-            ? spec.Unavailable
-            : $"{spec.Unavailable} · peak {Format(Samples.Max())} · avg {Format(Samples.Average())}";
+        if (samples.Count == 0)
+        {
+            Samples = [];
+            Describe();
+            return;
+        }
+
+        // The span actually drawn, not the one asked for — an axis reading "15m" over thirty
+        // seconds of samples claims history that was never taken.
+        var first = samples[0].At;
+        var span = now - first;
+        if (span > range)
+            span = range;
+
+        var seconds = span.TotalSeconds;
+        Samples = seconds <= 0
+            ? [.. samples.Select((x, i) => new UsagePoint(samples.Count == 1 ? 1 : (double)i / (samples.Count - 1), x.Value))]
+            : [.. samples.Select(x => new UsagePoint(Math.Clamp(1 - (now - x.At).TotalSeconds / seconds, 0, 1), x.Value))];
+
+        RangeLabel = Format.Duration(span);
+        Describe();
     }
 
-    private string Format(double value) => Unit switch
+    internal void Describe()
+    {
+        NowText = Samples.Count == 0 ? "—" : Show(Samples[^1].Value);
+        SubText = Samples.Count == 0
+            ? spec.Unavailable
+            : $"{spec.Unavailable} · peak {Show(Samples.Max(p => p.Value))} · avg {Show(Samples.Average(p => p.Value))}";
+    }
+
+    private string Show(double value) => Unit switch
     {
         UsageChartUnit.Bytes => ByteSize.Format((long)Math.Round(value)),
         UsageChartUnit.Percent => value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "%",
@@ -64,21 +111,28 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
     private readonly IMetricsHistory _history;
     private readonly UsageTarget _target;
     private readonly string _liveSourceName;
+    private readonly string? _historyCaveat;
     private DateTimeOffset _historyFetched = DateTimeOffset.MinValue;
 
     /// <param name="charts">One per measure, in the order they are drawn.</param>
     /// <param name="target">What the history source should be asked about.</param>
     /// <param name="history">Null where the backend has none — a container engine, say.</param>
     /// <param name="liveSourceName">What answers for "now", named for the UI.</param>
+    /// <param name="historyCaveat">
+    /// Said in the panel whenever history is drawing, for the cases where the two sources measure
+    /// the same thing differently. A node is one: node-exporter counts memory as total minus
+    /// available while the kubelet reports a working set, and the two sit about a tenth apart. A
+    /// difference the user can see has to be a difference the page explains.
+    /// </param>
     public UsageTrackViewModel(
         IEnumerable<UsageChartSpec> charts, UsageTarget target, IMetricsHistory? history,
-        string liveSourceName)
+        string liveSourceName, string? historyCaveat = null)
     {
+        _historyCaveat = historyCaveat;
         Charts = [.. charts.Select(c => new UsageChartViewModel(c))];
         _target = target;
         _history = history ?? NoMetricsHistory.Instance;
         _liveSourceName = liveSourceName;
-        _rangeLabel = Format.Duration(TimeSpan.FromMinutes(UsageGraphs.DefaultRangeMinutes));
         UpdateSourceText();
     }
 
@@ -102,13 +156,6 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
         else
             Refresh();
     }
-
-    /// <summary>
-    /// How far back the chart actually reaches — which is not the selected range until the buffer
-    /// has filled. A page open for thirty seconds holds thirty seconds of samples, and an axis
-    /// labelled "15m ago" over them claims fourteen and a half minutes that were never sampled.
-    /// </summary>
-    [ObservableProperty] private string _rangeLabel;
 
     /// <summary>
     /// Every range the selector offers. The long ones are shown and disabled where nothing can
@@ -172,17 +219,7 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
         var now = DateTimeOffset.UtcNow;
 
         foreach (var chart in Charts)
-        {
-            chart.Samples = chart.Buffer.Window(range, now);
-            chart.Describe();
-        }
-
-        // Grows with every sample until the buffer is full, so it cannot be set on range changes
-        // alone — that was the bug: the axis kept saying "15m" over thirty seconds of data.
-        var oldest = Charts.Count > 0 ? Charts[0].Buffer.Oldest : null;
-        RangeLabel = oldest is { } first && !IsEmpty
-            ? Format.Duration(now - first < range ? now - first : range)
-            : Format.Duration(range);
+            chart.Plot(chart.Buffer.Window(range, now), range, now);
 
         UsageError = string.Empty;
         _drewFromHistory = false;
@@ -265,9 +302,11 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
             {
                 if (chart.Metric is not { } metric)
                 {
-                    // No stored series for this measure; leave it on what the buffer holds.
-                    chart.Samples = chart.Buffer.Window(UsageGraphs.Range(RangeMinutes), now);
-                    chart.Describe();
+                    // No stored series for this measure; leave it on what the buffer holds. Its own
+                    // axis label then says fifteen minutes while its neighbours say a day, which is
+                    // the truth rather than an inconsistency.
+                    var live = UsageGraphs.Range(RangeMinutes);
+                    chart.Plot(chart.Buffer.Window(live, now), live, now);
                     continue;
                 }
 
@@ -278,8 +317,7 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
                 if (wanted != RangeMinutes)
                     return;
 
-                chart.Samples = [.. samples.Select(s => s.Value)];
-                chart.Describe();
+                chart.Plot([.. samples.Select(s => (s.At, s.Value))], range, now);
 
                 if (samples.Count > 1)
                 {
@@ -302,12 +340,10 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
                 }
 
                 UsageError = $"{_history.Name} returned nothing for this over the last {Format.Duration(range)}.";
-                RangeLabel = Format.Duration(range);
                 OnPropertyChanged(nameof(IsEmpty));
                 return;
             }
 
-            RangeLabel = Format.Duration(drawn);
             UsageError = string.Empty;
             _drewFromHistory = true;
 
@@ -338,11 +374,21 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
     /// </summary>
     private bool _drewFromHistory;
 
-    private void UpdateSourceText() =>
+    private void UpdateSourceText()
+    {
+        OnPropertyChanged(nameof(HistoryCaveat));
+        OnPropertyChanged(nameof(HasCaveat));
+
         SourceText = _drewFromHistory
             ? $"{_history.Name} · {Format.Duration(TimeSpan.FromMinutes(RangeMinutes))} at "
               + $"{Format.Duration(_history.RefreshInterval(TimeSpan.FromMinutes(RangeMinutes)))} resolution"
             : $"{_liveSourceName} · sampled live";
+    }
+
+    /// <summary>Shown while history is drawing and the two sources are known to differ.</summary>
+    public string? HistoryCaveat => _drewFromHistory ? _historyCaveat : null;
+
+    public bool HasCaveat => HistoryCaveat is { Length: > 0 };
 
     public string RangeHint => HasHistory
         ? $"Every range is read from {_history.Name}. The live readout above still comes from "

@@ -97,10 +97,19 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         foreach (var c in all)
             ContainerRows.Add(new PodContainerRow(c));
 
+        // The declared ceiling, when every container has one. A partial sum would be a limit the
+        // pod does not actually have, so a single unlimited container means no line at all.
+        var limits = all.Select(c => c.MemoryLimitBytes).ToList();
+        double? memoryLimit = limits.Count > 0 && limits.All(l => l is > 0)
+            ? limits.Sum(l => l!.Value)
+            : null;
+
         Usage = new UsageTrackViewModel(
             [
                 new UsageChartSpec("CPU", UsageChartUnit.Millicores, "Primary", UsageMetric.Cpu, "millicores"),
-                new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", UsageMetric.Memory, "working set"),
+                new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", UsageMetric.Memory, "working set",
+                    memoryLimit,
+                    memoryLimit is { } cap ? $"limit {ByteSize.Format((long)cap)}" : null),
             ],
             UsageTarget.Pod(pod.Namespace, pod.Name),
             cluster is IMetricsHistoryAware historyAware ? historyAware.History : null,

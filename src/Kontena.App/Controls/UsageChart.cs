@@ -8,6 +8,16 @@ using Kontena.Core.Models;
 
 namespace Kontena.App.Controls;
 
+/// <summary>
+/// One plotted point: where it sits along the axis, and what it read.
+/// </summary>
+/// <param name="Offset">
+/// Position across the plot, 0 at the left edge and 1 at "now". Computed from the sample's own
+/// timestamp, so a gap in the source is a gap on the chart.
+/// </param>
+/// <param name="Value">Milli-cores, bytes or percent, per the chart's unit.</param>
+public readonly record struct UsagePoint(double Offset, double Value);
+
 /// <summary>What the numbers are, so the chart can label its own axis.</summary>
 public enum UsageChartUnit
 {
@@ -37,8 +47,19 @@ public enum UsageChartUnit
 public sealed class UsageChart : Control
 {
     /// <summary>Oldest first. Fewer than two points draws the frame and nothing else.</summary>
-    public static readonly StyledProperty<IReadOnlyList<double>?> ValuesProperty =
-        AvaloniaProperty.Register<UsageChart, IReadOnlyList<double>?>(nameof(Values));
+    public static readonly StyledProperty<IReadOnlyList<UsagePoint>?> ValuesProperty =
+        AvaloniaProperty.Register<UsageChart, IReadOnlyList<UsagePoint>?>(nameof(Values));
+
+    /// <summary>
+    /// A limit or request to mark, or null. Drawn as a dashed rule with its own label — the point
+    /// of a usage chart is usually "how close is this to the ceiling", and a number on its own
+    /// cannot answer that.
+    /// </summary>
+    public static readonly StyledProperty<double?> ThresholdProperty =
+        AvaloniaProperty.Register<UsageChart, double?>(nameof(Threshold));
+
+    public static readonly StyledProperty<string?> ThresholdLabelProperty =
+        AvaloniaProperty.Register<UsageChart, string?>(nameof(ThresholdLabel));
 
     public static readonly StyledProperty<IBrush?> StrokeProperty =
         AvaloniaProperty.Register<UsageChart, IBrush?>(nameof(Stroke));
@@ -67,12 +88,25 @@ public sealed class UsageChart : Control
     static UsageChart() =>
         AffectsRender<UsageChart>(
             ValuesProperty, StrokeProperty, AxisBrushProperty, LabelBrushProperty,
-            ReadoutBackgroundProperty, UnitProperty, ShowAxesProperty, RangeLabelProperty);
+            ReadoutBackgroundProperty, UnitProperty, ShowAxesProperty, RangeLabelProperty,
+            ThresholdProperty, ThresholdLabelProperty);
 
-    public IReadOnlyList<double>? Values
+    public IReadOnlyList<UsagePoint>? Values
     {
         get => GetValue(ValuesProperty);
         set => SetValue(ValuesProperty, value);
+    }
+
+    public double? Threshold
+    {
+        get => GetValue(ThresholdProperty);
+        set => SetValue(ThresholdProperty, value);
+    }
+
+    public string? ThresholdLabel
+    {
+        get => GetValue(ThresholdLabelProperty);
+        set => SetValue(ThresholdLabelProperty, value);
     }
 
     public IBrush? Stroke
@@ -156,9 +190,17 @@ public sealed class UsageChart : Control
         if (width <= 0)
             return -1;
 
-        var step = width / (values.Count - 1);
-        var index = (int)Math.Round((x - left) / step);
-        return index < 0 || index >= values.Count ? -1 : index;
+        // Nearest by position, because the points are no longer evenly spaced.
+        var target = (x - left) / width;
+        if (target < -0.05 || target > 1.05)
+            return -1;
+
+        var best = 0;
+        for (var i = 1; i < values.Count; i++)
+            if (Math.Abs(values[i].Offset - target) < Math.Abs(values[best].Offset - target))
+                best = i;
+
+        return best;
     }
 
     private const double AxisLabelSize = 9.5;
@@ -184,7 +226,7 @@ public sealed class UsageChart : Control
             return MinGutter;
 
         var widest = 0d;
-        foreach (var (text, _) in AxisLabels(Band(values)))
+        foreach (var (text, _) in AxisLabels(Band(values, Threshold)))
             widest = Math.Max(widest, LabelWidth(text));
 
         return Math.Max(MinGutter, Math.Ceiling((widest + AxisLabelGap * 1.5) / 8) * 8);
@@ -215,7 +257,7 @@ public sealed class UsageChart : Control
 
         var gutter = Gutter();
         var leftmost = double.MaxValue;
-        foreach (var (text, _) in AxisLabels(Band(values)))
+        foreach (var (text, _) in AxisLabels(Band(values, Threshold)))
             leftmost = Math.Min(leftmost, gutter - AxisLabelGap - LabelWidth(text));
 
         return leftmost;
@@ -237,14 +279,20 @@ public sealed class UsageChart : Control
     /// The value band the plot spans. Headroom above and below on purpose: a line drawn hard against
     /// the top edge reads as clipped, and one on the baseline reads as zero when it is not.
     /// </summary>
-    internal static (double Min, double Max) Band(IReadOnlyList<double> values)
+    internal static (double Min, double Max) Band(IReadOnlyList<UsagePoint> values, double? threshold = null)
     {
-        double lo = values[0], hi = values[0];
-        foreach (var v in values)
+        double lo = values[0].Value, hi = values[0].Value;
+        foreach (var p in values)
         {
-            if (v < lo) lo = v;
-            if (v > hi) hi = v;
+            if (p.Value < lo) lo = p.Value;
+            if (p.Value > hi) hi = p.Value;
         }
+
+        // Pull the ceiling into view, but only when it is near enough that the shape survives it.
+        // A pod at 5% of its limit would otherwise flatten to a line along the bottom, which trades
+        // the question the chart answers for one a single number already answered.
+        if (threshold is { } limit && limit > hi && limit <= hi * 2)
+            hi = limit;
 
         if (hi - lo < double.Epsilon)
         {
@@ -286,64 +334,85 @@ public sealed class UsageChart : Control
         if (values is null || values.Count < 2 || Stroke is not { } stroke)
             return;
 
-        var (min, max) = Band(values);
-        double X(int i) => left + width * i / (values.Count - 1);
+        var (min, max) = Band(values, Threshold);
+        double X(int i) => left + width * values[i].Offset;
         double Y(double v) => top + height - (v - min) / (max - min) * height;
 
-        var line = new StreamGeometry();
-        using (var pen = line.Open())
+        foreach (var (from, to) in Segments(values))
         {
-            pen.BeginFigure(new Point(X(0), Y(values[0])), isFilled: false);
-            for (var i = 1; i < values.Count; i++)
-                pen.LineTo(new Point(X(i), Y(values[i])));
-            pen.EndFigure(false);
-        }
-
-        var area = new StreamGeometry();
-        using (var fill = area.Open())
-        {
-            fill.BeginFigure(new Point(X(0), top + height), isFilled: true);
-            for (var i = 0; i < values.Count; i++)
-                fill.LineTo(new Point(X(i), Y(values[i])));
-            fill.LineTo(new Point(X(values.Count - 1), top + height));
-            fill.EndFigure(true);
-        }
-
-        // The wash is the stroke's own colour faded out downwards, so a chart never needs a second
-        // brush declared beside it that could drift from the line it belongs to.
-        if (stroke is ISolidColorBrush solid)
-        {
-            context.DrawGeometry(new LinearGradientBrush
+            var line = new StreamGeometry();
+            using (var pen = line.Open())
             {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-                EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                GradientStops =
+                pen.BeginFigure(new Point(X(from), Y(values[from].Value)), isFilled: false);
+                for (var i = from + 1; i <= to; i++)
+                    pen.LineTo(new Point(X(i), Y(values[i].Value)));
+                pen.EndFigure(false);
+            }
+
+            // A single point left on its own by two gaps still deserves to be visible.
+            if (from == to)
+                context.DrawEllipse(stroke, null, new Point(X(from), Y(values[from].Value)), 2, 2);
+
+            if (stroke is ISolidColorBrush solid && to > from)
+            {
+                var area = new StreamGeometry();
+                using (var fill = area.Open())
                 {
-                    new GradientStop(Color.FromArgb(56, solid.Color.R, solid.Color.G, solid.Color.B), 0),
-                    new GradientStop(Color.FromArgb(0, solid.Color.R, solid.Color.G, solid.Color.B), 1),
-                },
-            }, null, area);
+                    fill.BeginFigure(new Point(X(from), top + height), isFilled: true);
+                    for (var i = from; i <= to; i++)
+                        fill.LineTo(new Point(X(i), Y(values[i].Value)));
+                    fill.LineTo(new Point(X(to), top + height));
+                    fill.EndFigure(true);
+                }
+
+                // The wash is the stroke's own colour faded out downwards, so a chart never needs a
+                // second brush declared beside it that could drift from the line it belongs to.
+                context.DrawGeometry(new LinearGradientBrush
+                {
+                    StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                    EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                    GradientStops =
+                    {
+                        new GradientStop(Color.FromArgb(56, solid.Color.R, solid.Color.G, solid.Color.B), 0),
+                        new GradientStop(Color.FromArgb(0, solid.Color.R, solid.Color.G, solid.Color.B), 1),
+                    },
+                }, null, area);
+            }
+
+            context.DrawGeometry(null, new Pen(stroke, ShowAxes ? 2 : 1.5)
+            {
+                LineJoin = PenLineJoin.Round,
+                LineCap = PenLineCap.Round,
+            }, line);
         }
 
-        context.DrawGeometry(null, new Pen(stroke, ShowAxes ? 2 : 1.5)
+        if (ShowAxes && Threshold is { } mark && mark >= min && mark <= max)
         {
-            LineJoin = PenLineJoin.Round,
-            LineCap = PenLineCap.Round,
-        }, line);
+            var y = Y(mark);
+            context.DrawLine(
+                new Pen(LabelBrush ?? AxisBrush ?? Brushes.Gray, 1, new DashStyle([5, 4], 0)),
+                new Point(left, y), new Point(left + width, y));
+
+            if (ThresholdLabel is { Length: > 0 } caption && LabelBrush is { } ink)
+            {
+                var text = Text(caption, ink, AxisLabelSize);
+                context.DrawText(text, new Point(left + width - text.Width, y - text.Height - 2));
+            }
+        }
 
         if (!ShowAxes)
         {
             // The sparkline's only affordance: which end is now.
-            context.DrawEllipse(stroke, null, new Point(X(values.Count - 1), Y(values[^1])), 2, 2);
+            context.DrawEllipse(stroke, null, new Point(X(values.Count - 1), Y(values[^1].Value)), 2, 2);
             return;
         }
 
         if (HoverIndex >= 0 && HoverIndex < values.Count)
-            RenderCrosshair(context, values, X(HoverIndex), Y(values[HoverIndex]), top, height, labels);
+            RenderCrosshair(context, values, X(HoverIndex), Y(values[HoverIndex].Value), top, height, labels);
     }
 
     private void RenderFrame(
-        DrawingContext context, IReadOnlyList<double>? values, IBrush axis, IBrush? labels,
+        DrawingContext context, IReadOnlyList<UsagePoint>? values, IBrush axis, IBrush? labels,
         double left, double top, double width, double height)
     {
         var grid = new Pen(axis, 1);
@@ -359,7 +428,7 @@ public sealed class UsageChart : Control
 
         if (values is { Count: > 0 })
         {
-            foreach (var (label, fraction) in AxisLabels(Band(values)))
+            foreach (var (label, fraction) in AxisLabels(Band(values, Threshold)))
             {
                 var text = Text(label, labels, AxisLabelSize);
                 var y = top + height * fraction;
@@ -377,8 +446,49 @@ public sealed class UsageChart : Control
         context.DrawText(now, new Point(left + width - now.Width, bottom));
     }
 
+    /// <summary>
+    /// Runs of points to draw as one line, split where the source skipped. A gap drawn as a
+    /// straight line is a claim that nothing happened, which is exactly what a gap does not say.
+    /// The threshold is the typical spacing rather than a fixed duration, so it holds at every
+    /// range from five minutes to a week.
+    /// </summary>
+    internal static IEnumerable<(int From, int To)> Segments(IReadOnlyList<UsagePoint> values)
+    {
+        if (values.Count < 2)
+        {
+            if (values.Count == 1)
+                yield return (0, 0);
+            yield break;
+        }
+
+        var spacings = new double[values.Count - 1];
+        for (var i = 1; i < values.Count; i++)
+            spacings[i - 1] = values[i].Offset - values[i - 1].Offset;
+
+        // The lower quartile rather than the median: with two points either side of one long
+        // outage, half the spacings *are* the gap, and a median then calls the gap normal and the
+        // real interval an outlier. A range query answers at a fixed step, so the low end of the
+        // spread is that step.
+        var sorted = (double[])spacings.Clone();
+        Array.Sort(sorted);
+        var typical = sorted[sorted.Length / 4];
+        var breakAt = typical * 2.5;
+
+        var start = 0;
+        for (var i = 1; i < values.Count; i++)
+        {
+            if (typical > 0 && spacings[i - 1] > breakAt)
+            {
+                yield return (start, i - 1);
+                start = i;
+            }
+        }
+
+        yield return (start, values.Count - 1);
+    }
+
     private void RenderCrosshair(
-        DrawingContext context, IReadOnlyList<double> values, double x, double y,
+        DrawingContext context, IReadOnlyList<UsagePoint> values, double x, double y,
         double top, double height, IBrush? labels)
     {
         context.DrawLine(
@@ -387,7 +497,7 @@ public sealed class UsageChart : Control
 
         context.DrawEllipse(Stroke, new Pen(ReadoutBackground ?? Brushes.Black, 2), new Point(x, y), 4, 4);
 
-        var text = Text(Label(values[HoverIndex]), labels ?? Brushes.Gray, 11);
+        var text = Text(Label(values[HoverIndex].Value), labels ?? Brushes.Gray, 11);
         var box = new Rect(
             Math.Clamp(x - text.Width / 2 - 6, 0, Math.Max(0, Bounds.Width - text.Width - 12)),
             Math.Max(0, y - text.Height - 14),

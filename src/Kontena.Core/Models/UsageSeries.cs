@@ -45,11 +45,14 @@ public sealed class UsageSeries(TimeSpan keep)
     }
 
     /// <summary>
-    /// The values from the last <paramref name="range"/>, oldest first. Values only — the chart
-    /// spaces them evenly, which is honest for a fixed-interval poll and avoids pretending to a
-    /// precision the scrape interval does not have.
+    /// The samples from the last <paramref name="range"/>, oldest first, with their timestamps.
+    /// <para>
+    /// Timestamps and not just values: the chart places a point by when it was taken. Spacing them
+    /// evenly was fine for a steady poll and became a lie the moment a source with gaps in it could
+    /// answer — a run of missing scrapes then drew as a straight line across the time it was missing.
+    /// </para>
     /// </summary>
-    public IReadOnlyList<double> Window(TimeSpan range, DateTimeOffset now)
+    public IReadOnlyList<(DateTimeOffset At, double Value)> Window(TimeSpan range, DateTimeOffset now)
     {
         if (_samples.Count == 0)
             return [];
@@ -62,11 +65,7 @@ public sealed class UsageSeries(TimeSpan keep)
         if (from >= _samples.Count)
             return [];
 
-        var window = new double[_samples.Count - from];
-        for (var i = 0; i < window.Length; i++)
-            window[i] = _samples[from + i].Value;
-
-        return window;
+        return _samples.GetRange(from, _samples.Count - from);
     }
 
     public void Clear() => _samples.Clear();
