@@ -201,6 +201,9 @@ internal sealed record AppleImageVariant
 
     public ApplePlatform? Platform { get; init; }
 
+    /// <summary>The OCI image config for this platform, nested one level deeper than its name suggests.</summary>
+    public AppleImageVariantConfig? Config { get; init; }
+
     /// <summary>
     /// False for the attestation entries a multi-arch index carries alongside the real images. They are
     /// ~79 KB each and there is one per platform, so counting them would roughly double the reported
@@ -218,6 +221,29 @@ internal sealed record ApplePlatform
 
     [JsonPropertyName("os")]
     public string Os { get; init; } = string.Empty;
+}
+
+/// <summary>The <c>config</c> wrapper around the OCI config proper — <c>variant.config.config</c>.</summary>
+internal sealed record AppleImageVariantConfig
+{
+    public AppleOciConfig? Config { get; init; }
+}
+
+/// <summary>
+/// The OCI config an image was built with, as far as this CLI reports it — and it reports less than
+/// Docker does.
+/// <para>
+/// <b>There is no <c>ExposedPorts</c> and no <c>Volumes</c> here.</b> Captured against
+/// <c>nginx:alpine</c>, an image that declares both: the keys are absent from every variant, not null.
+/// So the Run flow can be pre-filled with an image's environment but not with its ports or volumes —
+/// see <c>AppleEngine.InspectImageAsync</c>.
+/// </para>
+/// </summary>
+internal sealed record AppleOciConfig
+{
+    /// <summary>Environment as OCI <c>KEY=value</c> strings.</summary>
+    [JsonPropertyName("Env")]
+    public List<string>? Env { get; init; }
 }
 
 /// <summary>One entry of <c>container volume list --format json</c>.</summary>

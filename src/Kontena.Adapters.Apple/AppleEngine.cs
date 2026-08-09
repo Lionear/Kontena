@@ -21,9 +21,8 @@ namespace Kontena.Adapters.Apple;
 /// exist (<see cref="PauseUnsupported"/>, <see cref="ComposeUnsupported"/>,
 /// <see cref="EventsUnsupported"/>, <see cref="NetworkAttachUnsupported"/>). Where a capability flag
 /// exists for it, <see cref="Capabilities"/> already says so, and the UI does not offer it.</description></item>
-/// <item><description><b>Not built yet.</b> Pulling and tagging images, builds, registry logins and
-/// browsing a volume land in the next stages of KON-31 (<see cref="NotYetBuilt"/>). No capability flag
-/// promises any of them in the meantime.</description></item>
+/// <item><description><b>Not built yet.</b> Image builds and browsing a volume land in the last stage
+/// of KON-31 (<see cref="NotYetBuilt"/>). No capability flag promises either in the meantime.</description></item>
 /// </list>
 /// </summary>
 internal sealed class AppleEngine(AppleCli cli, string backend, string displayName) : IContainerEngine
@@ -45,6 +44,14 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
 
     private const string NotYetBuilt =
         "This part of the Apple container adapter is not built yet (KON-31).";
+
+    private const string RegistryCredentialUnsupported =
+        "Apple container cannot use a registry login for a single operation: `container image pull` takes " +
+        "no credentials at all, and `container registry login` works only by storing the secret in the " +
+        "runtime's own credential store (verified against 1.2.2). Kontena keeps registry secrets in the " +
+        "OS keychain and checks a login without saving it, which this runtime offers no way to do — so " +
+        "it is refused rather than quietly writing your password somewhere else. Pull from public " +
+        "registries works normally.";
 
     private const string RestartPolicyUnsupported =
         "Apple container cannot restart a container automatically: `container run` has no restart-policy " +
@@ -398,15 +405,44 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         return [.. images.Select(image => AppleMap.Image(image, inUse!))];
     }
 
-    /// <summary>Image pull, push, tag, removal and builds land in a later stage of KON-31.</summary>
-    public IAsyncEnumerable<PullProgress> PullImageAsync(
-        string reference, RegistryCredential? credential = null, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Pulls an image, reporting what the CLI narrates.
+    /// <para>
+    /// The progress lines carry no usable byte figures, so <see cref="PullProgress.Current"/> and
+    /// <see cref="PullProgress.Total"/> stay null and the line itself is the status — the same choice
+    /// the nerdctl plugin makes. Look at what there is to parse:
+    /// <c>[1/2] Fetching image 47% (64 of 111 blobs, 91,7/191,6 MB, 17,3 MB/s)</c>. On this machine a
+    /// comma is the decimal separator and a dot groups thousands ("2.192 entries"), the two sides of the
+    /// fraction can carry different units ("320 KB/191,6 MB"), and all of it moves with the host's
+    /// locale. A number read wrong there is a progress bar that jumps or stalls, which is worse than a
+    /// line of text that is simply true.
+    /// </para>
+    /// <para>
+    /// Everything the CLI prints here goes to <b>stderr</b>; stdout stays empty for the whole pull.
+    /// <c>--progress plain</c> is passed so the shape does not depend on whether the process happened to
+    /// get a terminal.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<PullProgress> PullImageAsync(
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (credential is not null)
+            throw new NotSupportedException(RegistryCredentialUnsupported);
 
-    /// <summary>Registry logins land with image pulling, in a later stage of KON-31.</summary>
+        var lines = cli.StreamAsync(ct, "image", "pull", "--progress", "plain", reference);
+
+        await foreach (var line in lines.ConfigureAwait(false))
+            yield return new PullProgress(reference, line.Text, null, null);
+    }
+
+    /// <summary>
+    /// Not available — see <see cref="RegistryCredentialUnsupported"/>. The CLI can log in, but only by
+    /// keeping the credential, and this method exists precisely to check one without keeping it.
+    /// </summary>
     public ValueTask VerifyRegistryLoginAsync(
         RegistryCredential credential, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        throw new NotSupportedException(RegistryCredentialUnsupported);
 
     /// <summary>Builds land in a later stage of KON-31; the CLI has its own BuildKit builder.</summary>
     public IAsyncEnumerable<BuildProgress> BuildImageAsync(
@@ -421,13 +457,39 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         string id, bool force = false, CancellationToken ct = default) =>
         await cli.RunAsync(ct, "image", "delete", id).ConfigureAwait(false);
 
-    /// <summary>Reading an image's baked-in config lands with the Run flow, in a later stage of KON-31.</summary>
-    public ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Reads an image's baked-in config to pre-fill the Run flow — as far as this CLI reports it, which
+    /// is the environment and nothing else.
+    /// <para>
+    /// <b>Ports and volumes are not missing here, they are missing there.</b> Captured against
+    /// <c>nginx:alpine</c>, which declares both: no variant's config carries an <c>ExposedPorts</c> or
+    /// <c>Volumes</c> key at all. The Run dialog only adds rows for what it is given, so an image's
+    /// environment is pre-filled and its ports are typed by hand — nothing on screen claims the image
+    /// exposes none.
+    /// </para>
+    /// </summary>
+    public async ValueTask<ImageConfig?> InspectImageAsync(
+        string reference, CancellationToken ct = default)
+    {
+        IReadOnlyList<AppleImage> images;
 
-    /// <summary>Tagging lands in a later stage of KON-31.</summary>
-    public ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        try
+        {
+            images = await cli.ListAsync<AppleImage>(ct, "image", "inspect", reference).ConfigureAwait(false);
+        }
+        catch (ResourceNotFoundException)
+        {
+            // The contract's own answer for an image that is not here: null, not an error. The Run flow
+            // asks about whatever was typed in the box, so "no such image yet" is an ordinary state.
+            return null;
+        }
+
+        return images.Count > 0 ? AppleMap.ImageConfig(images[0]) : null;
+    }
+
+    /// <summary>Gives an image a second name.</summary>
+    public async ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
+        await cli.RunAsync(ct, "image", "tag", id, newTag).ConfigureAwait(false);
 
     /// <summary>
     /// Removes unused images. The <paramref name="allUnused"/> distinction Docker draws — dangling only,

@@ -246,6 +246,28 @@ internal static class AppleMap
     }
 
     /// <summary>
+    /// Reads what an image was built with, from the variant that would actually run here — the same
+    /// native-first choice <see cref="Image"/> makes for the size.
+    /// <para>
+    /// Only the environment comes back. This CLI's image config carries no <c>ExposedPorts</c> and no
+    /// <c>Volumes</c> key at all (captured against <c>nginx:alpine</c>, which declares both), so those
+    /// stay empty because the source is silent — not because the image is.
+    /// </para>
+    /// </summary>
+    public static ImageConfig ImageConfig(AppleImage source)
+    {
+        var variants = (source.Variants ?? []).Where(v => v.IsRealPlatform).ToList();
+
+        var native = variants.FirstOrDefault(v =>
+            string.Equals(v.Platform!.Architecture, ToolPlatform.Architecture, StringComparison.OrdinalIgnoreCase));
+
+        return new ImageConfig
+        {
+            Environment = Environment((native ?? variants.FirstOrDefault())?.Config?.Config?.Env),
+        };
+    }
+
+    /// <summary>
     /// Maps one stats sample. Everything but the CPU figure is a straight copy — this CLI reports bytes
     /// as bytes.
     /// <para>
