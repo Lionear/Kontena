@@ -471,6 +471,16 @@ public partial class MainWindowViewModel
         return new TerminalFont(current.TerminalFontFamily, current.TerminalFontSize, current.TerminalLigatures);
     }
 
+    /// <summary>
+    /// Usage-graph placement as it is right now (KON-345), read from the store for the same reason
+    /// as the terminal font: a choice made in Settings applies to the next pod opened.
+    /// </summary>
+    private UsageGraphOptions CurrentUsageGraphs()
+    {
+        var current = _store.Load();
+        return new UsageGraphOptions(current.UsageGraphs, current.UsageGraphRangeMinutes);
+    }
+
     private void ShowContainerDetail(ContainerSummary summary)
     {
         if (_engine is null)

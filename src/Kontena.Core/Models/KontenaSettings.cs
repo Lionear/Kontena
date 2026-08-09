@@ -26,6 +26,19 @@ public enum UpdateChannel
     Nightly,
 }
 
+/// <summary>Where the pod detail draws its CPU/memory history (KON-345).</summary>
+public enum UsageGraphPlacement
+{
+    /// <summary>A tab of its own, next to Events — full-height charts with a time range.</summary>
+    MetricsTab = 0,
+
+    /// <summary>A small line behind the live readout in the header. Always visible, no range.</summary>
+    Sparkline,
+
+    /// <summary>The same charts, inline above the container table on Overview.</summary>
+    Overview,
+}
+
 /// <summary>What Kontena connects to when it starts.</summary>
 public enum StartupBackend
 {
@@ -262,6 +275,17 @@ public sealed record KontenaSettings
     /// <summary>Enable programming-font ligatures in the terminal.</summary>
     public bool TerminalLigatures { get; init; } = true;
 
+    // ── Usage graphs (KON-345) ────────────────────────────────────────────────
+
+    /// <summary>Where the pod detail draws CPU/memory history.</summary>
+    public UsageGraphPlacement UsageGraphs { get; init; } = UsageGraphPlacement.MetricsTab;
+
+    /// <summary>
+    /// How far back the charts open on, in minutes. Capped to what the live buffer can serve until
+    /// a real history source exists (KON-84) — see <see cref="UsageGraphOptions.LiveBuffer"/>.
+    /// </summary>
+    public int UsageGraphRangeMinutes { get; init; } = 15;
+
     /// <summary>
     /// How wide the detail drawer is, in layout pixels (KON-307). Dragged rather than chosen in
     /// Settings: how much of the list you want to keep in view depends on the list, and the answer
@@ -291,6 +315,33 @@ public sealed record KontenaSettings
 
 /// <summary>Terminal font settings resolved for a session (family carries a mono fallback).</summary>
 public sealed record TerminalFont(string Family, double Size, bool Ligatures);
+
+/// <summary>
+/// Usage-graph preferences resolved for a page, the way <see cref="TerminalFont"/> is (KON-345).
+/// </summary>
+/// <param name="Placement">Where the charts are drawn.</param>
+/// <param name="RangeMinutes">How far back to chart.</param>
+public sealed record UsageGraphOptions(UsageGraphPlacement Placement, int RangeMinutes)
+{
+    /// <summary>
+    /// The furthest back the in-session buffer is kept. Not a display choice: sampling every 15s,
+    /// an hour of history is 240 points held per open pod for a chart nobody asked to see, and
+    /// anything past the buffer belongs to a real history source anyway (KON-84).
+    /// </summary>
+    public static readonly TimeSpan LiveBuffer = TimeSpan.FromMinutes(15);
+
+    /// <summary>Ranges the range selector offers, in minutes.</summary>
+    public static readonly IReadOnlyList<int> Ranges = [5, 15, 60, 360, 1440, 10080];
+
+    public static UsageGraphOptions Default { get; } = new(UsageGraphPlacement.MetricsTab, 15);
+
+    /// <summary>Whether a range is reachable from the live buffer alone.</summary>
+    public static bool IsLive(int minutes) => minutes <= LiveBuffer.TotalMinutes;
+
+    /// <summary>The range to actually chart — never further back than the buffer can answer.</summary>
+    public TimeSpan Range =>
+        TimeSpan.FromMinutes(Math.Clamp(RangeMinutes, 1, (int)LiveBuffer.TotalMinutes));
+}
 
 /// <summary>
 /// One port forward as it is remembered between launches: what it pointed at and which ports it

@@ -770,7 +770,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
                 Namespace = pod.Namespace ?? "default",
                 CpuMillicores = 40 + i * 12,
                 MemoryBytes = (128 + i * 4) * 1024L * 1024,
-                Timestamp = DateTimeOffset.UtcNow,
+
+                // A scrape interval apart, ending now, the way a real source reports. Stamping all
+                // three with UtcNow would make them one instant to anything that charts a series
+                // (KON-345) — and on a coarse system clock they might genuinely be equal.
+                Timestamp = DateTimeOffset.UtcNow.AddSeconds(-15 * (2 - i)),
             };
         }
     }

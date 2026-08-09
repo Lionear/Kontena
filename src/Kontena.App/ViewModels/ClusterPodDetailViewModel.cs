@@ -53,11 +53,16 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     /// <param name="onDelete">Invoked by the header's Delete (KON-334). The shell's, for the same
     /// reason as on the other detail pages: deleting the pod this page describes also has to close
     /// the page and drop the history step that leads back to it (KON-173).</param>
+    /// <param name="usageGraphs">Where and how far back to chart usage (KON-345).</param>
     public ClusterPodDetailViewModel(
         IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null,
         PortForwardRegistry? portForwards = null, Func<ResourceRef, Task<bool>>? onOpenController = null,
-        Action? onDelete = null)
+        Action? onDelete = null, UsageGraphOptions? usageGraphs = null)
     {
+        var usage = usageGraphs ?? UsageGraphOptions.Default;
+        _placement = usage.Placement;
+        _rangeMinutes = usage.RangeMinutes;
+
         _cluster = cluster;
         _pod = pod;
         _onForward = onForward;
@@ -276,6 +281,87 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     [ObservableProperty] private string _cpuText = "—";
     [ObservableProperty] private string _memText = "—";
 
+    // ── Usage graphs (KON-345) ─────────────────────────────────────────────────
+
+    private readonly UsageSeries _cpuSeries = new(UsageGraphOptions.LiveBuffer);
+    private readonly UsageSeries _memSeries = new(UsageGraphOptions.LiveBuffer);
+    private readonly UsageGraphPlacement _placement;
+
+    /// <summary>Charts live behind the sparkline, the tab or Overview — never more than one.</summary>
+    public bool ShowSparklines => SupportsMetrics && _placement == UsageGraphPlacement.Sparkline;
+    public bool ShowMetricsTab => SupportsMetrics && _placement == UsageGraphPlacement.MetricsTab;
+    public bool ShowInlineCharts => SupportsMetrics && _placement == UsageGraphPlacement.Overview;
+
+    [ObservableProperty] private IReadOnlyList<double> _cpuSamples = [];
+    [ObservableProperty] private IReadOnlyList<double> _memSamples = [];
+
+    /// <summary>How far back the charts show, in minutes.</summary>
+    [ObservableProperty] private int _rangeMinutes;
+
+    partial void OnRangeMinutesChanged(int value)
+    {
+        OnPropertyChanged(nameof(RangeLabel));
+        OnPropertyChanged(nameof(RangeOptions));
+        RefreshUsage();
+    }
+
+    public string RangeLabel => Format.Duration(TimeSpan.FromMinutes(RangeMinutes));
+
+    /// <summary>
+    /// Every range the selector offers, including the ones that need a history source. Shown and
+    /// disabled rather than hidden: "why can I not see yesterday" is the question the greyed-out
+    /// buttons and their tooltip answer, and a selector that stops at 15m does not raise it.
+    /// </summary>
+    public IReadOnlyList<UsageRangeOption> RangeOptions =>
+        [.. UsageGraphOptions.Ranges.Select(m => new UsageRangeOption(
+            m, Format.Duration(TimeSpan.FromMinutes(m)), UsageGraphOptions.IsLive(m), m == RangeMinutes))];
+
+    [RelayCommand]
+    private void SelectRange(int minutes)
+    {
+        if (UsageGraphOptions.IsLive(minutes))
+            RangeMinutes = minutes;
+    }
+
+    /// <summary>
+    /// Where the history comes from, said plainly. Only metrics-server exists today, so this is
+    /// also the explanation for the disabled ranges — see KON-84 for the source that removes them.
+    /// </summary>
+    private string MetricsSourceName =>
+        _cluster is IMetricsAware aware ? aware.Metrics.Name : "the metrics source";
+
+    public string UsageSourceText => $"{MetricsSourceName} · sampled every 15s";
+
+    public string UsageRangeHint =>
+        $"Charted from what Kontena sampled since this pod was opened — {MetricsSourceName} keeps no "
+        + "history. Longer ranges need a history source such as Prometheus.";
+
+    [ObservableProperty] private string _cpuSubText = "millicores";
+    [ObservableProperty] private string _memSubText = "working set";
+
+    /// <summary>Nothing has been sampled yet — one poll interval of empty charts otherwise.</summary>
+    public bool UsageIsEmpty => CpuSamples.Count == 0;
+
+    private void RefreshUsage()
+    {
+        var range = new UsageGraphOptions(_placement, RangeMinutes).Range;
+        var now = DateTimeOffset.UtcNow;
+
+        CpuSamples = _cpuSeries.Window(range, now);
+        MemSamples = _memSeries.Window(range, now);
+
+        CpuSubText = Describe(CpuSamples, "millicores", v => $"{Math.Round(v):0}m");
+        MemSubText = Describe(MemSamples, "working set", v => ByteSize.Format((long)Math.Round(v)));
+
+        OnPropertyChanged(nameof(UsageIsEmpty));
+    }
+
+    private static string Describe(
+        IReadOnlyList<double> samples, string unit, Func<double, string> format) =>
+        samples.Count == 0
+            ? unit
+            : $"{unit} · peak {format(samples.Max())} · avg {format(samples.Average())}";
+
     // ── Tabs ─────────────────────────────────────────────────────────────────
 
     [ObservableProperty] private string _selectedTab = "overview";
@@ -286,6 +372,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         OnPropertyChanged(nameof(IsLogsSelected));
         OnPropertyChanged(nameof(IsShellSelected));
         OnPropertyChanged(nameof(IsEventsSelected));
+        OnPropertyChanged(nameof(IsMetricsSelected));
         OnPropertyChanged(nameof(IsYamlSelected));
         OnPropertyChanged(nameof(IsTerminalSelected));
 
@@ -299,6 +386,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     public bool IsLogsSelected => SelectedTab == "logs";
     public bool IsShellSelected => SelectedTab == "shell";
     public bool IsEventsSelected => SelectedTab == "events";
+    public bool IsMetricsSelected => SelectedTab == "metrics";
     public bool IsYamlSelected => SelectedTab == "yaml";
 
     [RelayCommand]
@@ -588,6 +676,13 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
             {
                 CpuText = $"{m.CpuMillicores}m";
                 MemText = Format.Size(m.MemoryBytes);
+
+                // Fall back to arrival time: a source that leaves Timestamp unset would otherwise
+                // hand every sample the same instant, and UsageSeries drops those as duplicates.
+                var at = m.Timestamp == default ? DateTimeOffset.UtcNow : m.Timestamp;
+                _cpuSeries.Add(at, m.CpuMillicores);
+                _memSeries.Add(at, m.MemoryBytes);
+                RefreshUsage();
             }
         }
         catch (OperationCanceledException) { /* page closed */ }
@@ -728,3 +823,9 @@ public sealed class PodEventRow
     public bool IsWarning { get; }
     public IBrush SeverityBrush { get; }
 }
+
+/// <summary>
+/// One button in the usage-graph range selector (KON-345). <paramref name="IsAvailable"/> is false
+/// for the ranges only a history source can answer; those stay on screen, disabled.
+/// </summary>
+public sealed record UsageRangeOption(int Minutes, string Label, bool IsAvailable, bool IsSelected);

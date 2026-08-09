@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:behaviors="using:Kontena.App.Behaviors"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -28,15 +29,24 @@
                     </Border>
                     <TextBlock Text="{Binding ReadyText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
 
-                    <!-- Live metrics (metrics-server capability) -->
+                    <!-- Live metrics (metrics-server capability). The sparklines behind the numbers are
+                         one of the three placements from KON-345 — see the setting in General. -->
                     <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center" Margin="8,0,0,0" IsVisible="{Binding SupportsMetrics}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="CPU" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding CpuText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                            <controls:UsageChart Width="78" Height="20" VerticalAlignment="Center"
+                                                 IsVisible="{Binding ShowSparklines}" ShowAxes="False"
+                                                 Values="{Binding CpuSamples}" Stroke="{DynamicResource Primary}"
+                                                 ToolTip.Tip="{Binding CpuSubText}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="MEM" FontSize="11" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding MemText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                            <controls:UsageChart Width="78" Height="20" VerticalAlignment="Center"
+                                                 IsVisible="{Binding ShowSparklines}" ShowAxes="False"
+                                                 Values="{Binding MemSamples}" Stroke="{DynamicResource Accent}"
+                                                 ToolTip.Tip="{Binding MemSubText}"/>
                         </StackPanel>
                     </StackPanel>
                   </WrapPanel>
@@ -114,6 +124,13 @@
                             <TextBlock Text="Events" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsMetricsSelected}" IsVisible="{Binding ShowMetricsTab}"
+                            Command="{Binding SelectTabCommand}" CommandParameter="metrics">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconGauge}"/>
+                            <TextBlock Text="Metrics" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Classes="tab" Classes.on="{Binding IsYamlSelected}" Command="{Binding SelectTabCommand}" CommandParameter="yaml">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconLayers}"/>
@@ -167,6 +184,12 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+
+                    <!-- Inline placement (KON-345): the same panel the Metrics tab hosts. -->
+                    <StackPanel IsVisible="{Binding ShowInlineCharts}" Spacing="12">
+                        <TextBlock Text="Usage" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <views:UsagePanel/>
+                    </StackPanel>
 
                     <TextBlock Text="Containers" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
@@ -315,6 +338,11 @@
                     </ItemsControl>
                     <TextBlock Text="No events for this pod." IsVisible="{Binding !HasEvents}" Foreground="{DynamicResource TextFaint}" FontSize="12.5" Margin="2,4,0,0"/>
                 </StackPanel>
+            </ScrollViewer>
+
+            <!-- Metrics (KON-345) — the tab placement of the usage charts -->
+            <ScrollViewer IsVisible="{Binding IsMetricsSelected}">
+                <views:UsagePanel/>
             </ScrollViewer>
 
             <!-- YAML — a live editor: patch the resource straight from here (KON-69) -->

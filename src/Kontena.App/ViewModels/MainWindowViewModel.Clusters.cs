@@ -450,7 +450,7 @@ public partial class MainWindowViewModel
         ShowDetail(
             new ClusterPodDetailViewModel(
                 _cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards, OpenEventObjectAsync,
-                onDelete: () => ConfirmDeletePod(pod)),
+                onDelete: () => ConfirmDeletePod(pod), usageGraphs: CurrentUsageGraphs()),
             $"pod {pod.Name}", pod);
     }
 
