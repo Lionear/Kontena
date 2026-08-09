@@ -50,6 +50,11 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
         RestartPolicies = ["no", "on-failure", "unless-stopped", "always"];
         SelectedRestartPolicy = "no";
 
+        // Apple's container runtime has no restart policy of any kind, so on that backend the field is
+        // not shown rather than shown and ignored. A dropdown you can set that changes nothing is the
+        // same dead control as a button that does nothing (KON-31).
+        SupportsRestartPolicy = engine.Capabilities.SupportsRestartPolicy;
+
         UpdatePreview();
 
         // Setting via the property (not the field) fires the pre-fill for the image.
@@ -62,6 +67,15 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<string> Networks { get; }
     public string[] RestartPolicies { get; }
+
+    /// <summary>Whether the active backend can honour a restart policy at all; hides the field when not.</summary>
+    public bool SupportsRestartPolicy { get; }
+
+    /// <summary>
+    /// How wide the container-name field sits. With the restart field hidden it takes the whole row,
+    /// rather than staying half-width beside a gap where a control used to be.
+    /// </summary>
+    public int NameColumnSpan => SupportsRestartPolicy ? 1 : 2;
 
     [ObservableProperty] private string _image = string.Empty;
     [ObservableProperty] private string _containerName = string.Empty;

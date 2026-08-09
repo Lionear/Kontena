@@ -77,6 +77,10 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         SupportsBuild = false,
         SupportsCompose = false,
         SupportsExec = true,
+
+        // The one flag this runtime is missing rather than this adapter: `container run` has no
+        // restart-policy option at all — see RestartPolicyUnsupported.
+        SupportsRestartPolicy = false,
         SupportsPrune = true,
         SupportsVolumeBrowse = false,
         SupportsGpu = false,

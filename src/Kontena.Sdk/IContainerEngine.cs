@@ -31,6 +31,12 @@ public interface IContainerEngine : IBackend
         bool all = true, CancellationToken ct = default);
 
     /// <summary>Create (and optionally start) a container. Returns its id.</summary>
+    /// <remarks>
+    /// A <see cref="CreateContainerRequest.RestartPolicy"/> other than <see cref="Models.RestartPolicy.No"/>
+    /// requires <see cref="EngineCapabilities.SupportsRestartPolicy"/>. An engine without one must throw
+    /// rather than drop the policy: accepting it silently hands back a container the caller believes will
+    /// come back after a crash.
+    /// </remarks>
     ValueTask<string> CreateContainerAsync(
         CreateContainerRequest request, CancellationToken ct = default);
 
