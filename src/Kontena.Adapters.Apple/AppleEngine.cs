@@ -1,6 +1,8 @@
+using System.Runtime.CompilerServices;
 using Kontena.Sdk;
 using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
+using Kontena.Sdk.Shell;
 using Kontena.Sdk.Tooling;
 
 namespace Kontena.Adapters.Apple;
@@ -19,9 +21,9 @@ namespace Kontena.Adapters.Apple;
 /// exist (<see cref="PauseUnsupported"/>, <see cref="ComposeUnsupported"/>,
 /// <see cref="EventsUnsupported"/>, <see cref="NetworkAttachUnsupported"/>). Where a capability flag
 /// exists for it, <see cref="Capabilities"/> already says so, and the UI does not offer it.</description></item>
-/// <item><description><b>Not built yet.</b> Streaming, exec, images and builds land in the next stages
-/// of KON-31 (<see cref="NotYetBuilt"/>). These are reachable only from views this adapter's backend
-/// does not yet drive, and each names what it is waiting for.</description></item>
+/// <item><description><b>Not built yet.</b> Creating containers, images, builds, registry logins and
+/// pruning land in the next stages of KON-31 (<see cref="NotYetBuilt"/>). No capability flag promises
+/// any of them in the meantime, so nothing reachable in the UI arrives at one.</description></item>
 /// </list>
 /// </summary>
 internal sealed class AppleEngine(AppleCli cli, string backend, string displayName) : IContainerEngine
@@ -44,6 +46,13 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     private const string NotYetBuilt =
         "This part of the Apple container adapter is not built yet (KON-31).";
 
+    /// <summary>
+    /// How often <see cref="StreamStatsAsync"/> takes a sample. The same two seconds the nerdctl plugin
+    /// uses: each sample is a process, and a graph that moves faster than a person reads costs more than
+    /// it shows.
+    /// </summary>
+    private static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(2);
+
     public string Backend => backend;
 
     /// <summary>
@@ -62,11 +71,11 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         Rootless = true,
         SupportsBuild = false,
         SupportsCompose = false,
-        SupportsExec = false,
+        SupportsExec = true,
         SupportsPrune = false,
         SupportsVolumeBrowse = false,
         SupportsGpu = false,
-        SupportsStats = false,
+        SupportsStats = true,
         SupportsEvents = false,
     };
 
@@ -180,14 +189,72 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         CreateContainerRequest request, CancellationToken ct = default) =>
         throw new NotSupportedException(NotYetBuilt);
 
-    /// <summary>Exec lands with the terminal, in a later stage of KON-31.</summary>
+    /// <summary>
+    /// Runs a command and hands back its exit code. <c>container exec</c> exits with the code of the
+    /// process it ran, so unlike nerdctl there is nothing to dig out of an error line — but it also
+    /// means a refusal has to be told apart from a command that simply failed, which
+    /// <see cref="AppleCli.RunForExitCodeAsync"/> does.
+    /// </summary>
     public ValueTask<int> ExecAsync(string id, ExecRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        cli.RunForExitCodeAsync(ct, [.. ExecArguments(id, request, interactive: false)]);
 
-    /// <summary>Exec lands with the terminal, in a later stage of KON-31.</summary>
-    public ValueTask<IExecSession> StartExecSessionAsync(
-        string id, ExecRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Opens an interactive shell in the container, in a real pseudo-terminal.
+    /// <para>
+    /// Not through <see cref="IToolRunner"/>: that seam starts a process and reads its output, with no
+    /// way to write to its stdin and no PTY — which is exactly why the nerdctl plugin has to refuse
+    /// this. <see cref="PtyShellSession"/> is the seam that does have one, and the command it starts is
+    /// an ordinary <c>container exec -i -t</c>.
+    /// </para>
+    /// <para>
+    /// The binary is resolved rather than named: the pseudo-terminal spawns it directly, so it must get
+    /// the path the tool runner would have used instead of trusting whatever PATH the app inherited.
+    /// </para>
+    /// </summary>
+    public async ValueTask<IExecSession> StartExecSessionAsync(
+        string id, ExecRequest request, CancellationToken ct = default)
+    {
+        var executable = await cli.LocateAsync(ct).ConfigureAwait(false);
+        var command = new PtyCommand(executable, ExecArguments(id, request, interactive: true));
+
+        // 80x24 is where every terminal starts; the view resizes it as soon as it has a size of its own.
+        // The working directory is the host's, and irrelevant: -w decides where the process runs inside
+        // the container.
+        return await PtyShellSession
+            .StartAsync(command, Path.GetTempPath(), columns: 80, rows: 24, supportDirectory: null, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Builds the argument list both exec paths share. <c>-i</c> and <c>-t</c> only go on the
+    /// interactive one: a one-shot exec that asked for a TTY would get its output line-buffered through
+    /// a terminal and its stderr folded into stdout, for a caller that only wants an exit code.
+    /// </summary>
+    private static List<string> ExecArguments(string id, ExecRequest request, bool interactive)
+    {
+        var arguments = new List<string> { "exec" };
+
+        if (interactive)
+        {
+            arguments.Add("--interactive");
+
+            // The request's own Tty flag is honoured, but an interactive session without one is a shell
+            // with no prompt and no line editing — so this asks for it whenever the caller did.
+            if (request.Tty)
+                arguments.Add("--tty");
+        }
+
+        if (request.WorkingDirectory is { Length: > 0 } directory)
+        {
+            arguments.Add("--workdir");
+            arguments.Add(directory);
+        }
+
+        arguments.Add(id);
+        arguments.AddRange(request.Command);
+
+        return arguments;
+    }
 
     /// <summary>
     /// Pruning lands in a later stage of KON-31. <c>container prune</c> reports what it reclaimed as a
@@ -320,18 +387,80 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
 
     // ── Streams ─────────────────────────────────────────────────────────────
 
-    /// <summary>Log streaming lands in the next stage of KON-31.</summary>
-    public IAsyncEnumerable<LogEntry> StreamLogsAsync(
-        string id, bool follow = true, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Streams a container's log.
+    /// <para>
+    /// Everything arrives on one channel: <c>container logs</c> writes the container's stderr to its own
+    /// stdout, so there is no split to map and every entry is reported as
+    /// <see cref="LogSource.Stdout"/>. Claiming otherwise would put a colour on a line that means
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// There is no <c>--timestamps</c> flag either, so the time on an entry is when Kontena read the
+    /// line. <see cref="LogLine.Parse"/> still takes a stamp the container printed itself, which is the
+    /// only case where the time is the container's own.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<LogEntry> StreamLogsAsync(
+        string id, bool follow = true, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        string[] arguments = follow ? ["logs", "--follow", id] : ["logs", id];
+
+        await foreach (var line in cli.StreamAsync(ct, arguments).ConfigureAwait(false))
+            yield return LogLine.Parse(line.Text, LogSource.Stdout, DateTimeOffset.UtcNow);
+    }
 
     /// <summary>
-    /// Stats land in a later stage of KON-31. The CLI reports cumulative counters
-    /// (<c>cpuUsageUsec</c>) rather than a percentage, so this needs two samples and the elapsed time
-    /// between them — which is why it is not a one-line mapping like the lists above.
+    /// Samples a container's resource usage.
+    /// <para>
+    /// Polled, because there is nothing to stream: <c>container stats --format json</c> prints one array
+    /// and exits — the continuously updating display the CLI is documented to have is the table format
+    /// only. So this runs the snapshot on a timer, at the same two-second cadence the nerdctl plugin
+    /// uses.
+    /// </para>
+    /// <para>
+    /// The CPU figure is computed here rather than read: this CLI reports <c>cpuUsageUsec</c>, a counter
+    /// that only goes up, where Docker and nerdctl hand over a percentage. It is the rise in that
+    /// counter over the wall-clock time between two samples, which is why <b>the first sample reports
+    /// zero</b> — there is no earlier one to subtract, and inventing a number for it would be a spike on
+    /// every graph the moment it opens.
+    /// </para>
     /// </summary>
-    public IAsyncEnumerable<ContainerStats> StreamStatsAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    public async IAsyncEnumerable<ContainerStats> StreamStatsAsync(
+        string id, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        AppleStats? previous = null;
+        var previousAt = DateTimeOffset.UtcNow;
+
+        while (!ct.IsCancellationRequested)
+        {
+            var samples = await cli
+                .ListAsync<AppleStats>(ct, "stats", "--format", "json", "--no-stream", id)
+                .ConfigureAwait(false);
+
+            // A container that stopped between two samples prints nothing rather than erroring. That is
+            // the end of the stream, not a gap in it.
+            if (samples.Count == 0)
+                yield break;
+
+            var current = samples[0];
+            var now = DateTimeOffset.UtcNow;
+
+            yield return AppleMap.Stats(current, previous, now - previousAt, id);
+
+            previous = current;
+            previousAt = now;
+
+            try
+            {
+                await Task.Delay(StatsInterval, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                yield break;
+            }
+        }
+    }
 
     /// <summary>Not available — see <see cref="EventsUnsupported"/>.</summary>
     public IAsyncEnumerable<EngineEvent> StreamEventsAsync(CancellationToken ct = default) =>

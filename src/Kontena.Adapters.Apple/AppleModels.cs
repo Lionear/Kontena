@@ -276,6 +276,31 @@ internal sealed record AppleNetworkStatus
 }
 
 /// <summary>
+/// One entry of <c>container stats --format json --no-stream</c>. Every figure is a plain integer —
+/// no <c>"13.11MiB"</c> to parse — but <see cref="CpuUsageUsec"/> is a counter that only rises, so a
+/// percentage exists only between two of these.
+/// </summary>
+internal sealed record AppleStats
+{
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>Total CPU time consumed since the container started, in microseconds.</summary>
+    public long CpuUsageUsec { get; init; }
+
+    public long MemoryUsageBytes { get; init; }
+
+    public long MemoryLimitBytes { get; init; }
+
+    public long NetworkRxBytes { get; init; }
+
+    public long NetworkTxBytes { get; init; }
+
+    public long BlockReadBytes { get; init; }
+
+    public long BlockWriteBytes { get; init; }
+}
+
+/// <summary>
 /// One entry of <c>container system version --format json</c>. Two are printed: the CLI, whose
 /// <c>version</c> is a bare number, and the apiserver, whose <c>version</c> is a whole sentence.
 /// </summary>

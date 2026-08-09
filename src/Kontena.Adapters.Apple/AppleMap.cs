@@ -246,6 +246,42 @@ internal static class AppleMap
     }
 
     /// <summary>
+    /// Maps one stats sample. Everything but the CPU figure is a straight copy — this CLI reports bytes
+    /// as bytes.
+    /// <para>
+    /// The CPU percentage is the rise in the container's cumulative CPU time over the wall-clock time
+    /// between the two samples, on the same scale Docker uses: 100% is one core saturated, and a
+    /// container using two cores flat out reads as 200%. With no previous sample, or a non-positive
+    /// interval, it is zero rather than a guess.
+    /// </para>
+    /// </summary>
+    public static ContainerStats Stats(
+        AppleStats current, AppleStats? previous, TimeSpan elapsed, string containerId) =>
+        new()
+        {
+            ContainerId = containerId,
+            CpuPercent = CpuPercent(current, previous, elapsed),
+            MemoryUsedBytes = current.MemoryUsageBytes,
+            MemoryLimitBytes = current.MemoryLimitBytes,
+            NetRxBytes = current.NetworkRxBytes,
+            NetTxBytes = current.NetworkTxBytes,
+            BlockReadBytes = current.BlockReadBytes,
+            BlockWriteBytes = current.BlockWriteBytes,
+        };
+
+    private static double CpuPercent(AppleStats current, AppleStats? previous, TimeSpan elapsed)
+    {
+        if (previous is null || elapsed <= TimeSpan.Zero)
+            return 0;
+
+        // A counter that went backwards means the container was restarted between samples, so the two
+        // are not comparable. Zero says "no reading" instead of a negative percentage.
+        var consumed = current.CpuUsageUsec - previous.CpuUsageUsec;
+
+        return consumed <= 0 ? 0 : consumed / elapsed.TotalMicroseconds * 100;
+    }
+
+    /// <summary>
     /// Picks the CLI's own version out of what <c>system version</c> prints. The apiserver's entry is
     /// listed alongside it and its <c>version</c> field holds a whole sentence
     /// ("container-apiserver version 1.2.2 (build: release, commit: 0190097)"), so taking the first
