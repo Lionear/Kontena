@@ -23,6 +23,15 @@
                 <TextBlock Text="Cluster overview" FontSize="13" Foreground="{DynamicResource TextDim}"/>
             </StackPanel>
 
+            <!-- Never silent about not being live (KON-250, KON-340). This page summarises five kinds
+                 in five numbers, and a stale number looks exactly like a current one — there is no
+                 empty table here to hint that something stopped. -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+
             <!-- Stat cards -->
             <Grid ColumnDefinitions="*,*,*,*,*" >
                 <Grid.Styles>

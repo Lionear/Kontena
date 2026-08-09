@@ -11,14 +11,79 @@ namespace Kontena.App.ViewModels;
 /// <see cref="IClusterEngine"/>. Where a cluster is summarised; the per-resource browsers it links
 /// on to (nodes, pods, workloads, apply/dry-run) are their own pages, built in KON-73.
 /// </summary>
-public partial class ClusterOverviewViewModel : ViewModelBase
+public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 {
     private readonly IClusterEngine _cluster;
+    private CancellationTokenSource? _watch;
+    private bool _started;
 
     public ClusterOverviewViewModel(IClusterEngine cluster)
     {
         _cluster = cluster;
         _ = LoadAsync();
+        StartWatching();
+    }
+
+    /// <summary>
+    /// Every kind this page counts (KON-340). Seven streams for five numbers and a table reads like a
+    /// lot, and the alternative — follow Pods and hope everything else moves with them — was
+    /// rejected: a Deployment created with zero replicas, a namespace added on an otherwise idle
+    /// cluster, a node cordoned, all produce no pod event at all. A heuristic that silently misses a
+    /// case is the failure this whole feature exists to prevent, and Kubernetes watches multiplex
+    /// over one connection, so the seven are not seven connections.
+    /// </summary>
+    public IReadOnlyList<GroupVersionKind> WatchedKinds { get; } =
+    [
+        GroupVersionKind.Node,
+        GroupVersionKind.Namespace,
+        GroupVersionKind.Deployment,
+        GroupVersionKind.StatefulSet,
+        GroupVersionKind.DaemonSet,
+        GroupVersionKind.Pod,
+        GroupVersionKind.Service,
+    ];
+
+    /// <inheritdoc/>
+    [ObservableProperty] private bool _isLive;
+
+    /// <inheritdoc/>
+    [ObservableProperty] private string? _liveNotice;
+
+    /// <inheritdoc/>
+    public Action? Changed { get; set; }
+
+    /// <inheritdoc/>
+    public void StartWatching()
+    {
+        if (_started)
+            return;
+
+        _started = true;
+        _watch = ClusterWatch.Follow(
+            _cluster, WatchedKinds, null,
+            reload: async () =>
+            {
+                await LoadAsync();
+                Changed?.Invoke();
+            },
+            onState: (live, notice) =>
+            {
+                IsLive = live;
+                LiveNotice = notice;
+            });
+    }
+
+    /// <summary>
+    /// Stop following. Cluster pages are rebuilt on every visit, so a watch that outlived its page
+    /// would be seven streams nobody reads, held for the life of the app.
+    /// </summary>
+    public void Dispose()
+    {
+        _watch?.Cancel();
+        _watch?.Dispose();
+        _watch = null;
+        IsLive = false;
+        GC.SuppressFinalize(this);
     }
 
     [ObservableProperty] private string _clusterName = string.Empty;
@@ -61,15 +126,19 @@ public partial class ClusterOverviewViewModel : ViewModelBase
         PodCount = podsTask.Result.Count;
         ServiceCount = servicesTask.Result.Count;
 
-        Nodes.Clear();
-        foreach (var n in nodes)
-            Nodes.Add(new NodeRow(
+        // Reconciled rather than cleared and refilled, now that this runs on every watch event and not
+        // only once (KON-340). NodeRow is a record, so a node that did not change is the same row and
+        // stays in place; clearing would flash the whole table every time any pod on the cluster moved.
+        ListSync.Apply(Nodes,
+        [
+            .. nodes.Select(n => new NodeRow(
                 n.Name,
                 n.Roles.Count > 0 ? string.Join(", ", n.Roles) : "—",
                 n.Status,
                 n.KubeletVersion,
                 n.Usage is null ? "—" : $"{n.Usage.CpuMillicores}m / {n.Capacity.CpuMillicores}m",
-                VersionSkewPolicy.Evaluate(info.Version, n.KubeletVersion)));
+                VersionSkewPolicy.Evaluate(info.Version, n.KubeletVersion))),
+        ]);
     }
 }
 

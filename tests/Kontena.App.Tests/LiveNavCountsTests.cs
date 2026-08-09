@@ -29,7 +29,7 @@ public sealed class LiveNavCountsTests
         Assert.True(await shell.EnterClusterModeAsync(cluster));
         shell.NavigateCommand.Execute("pods");
 
-        var page = Assert.IsAssignableFrom<IClusterListPage>(shell.CurrentPage);
+        var page = Assert.IsAssignableFrom<IClusterLivePage>(shell.CurrentPage);
         Assert.NotNull(page.Changed);
 
         // Behind the app's back, the way kubectl would.
@@ -75,9 +75,10 @@ public sealed class LiveNavCountsTests
         // the badges froze the moment you navigated to the Workloads dashboard, Config maps or Events.
         // Worse than freezing on an old number — the one caught here was mid-termination.
         //
-        // Config maps and Events follow the cluster themselves since KON-340, so the overview stands
-        // in for them: it summarises five kinds and follows none, which is why it is the half of
-        // KON-340 still open. This assertion is about the shell, not about which page is on screen.
+        // All of those follow the cluster themselves since KON-340, so Resources stands in: it
+        // browses whichever kind you pick, including custom ones the adapter has no watcher for, and
+        // so it is the page that genuinely cannot follow anything. This assertion is about the shell,
+        // not about which page is on screen.
         var cluster = new FakeClusterEngine();
         var shell = new MainWindowViewModel();
         Assert.True(await shell.EnterClusterModeAsync(cluster));
@@ -85,9 +86,9 @@ public sealed class LiveNavCountsTests
         var before = (await cluster.ListPodsAsync()).Count;
         await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c"));
 
-        // The overview watches nothing, so nothing here can be the page's own doing.
-        shell.NavigateCommand.Execute("overview");
-        Assert.IsNotAssignableFrom<IClusterListPage>(shell.CurrentPage);
+        // Resources watches nothing, so nothing here can be the page's own doing.
+        shell.NavigateCommand.Execute("resources");
+        Assert.IsNotAssignableFrom<IClusterLivePage>(shell.CurrentPage);
 
         Assert.Equal(
             (before - 1).ToString(CultureInfo.InvariantCulture),
