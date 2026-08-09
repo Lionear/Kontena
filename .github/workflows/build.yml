@@ -294,8 +294,16 @@ jobs:
             # makes it ordinary: the verdict drops back to "no usable signature", the state every
             # unsigned app is in. Real trust needs the Developer ID from KON-53, and the installer
             # package needs --signInstallIdentity on top of that; this flag signs the app only.
+            # The bundle id is set rather than left to vpk, which derives com.<packAuthors>.<packId> —
+            # com.Lionear.Kontena, reverse-DNS for a domain nobody owns. app.kontena.Kontena is the
+            # domain this product actually has, and it is already what MacKeychainStore stores secrets
+            # under and what Autostart names its LaunchAgent, so this makes the three agree instead of
+            # adding a fourth name. Nothing of ours is keyed on the old one: settings live in a plain
+            # path under Application Support. Changing it later would be the expensive version — a
+            # notarization ticket is issued against a specific bundle id, and macOS files a user's
+            # permissions and Launch Services entry under it too.
             osx)   ICON=icon.icns
-                   EXTRA+=(--signAppIdentity -) ;;
+                   EXTRA+=(--signAppIdentity - --bundleId app.kontena.Kontena) ;;
             win)   ICON=src/Kontena.App/Assets/icon.ico ;;
             *)     ICON=src/Kontena.App/Assets/icon.png
                    # Same desktop-menu categories the hand-rolled .desktop entry carried.
