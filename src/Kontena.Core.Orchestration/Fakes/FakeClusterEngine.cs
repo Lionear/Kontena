@@ -233,7 +233,18 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     public ClusterCapabilities Capabilities => _capabilities;
 
     /// <summary>What answers for usage, so the UI can explain the gauges it is not drawing.</summary>
-    public IMetricsSource Metrics => _capabilities.Metrics ? FakeMetricsSource.Instance : NoMetricsSource.Instance;
+    /// <summary>
+    /// Per engine rather than the shared instance, so node usage can answer for the nodes this
+    /// cluster actually has. A source that returned an empty node map made the node page look as
+    /// though metrics were on and nothing was ever sampled (KON-347).
+    /// </summary>
+    private FakeMetricsSource? _metricsSource;
+
+    public IMetricsSource Metrics => _capabilities.Metrics
+        ? _metricsSource ??= new FakeMetricsSource(
+            () => [.. _nodes.Select(n => n.Name)],
+            () => [.. _pods.Select(p => (p.Namespace, p.Name))])
+        : NoMetricsSource.Instance;
 
     /// <summary>
     /// Whether this fake cluster pretends to have a Prometheus. Off by default: history is the
@@ -1048,7 +1059,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             new NodeCondition("NetworkUnavailable", false, "RouteCreated", string.Empty),
         ],
         Capacity = new NodeCapacity { CpuMillicores = 4000, MemoryBytes = 16L * 1024 * 1024 * 1024, Pods = 110 },
-        Usage = new NodeUsage { CpuMillicores = 1200, MemoryBytes = 6L * 1024 * 1024 * 1024 },
+        // Disk included: the kubelet source reports it on a real cluster, and a fake that leaves it
+        // out means the one measure only a node has never gets exercised anywhere (KON-347).
+        Usage = new NodeUsage
+        {
+            CpuMillicores = 1200,
+            MemoryBytes = 6L * 1024 * 1024 * 1024,
+            DiskUsedBytes = 34L * 1024 * 1024 * 1024,
+        },
         ScheduledPods = 24,
         Age = TimeSpan.FromDays(9),
     };
@@ -1228,7 +1246,16 @@ internal sealed class FakeMetricsHistory : IMetricsHistory
 
 internal sealed class FakeMetricsSource : IMetricsSource
 {
-    public static readonly FakeMetricsSource Instance = new();
+    private readonly Func<IReadOnlyList<string>> _nodeNames;
+    private readonly Func<IReadOnlyList<(string Namespace, string Name)>> _pods;
+
+    public FakeMetricsSource(
+        Func<IReadOnlyList<string>>? nodeNames = null,
+        Func<IReadOnlyList<(string Namespace, string Name)>>? pods = null)
+    {
+        _nodeNames = nodeNames ?? (() => []);
+        _pods = pods ?? (() => []);
+    }
 
     public string Name => "metrics-server";
 
@@ -1236,9 +1263,46 @@ internal sealed class FakeMetricsSource : IMetricsSource
 
     public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(true);
 
-    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(new Dictionary<string, NodeUsage>());
+    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default)
+    {
+        var usage = new Dictionary<string, NodeUsage>(StringComparer.Ordinal);
+        var i = 0;
 
-    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<PodMetrics>>([]);
+        foreach (var name in _nodeNames())
+        {
+            // Spread across the nodes so a cluster of them does not draw one flat line repeated.
+            usage[name] = new NodeUsage
+            {
+                CpuMillicores = 900 + i * 260,
+                MemoryBytes = (5L + i) * 1024 * 1024 * 1024,
+                DiskUsedBytes = (30L + i * 4) * 1024 * 1024 * 1024,
+            };
+            i++;
+        }
+
+        return ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(usage);
+    }
+
+    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default)
+    {
+        // Seeded off the pod name so a pod reads the same twice running, and so the namespace and
+        // workload sums over them are worth comparing (KON-347).
+        var now = DateTimeOffset.UtcNow;
+        var pods = _pods()
+            .Where(p => ns is null || p.Namespace == ns)
+            .Select(p =>
+            {
+                var seed = Math.Abs(p.Name.Aggregate(17, (a, c) => a * 31 + c));
+                return new PodMetrics
+                {
+                    Pod = p.Name,
+                    Namespace = p.Namespace,
+                    CpuMillicores = 20 + seed % 130,
+                    MemoryBytes = (60L + seed % 200) * 1024 * 1024,
+                    Timestamp = now,
+                };
+            });
+
+        return ValueTask.FromResult<IReadOnlyList<PodMetrics>>([.. pods]);
+    }
 }

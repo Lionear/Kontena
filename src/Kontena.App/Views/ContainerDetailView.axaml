@@ -155,8 +155,14 @@
                     <Path Classes="icon" Width="20" Height="20" Stroke="{DynamicResource Info}" Data="{StaticResource IconCpu}" VerticalAlignment="Center"/>
                     <StackPanel VerticalAlignment="Center" Spacing="1">
                         <TextBlock Text="CPU" FontSize="11" Foreground="{DynamicResource TextFaint}"/>
-                        <TextBlock Text="{Binding CpuText}" FontSize="17" FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
-                                   Foreground="{DynamicResource Text}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="{Binding CpuText}" FontSize="17" FontWeight="SemiBold" FontFamily="{StaticResource Mono}"
+                                       Foreground="{DynamicResource Text}"/>
+                            <!-- The shape behind the number (KON-347), same control as the pod page -->
+                            <controls:UsageChart Width="70" Height="18" VerticalAlignment="Center" ShowAxes="False"
+                                                 Values="{Binding Usage.Charts[0].Samples}" Unit="Percent"
+                                                 Stroke="{DynamicResource Primary}"/>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -170,6 +176,9 @@
                                        Foreground="{DynamicResource Text}"/>
                             <TextBlock Text="{Binding MemLimitText}" FontSize="12" FontFamily="{StaticResource Mono}"
                                        Foreground="{DynamicResource TextFaint}" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                            <controls:UsageChart Width="70" Height="18" VerticalAlignment="Center" ShowAxes="False"
+                                                 Values="{Binding Usage.Charts[1].Samples}" Unit="Bytes"
+                                                 Stroke="{DynamicResource Accent}"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -295,6 +304,9 @@
             <!-- Stats -->
             <ScrollViewer IsVisible="{Binding IsStatsSelected}">
                 <StackPanel Spacing="16">
+                    <!-- Over time (KON-347); the meters below stay, they answer "how close to the
+                         limit" which a trend line does not. -->
+                    <views:UsagePanel DataContext="{Binding Usage}"/>
                     <Border Classes="card">
                         <StackPanel Spacing="12">
                             <Grid ColumnDefinitions="*,Auto">
