@@ -145,6 +145,9 @@ public sealed class NerdctlEngine : IContainerEngine
         SupportsBuild = _buildkit,
         SupportsCompose = true,
         SupportsExec = false,
+
+        // `nerdctl run --restart` takes the same policy names Docker's CLI does — see MapRestart.
+        SupportsRestartPolicy = true,
         SupportsPrune = true,
         SupportsGpu = false,
         SupportsStats = true,

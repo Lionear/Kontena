@@ -103,16 +103,22 @@ public sealed class AppleEngineLifecycleTests
     {
         var capabilities = Engine(Installed()).Capabilities;
 
+        // Compose, events and the restart policy are false because the runtime has none of them; build
+        // and volume browsing because their stage of KON-31 has not landed.
         Assert.False(capabilities.SupportsCompose);
         Assert.False(capabilities.SupportsEvents);
         Assert.False(capabilities.SupportsBuild);
-        Assert.False(capabilities.SupportsPrune);
         Assert.False(capabilities.SupportsVolumeBrowse);
 
-        // Exec and stats are built now, and the flags say so — the terminal and the usage graphs are
-        // gated on exactly these two.
+        // What CreateContainerAsync refuses, the flag must also deny — otherwise the Run dialog keeps
+        // offering a policy this runtime silently drops.
+        Assert.False(capabilities.SupportsRestartPolicy);
+
+        // Exec, stats and prune are built, and the flags say so — the terminal, the usage graphs and
+        // the reclaim actions are gated on exactly these.
         Assert.True(capabilities.SupportsExec);
         Assert.True(capabilities.SupportsStats);
+        Assert.True(capabilities.SupportsPrune);
 
         // Containers run in per-container VMs from a user-level service: there is no root daemon.
         Assert.True(capabilities.Rootless);

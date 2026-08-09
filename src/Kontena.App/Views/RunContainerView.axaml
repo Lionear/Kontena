@@ -135,11 +135,13 @@
 
                     <!-- Name + Restart -->
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" Grid.ColumnSpan="{Binding NameColumnSpan}">
                             <TextBlock Classes="flabel" Text="Container name  (optional)"/>
                             <TextBox Classes="fieldinput" Text="{Binding ContainerName, Mode=TwoWay}" PlaceholderText="auto-generated"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
+                        <!-- Hidden on a backend without one: Apple's container runtime has no restart
+                             policy, and a dropdown that changes nothing is a dead control (KON-31). -->
+                        <StackPanel Grid.Column="1" IsVisible="{Binding SupportsRestartPolicy}">
                             <TextBlock Classes="flabel" Text="Restart policy"/>
                             <ComboBox Classes="fieldinput" ItemsSource="{Binding RestartPolicies}"
                                       SelectedItem="{Binding SelectedRestartPolicy, Mode=TwoWay}"/>

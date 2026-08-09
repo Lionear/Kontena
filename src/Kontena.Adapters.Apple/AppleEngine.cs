@@ -21,9 +21,9 @@ namespace Kontena.Adapters.Apple;
 /// exist (<see cref="PauseUnsupported"/>, <see cref="ComposeUnsupported"/>,
 /// <see cref="EventsUnsupported"/>, <see cref="NetworkAttachUnsupported"/>). Where a capability flag
 /// exists for it, <see cref="Capabilities"/> already says so, and the UI does not offer it.</description></item>
-/// <item><description><b>Not built yet.</b> Creating containers, images, builds, registry logins and
-/// pruning land in the next stages of KON-31 (<see cref="NotYetBuilt"/>). No capability flag promises
-/// any of them in the meantime, so nothing reachable in the UI arrives at one.</description></item>
+/// <item><description><b>Not built yet.</b> Pulling and tagging images, builds, registry logins and
+/// browsing a volume land in the next stages of KON-31 (<see cref="NotYetBuilt"/>). No capability flag
+/// promises any of them in the meantime.</description></item>
 /// </list>
 /// </summary>
 internal sealed class AppleEngine(AppleCli cli, string backend, string displayName) : IContainerEngine
@@ -46,6 +46,11 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     private const string NotYetBuilt =
         "This part of the Apple container adapter is not built yet (KON-31).";
 
+    private const string RestartPolicyUnsupported =
+        "Apple container cannot restart a container automatically: `container run` has no restart-policy " +
+        "flag (verified against 1.2.2) — only --rm, which is the opposite. Create it with the policy set " +
+        "to 'no'; anything else would be accepted here and silently never happen.";
+
     /// <summary>
     /// How often <see cref="StreamStatsAsync"/> takes a sample. The same two seconds the nerdctl plugin
     /// uses: each sample is a process, and a graph that moves faster than a person reads costs more than
@@ -60,10 +65,10 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     /// simplification: containers run in per-container VMs launched by a user-level launchd service, so
     /// there is no root daemon on the host to speak of — that is the runtime's whole design.
     /// <para>
-    /// Build, exec, stats, prune and volume browsing are all present in the CLI but are reported as
-    /// unsupported until their stage of KON-31 lands. A flag that promises what the adapter cannot yet
-    /// do would put a live button in front of an exception, which is worse than a feature arriving one
-    /// PR later.
+    /// Build and volume browsing exist in this CLI but are reported as unsupported until their stage of
+    /// KON-31 lands. A flag that promises what the adapter cannot yet do would put a live button in
+    /// front of an exception, which is worse than a feature arriving one PR later. Compose and events
+    /// are false for the other reason: the runtime has neither, and no PR will change that.
     /// </para>
     /// </summary>
     public EngineCapabilities Capabilities => new()
@@ -72,7 +77,11 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         SupportsBuild = false,
         SupportsCompose = false,
         SupportsExec = true,
-        SupportsPrune = false,
+
+        // The one flag this runtime is missing rather than this adapter: `container run` has no
+        // restart-policy option at all — see RestartPolicyUnsupported.
+        SupportsRestartPolicy = false,
+        SupportsPrune = true,
         SupportsVolumeBrowse = false,
         SupportsGpu = false,
         SupportsStats = true,
@@ -184,10 +193,77 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     public ValueTask UnpauseContainerAsync(string id, CancellationToken ct = default) =>
         throw new NotSupportedException(PauseUnsupported);
 
-    /// <summary>Creating containers lands with the Run flow, in the next stage of KON-31.</summary>
-    public ValueTask<string> CreateContainerAsync(
-        CreateContainerRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Creates a container, and starts it unless the request says otherwise — <c>run --detach</c> for
+    /// the first, <c>create</c> for the second, since this CLI has both.
+    /// <para>
+    /// The id comes from the <b>last</b> line of output, not the first: <c>run</c> narrates its progress
+    /// ("[6/6] Starting container") before printing the name, and taking the first line would hand every
+    /// caller a progress message as an id.
+    /// </para>
+    /// </summary>
+    public async ValueTask<string> CreateContainerAsync(
+        CreateContainerRequest request, CancellationToken ct = default)
+    {
+        var stdout = await cli
+            .RunAsync(ct, [.. CreateArguments(request)])
+            .ConfigureAwait(false);
+
+        var lines = stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+
+        return lines.Length > 0
+            ? lines[^1].Trim()
+            : throw new EngineException("Apple container created the container but did not name it.");
+    }
+
+    private static List<string> CreateArguments(CreateContainerRequest request)
+    {
+        // `create` makes one without starting it; `run --detach` does both. Creating and then starting
+        // separately would work too, but it turns one failure into two states to unwind.
+        var arguments = request.Start ? new List<string> { "run", "--detach" } : ["create"];
+
+        if (request.RestartPolicy is not RestartPolicy.No)
+            throw new NotSupportedException(RestartPolicyUnsupported);
+
+        if (request.Name is { Length: > 0 } name)
+        {
+            arguments.Add("--name");
+            arguments.Add(name);
+        }
+
+        foreach (var port in request.Ports)
+        {
+            // Publishing needs a host port to publish on. A binding without one describes a port the
+            // image exposes, which this CLI takes from the image itself.
+            if (port.HostPort is not { } hostPort)
+                continue;
+
+            arguments.Add("--publish");
+            arguments.Add($"{hostPort}:{port.ContainerPort}/{port.Protocol}");
+        }
+
+        foreach (var (key, value) in request.Environment)
+        {
+            arguments.Add("--env");
+            arguments.Add($"{key}={value}");
+        }
+
+        foreach (var (source, destination) in request.Volumes)
+        {
+            arguments.Add("--volume");
+            arguments.Add($"{source}:{destination}");
+        }
+
+        if (request.Network is { Length: > 0 } network)
+        {
+            arguments.Add("--network");
+            arguments.Add(network);
+        }
+
+        arguments.Add(request.Image);
+
+        return arguments;
+    }
 
     /// <summary>
     /// Runs a command and hands back its exit code. <c>container exec</c> exits with the code of the
@@ -256,13 +332,52 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         return arguments;
     }
 
-    /// <summary>
-    /// Pruning lands in a later stage of KON-31. <c>container prune</c> reports what it reclaimed as a
-    /// localised sentence ("Reclaimed 1,37 GB in disk space" — note the decimal comma), so the byte
-    /// figure this returns has to come from <c>system df</c> rather than from parsing that line.
-    /// </summary>
+    /// <summary>Removes every stopped container.</summary>
     public ValueTask<PruneResult> PruneContainersAsync(CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        PruneAsync(usage => usage.Containers, ct, "prune");
+
+    /// <summary>
+    /// Runs one of the prune commands and reports what it did.
+    /// <para>
+    /// The count is how many ids the command printed — it lists one per line after its summary. The
+    /// byte figure is deliberately <b>not</b> read from that summary: it is a localised sentence
+    /// ("Reclaimed 1,37 GB in disk space" on a Dutch machine), and when nothing was removed the CLI
+    /// writes the word "Zero" where the number goes. It comes from the drop in what
+    /// <c>system df</c> reports for the category instead — integers, in bytes, in any locale.
+    /// </para>
+    /// <para>
+    /// <c>sizeInBytes</c> and not <c>reclaimable</c>: pruning containers makes the image they used
+    /// reclaimable, so that figure <em>rises</em> across a prune that freed nothing of it.
+    /// </para>
+    /// </summary>
+    private async ValueTask<PruneResult> PruneAsync(
+        Func<AppleDiskUsage, AppleDiskUsageEntry?> category, CancellationToken ct, params string[] args)
+    {
+        var before = await DiskUsageAsync(category, ct).ConfigureAwait(false);
+        var stdout = await cli.RunAsync(ct, args).ConfigureAwait(false);
+        var after = await DiskUsageAsync(category, ct).ConfigureAwait(false);
+
+        return new PruneResult(PrunedCount(stdout), Math.Max(0, before - after));
+    }
+
+    private async ValueTask<long> DiskUsageAsync(
+        Func<AppleDiskUsage, AppleDiskUsageEntry?> category, CancellationToken ct)
+    {
+        var usage = await cli
+            .GetAsync<AppleDiskUsage>(ct, "system", "df", "--format", "json")
+            .ConfigureAwait(false);
+
+        return usage is null ? 0 : category(usage)?.SizeInBytes ?? 0;
+    }
+
+    /// <summary>
+    /// Counts the ids a prune printed. Everything except its summary line is one removed thing —
+    /// <c>network prune</c> prints no summary at all, having nothing to reclaim, so the line is skipped
+    /// by what it says rather than by its position.
+    /// </summary>
+    private static int PrunedCount(string stdout) =>
+        stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Count(line => !line.TrimStart().StartsWith("Reclaimed", StringComparison.OrdinalIgnoreCase));
 
     // ── Images ──────────────────────────────────────────────────────────────
 
@@ -298,9 +413,13 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         BuildRequest request, CancellationToken ct = default) =>
         throw new NotSupportedException(NotYetBuilt);
 
-    /// <summary>Image removal lands in a later stage of KON-31.</summary>
-    public ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Removes an image. There is no force flag here; an image a container still uses is refused with a
+    /// non-zero exit, which reaches the caller as an exception rather than as a row that stays put.
+    /// </summary>
+    public async ValueTask RemoveImageAsync(
+        string id, bool force = false, CancellationToken ct = default) =>
+        await cli.RunAsync(ct, "image", "delete", id).ConfigureAwait(false);
 
     /// <summary>Reading an image's baked-in config lands with the Run flow, in a later stage of KON-31.</summary>
     public ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default) =>
@@ -310,10 +429,15 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     public ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default) =>
         throw new NotSupportedException(NotYetBuilt);
 
-    /// <summary>Pruning lands in a later stage of KON-31 — see <see cref="PruneContainersAsync"/>.</summary>
+    /// <summary>
+    /// Removes unused images. The <paramref name="allUnused"/> distinction Docker draws — dangling only,
+    /// versus every image no container uses — does not exist here: <c>image prune</c> takes no such flag
+    /// and always does the second. Honouring the parameter would mean claiming a narrower sweep than the
+    /// one that actually runs.
+    /// </summary>
     public ValueTask<PruneResult> PruneImagesAsync(
         bool allUnused = true, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        PruneAsync(usage => usage.Images, ct, "image", "prune");
 
     // ── Volumes ─────────────────────────────────────────────────────────────
 
@@ -328,23 +452,37 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         return [.. volumes.Select(volume => AppleMap.Volume(volume, containers))];
     }
 
-    /// <summary>Creating and removing volumes lands in a later stage of KON-31.</summary>
-    public ValueTask<VolumeSummary> CreateVolumeAsync(
-        CreateVolumeRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Creates a volume and reads it back, so the row the caller gets is the engine's own answer rather
+    /// than an echo of the request — the mountpoint in particular is a path only the runtime knows.
+    /// </summary>
+    public async ValueTask<VolumeSummary> CreateVolumeAsync(
+        CreateVolumeRequest request, CancellationToken ct = default)
+    {
+        await cli.RunAsync(ct, "volume", "create", request.Name).ConfigureAwait(false);
 
-    /// <summary>Creating and removing volumes lands in a later stage of KON-31.</summary>
-    public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        var volumes = await ListVolumesAsync(ct).ConfigureAwait(false);
+
+        return volumes.FirstOrDefault(v => v.Name == request.Name)
+            ?? new VolumeSummary { Name = request.Name };
+    }
+
+    /// <summary>
+    /// Removes a volume. There is no force flag on this CLI, and a volume a container still holds is
+    /// refused — with a non-zero exit, so the refusal arrives as an exception rather than as silence.
+    /// </summary>
+    public async ValueTask RemoveVolumeAsync(
+        string name, bool force = false, CancellationToken ct = default) =>
+        await cli.RunAsync(ct, "volume", "delete", name).ConfigureAwait(false);
 
     /// <summary>Volume browsing lands in a later stage of KON-31.</summary>
     public ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default) =>
         throw new NotSupportedException(NotYetBuilt);
 
-    /// <summary>Pruning lands in a later stage of KON-31 — see <see cref="PruneContainersAsync"/>.</summary>
+    /// <summary>Removes every volume no container uses.</summary>
     public ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        PruneAsync(usage => usage.Volumes, ct, "volume", "prune");
 
     // ── Networks ────────────────────────────────────────────────────────────
 
@@ -359,14 +497,42 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         return [.. networks.Select(network => AppleMap.Network(network, containers))];
     }
 
-    /// <summary>Creating and removing networks lands in a later stage of KON-31.</summary>
-    public ValueTask<NetworkSummary> CreateNetworkAsync(
-        CreateNetworkRequest request, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+    /// <summary>
+    /// Creates a network and reads it back — the subnet is assigned by the runtime, so the row is worth
+    /// having from it rather than from the request.
+    /// <para>
+    /// The request's driver is not passed on. This CLI calls the same thing a <c>--plugin</c>, defaults
+    /// it to <c>container-network-vmnet</c>, and would reject "bridge" — the neutral model's default,
+    /// and Docker's word for what this already is.
+    /// </para>
+    /// </summary>
+    public async ValueTask<NetworkSummary> CreateNetworkAsync(
+        CreateNetworkRequest request, CancellationToken ct = default)
+    {
+        var arguments = new List<string> { "network", "create" };
 
-    /// <summary>Creating and removing networks lands in a later stage of KON-31.</summary>
-    public ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>
-        throw new NotSupportedException(NotYetBuilt);
+        if (request.Subnet is { Length: > 0 } subnet)
+        {
+            arguments.Add("--subnet");
+            arguments.Add(subnet);
+        }
+
+        arguments.Add(request.Name);
+
+        await cli.RunAsync(ct, [.. arguments]).ConfigureAwait(false);
+
+        var networks = await ListNetworksAsync(ct).ConfigureAwait(false);
+
+        return networks.FirstOrDefault(n => n.Name == request.Name)
+            ?? new NetworkSummary { Id = request.Name, Name = request.Name };
+    }
+
+    /// <summary>
+    /// Removes a network. A network a container is still attached to is refused, non-zero, naming the
+    /// container that holds it.
+    /// </summary>
+    public async ValueTask RemoveNetworkAsync(string id, CancellationToken ct = default) =>
+        await cli.RunAsync(ct, "network", "delete", id).ConfigureAwait(false);
 
     /// <summary>Not available — see <see cref="NetworkAttachUnsupported"/>.</summary>
     public ValueTask ConnectNetworkAsync(
