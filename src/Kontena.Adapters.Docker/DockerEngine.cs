@@ -68,6 +68,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         SupportsBuild = true,
         SupportsCompose = true,
         SupportsExec = true,
+        SupportsRestartPolicy = true,
         SupportsPrune = true,
         SupportsGpu = false,
         SupportsStats = true,

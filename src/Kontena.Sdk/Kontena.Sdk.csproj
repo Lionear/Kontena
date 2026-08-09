@@ -11,4 +11,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The pseudo-terminal behind IExecSession (KON-31). MIT, like this project: the rule above is
+         about what an external adapter author is forced to compile against, and an MIT package does
+         not change that. It lives here rather than in Kontena.Core because a terminal is something
+         adapters provide, not something the app provides to them — the CLI-driven backends cannot
+         offer one without it. -->
+    <PackageReference Include="Porta.Pty" Version="1.0.7" />
+  </ItemGroup>
+
 </Project>

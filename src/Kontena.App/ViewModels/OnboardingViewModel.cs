@@ -18,14 +18,11 @@ public sealed partial class OnboardingEngine : ObservableObject
     /// <summary>The backend answered a ping and can be picked.</summary>
     public required bool IsConnected { get; init; }
 
-    /// <summary>A roadmap backend that isn't shippable yet (e.g. Apple container).</summary>
-    public bool ComingSoon { get; init; }
+    /// <summary>Only a backend that answered can be selected.</summary>
+    public bool Selectable => IsConnected;
 
-    /// <summary>Only connected, shippable engines can be selected.</summary>
-    public bool Selectable => IsConnected && !ComingSoon;
-
-    public bool ShowRunning => IsConnected && !ComingSoon;
-    public bool ShowNotRunning => !IsConnected && !ComingSoon;
+    public bool ShowRunning => IsConnected;
+    public bool ShowNotRunning => !IsConnected;
 
     [ObservableProperty] private bool _isSelected;
 }
@@ -73,7 +70,6 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         Func<Task> onRescan,
         Func<Task> onStartEngine,
         Func<IBackendProvider, string>? nameOf = null,
-        bool? showRoadmap = null,
         IReadOnlyList<IBackendProvider>? clusters = null,
         Func<string, bool>? clusterTicked = null)
     {
@@ -98,24 +94,6 @@ public sealed partial class OnboardingViewModel : ViewModelBase
                 Chip = BackendChipInfo.For(p.Provider),
                 Detail = p.Detail ?? string.Empty,
                 IsConnected = p.Connected,
-            });
-        }
-
-        // Roadmap row (not a probe): the native macOS runtime, planned as a later backend. Only where
-        // it can ever apply (KON-337) — on Linux and Windows it announced a runtime that platform will
-        // never get, at the size of a real engine, on the most expensive screen in the app.
-        if (showRoadmap ?? OperatingSystem.IsMacOS())
-        {
-            items.Add(new OnboardingEngine
-            {
-                Backend = "apple",
-                Name = "Apple container",
-                // The mark as path data rather than U+F8FF: the private-use Apple glyph only renders on
-                // Apple's own systems, so on Windows and Linux this row showed a tofu box (KON-80).
-                Chip = new BackendChipInfo("A", AppleBrand.Glyph, AppleBrand.Accent),
-                Detail = "Native macOS runtime · planned backend",
-                IsConnected = false,
-                ComingSoon = true,
             });
         }
 

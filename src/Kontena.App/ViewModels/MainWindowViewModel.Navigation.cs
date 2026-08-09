@@ -221,7 +221,7 @@ public partial class MainWindowViewModel
         // on each of the constructors above: one place that knows a page is on screen, and the watch
         // having already started in the constructor costs nothing — the callback is read when it
         // fires, not when the stream opens.
-        if (CurrentPage is IClusterListPage live)
+        if (CurrentPage is IClusterLivePage live)
             live.Changed = () => _ = RefreshClusterNavCountsAsync();
 
         // Only the open page's stream drives that callback, so the badges stop following the moment
@@ -331,6 +331,7 @@ public partial class MainWindowViewModel
 
         SetNavCount("nodes", nodes.Result.Count.ToString(ci));
         SetNavCount("namespaces", namespaces.Result.Count.ToString(ci));
+        SyncNamespacePicker(namespaces.Result);
 
         SetNavCount("workloads", workloads.Result.Count.ToString(ci));
         SyncWorkloadKindNav(workloads.Result);
@@ -352,6 +353,31 @@ public partial class MainWindowViewModel
         SetNavCount("storageclasses", storageClasses.Result.Count.ToString(ci));
         UpdatePortForwardCount();
     }
+    /// <summary>
+    /// Keep the namespace picker in step with the cluster (KON-343).
+    /// <para>
+    /// It was filled once when the cluster opened and never again, so a namespace created afterwards
+    /// could not be picked — while the list beside it was already showing that namespace's contents.
+    /// Two pieces of UI over one cluster, disagreeing. The names are in hand here anyway: only the
+    /// count was being kept, so this costs no call of its own.
+    /// </para>
+    /// <para>
+    /// Reconciled rather than rebuilt. Clearing the collection drops the ComboBox's selection, and
+    /// this runs on every watch event of the open page — the picker would reset itself while you
+    /// were reading the list it filters.
+    /// </para>
+    /// </summary>
+    private void SyncNamespacePicker(IReadOnlyList<KubeNamespace> namespaces)
+    {
+        ListSync.Apply(Namespaces, [AllNamespaces, .. namespaces.Select(n => n.Name)]);
+
+        // The selected namespace can be deleted out from under the picker. "All namespaces" is the
+        // one entry that is always there, and it shows the deletion rather than hiding it: an empty
+        // picker with a stale filter still applied would be the worst of the three outcomes.
+        if (SelectedNamespace is not null && !Namespaces.Contains(SelectedNamespace))
+            SelectedNamespace = AllNamespaces;
+    }
+
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
     private string _clusterPageKey = "overview";
 

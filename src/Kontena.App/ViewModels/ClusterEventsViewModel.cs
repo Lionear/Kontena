@@ -15,7 +15,7 @@ namespace Kontena.App.ViewModels;
 /// which object is the broken one.
 /// </para>
 /// </summary>
-public partial class ClusterEventsViewModel : ListPageViewModel<ClusterEventRow>
+public partial class ClusterEventsViewModel : ClusterListPageViewModel<ClusterEventRow>
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
@@ -24,13 +24,20 @@ public partial class ClusterEventsViewModel : ListPageViewModel<ClusterEventRow>
     /// <param name="onOpenObject">Opens the object an event is about; returns false when it no longer
     /// exists. Events outlive the things they describe, so that is an ordinary outcome and not an
     /// error.</param>
+    /// <remarks>
+    /// Following the cluster matters more here than on any other list (KON-340). This is the feed you
+    /// open <em>because</em> something is wrong, and until now it froze at the moment you opened it —
+    /// so the event explaining what happened next was already outside the page you were staring at.
+    /// </remarks>
     public ClusterEventsViewModel(
         IClusterEngine cluster, string? @namespace, Func<ResourceRef, Task<bool>>? onOpenObject = null)
+        : base(cluster, GroupVersionKind.Event, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
         _onOpenObject = onOpenObject;
         _ = LoadAsync();
+        StartWatching();
     }
 
     public override string SearchPlaceholder => "Search events…";

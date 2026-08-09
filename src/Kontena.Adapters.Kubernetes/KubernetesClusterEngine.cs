@@ -480,6 +480,8 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
         "Pod", "Service", "Node", "Namespace",
         "Deployment", "StatefulSet", "DaemonSet",
         "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
+        "ConfigMap", "Secret", "Event",
+        "Job", "CronJob",
     };
 
     /// <summary>
@@ -512,6 +514,26 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
         "PersistentVolumeClaim" => Box(ns is null
             ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
             : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),
+        // The batch kinds, missing since KON-250 (KON-344). The per-kind Jobs page always claimed to
+        // follow batch/v1 Job, got an empty stream back, and blamed the cluster for closing it.
+        "Job" => Box(ns is null
+            ? _client.BatchV1.WatchListJobForAllNamespacesAsync(cancellationToken: ct)
+            : _client.BatchV1.WatchListNamespacedJobAsync(ns, cancellationToken: ct)),
+        "CronJob" => Box(ns is null
+            ? _client.BatchV1.WatchListCronJobForAllNamespacesAsync(cancellationToken: ct)
+            : _client.BatchV1.WatchListNamespacedCronJobAsync(ns, cancellationToken: ct)),
+        "ConfigMap" => Box(ns is null
+            ? _client.CoreV1.WatchListConfigMapForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedConfigMapAsync(ns, cancellationToken: ct)),
+        // Only the metadata travels either way — the watch carries what the listing carries, and the
+        // page holds key names and sizes, never a value (KON-249).
+        "Secret" => Box(ns is null
+            ? _client.CoreV1.WatchListSecretForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedSecretAsync(ns, cancellationToken: ct)),
+        // Core v1, matching ListEventsAsync above rather than events.k8s.io.
+        "Event" => Box(ns is null
+            ? _client.CoreV1.WatchListEventForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedEventAsync(ns, cancellationToken: ct)),
         // Cluster-scoped, so no namespaced variant to choose between.
         "PersistentVolume" => Box(_client.CoreV1.WatchListPersistentVolumeAsync(cancellationToken: ct)),
         "StorageClass" => Box(_client.StorageV1.WatchListStorageClassAsync(cancellationToken: ct)),

@@ -1,4 +1,5 @@
 using Kontena.Sdk.Models;
+using Kontena.Sdk.Shell;
 
 namespace Kontena.Core.Shell;
 
@@ -65,8 +66,12 @@ public static class HostShellLauncher
             foreach (var (name, content) in plan.SupportFiles)
                 WritePrivate(Path.Combine(directory, name), content);
 
+            // The PTY seam takes what it runs, not the plan: SupportFiles are written above and are
+            // this launcher's business, not the terminal's.
+            var command = new PtyCommand(plan.Executable, plan.Arguments, plan.Environment);
+
             return await PtyShellSession
-                .StartAsync(plan, HomeDirectory(), columns, rows, directory, ct)
+                .StartAsync(command, HomeDirectory(), columns, rows, directory, ct)
                 .ConfigureAwait(false);
         }
         catch

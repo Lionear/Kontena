@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Kontena.Core.Shell;
+namespace Kontena.Sdk.Shell;
 
 /// <summary>
 /// Puts a freshly opened pseudo-terminal into the output mode an interactive terminal expects

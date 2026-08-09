@@ -38,12 +38,18 @@ public sealed class FakeEngine : IContainerEngine
 
     public string Backend => _backend;
 
-    public EngineCapabilities Capabilities { get; } = new()
+    /// <summary>
+    /// Everything on, so a caller sees the full UI by default. Settable because "what does this screen
+    /// do against an engine that cannot do X" is a question only a fake can answer cheaply — the real
+    /// adapters each hard-code their own answer.
+    /// </summary>
+    public EngineCapabilities Capabilities { get; init; } = new()
     {
         Rootless = true,
         SupportsBuild = true,
         SupportsCompose = true,
         SupportsExec = true,
+        SupportsRestartPolicy = true,
         SupportsPrune = true,
         SupportsVolumeBrowse = true,
         SupportsGpu = false,
