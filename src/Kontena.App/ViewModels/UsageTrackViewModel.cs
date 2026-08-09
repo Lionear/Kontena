@@ -139,10 +139,19 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
         for (var i = 0; i < Charts.Count && i < values.Length; i++)
             Charts[i].Buffer.Add(at, values[i]);
 
-        if (UsesHistory)
-            _ = LoadHistoryAsync(force: false);
-        else
+        if (!UsesHistory)
+        {
             Refresh();
+            return;
+        }
+
+        // History is asked again on its own interval, so most ticks find it throttled and do
+        // nothing. That is right while history owns the picture — and wrong while the buffer does,
+        // which is what left a fallback chart frozen at whatever it held when it fell back.
+        if (!_drewFromHistory)
+            Refresh();
+
+        _ = LoadHistoryAsync(force: false);
     }
 
     public void Clear()
@@ -284,7 +293,9 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
                 // Nothing stored yet — a pod created a minute ago, or a scrape that has not seen it.
                 // Where the buffer can cover the range itself, draw that instead of an empty frame
                 // with an explanation; only say so when neither source has anything.
-                if (UsageGraphs.IsLive(RangeMinutes) && Charts.Any(c => c.Buffer.Count > 1))
+                // Any sample at all, not two: a probe that comes back after the first readings
+                // would otherwise stamp "returned nothing" over a chart that was already drawing.
+                if (UsageGraphs.IsLive(RangeMinutes) && Charts.Any(c => c.Buffer.Count > 0))
                 {
                     Refresh();
                     return;
