@@ -17,7 +17,7 @@ public sealed class TestPlugin : IEnginePlugin, IUiPlugin
 {
     public IEnumerable<PluginPage> GetPages() =>
     [
-        new PluginPage("tools", "Test tools", "IconBox", () => new TextBlock { Text = "Test tools" }),
+        new PluginPage("tools", "Test tools", "IconBox", _ => new TextBlock { Text = "Test tools" }),
     ];
 
     public EngineManifest Manifest => new()

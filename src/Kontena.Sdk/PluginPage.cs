@@ -21,10 +21,12 @@ namespace Kontena.Sdk;
 /// the host's resources, so a name the host does not know draws no icon rather than failing.
 /// </param>
 /// <param name="CreateView">
-/// Builds the page. Called on the UI thread each time the entry is opened, and never before.
+/// Builds the page, given what the host lends it. Called on the UI thread each time the entry is
+/// opened, and never before — so <see cref="IPluginHost.Cluster"/> is whatever is open at that moment
+/// rather than whatever was open at startup.
 /// </param>
 public sealed record PluginPage(
     string Key,
     string Label,
     string IconKey,
-    Func<Control> CreateView);
+    Func<IPluginHost, Control> CreateView);

@@ -42,7 +42,7 @@ public sealed class PluginPageNavTests : IDisposable
         };
 
     private static PluginPage Page(string key, string label = "Editor") =>
-        new(key, label, "IconBox", () => new TextBlock { Text = label });
+        new(key, label, "IconBox", _ => new TextBlock { Text = label });
 
     private MainWindowViewModel Build(params DiscoveredPlugin[] plugins) =>
         new(
@@ -117,10 +117,31 @@ public sealed class PluginPageNavTests : IDisposable
     }
 
     [Fact]
+    public void The_page_is_handed_the_host_when_it_is_built()
+    {
+        // The seam exists so a page can reach the cluster the user is in. Nothing is connected here, so
+        // what this proves is the handing over — and that "no cluster" arrives as null rather than as a
+        // missing argument the plugin has to guess about.
+        IPluginHost? seen = null;
+        var page = new PluginPage("editor", "Editor", "IconBox", host =>
+        {
+            seen = host;
+            return new TextBlock();
+        });
+
+        using var vm = Build(Loaded(page));
+
+        vm.NavigateCommand.Execute("plugin:com.acme.studio:editor");
+
+        Assert.NotNull(seen);
+        Assert.Null(seen.Cluster);
+    }
+
+    [Fact]
     public void A_page_that_throws_while_being_built_reports_and_leaves_the_shell_standing()
     {
         var exploding = new PluginPage(
-            "editor", "Editor", "IconBox", () => throw new InvalidOperationException("no editor for you"));
+            "editor", "Editor", "IconBox", _ => throw new InvalidOperationException("no editor for you"));
 
         using var vm = Build(Loaded(exploding));
 
