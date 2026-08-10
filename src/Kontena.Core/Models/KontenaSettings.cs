@@ -194,29 +194,44 @@ public sealed record KontenaSettings
     public IReadOnlyList<string> KubeconfigPaths { get; init; } = [];
 
     /// <summary>
-    /// Plugins the user has agreed to run, as <c>"&lt;id&gt;@&lt;version&gt;"</c>. Until releases are
-    /// signed (KON-53), a dll in the plugins directory is arbitrary code in Kontena's process, so
-    /// nothing loads without an answer here.
+    /// Plugins the user has agreed to run, as <c>"&lt;id&gt;@&lt;version&gt;#&lt;sha256&gt;"</c>. Until
+    /// releases are signed (KON-53), a dll in the plugins directory is arbitrary code in Kontena's
+    /// process, so nothing loads without an answer here.
     /// <para>
-    /// Per id <b>and</b> version on purpose: an update is different bytes, and the permission was given
-    /// for the old ones. It is a weak boundary — a hostile replacement can lie about its own version to
-    /// reuse an answer — and that is exactly the hole the signature check closes. It is not worked
-    /// around here, because a workaround would only look like a boundary.
+    /// The digest is the answer's subject, and the id and version are how a person recognises it
+    /// (KON-362). Keying on id and version alone made this a statement about a name: <c>plugin.json</c>
+    /// is a text file beside the code it describes, so anything able to replace the dll could leave the
+    /// text saying what it said and inherit the answer. The digest is checked on every scan rather than
+    /// once at install, for the reason <c>ManagedToolStore</c> gives about the tools it downloads.
+    /// </para>
+    /// <para>
+    /// Entries written before this carry no <c>#</c> and match nothing, so a plugin allowed under the
+    /// old scheme is asked about once more. That is the honest outcome: there is no record of which
+    /// bytes were agreed to, and inventing one would only look like a boundary.
     /// </para>
     /// </summary>
     public IReadOnlyList<string> AllowedPlugins { get; init; } = [];
 
-    /// <summary>Whether this exact build of this plugin has been agreed to.</summary>
-    public bool AllowsPlugin(string id, string version) =>
-        AllowedPlugins.Contains(PluginKey(id, version), StringComparer.Ordinal);
+    /// <summary>Whether these exact bytes, under this id and version, have been agreed to.</summary>
+    public bool AllowsPlugin(string id, string version, string sha256) =>
+        sha256.Length > 0
+        && AllowedPlugins.Contains(PluginKey(id, version, sha256), StringComparer.Ordinal);
 
-    /// <summary>Record agreement for this exact build, leaving earlier versions recorded.</summary>
-    public KontenaSettings WithAllowedPlugin(string id, string version) =>
-        AllowsPlugin(id, version)
+    /// <summary>
+    /// Whether this id and version were ever agreed to, whatever the bytes were — so the question for
+    /// an assembly that has changed underneath an answer can be asked as the different question it is.
+    /// </summary>
+    public bool KnowsPlugin(string id, string version) =>
+        AllowedPlugins.Any(entry => entry.StartsWith($"{id}@{version}#", StringComparison.Ordinal));
+
+    /// <summary>Record agreement for these exact bytes, leaving earlier answers recorded.</summary>
+    public KontenaSettings WithAllowedPlugin(string id, string version, string sha256) =>
+        AllowsPlugin(id, version, sha256)
             ? this
-            : this with { AllowedPlugins = [.. AllowedPlugins, PluginKey(id, version)] };
+            : this with { AllowedPlugins = [.. AllowedPlugins, PluginKey(id, version, sha256)] };
 
-    private static string PluginKey(string id, string version) => $"{id}@{version}";
+    private static string PluginKey(string id, string version, string sha256) =>
+        $"{id}@{version}#{sha256}";
 
     /// <summary>
     /// Names the user gave a backend, keyed by backend id (KON-119). Empty means "use what the source
