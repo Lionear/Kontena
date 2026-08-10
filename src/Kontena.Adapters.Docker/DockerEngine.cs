@@ -77,9 +77,62 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         SupportsVolumeTransfer = true,
     };
 
-    private static Uri DefaultEndpoint() => OperatingSystem.IsWindows()
+    private static Uri DefaultEndpoint() =>
+        ResolveEndpoint(Environment.GetEnvironmentVariable("DOCKER_HOST"));
+
+    /// <summary>Where the engine listens when nobody said otherwise.</summary>
+    private static Uri PlatformEndpoint() => OperatingSystem.IsWindows()
         ? new Uri("npipe://./pipe/docker_engine")
         : new Uri("unix:///var/run/docker.sock");
+
+    /// <summary>What Docker.DotNet can open a connection to.</summary>
+    private static readonly string[] SupportedSchemes = ["unix", "npipe", "tcp", "http", "https"];
+
+    /// <summary>
+    /// The endpoint <paramref name="dockerHost"/> asks for, or the platform's own when it asks for
+    /// nothing (KON-359).
+    /// <para>
+    /// <c>DOCKER_HOST</c> has to be read here because <see cref="DockerEngineProvider.IsInstalled"/>
+    /// already reads it, and treats it as the strongest signal there is: a user who set it has said
+    /// where their engine lives. Connecting to a fixed path anyway made those two disagree — the
+    /// switcher listed Docker as installed while every call went to a socket that need not exist.
+    /// </para>
+    /// <para>
+    /// Most visible on macOS, where <c>/var/run/docker.sock</c> is not the engine's own socket but a
+    /// symlink Docker Desktop offers behind a password prompt. Decline it and only
+    /// <c>~/.docker/run/docker.sock</c> is left; Colima, OrbStack and Rancher Desktop never create it
+    /// and publish their socket through this variable instead.
+    /// </para>
+    /// <para>
+    /// A value that cannot be connected to throws rather than quietly falling back to the platform
+    /// socket. Falling back would rebuild the very confusion this fixes: the engine would answer from
+    /// somewhere the user did not point at, or fail with "cannot reach Docker" while naming a path they
+    /// never chose.
+    /// </para>
+    /// </summary>
+    internal static Uri ResolveEndpoint(string? dockerHost)
+    {
+        if (string.IsNullOrWhiteSpace(dockerHost))
+            return PlatformEndpoint();
+
+        var value = dockerHost.Trim();
+
+        // ssh:// is a real Docker setup and a common one, but Docker.DotNet cannot speak it — the
+        // transport is a tunnel, which Kontena already builds for remote engines (KON-46). So say that,
+        // rather than reporting it as an endpoint we failed to reach.
+        if (value.StartsWith("ssh://", StringComparison.OrdinalIgnoreCase))
+            throw new EngineUnreachableException(
+                $"DOCKER_HOST is set to \"{value}\". Kontena cannot connect to an engine over ssh from " +
+                "this variable — add it as a remote engine instead, which tunnels the connection for you.");
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !SupportedSchemes.Contains(uri.Scheme, StringComparer.OrdinalIgnoreCase))
+            throw new EngineUnreachableException(
+                $"DOCKER_HOST is set to \"{value}\", which is not an endpoint Kontena can connect to. " +
+                "Supported: unix://, npipe://, tcp://, http:// and https://.");
+
+        return uri;
+    }
 
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         Exec(async () =>
