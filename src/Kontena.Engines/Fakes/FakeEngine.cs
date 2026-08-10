@@ -17,6 +17,7 @@ public sealed class FakeEngine : IContainerEngine
     private readonly Dictionary<string, ImageSummary> _images = [];
     private readonly Dictionary<string, VolumeSummary> _volumes = [];
     private readonly Dictionary<string, NetworkSummary> _networks = [];
+    private readonly List<CreateContainerRequest> _createdRequests = [];
     private int _idSeed = 1000;
     private readonly string _backend;
     private readonly string _displayName;
@@ -82,9 +83,14 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.FromResult(list);
     }
 
+    /// <summary>Every request this fake was asked to create, in order. Read by migration tests.</summary>
+    public IReadOnlyList<CreateContainerRequest> CreatedRequests => _createdRequests;
+
     public ValueTask<string> CreateContainerAsync(
         CreateContainerRequest request, CancellationToken ct = default)
     {
+        _createdRequests.Add(request);
+
         var id = NextId();
         var summary = new ContainerSummary
         {

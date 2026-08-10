@@ -11,6 +11,29 @@ public class FakeEngineTests
 {
     private static FakeEngine NewEngine() => new();
 
+    /// <summary>
+    /// The migration runner's tests assert what it asked the engine to do, so the fake has to
+    /// remember it. A fake that accepts everything and records nothing lets any ordering bug through.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_records_the_request_it_was_given()
+    {
+        var engine = NewEngine();
+
+        await engine.CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "alpine:3.20",
+            Name = "web",
+            Start = false,
+            Mounts = [new MountSpec(MountSpec.Volume, "data", "/data")],
+        });
+
+        var recorded = Assert.Single(engine.CreatedRequests);
+        Assert.Equal("web", recorded.Name);
+        Assert.False(recorded.Start);
+        Assert.Equal("data", Assert.Single(recorded.Mounts).Source);
+    }
+
     [Fact]
     public void Capabilities_advertise_expected_flags()
     {

@@ -68,6 +68,12 @@ internal static class AppleMap
             StartedAt = source.Status?.StartedDate,
             MemoryLimitBytes = configuration?.Resources?.MemoryInBytes,
             Command = Command(process),
+
+            // `Command` above is the joined display line; these two are what re-running this
+            // container needs — see ContainerInspect.Entrypoint.
+            Entrypoint = process?.Executable is { Length: > 0 } executable ? [executable] : [],
+            Cmd = process?.Arguments is { } processArguments ? [.. processArguments] : [],
+
             WorkingDirectory = process?.WorkingDirectory ?? string.Empty,
 
             // The CLI reports the numeric uid, never a name, so the field carries the number as text
