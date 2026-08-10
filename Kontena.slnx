@@ -28,5 +28,6 @@
     <Project Path="tests/Kontena.Plugins.Nerdctl.Tests/Kontena.Plugins.Nerdctl.Tests.csproj" />
     <Project Path="tests/Kontena.Sdk.Tests/Kontena.Sdk.Tests.csproj" />
     <Project Path="tests/Kontena.TestPlugin/Kontena.TestPlugin.csproj" />
+    <Project Path="tests/Kontena.UiTestPlugin/Kontena.UiTestPlugin.csproj" />
   </Folder>
 </Solution>

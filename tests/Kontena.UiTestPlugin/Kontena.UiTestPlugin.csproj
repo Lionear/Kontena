@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Its own subfolder beside plugin-fixture, same reason the hostile one has: which entry point the
+         loader finds must never depend on type ordering inside a shared assembly. -->
+    <OutDir>$(MSBuildThisFileDirectory)..\Kontena.Engines.Tests\bin\$(Configuration)\net10.0\ui-plugin-fixture\</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kontena.Sdk\Kontena.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>

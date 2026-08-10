@@ -1,10 +1,14 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Engines.Plugins;
+using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Models;
@@ -36,6 +40,14 @@ public partial class MainWindowViewModel
     {
         Diag.Mark($"navigate to {key}");
         Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => Navigate(key));
+
+        // Before the mode switch: a plugin page belongs to neither nav, and both of the switches below
+        // fall through to a page of their own on an unknown key.
+        if (_pluginPages.TryGetValue(key, out var pluginPage))
+        {
+            ShowPluginPage(key, pluginPage);
+            return;
+        }
 
         if (IsClusterMode)
         {
@@ -77,6 +89,72 @@ public partial class MainWindowViewModel
             new NavItem("volumes", "Volumes", "IconDatabase"),
             new NavItem("networks", "Networks", "IconNetwork"),
             new NavItem("projects", "Projects", "IconBox")));
+
+        AddPluginNav();
+    }
+
+    /// <summary>Nav key to the page behind it, for everything a plugin contributed (KON-331).</summary>
+    private readonly Dictionary<string, PluginPage> _pluginPages = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Appends what the loaded plugins contribute to the nav that was just built (KON-331).
+    /// <para>
+    /// Its own group, at the end, in both navs: a plugin page is not part of the engine's story or the
+    /// cluster's, and where it would otherwise sit is a question with no answer that stays true for the
+    /// next plugin.
+    /// </para>
+    /// </summary>
+    private void AddPluginNav()
+    {
+        _pluginPages.Clear();
+
+        var items = new List<NavItem>();
+
+        foreach (var plugin in _plugins.Where(p => p.Status == PluginStatus.Loaded && p.Manifest is not null))
+        {
+            foreach (var page in plugin.Pages)
+            {
+                // Prefixed with the plugin id: two plugins naming a page "editor" would otherwise be one
+                // entry, and the second would open the first's page.
+                var key = $"plugin:{plugin.Manifest!.Id}:{page.Key}";
+                _pluginPages[key] = page;
+                items.Add(new NavItem(key, page.Label, page.IconKey)
+                {
+                    IsPlugin = true,
+                    PluginTip = $"From the plugin {plugin.Manifest.Name} {plugin.Manifest.Version}",
+                });
+            }
+        }
+
+        if (items.Count > 0)
+            NavGroups.Add(Group("Plugins", [.. items]));
+    }
+
+    /// <summary>
+    /// Opens a page a plugin contributed, building its control inside the host's containment (KON-331).
+    /// The loader already keeps a plugin that cannot load out of the start; this is the same promise for
+    /// one that cannot draw — it costs its own content area, not the window around it.
+    /// </summary>
+    private void ShowPluginPage(string key, PluginPage page)
+    {
+        CloseDetail();
+
+        try
+        {
+            CurrentPage = page.CreateView();
+        }
+        catch (Exception ex)
+        {
+            CurrentPage = new TextBlock
+            {
+                Margin = new Thickness(24),
+                TextWrapping = TextWrapping.Wrap,
+                Text = $"{page.Label} could not be opened: {ex.Message}",
+            };
+        }
+
+        foreach (var item in NavItems)
+            item.IsSelected = item.Key == key;
     }
 
     /// <summary>A section, with the shared navigate command already on every item in it.</summary>
@@ -122,6 +200,8 @@ public partial class MainWindowViewModel
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
+
+        AddPluginNav();
     }
     /// <param name="refreshNav">
     /// False only where the caller has just read the cluster, so the sidebar is not refetched twice
