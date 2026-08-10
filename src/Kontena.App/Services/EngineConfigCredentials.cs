@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using Kontena.Sdk.Models;
+using Kontena.Sdk.Tooling;
 using Kontena.Core.Orchestration;
 
 namespace Kontena.App.Services;
@@ -247,18 +248,34 @@ public sealed class EngineConfigCredentials
         && name.All(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_' or '-');
 
     /// <summary>
+    /// Where <c>docker-credential-&lt;helper&gt;</c> lives, or null when it is nowhere to be found
+    /// (KON-358).
+    /// <para>
+    /// Resolved through <see cref="ToolLocator"/> rather than left to PATH, for the reason that class
+    /// documents: an app launched from Finder or the Dock reads no shell profile, so
+    /// <c>/usr/local/bin</c> — where Docker Desktop puts <c>docker-credential-desktop</c> — is not on
+    /// its PATH. Left to PATH this returned no credential at all on macOS, and the caller's catch turns
+    /// that into an anonymous pull that fails at the registry, which reads as wrong credentials rather
+    /// than as a helper that was never reached.
+    /// </para>
+    /// </summary>
+    /// <param name="extraPaths">Searched after PATH and before the platform defaults; for tests.</param>
+    internal static string? HelperPath(string helper, IReadOnlyList<string>? extraPaths = null) =>
+        IsUsableHelperName(helper) ? ToolLocator.Locate($"docker-credential-{helper}", extraPaths) : null;
+
+    /// <summary>
     /// Asks <c>docker-credential-&lt;helper&gt;</c> for a server's credential. The protocol is a
     /// subcommand plus the server on stdin, answered with JSON on stdout — so the secret never appears in
     /// a command line, where another process could read it out of <c>ps</c>.
     /// </summary>
     private static RegistryCredential? FromHelper(string helper, string server)
     {
-        if (!IsUsableHelperName(helper))
+        if (HelperPath(helper) is not { } executable)
             return null;
 
         try
         {
-            using var process = Process.Start(new ProcessStartInfo($"docker-credential-{helper}", "get")
+            using var process = Process.Start(new ProcessStartInfo(executable, "get")
             {
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -292,8 +309,9 @@ public sealed class EngineConfigCredentials
         }
         catch (Exception)
         {
-            // No such helper on PATH, a helper that refused, unparseable output — all mean "no credential
-            // from here", and none of them are worth interrupting a pull for.
+            // A helper that refused, unparseable output, a binary that would not start — all mean "no
+            // credential from here", and none of them are worth interrupting a pull for. "Not installed"
+            // no longer arrives here: HelperPath answers that before anything is started.
             return null;
         }
     }
