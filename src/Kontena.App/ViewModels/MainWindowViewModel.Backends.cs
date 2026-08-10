@@ -18,11 +18,62 @@ namespace Kontena.App.ViewModels;
 /// </summary>
 public partial class MainWindowViewModel
 {
+    /// <summary>
+    /// How long the shell waits for the probe round before carrying on without the stragglers
+    /// (KON-357).
+    /// <para>
+    /// Every backend gets its own deadline to answer in, up to ten seconds for something across a
+    /// network (KON-327, KON-329), and that is right for the backend — but the round is awaited as a
+    /// whole, so one remote nobody can reach held the entire startup for its full deadline. Measured:
+    /// a single unreachable engine took the shell from 3.1 to 13.2 seconds, on a machine where
+    /// everything else answered in under a second.
+    /// </para>
+    /// <para>
+    /// Two seconds rather than something tighter, because the round is not only a question — it is
+    /// where the HTTP and Kubernetes stacks are first used, in parallel, and connecting afterwards
+    /// reuses all of it. Cutting it short costs more than it saves: opening the cluster took 800 ms
+    /// longer when the connect had to warm that up on its own. A healthy round finishes well inside
+    /// this, so nothing changes for anyone whose backends answer.
+    /// </para>
+    /// </summary>
+    internal static readonly TimeSpan ProbeRoundGrace = TimeSpan.FromSeconds(2);
+
     private async Task InitAsync()
     {
         try
         {
-            _probes = await Diag.TimeAsync("probe every backend", _registry.ProbeAllAsync());
+            // Started together, waited for apart: the backend being opened gets its own deadline, the
+            // rest get whatever is left of the grace window and land in the switcher when they answer.
+            var round = _registry.Providers.Select(p => BackendRegistry.ProbeAsync(p)).ToList();
+            var all = Task.WhenAll(round);
+            var target = StartupProbe(round);
+
+            if (target is null)
+            {
+                // Nothing to open yet, so nothing to be early for: the wizard lists the engines that
+                // answered, and picking "the first engine that answers" (KON-98) has to see them all
+                // before it can call one first. Carrying on early here would offer a choice missing
+                // whichever backend was merely slow.
+                _probes = await Diag.TimeAsync("probe every backend", all);
+            }
+            else
+            {
+                await Diag.TimeAsync("probe every backend", Task.WhenAny(all, Task.Delay(_probeGrace)));
+
+                // Whatever the window says, the one being opened is waited for: a target still in
+                // flight reads as one that did not answer, and that is the "is gone" card over a
+                // healthy cluster.
+                await Diag.TimeAsync("wait for the one we want", target);
+
+                _probes = [.. round.Where(t => t.IsCompletedSuccessfully).Select(t => t.Result)];
+
+                if (!all.IsCompleted)
+                {
+                    Diag.Mark($"carrying on without {round.Count - _probes.Count} probe(s) still out");
+                    _ = FinishRoundAsync(all, round);
+                }
+            }
+
             Diag.Time("build the settings page", BuildSettingsPage);
             RebuildEngineList();
             RefreshNewClusters();
@@ -46,6 +97,56 @@ public partial class MainWindowViewModel
         {
             EnterBackendDown("Can't reach a container engine", ex.Message);
         }
+    }
+
+    /// <summary>
+    /// The probe for the backend this launch is going to open, or null where nothing is owed a wait of
+    /// its own: a first run (the wizard lists whatever answered), no remembered target, a target that
+    /// is no longer a provider — its own message, rather than a silent landing somewhere else — or the
+    /// screenshot harness, which picks by connectedness.
+    /// </summary>
+    private Task<BackendProbe>? StartupProbe(IReadOnlyList<Task<BackendProbe>> round)
+    {
+        if (!_settings.Onboarded || Environment.GetEnvironmentVariable("KONTENA_SCREENSHOT") == "1")
+            return null;
+
+        if (_settings.StartupTarget is not { Length: > 0 } target)
+            return null;
+
+        var index = _registry.Providers.ToList().FindIndex(p => p.Backend == target);
+        return index < 0 ? null : round[index];
+    }
+
+    /// <summary>
+    /// Let the stragglers finish behind the open shell and put them where a probe belongs: the
+    /// switcher, the settings page, the "new clusters" row. Started from the UI thread, so all of that
+    /// lands back on it.
+    /// <para>
+    /// Nothing is torn down and nothing is retried on failure — a backend that never answered keeps
+    /// the "Not connected" it already has.
+    /// </para>
+    /// </summary>
+    private async Task FinishRoundAsync(Task all, IReadOnlyList<Task<BackendProbe>> round)
+    {
+        try
+        {
+            await all;
+        }
+        catch (Exception)
+        {
+            // ProbeAsync answers rather than throws, so this is the unlikely half. Whatever did
+            // answer is still worth showing.
+        }
+
+        var late = round.Where(t => t.IsCompletedSuccessfully).Select(t => t.Result).ToList();
+        if (late.Count <= _probes.Count)
+            return;
+
+        Diag.Mark($"late probes in: {late.Count - _probes.Count} more");
+        _probes = late;
+        BuildSettingsPage();
+        RebuildEngineList();
+        RefreshNewClusters();
     }
     /// <summary>
     /// Ask about a plugin that was found but never agreed to (KON-279). Startup only loads what already
