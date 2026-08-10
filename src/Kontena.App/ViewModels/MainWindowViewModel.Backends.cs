@@ -165,15 +165,26 @@ public partial class MainWindowViewModel
         // session, without waiting for _plugins to catch up.
         var pending = _plugins.FirstOrDefault(p =>
             p.Status == PluginStatus.AwaitingConsent && p.Manifest is not null
-            && !_settings.AllowsPlugin(p.Manifest.Id, p.Manifest.Version));
+            && !_settings.AllowsPlugin(p.Manifest.Id, p.Manifest.Version, p.Sha256));
 
         if (pending?.Manifest is not { } manifest)
             return;
 
+        // A plugin whose id and version were answered before, presenting bytes that answer did not
+        // cover, is not a new plugin — it is one that changed underneath the answer (KON-362). Asking
+        // that as "we found something in your folder" would leave out the only part worth interrupting
+        // for: this is not what you allowed.
+        var changed = _settings.KnowsPlugin(manifest.Id, manifest.Version);
+
         ShowConfirm(new ConfirmRequest(
-            Title: "Run this plugin?",
-            Message: $"{manifest.Name} was found in your plugins folder. It runs inside Kontena with "
-                     + "the same access you have. Only allow it if you put it there.",
+            Title: changed ? "This plugin has changed — run it?" : "Run this plugin?",
+            Message: changed
+                ? $"{manifest.Name} is not the build you allowed: the same version, different code. "
+                  + "That happens when you reinstall it, and it happens when something replaces it. It "
+                  + "runs inside Kontena with the same access you have — only allow it if you changed "
+                  + "it yourself."
+                : $"{manifest.Name} was found in your plugins folder. It runs inside Kontena with "
+                  + "the same access you have. Only allow it if you put it there.",
             ConfirmLabel: "Allow",
             // Nothing is destroyed here. The question is whether to trust, and the danger styling
             // would answer a different one.
@@ -190,14 +201,19 @@ public partial class MainWindowViewModel
             ],
             OnConfirm: async () =>
             {
-                var stored = _store.Update(s => s.WithAllowedPlugin(manifest.Id, manifest.Version));
-                _settings = _settings.WithAllowedPlugin(manifest.Id, manifest.Version);
+                // The digest from the scan the user was just shown, not one taken again here: rehashing
+                // at this point would record whatever is on disk now, which is not necessarily what the
+                // dialog described.
+                var sha = pending.Sha256;
+                var stored = _store.Update(s => s.WithAllowedPlugin(manifest.Id, manifest.Version, sha));
+                _settings = _settings.WithAllowedPlugin(manifest.Id, manifest.Version, sha);
 
                 // Load again rather than reaching into the loader for this one directory: the same call
                 // that ran at startup now sees the consent, and there is one path by which a plugin
                 // becomes a provider.
                 var loaded = PluginLoader.Discover(
-                    _pluginRoot, m => stored.AllowsPlugin(m.Id, m.Version));
+                    _pluginRoot,
+                    c => stored.AllowsPlugin(c.Manifest.Id, c.Manifest.Version, c.Sha256));
 
                 // Replace the snapshot, not just the providers: this plugin's entry is now Loaded
                 // rather than AwaitingConsent, so a later reconnect's InitAsync (which reuses _plugins,

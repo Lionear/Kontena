@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Kontena.Sdk;
 
 namespace Kontena.Engines.Plugins;
@@ -23,11 +24,11 @@ public static class PluginLoader
     /// reaches the caller — see <see cref="DiscoveredPlugin"/>.
     /// </summary>
     /// <param name="isAllowed">
-    /// Whether the user has agreed to run this exact build. A delegate rather than a settings object so
+    /// Whether the user has agreed to run these exact bytes. A delegate rather than a settings object so
     /// this project keeps knowing nothing about how preferences are stored.
     /// </param>
     public static IReadOnlyList<DiscoveredPlugin> Discover(
-        string root, Func<PluginManifest, bool> isAllowed)
+        string root, Func<PluginCandidate, bool> isAllowed)
     {
         if (!Directory.Exists(root))
             return [];
@@ -45,7 +46,7 @@ public static class PluginLoader
         }
     }
 
-    private static DiscoveredPlugin DiscoverOne(string directory, Func<PluginManifest, bool> isAllowed)
+    private static DiscoveredPlugin DiscoverOne(string directory, Func<PluginCandidate, bool> isAllowed)
     {
         try
         {
@@ -53,27 +54,75 @@ public static class PluginLoader
             if (manifest is null)
                 return new DiscoveredPlugin(directory, null, PluginStatus.Rejected, reason, []);
 
-            if (!isAllowed(manifest))
-                return new DiscoveredPlugin(directory, manifest, PluginStatus.AwaitingConsent, null, []);
-
-            if (SdkTooOld(manifest.MinSdkVersion, out var sdkReason))
-                return new DiscoveredPlugin(directory, manifest, PluginStatus.Rejected, sdkReason, []);
-
             // GetFileName strips any directory component: an absolute path in the manifest would
-            // otherwise replace `directory` outright, and "../.." would escape it — and since consent
-            // is keyed on id@version only, a directory reusing a previously approved key could point
-            // the loader anywhere on disk without asking again.
+            // otherwise replace `directory` outright, and "../.." would escape it. Resolved here rather
+            // than after the consent check because the digest below is of this file.
             var assembly = Path.Combine(directory, Path.GetFileName(manifest.Assembly));
+
+            // Ahead of the consent question, where this used to sit behind it: the question is whether
+            // to run these bytes, and a directory with no assembly has none to ask about. Leaving it
+            // AwaitingConsent would put the same unanswerable prompt up on every launch.
             if (!File.Exists(assembly))
+            {
                 return new DiscoveredPlugin(
                     directory, manifest, PluginStatus.Rejected, $"No {manifest.Assembly}", []);
+            }
 
-            return Load(directory, manifest, assembly);
+            // What the answer is actually about (KON-362). plugin.json is a text file next to the code
+            // it describes, so anything that can replace the code can leave the text saying what it
+            // said — which made "com.acme.nerdctl@1.0.0" an answer about a name rather than about
+            // anything that runs. A file that is there but unreadable hashes to nothing, which no
+            // recorded answer matches: it stays a question rather than becoming a yes.
+            var sha256 = Sha256OrEmpty(assembly);
+
+            if (!isAllowed(new PluginCandidate(manifest, sha256)))
+            {
+                return new DiscoveredPlugin(directory, manifest, PluginStatus.AwaitingConsent, null, [])
+                {
+                    Sha256 = sha256,
+                };
+            }
+
+            if (SdkTooOld(manifest.MinSdkVersion, out var sdkReason))
+            {
+                return new DiscoveredPlugin(directory, manifest, PluginStatus.Rejected, sdkReason, [])
+                {
+                    Sha256 = sha256,
+                };
+            }
+
+            return Load(directory, manifest, assembly) with { Sha256 = sha256 };
         }
         catch (Exception ex)
         {
             // Containment is the point: one directory nobody vetted must not cost a start.
             return new DiscoveredPlugin(directory, null, PluginStatus.Rejected, ex.Message, []);
+        }
+    }
+
+    /// <summary>
+    /// The assembly's SHA-256 in lowercase hex, or empty when it cannot be read.
+    /// <para>
+    /// Every scan, not once at install: the same reasoning <see cref="Kontena.Sdk.Tooling.ManagedToolStore"/>
+    /// already applies to the tools it downloads — a file verified when it arrived tells you nothing
+    /// about the file you are about to run. A plugin assembly is a few hundred kilobytes, so this is
+    /// microseconds against a scan that opens files and loads code anyway.
+    /// </para>
+    /// <para>
+    /// Empty on failure rather than throwing: "we cannot say what these bytes are" and "these bytes are
+    /// not what was agreed to" have the same answer, and only one of them is worth a separate path.
+    /// </para>
+    /// </summary>
+    private static string Sha256OrEmpty(string path)
+    {
+        try
+        {
+            using var file = File.OpenRead(path);
+            return Convert.ToHexStringLower(SHA256.HashData(file));
+        }
+        catch (Exception)
+        {
+            return string.Empty;
         }
     }
 
@@ -107,9 +156,10 @@ public static class PluginLoader
             return Reject(uiType.FullName + " is not an IUiPlugin");
 
         // The user agreed to what plugin.json said. Code that describes itself differently is not what
-        // was agreed to — and until signing lands, this is the only thing tying the two together.
-        // Both entry points are asked: two types in one assembly can disagree, and the one that would
-        // go unchecked is the one worth lying in.
+        // was agreed to. The digest recorded with the answer (KON-362) is what ties the answer to these
+        // bytes; this ties those bytes to the name the user read in the dialog, which is a different
+        // claim and still worth checking. Both entry points are asked: two types in one assembly can
+        // disagree, and the one that would go unchecked is the one worth lying in.
         foreach (var declared in new[] { plugin?.Manifest, ui?.Manifest })
         {
             if (declared is null || (declared.Id == manifest.Id && declared.Version == manifest.Version))

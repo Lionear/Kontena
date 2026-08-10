@@ -57,7 +57,8 @@ public partial class App : Application
             // anything new comes back as AwaitingConsent and is asked about once there is a window to
             // ask in (MainWindowViewModel.InitAsync).
             var plugins = PluginLoader.Discover(
-                PluginLoader.DefaultRoot, m => settings.AllowsPlugin(m.Id, m.Version));
+                PluginLoader.DefaultRoot,
+                c => settings.AllowsPlugin(c.Manifest.Id, c.Manifest.Version, c.Sha256));
 
             BackendCatalog.SetPluginProviders(plugins.SelectMany(p => p.Providers));
 
