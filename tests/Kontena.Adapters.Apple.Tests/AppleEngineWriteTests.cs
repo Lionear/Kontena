@@ -76,6 +76,63 @@ public sealed class AppleEngineWriteTests
     }
 
     /// <summary>
+    /// A container carries a command, a workdir, a user and labels, and none of them reached the CLI
+    /// before KON-350 — a migrated container would have run the image's default CMD instead of its
+    /// own, which no test and no screen would have shown.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_passes_command_workdir_user_and_labels()
+    {
+        var runner = Installed().When(_ => true, output: ["web"]);
+
+        await Engine(runner).CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "nginx:alpine",
+            Entrypoint = ["/docker-entrypoint.sh"],
+            Command = ["nginx", "-g", "daemon off;"],
+            WorkingDirectory = "/srv",
+            User = "999:999",
+            Labels = new Dictionary<string, string> { ["role"] = "web" },
+        });
+
+        var arguments = Assert.Single(runner.Invocations).Arguments;
+
+        Assert.Equal(["--entrypoint", "/docker-entrypoint.sh"], Window(arguments, "--entrypoint"));
+        Assert.Equal(["--workdir", "/srv"], Window(arguments, "--workdir"));
+        Assert.Equal(["--user", "999:999"], Window(arguments, "--user"));
+        Assert.Equal(["--label", "role=web"], Window(arguments, "--label"));
+
+        // The command follows the image, in order. Anything before it would be read as a flag.
+        var image = Array.IndexOf(arguments.ToArray(), "nginx:alpine");
+        Assert.Equal(["nginx", "-g", "daemon off;"], arguments.Skip(image + 1));
+    }
+
+    /// <summary>
+    /// This CLI's <c>--entrypoint</c> takes one command, not a list. The remaining parts keep their
+    /// meaning by moving to the front of the command — <c>--entrypoint foo image a b</c> runs
+    /// <c>foo a b</c>.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_folds_a_multi_part_entrypoint_into_the_command()
+    {
+        var runner = Installed().When(_ => true, output: ["web"]);
+
+        await Engine(runner).CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "alpine:3.20",
+            Entrypoint = ["/bin/sh", "-c"],
+            Command = ["echo hi"],
+        });
+
+        var arguments = Assert.Single(runner.Invocations).Arguments;
+
+        Assert.Equal(["--entrypoint", "/bin/sh"], Window(arguments, "--entrypoint"));
+
+        var image = Array.IndexOf(arguments.ToArray(), "alpine:3.20");
+        Assert.Equal(["-c", "echo hi"], arguments.Skip(image + 1));
+    }
+
+    /// <summary>
     /// A binding with no host port describes a port the image exposes, which this CLI takes from the
     /// image itself. Publishing it would need a host port to publish on.
     /// </summary>

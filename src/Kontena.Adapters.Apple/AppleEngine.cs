@@ -275,7 +275,37 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
             arguments.Add(network);
         }
 
+        // `--entrypoint` here takes a single command, unlike Docker's array. The remaining parts keep
+        // their meaning by moving to the front of the command: `--entrypoint foo image a b` runs
+        // `foo a b`, which is exactly what a multi-part entry point means.
+        if (request.Entrypoint.Count > 0)
+        {
+            arguments.Add("--entrypoint");
+            arguments.Add(request.Entrypoint[0]);
+        }
+
+        if (request.WorkingDirectory is { Length: > 0 } workingDirectory)
+        {
+            arguments.Add("--workdir");
+            arguments.Add(workingDirectory);
+        }
+
+        if (request.User is { Length: > 0 } user)
+        {
+            arguments.Add("--user");
+            arguments.Add(user);
+        }
+
+        foreach (var (key, value) in request.Labels)
+        {
+            arguments.Add("--label");
+            arguments.Add($"{key}={value}");
+        }
+
         arguments.Add(request.Image);
+
+        arguments.AddRange(request.Entrypoint.Skip(1));
+        arguments.AddRange(request.Command);
 
         return arguments;
     }
