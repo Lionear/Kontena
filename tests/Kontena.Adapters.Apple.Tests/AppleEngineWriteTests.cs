@@ -132,6 +132,62 @@ public sealed class AppleEngineWriteTests
         Assert.Equal(["-c", "echo hi"], arguments.Skip(image + 1));
     }
 
+    // ── Volume transfer ─────────────────────────────────────────────────────
+
+    // Both directions mount the volume into a throwaway container, and picking the image for that
+    // asks the CLI what is local — so a runner for these has to answer `image` as well as `run`.
+    private static FakeToolRunner Transferring() =>
+        Installed()
+            .When(i => i.Arguments[0] == "image",
+                output: ["""[{"id":"a","configuration":{"name":"alpine:3.20"},"variants":[{"size":4093973,"platform":{"architecture":"arm64","os":"linux"}}]}]"""])
+            .When(_ => true, output: []);
+
+    /// <summary>
+    /// Export runs <c>tar</c> inside a throwaway container with two mounts: the volume and the
+    /// directory the archive goes in. Measured against 1.2.2 — a host path and a named volume can
+    /// share one <c>run</c>, which is what makes this one command per side.
+    /// </summary>
+    [Fact]
+    public async Task ExportVolumeAsync_mounts_the_volume_and_the_staging_directory()
+    {
+        var runner = Transferring();
+
+        await Engine(runner).ExportVolumeAsync("data", "/tmp/kon350/data.tar");
+
+        var arguments = runner.Invocations.Single(i => i.Arguments[0] == "run").Arguments;
+
+        Assert.Equal("run", arguments[0]);
+        Assert.Contains("--rm", arguments);
+        Assert.Contains("data:/kontena-volume", arguments);
+        Assert.Contains("/tmp/kon350:/kontena-stage", arguments);
+
+        // lost+found is an ext4 artefact of this runtime's volumes, not the user's data — copying it
+        // into another engine's volume would invent a directory nobody made.
+        Assert.Contains(arguments, a => a.Contains("--exclude", StringComparison.Ordinal)
+                                        && a.Contains("lost+found", StringComparison.Ordinal));
+        Assert.Contains(arguments, a => a.Contains("/kontena-stage/data.tar", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ImportVolumeAsync_extracts_into_the_volume()
+    {
+        var runner = Transferring();
+
+        await Engine(runner).ImportVolumeAsync("data", "/tmp/kon350/data.tar");
+
+        var arguments = runner.Invocations.Single(i => i.Arguments[0] == "run").Arguments;
+
+        Assert.Contains("data:/kontena-volume", arguments);
+        Assert.Contains("/tmp/kon350:/kontena-stage", arguments);
+        Assert.Contains(arguments, a => a.Contains("tar -xf /kontena-stage/data.tar", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Capabilities_say_volume_transfer_is_supported()
+    {
+        Assert.True(Engine(Installed()).Capabilities.SupportsVolumeTransfer);
+    }
+
     /// <summary>
     /// A binding with no host port describes a port the image exposes, which this CLI takes from the
     /// image itself. Publishing it would need a host port to publish on.

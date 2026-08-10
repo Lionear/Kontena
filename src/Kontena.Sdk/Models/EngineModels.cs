@@ -66,6 +66,13 @@ public sealed record EngineCapabilities
     /// </summary>
     public bool SupportsVolumeBrowse { get; init; }
 
+    /// <summary>
+    /// Can copy a volume's contents to and from a tar on the host. Like
+    /// <see cref="SupportsVolumeBrowse"/> this is not a native operation anywhere — it needs an image
+    /// to mount the volume into — so it is answered per engine rather than assumed.
+    /// </summary>
+    public bool SupportsVolumeTransfer { get; init; }
+
     /// <summary>Supports GPU passthrough.</summary>
     public bool SupportsGpu { get; init; }
 

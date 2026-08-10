@@ -130,6 +130,26 @@ public interface IContainerEngine : IBackend
     ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default);
 
+    /// <summary>
+    /// Writes a volume's contents to a tar archive at <paramref name="archivePath"/> on the host.
+    /// <para>
+    /// A tar and not an unpacked directory, because ownership has to survive the trip: a host
+    /// filesystem writes those files as the logged-in user, so a volume owned by uid 999 would arrive
+    /// as somebody else and the container that needs it would not start. A tar carries uid, gid and
+    /// mode, and is unpacked back inside a container, where root can restore them.
+    /// </para>
+    /// <para>Entries are relative to the volume root — <c>./data/file</c>, never <c>/mnt/data/file</c>.</para>
+    /// </summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsVolumeTransfer"/>.</remarks>
+    ValueTask ExportVolumeAsync(string name, string archivePath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Unpacks a tar archive written by <see cref="ExportVolumeAsync"/> into a volume, which must
+    /// already exist. Existing files with the same paths are overwritten; nothing else is removed.
+    /// </summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsVolumeTransfer"/>.</remarks>
+    ValueTask ImportVolumeAsync(string name, string archivePath, CancellationToken ct = default);
+
     /// <summary>Remove all volumes not used by any container.</summary>
     ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default);
 
