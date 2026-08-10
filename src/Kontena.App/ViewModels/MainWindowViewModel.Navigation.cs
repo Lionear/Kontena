@@ -306,9 +306,8 @@ public partial class MainWindowViewModel
     /// cluster navigation and again on every watch event of the open page. Measured on a 72-pod
     /// cluster (KON-352): 20 MB allocated per round, 250–450 ms, and the UI thread stalled for
     /// 150–330 ms of it. Twelve numbers are not worth that, so they are gone (KON-354). What is left
-    /// is the two calls the sidebar cannot be drawn without — the picker's namespaces and the kinds
-    /// the Workloads submenu is made of — and those pay for themselves twice, since the kind entries
-    /// carry their counts out of the list that was fetched anyway.
+    /// is the two calls the sidebar cannot be drawn without: the namespaces the picker is built from,
+    /// and the workloads that say which kinds the submenu has entries for.
     /// </para>
     /// </summary>
     private async Task UpdateClusterNavAsync()
@@ -399,9 +398,12 @@ public partial class MainWindowViewModel
         {
             var key = WorkloadNavGroups.KeyFor(group.Kind);
 
+            // No count, like every other entry in this sidebar (KON-354). This one was free — the
+            // number comes out of a list that had to be fetched anyway — but "free" is not the reason
+            // a number belongs on screen, and five kinds wearing one while nothing around them does
+            // reads as the others having lost theirs rather than as a deliberate list.
             items.Insert(at++, new NavItem(key, WorkloadNavGroups.LabelFor(group.Kind), "IconLayers", isChild: true)
             {
-                Count = group.Count.ToString(CultureInfo.InvariantCulture),
                 Command = NavigateCommand,
                 IsSelected = _clusterPageKey == key,
             });

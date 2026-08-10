@@ -27,6 +27,23 @@ namespace Kontena.App.Tests;
 public sealed class LiveClusterNavTests
 {
     [Fact]
+    public async Task No_entry_in_the_cluster_sidebar_carries_a_count()
+    {
+        // Including the per-kind Workloads entries, which kept theirs at first because the number was
+        // already in hand — and then stood out as the only badges left (KON-354). Port forwards are the
+        // one exception and not a resource count: it says how many tunnels *you* have running.
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
+
+        var badged = shell.NavGroups
+            .SelectMany(g => g.Items)
+            .Where(i => i.Count.Length > 0 && i.Key != "portforwards")
+            .Select(i => i.Key);
+
+        Assert.Empty(badged);
+    }
+
+    [Fact]
     public async Task A_cluster_page_that_sees_a_change_gets_the_sidebar_refreshed()
     {
         var cluster = new FakeClusterEngine();
