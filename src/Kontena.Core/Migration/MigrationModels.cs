@@ -70,6 +70,12 @@ public sealed record MigrationTarget
     public bool HasImage { get; init; }
 }
 
+/// <summary>One step of a running migration, as the dialog shows it.</summary>
+/// <param name="Step">Short step name, e.g. "Stopping source" or "Copying volume 'data'".</param>
+/// <param name="Message">What happened, in the user's words.</param>
+/// <param name="ContainerId">Set on the final step: the id of the container that was created.</param>
+public sealed record MigrationProgress(string Step, string Message, string? ContainerId = null);
+
 /// <summary>The plan a user confirms, and the runner executes.</summary>
 public sealed record MigrationPlan
 {
