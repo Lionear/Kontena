@@ -379,18 +379,25 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  # The nerdctl plugin does not ship in the box (Plans/plugin-loader.md §5): it is its own zip,
-  # unpacked by hand today and by the plugin store later — which is the point, since the in-the-box
-  # route would prove only that the loader can load one dll, not that downloading, unpacking and
-  # consenting work.
+  # No plugin ships in the box (Plans/plugin-loader.md §5, Plans/plugin-store.md §0): each is its own
+  # zip, unpacked by hand today and by the plugin store later — which is the point, since the
+  # in-the-box route would prove only that the loader can load one dll, not that downloading,
+  # unpacking and consenting work.
   #
-  # Its own job rather than a step in the matrix above: the plugin is one platform-independent
+  # Its own job rather than a step in the app matrix above: a plugin is one platform-independent
   # assembly, so building it three times would produce three identical zips racing for one asset name.
   plugin:
-    name: Package nerdctl plugin
+    name: Package ${{ matrix.slug }} plugin
     needs: setup
     if: ${{ needs.setup.outputs.should_build == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - slug: nerdctl
+            project: Kontena.Plugins.Nerdctl
+          - slug: manifest-studio
+            project: Kontena.Plugins.ManifestStudio
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -406,13 +413,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          dotnet publish src/Kontena.Plugins.Nerdctl/Kontena.Plugins.Nerdctl.csproj \
+          dotnet publish "src/${{ matrix.project }}/${{ matrix.project }}.csproj" \
             -c Release -o plugin-publish
 
           # The plugin's own version, not the app's: it is what plugin.json declares, what the host
           # keys consent on (id@version), and what the store will compare to decide there is a newer
           # one. Read from the manifest so there is a single place to bump it.
-          VERSION=$(python3 -c 'import json,sys; print(json.load(open("src/Kontena.Plugins.Nerdctl/plugin.json"))["version"])')
+          VERSION=$(python3 -c 'import json; print(json.load(open("src/${{ matrix.project }}/plugin.json"))["version"])')
           if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.+-]*$'; then
             echo "Refusing plugin version '$VERSION'" >&2; exit 1
           fi
@@ -425,16 +432,16 @@ jobs:
           # Both files are what the loader looks for by name. A zip missing either is a plugin the
           # host silently refuses, so this fails here instead of on a user's machine.
           test -f plugin-publish/plugin.json
-          test -f plugin-publish/Kontena.Plugins.Nerdctl.dll
+          test -f "plugin-publish/${{ matrix.project }}.dll"
 
           mkdir -p artifacts
-          (cd plugin-publish && zip -qr "../artifacts/kontena-plugin-nerdctl-$VERSION.zip" .)
+          (cd plugin-publish && zip -qr "../artifacts/kontena-plugin-${{ matrix.slug }}-$VERSION.zip" .)
           ls -l artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: plugin-nerdctl
+          name: plugin-${{ matrix.slug }}
           path: artifacts/*
           retention-days: 14
           if-no-files-found: error
@@ -499,11 +506,18 @@ jobs:
           Installed copies update themselves from here — see Settings → Updates.
           The .nupkg and releases.*.json assets are what the updater reads; you do not need to download them.
 
-          kontena-plugin-nerdctl-*.zip is optional and separate from the app: it adds containerd
-          backends through the nerdctl CLI, one per containerd namespace. Unzip it into
-          %APPDATA%\\Lionear\\Kontena\\plugins\\nerdctl\\ (Windows) or
-          ~/.config/Lionear/Kontena/plugins/nerdctl/ (Linux, macOS), then start Kontena and approve it
-          when asked. It needs nerdctl on the machine; it does not install one."
+          The kontena-plugin-*.zip files are optional and separate from the app. Unzip one into its own
+          folder under %APPDATA%\\Lionear\\Kontena\\plugins\\ (Windows) or
+          ~/.config/Lionear/Kontena/plugins/ (Linux, macOS), then start Kontena and approve it when
+          asked.
+
+          kontena-plugin-nerdctl-*.zip adds containerd backends through the nerdctl CLI, one per
+          containerd namespace. It needs nerdctl on the machine; it does not install one.
+
+          kontena-plugin-manifest-studio-*.zip adds Manifest Studio: a workspace over a folder or Git
+          repository where you write Kubernetes manifests with completion and validation from the
+          cluster you have open, then plan and apply them. It uses the git and kustomize on your
+          machine when you ask for those."
 
           if [ "$CHANNEL" = stable ]; then
             TARGET=$(git rev-parse "${RELEASE_TAG}^{commit}")

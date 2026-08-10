@@ -118,6 +118,30 @@ public sealed class PluginConsentPromptTests : IDisposable
     }
 
     [Fact]
+    public void The_confirm_renders_what_the_plugin_says_it_will_do()
+    {
+        // Rendered, not composed (KON-296): the host repeats the author's claim, it does not decide what
+        // the plugin may do. Nothing enforces these — which is why a user has to see them before saying
+        // yes to code from a named author.
+        var manifest = Awaiting();
+        var declaring = manifest with
+        {
+            Manifest = manifest.Manifest! with
+            {
+                Permissions = ["Read and write the folder you open", "Talk to the cluster you have open"],
+            },
+        };
+
+        var vm = Build(declaring);
+
+        vm.AskPluginConsent();
+
+        var dialog = Assert.IsType<ConfirmViewModel>(vm.Dialog);
+        Assert.Contains(dialog.Details, d => d.Detail.Contains("folder you open", StringComparison.Ordinal));
+        Assert.Contains(dialog.Details, d => d.Detail.Contains("cluster you have open", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void The_confirm_is_not_styled_as_destructive()
     {
         // Nothing is being deleted — the question is whether to trust, and the danger styling would

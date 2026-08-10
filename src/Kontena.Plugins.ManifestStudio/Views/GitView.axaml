@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Kontena.Plugins.ManifestStudio.Views.GitView"
+             x:CompileBindings="False">
+  <!-- x:CompileBindings off for the same reason WorkspaceView has it off: the list items bind against
+       GitFileChange while everything around them binds against GitViewModel. -->
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Spacing="6">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="{Binding Status.Branch, FallbackValue='no repository'}" FontWeight="SemiBold"
+                   VerticalAlignment="Center" />
+        <!-- Behind the remote is a warning, never a block (Plan §7) — it reads here and stops there. -->
+        <TextBlock Text="{Binding Status.Ahead, StringFormat='{}{0} ahead'}" VerticalAlignment="Center"
+                   IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Text="{Binding Status.Behind, StringFormat='{}{0} behind'}" VerticalAlignment="Center"
+                   IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+        <Button Content="Pull" Command="{Binding PullCommand}" />
+        <Button Content="Push" Command="{Binding PushCommand}" />
+      </StackPanel>
+
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap"
+                 IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,8,0,0">
+      <TextBox Watermark="Commit message" Text="{Binding CommitMessage, Mode=TwoWay}" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Commit" Command="{Binding CommitCommand}" />
+        <Button Content="Commit and push" Command="{Binding CommitAndPushCommand}" />
+      </StackPanel>
+    </StackPanel>
+
+    <ListBox x:Name="Changes" ItemsSource="{Binding Status.Changes}" Margin="0,8,0,0">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Status}" FontFamily="monospace" Width="28" />
+            <TextBlock Text="{Binding Path}" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>
