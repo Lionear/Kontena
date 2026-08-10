@@ -623,7 +623,7 @@ public partial class MainWindowViewModel
         Navigate("overview");
 
         SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
-        await UpdateClusterNavCountsAsync();
+        await UpdateClusterNavAsync();
         IsReady = true;
         return true;
     }

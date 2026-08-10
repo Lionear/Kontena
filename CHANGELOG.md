@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Changed
 
+- **The cluster sidebar no longer carries a count on every entry.** Filling those twelve numbers meant
+  listing every pod, service, config map, secret, event, ingress, claim, volume and storage class in
+  the cluster — before every navigation, and again on every change the open page saw. Measured on a
+  72-pod cluster: 20 MB read per round, and the window stopped responding for 150–330 ms of it, every
+  few seconds. Opening a cluster is now 2 seconds faster and the app stays responsive while it follows
+  one. The namespace picker and the per-kind Workloads submenu still keep up, and the kinds still carry
+  their counts — those come out of a list that was already being fetched. (KON-352, KON-354)
+
 - **The first-run wizard no longer advertises a runtime your machine can never run.** The "Apple
   container · Coming soon" row was a full-size engine row on every platform, so on a machine with one
   detected engine a third of the list was a roadmap item — and on Linux and Windows it announced a
