@@ -271,6 +271,34 @@ jobs:
           done
           iconutil -c icns "$ICONSET" -o icon.icns
 
+      # The bundle's Info.plist comes from the repo rather than from vpk (KON-360): vpk derives
+      # CFBundleShortVersionString from the pack version and pads it to four components, so
+      # 0.4.0-nightly.65 shipped as 0.4.0.0 where Apple allows at most three integers. Only the values
+      # that change per build are filled in here; the rest lives in the template.
+      - name: Prepare macOS Info.plist
+        if: matrix.platform == 'osx'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          MAIN_EXE: ${{ matrix.mainExe }}
+        run: |
+          set -euo pipefail
+
+          # CFBundleVersion takes the version whole — it is a build identifier and may carry the
+          # pre-release suffix. CFBundleShortVersionString is the one with the rule, so it drops the
+          # suffix and keeps at most three components.
+          SHORT=$(printf '%s' "$VERSION" | sed -E 's/[-+].*$//' | cut -d. -f1-3)
+          if ! printf '%s' "$SHORT" | grep -Eq '^[0-9]+(\.[0-9]+){0,2}$'; then
+            echo "Refusing CFBundleShortVersionString '$SHORT', derived from version '$VERSION'" >&2
+            exit 1
+          fi
+
+          cp tools/macos/Info.plist Info.plist
+          plutil -replace CFBundleExecutable -string "$MAIN_EXE" Info.plist
+          plutil -replace CFBundleShortVersionString -string "$SHORT" Info.plist
+          plutil -replace CFBundleVersion -string "$VERSION" Info.plist
+          plutil -lint Info.plist
+
       - name: Package (vpk)
         shell: bash
         env:
@@ -301,9 +329,10 @@ jobs:
             # adding a fourth name. Nothing of ours is keyed on the old one: settings live in a plain
             # path under Application Support. Changing it later would be the expensive version — a
             # notarization ticket is issued against a specific bundle id, and macOS files a user's
-            # permissions and Launch Services entry under it too.
+            # permissions and Launch Services entry under it too. It now lives in tools/macos/Info.plist
+            # rather than on this line, because --plist and --bundleId cannot both be given (KON-360).
             osx)   ICON=icon.icns
-                   EXTRA+=(--signAppIdentity - --bundleId app.kontena.Kontena) ;;
+                   EXTRA+=(--signAppIdentity - --plist Info.plist) ;;
             win)   ICON=src/Kontena.App/Assets/icon.ico ;;
             *)     ICON=src/Kontena.App/Assets/icon.png
                    # Same desktop-menu categories the hand-rolled .desktop entry carried.
