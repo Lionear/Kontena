@@ -36,7 +36,7 @@
           </TabStrip.ItemTemplate>
         </TabStrip>
       </DockPanel>
-      <views:ManifestEditorView DataContext="{Binding ActiveDocument}" Text="{Binding Text, Mode=TwoWay}" />
+      <views:ManifestEditorView x:Name="Editor" DataContext="{Binding ActiveDocument}" Text="{Binding Text, Mode=TwoWay}" />
     </DockPanel>
   </Grid>
 </UserControl>

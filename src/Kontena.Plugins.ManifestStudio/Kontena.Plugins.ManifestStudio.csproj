@@ -32,4 +32,11 @@
     <EmbeddedResource Include="Resources/Schemas/**/*.json" />
   </ItemGroup>
 
+  <!-- The loader reads plugin.json before it touches the assembly and rejects the plugin outright if
+       the two disagree about id or version (KON-279). It travels with the dll, so it is copied on build
+       and again on publish — same arrangement as the nerdctl plugin. -->
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

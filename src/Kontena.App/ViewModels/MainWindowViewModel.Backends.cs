@@ -82,6 +82,10 @@ public partial class MainWindowViewModel
                 new ConfirmDetail("IconPlug", manifest.Name, $"{manifest.Id} · {manifest.Version}"),
                 new ConfirmDetail("IconInfo", "Published by", manifest.Author),
                 new ConfirmDetail("IconFolder", "Loaded from", pending.Directory),
+                // Rendered, never composed (KON-296): these are the author's own words about what the
+                // plugin will do. Nothing here enforces them — an in-process plugin can do whatever this
+                // app can — which is why they are shown as a claim, beside who made the claim.
+                .. manifest.Permissions.Select(p => new ConfirmDetail("IconCheck", "Says it will", p)),
             ],
             OnConfirm: async () =>
             {

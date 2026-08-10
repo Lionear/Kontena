@@ -40,6 +40,18 @@ public sealed record PluginManifest
     /// <summary>Minimum Kontena SDK version this plugin targets.</summary>
     public string MinSdkVersion { get; init; } = string.Empty;
 
+    /// <summary>
+    /// What this plugin says it will do, in the plugin author's own words, one line per capability
+    /// (KON-296). The consent dialog <em>renders</em> these; it does not compose them, and nothing here
+    /// enforces them — an in-process plugin can do whatever the host can.
+    /// <para>
+    /// That is exactly why they are worth showing: what a user agrees to is a claim by a named author
+    /// about a signed build (KON-79), and a claim you never see is not one you can hold anyone to. The
+    /// structured, checkable version of this is KON-280.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> Permissions { get; init; } = [];
+
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
