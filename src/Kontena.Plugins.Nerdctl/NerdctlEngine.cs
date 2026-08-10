@@ -600,7 +600,25 @@ public sealed class NerdctlEngine : IContainerEngine
         if (request.RestartPolicy != RestartPolicy.No)
             args.AddRange(["--restart", MapRestart(request.RestartPolicy)]);
 
+        // `--entrypoint` takes one string here and cannot be repeated, so a multi-part entry point
+        // puts part 0 in the flag and the rest in front of the command — `--entrypoint foo image a b`
+        // runs `foo a b`, the same shape the Apple adapter builds.
+        if (request.Entrypoint.Count > 0)
+            args.AddRange(["--entrypoint", request.Entrypoint[0]]);
+
+        if (request.WorkingDirectory is { Length: > 0 } workingDirectory)
+            args.AddRange(["--workdir", workingDirectory]);
+
+        if (request.User is { Length: > 0 } user)
+            args.AddRange(["--user", user]);
+
+        foreach (var (key, value) in request.Labels)
+            args.AddRange(["--label", $"{key}={value}"]);
+
         args.Add(request.Image);
+
+        args.AddRange(request.Entrypoint.Skip(1));
+        args.AddRange(request.Command);
 
         return [.. args];
     }
