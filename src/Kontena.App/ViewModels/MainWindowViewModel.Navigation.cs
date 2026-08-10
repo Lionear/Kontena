@@ -34,6 +34,7 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private void Navigate(string key)
     {
+        Diag.Mark($"navigate to {key}");
         Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => Navigate(key));
 
         if (IsClusterMode)
@@ -131,6 +132,8 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
+        Diag.Mark($"navigate to {key}");
+        var built = System.Diagnostics.Stopwatch.StartNew();
         CloseDetail();
         // Any page that holds something running — a port-forward registry, a watch stream (KON-250).
         // By interface rather than by type: the list of page types that own a resource has grown
@@ -217,6 +220,8 @@ public partial class MainWindowViewModel
             _ => new ClusterOverviewViewModel(_cluster),
         };
 
+        Diag.Mark($"{key} page built in {built.Elapsed.TotalMilliseconds:F1} ms");
+
         // The sidebar follows the same event the page just reloaded on (KON-339). Set here rather than
         // on each of the constructors above: one place that knows a page is on screen, and the watch
         // having already started in the constructor costs nothing — the callback is read when it
@@ -246,7 +251,7 @@ public partial class MainWindowViewModel
     {
         try
         {
-            await UpdateClusterNavAsync();
+            await Diag.TimeAsync("refresh the sidebar", UpdateClusterNavAsync());
         }
         catch (Exception)
         {
@@ -281,7 +286,7 @@ public partial class MainWindowViewModel
     {
         try
         {
-            await UpdateClusterNavAsync();
+            await Diag.TimeAsync("read the workload kinds", UpdateClusterNavAsync());
         }
         catch (Exception)
         {

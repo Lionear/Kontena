@@ -54,7 +54,7 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 
         try
         {
-            var rows = await LoadRowsAsync();
+            var rows = await Services.Diag.TimeAsync($"{GetType().Name} fetch", LoadRowsAsync());
 
             _all.Clear();
             _all.AddRange(rows);
@@ -62,7 +62,7 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 
             // Re-applied on every load, so a refresh under an active search does not quietly show
             // everything again.
-            ApplyFilter();
+            Services.Diag.Time($"{GetType().Name} rows onto the page", ApplyFilter);
         }
         finally
         {
