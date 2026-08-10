@@ -630,6 +630,11 @@ public partial class MainWindowViewModel
             RequestRunContainer = image => _ = ShowRunDialogAsync(image),
             RequestPullImage = ShowPullDialog,
             RequestConfirm = ShowConfirm,
+            RequestMigrateContainer = id => _ = ShowMigrateDialogAsync(id),
+
+            // Nothing to migrate to on a machine with one engine, so the action is not offered there
+            // rather than offered and then refused.
+            HasMigrationTargets = _registry.Providers.Count(p => p.Kind is BackendKind.Engine) > 1,
 
             // Grouping is remembered per backend (KON-159); the page owns the choice, the shell owns
             // where it is kept.
