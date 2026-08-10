@@ -7,11 +7,16 @@ using Kontena.Sdk.Orchestration.Models;
 namespace Kontena.App.Tests;
 
 /// <summary>
-/// The sidebar's counts follow the streams the lists already follow (KON-339).
+/// The sidebar follows the streams the lists already follow (KON-339).
 /// <para>
-/// The lists went live in KON-250 and the badges beside them did not, so a workload that appeared
-/// while you watched showed up as a new row next to a number that still said the old total. The page
+/// The lists went live in KON-250 and the sidebar beside them did not, so a namespace that appeared
+/// while you watched showed up in the list without ever reaching the picker that filters it. The page
 /// knew; nothing carried it to the shell.
+/// </para>
+/// <para>
+/// This used to be checked on the per-entry badges, which is what the refresh mainly existed for.
+/// Those cost twelve cluster-wide list calls a round and are gone (KON-354); the refresh itself stayed,
+/// because the picker and the Workloads submenu still have to follow the cluster.
 /// </para>
 /// <para>
 /// Driven by invoking the callback rather than by pushing a watch event and waiting out the 400ms
@@ -19,10 +24,27 @@ namespace Kontena.App.Tests;
 /// would be testing <c>Task.Delay</c>. That the settle fires the callback is the line right under it.
 /// </para>
 /// </summary>
-public sealed class LiveNavCountsTests
+public sealed class LiveClusterNavTests
 {
     [Fact]
-    public async Task A_cluster_page_that_sees_a_change_gets_the_badges_refreshed()
+    public async Task No_entry_in_the_cluster_sidebar_carries_a_count()
+    {
+        // Including the per-kind Workloads entries, which kept theirs at first because the number was
+        // already in hand — and then stood out as the only badges left (KON-354). Port forwards are the
+        // one exception and not a resource count: it says how many tunnels *you* have running.
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
+
+        var badged = shell.NavGroups
+            .SelectMany(g => g.Items)
+            .Where(i => i.Count.Length > 0 && i.Key != "portforwards")
+            .Select(i => i.Key);
+
+        Assert.Empty(badged);
+    }
+
+    [Fact]
+    public async Task A_cluster_page_that_sees_a_change_gets_the_sidebar_refreshed()
     {
         var cluster = new FakeClusterEngine();
         var shell = new MainWindowViewModel();
@@ -33,21 +55,19 @@ public sealed class LiveNavCountsTests
         Assert.NotNull(page.Changed);
 
         // Behind the app's back, the way kubectl would.
-        var before = (await cluster.ListPodsAsync()).Count;
-        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c"));
-        Assert.Equal(before - 1, (await cluster.ListPodsAsync()).Count);
+        Assert.Contains("monitoring", shell.Namespaces);
+        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Namespace, null, "monitoring"));
 
         page.Changed!.Invoke();
+        await Task.Yield();
 
-        Assert.Equal(
-            (before - 1).ToString(CultureInfo.InvariantCulture),
-            shell.NavGroups.SelectMany(g => g.Items).Single(i => i.Key == "pods").Count);
+        Assert.DoesNotContain("monitoring", shell.Namespaces);
     }
 
     [Fact]
-    public async Task A_watch_event_moves_the_badge_without_anyone_asking()
+    public async Task A_watch_event_moves_the_sidebar_without_anyone_asking()
     {
-        // The whole chain, once, through the settle window: stream → reload → callback → badge. The
+        // The whole chain, once, through the settle window: stream → reload → callback → sidebar. The
         // test above pins the wiring and this one pins that something actually pulls it, which is the
         // half that a callback nobody invokes would still pass.
         var cluster = new FakeClusterEngine();
@@ -55,25 +75,22 @@ public sealed class LiveNavCountsTests
         Assert.True(await shell.EnterClusterModeAsync(cluster));
         shell.NavigateCommand.Execute("pods");
 
-        var doomed = new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c");
-        var before = (await cluster.ListPodsAsync()).Count;
+        var doomed = new ResourceRef(GroupVersionKind.Namespace, null, "monitoring");
+        Assert.Contains("monitoring", shell.Namespaces);
         await cluster.DeleteAsync(doomed);
 
         cluster.EmitWatchEvent(new ResourceEvent { Type = WatchEventType.Deleted, Resource = doomed });
 
         // Polled to a deadline rather than slept for a fixed span: the settle is 400ms and a test that
         // waits exactly that long is a coin flip on a loaded machine.
-        var want = (before - 1).ToString(CultureInfo.InvariantCulture);
-        Assert.Equal(want, await EventuallyAsync(() =>
-            shell.NavGroups.SelectMany(g => g.Items).Single(i => i.Key == "pods").Count, want));
+        Assert.DoesNotContain("monitoring", await EventuallyAsync(() => shell.Namespaces));
     }
 
     [Fact]
-    public async Task Landing_on_a_page_that_watches_nothing_still_refreshes_the_badges()
+    public async Task Landing_on_a_page_that_watches_nothing_still_refreshes_the_sidebar()
     {
         // Found by driving the real app (KON-339): only the open page's stream feeds the callback, so
-        // the badges froze the moment you navigated to the Workloads dashboard, Config maps or Events.
-        // Worse than freezing on an old number — the one caught here was mid-termination.
+        // the sidebar froze the moment you navigated to the Workloads dashboard, Config maps or Events.
         //
         // All of those follow the cluster themselves since KON-340, so Resources stands in: it
         // browses whichever kind you pick, including custom ones the adapter has no watcher for, and
@@ -83,16 +100,15 @@ public sealed class LiveNavCountsTests
         var shell = new MainWindowViewModel();
         Assert.True(await shell.EnterClusterModeAsync(cluster));
 
-        var before = (await cluster.ListPodsAsync()).Count;
-        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c"));
+        Assert.Contains("monitoring", shell.Namespaces);
+        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Namespace, null, "monitoring"));
 
         // Resources watches nothing, so nothing here can be the page's own doing.
         shell.NavigateCommand.Execute("resources");
         Assert.IsNotAssignableFrom<IClusterLivePage>(shell.CurrentPage);
+        await Task.Yield();
 
-        Assert.Equal(
-            (before - 1).ToString(CultureInfo.InvariantCulture),
-            shell.NavGroups.SelectMany(g => g.Items).Single(i => i.Key == "pods").Count);
+        Assert.DoesNotContain("monitoring", shell.Namespaces);
     }
 
     [Fact]
@@ -143,18 +159,18 @@ public sealed class LiveNavCountsTests
         Assert.Equal("All namespaces", shell.SelectedNamespace);
     }
 
-    /// <summary>Re-read <paramref name="read"/> until it says <paramref name="want"/> or time is up.</summary>
-    private static async Task<string> EventuallyAsync(Func<string> read, string want)
+    /// <summary>Re-read <paramref name="read"/> until it no longer holds "monitoring", or time is up.</summary>
+    private static async Task<IReadOnlyList<string>> EventuallyAsync(Func<IEnumerable<string>> read)
     {
         for (var i = 0; i < 60; i++)
         {
-            if (read() == want)
+            if (!read().Contains("monitoring"))
                 break;
 
             await Task.Delay(50);
         }
 
-        return read();
+        return [.. read()];
     }
 
     [Fact]
