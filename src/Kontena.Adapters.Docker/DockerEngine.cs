@@ -136,6 +136,16 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 Name = request.Name,
                 Env = request.Environment.Select(kv => $"{kv.Key}={kv.Value}").ToList(),
                 ExposedPorts = exposed,
+
+                // Null rather than an empty list: to this API an empty Cmd means "no command", not
+                // "keep the image's", and that is a container which starts and stops again.
+                Entrypoint = request.Entrypoint.Count > 0 ? request.Entrypoint.ToList() : null,
+                Cmd = request.Command.Count > 0 ? request.Command.ToList() : null,
+                WorkingDir = request.WorkingDirectory,
+                User = request.User,
+                Labels = request.Labels.Count > 0
+                    ? new Dictionary<string, string>(request.Labels)
+                    : null,
                 HostConfig = new HostConfig
                 {
                     PortBindings = bindings,
@@ -1103,7 +1113,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         _ => Kontena.Sdk.Models.RestartPolicy.No,
     };
 
-    private static ContainerInspect MapInspect(ContainerInspectResponse r)
+    internal static ContainerInspect MapInspect(ContainerInspectResponse r)
     {
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var entry in r.Config?.Env ?? [])
@@ -1152,6 +1162,12 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             Error = r.State?.Error ?? string.Empty,
             RestartPolicy = MapRestart(r.HostConfig?.RestartPolicy?.Name),
             Command = string.Join(" ", command),
+
+            // The joined line above is for display; re-running this container needs the two lists
+            // it was joined from — see ContainerInspect.Entrypoint.
+            Entrypoint = r.Config?.Entrypoint is { } configEntrypoint ? [.. configEntrypoint] : [],
+            Cmd = r.Config?.Cmd is { } configCmd ? [.. configCmd] : [],
+
             WorkingDirectory = r.Config?.WorkingDir ?? string.Empty,
             User = r.Config?.User ?? string.Empty,
             EnvironmentVariables = env,
