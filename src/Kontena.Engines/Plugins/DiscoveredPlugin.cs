@@ -24,10 +24,18 @@ public enum PluginStatus
 /// <param name="Manifest">What it said about itself, or null when that could not be read.</param>
 /// <param name="Status">The outcome.</param>
 /// <param name="Reason">Why, when the outcome is <see cref="PluginStatus.Rejected"/>.</param>
-/// <param name="Providers">What it contributed, when it loaded.</param>
+/// <param name="Providers">The backends it contributed, when it loaded.</param>
 public sealed record DiscoveredPlugin(
     string Directory,
     PluginManifest? Manifest,
     PluginStatus Status,
     string? Reason,
-    IReadOnlyList<IBackendProvider> Providers);
+    IReadOnlyList<IBackendProvider> Providers)
+{
+    /// <summary>
+    /// The pages it contributed, when it loaded (KON-331). Init-only rather than positional because
+    /// every rejection above already says "no providers" with an empty list, and a second empty list on
+    /// each of those says nothing a reader did not know.
+    /// </summary>
+    public IReadOnlyList<PluginPage> Pages { get; init; } = [];
+}

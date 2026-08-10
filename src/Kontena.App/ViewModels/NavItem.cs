@@ -29,6 +29,15 @@ public partial class NavItem : ObservableObject
     /// </summary>
     public bool IsChild { get; }
 
+    /// <summary>
+    /// Whether this entry came from a plugin (KON-331). Drawn as a badge, because which parts of the
+    /// window are ours and which are someone else's is not something a user can otherwise tell.
+    /// </summary>
+    public bool IsPlugin { get; init; }
+
+    /// <summary>Which plugin, for the badge's tooltip.</summary>
+    public string PluginTip { get; init; } = string.Empty;
+
     [ObservableProperty]
     private bool _isSelected;
 
