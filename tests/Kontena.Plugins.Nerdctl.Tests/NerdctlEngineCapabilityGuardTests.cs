@@ -84,6 +84,11 @@ public sealed class NerdctlEngineCapabilityGuardTests
         [
             e => e.BrowseVolumeAsync("v").AsTask(),
         ],
+        [nameof(EngineCapabilities.SupportsVolumeTransfer)] =
+        [
+            e => e.ExportVolumeAsync("v", "/tmp/v.tar").AsTask(),
+            e => e.ImportVolumeAsync("v", "/tmp/v.tar").AsTask(),
+        ],
         [nameof(EngineCapabilities.SupportsRestartPolicy)] =
         [
             // The policy has to be a real one: `No` is what every engine does anyway, so a request

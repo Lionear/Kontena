@@ -53,6 +53,7 @@ public sealed class FakeEngine : IContainerEngine
         SupportsRestartPolicy = true,
         SupportsPrune = true,
         SupportsVolumeBrowse = true,
+        SupportsVolumeTransfer = true,
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = true,
@@ -378,6 +379,26 @@ public sealed class FakeEngine : IContainerEngine
 
         return ValueTask.FromResult(new VolumeListing(normalized, entries, Truncated: false));
     }
+
+    /// <summary>Volume name → its contents, as the migration tests stand them up and read them back.</summary>
+    public IDictionary<string, byte[]> VolumeContents { get; } =
+        new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Writes a real file, so a caller's staging, ordering and cleanup are exercised for real instead
+    /// of against a method that only remembers it was called.
+    /// </summary>
+    public async ValueTask ExportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        await File.WriteAllBytesAsync(
+            archivePath,
+            VolumeContents.TryGetValue(name, out var content) ? content : [],
+            ct).ConfigureAwait(false);
+
+    /// <inheritdoc cref="ExportVolumeAsync"/>
+    public async ValueTask ImportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        VolumeContents[name] = await File.ReadAllBytesAsync(archivePath, ct).ConfigureAwait(false);
 
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default)
     {

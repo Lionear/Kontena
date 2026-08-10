@@ -34,6 +34,34 @@ public class FakeEngineTests
         Assert.Equal("data", Assert.Single(recorded.Mounts).Source);
     }
 
+    /// <summary>
+    /// The fake writes and reads a real file, so the migration runner's tests exercise the real path:
+    /// staging directory, archive per volume, deletion afterwards. A fake that only remembers a name
+    /// would let a missing file through.
+    /// </summary>
+    [Fact]
+    public async Task Volume_contents_round_trip_through_an_archive()
+    {
+        var engine = NewEngine();
+        var archive = Path.Combine(Path.GetTempPath(), $"kon350-{Guid.NewGuid():N}.tar");
+
+        engine.VolumeContents["src"] = [1, 2, 3];
+        await engine.CreateVolumeAsync(new CreateVolumeRequest { Name = "dst" });
+
+        try
+        {
+            await engine.ExportVolumeAsync("src", archive);
+            Assert.True(File.Exists(archive));
+
+            await engine.ImportVolumeAsync("dst", archive);
+            Assert.Equal<byte[]>([1, 2, 3], engine.VolumeContents["dst"]);
+        }
+        finally
+        {
+            File.Delete(archive);
+        }
+    }
+
     [Fact]
     public void Capabilities_advertise_expected_flags()
     {
