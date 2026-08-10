@@ -103,4 +103,37 @@ public class SshForwardTests
             Assert.True(forward.IsSocket);
         }
     }
+
+    [Fact]
+    public void Without_a_runtime_dir_the_socket_goes_somewhere_nobody_else_could_have_made()
+    {
+        // Windows has neither unix sockets here nor file modes to ask about.
+        if (OperatingSystem.IsWindows())
+            return;
+
+        var directory = SshTunnel.ResolveSocketDirectory(_ => null);
+
+        try
+        {
+            // The bug this replaces: a fixed /tmp/kontena, created with whatever the umask says, in a
+            // directory every user on the machine can write to — so another user can own it first, and
+            // what goes in it is the Docker API of a remote host.
+            Assert.NotEqual(Path.Combine(Path.GetTempPath(), "kontena"), directory);
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory);
+        }
+    }
+
+    [Fact]
+    public void A_runtime_dir_is_used_as_it_is()
+    {
+        // It is the user's own, already owner-only, and swept at logout — there is nothing to improve
+        // on, and making a directory inside it would only leave one behind.
+        Assert.Equal("/run/user/1000", SshTunnel.ResolveSocketDirectory(_ => "/run/user/1000"));
+    }
 }
