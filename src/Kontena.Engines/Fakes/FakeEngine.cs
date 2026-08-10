@@ -87,9 +87,24 @@ public sealed class FakeEngine : IContainerEngine
     /// <summary>Every request this fake was asked to create, in order. Read by migration tests.</summary>
     public IReadOnlyList<CreateContainerRequest> CreatedRequests => _createdRequests;
 
+    /// <summary>
+    /// Name of a method that should throw instead of doing its work, e.g.
+    /// <c>nameof(IContainerEngine.CreateContainerAsync)</c>. The only way to walk a caller's failure
+    /// path without a second fake standing next to this one.
+    /// </summary>
+    public string? FailOn { get; set; }
+
+    /// <summary>Throws when <see cref="FailOn"/> names the caller.</summary>
+    private void FailIfAsked([CallerMemberName] string method = "")
+    {
+        if (string.Equals(FailOn, method, StringComparison.Ordinal))
+            throw new EngineException($"{method} was asked to fail by the test that set FailOn.");
+    }
+
     public ValueTask<string> CreateContainerAsync(
         CreateContainerRequest request, CancellationToken ct = default)
     {
+        FailIfAsked();
         _createdRequests.Add(request);
 
         var id = NextId();
@@ -389,16 +404,22 @@ public sealed class FakeEngine : IContainerEngine
     /// of against a method that only remembers it was called.
     /// </summary>
     public async ValueTask ExportVolumeAsync(
-        string name, string archivePath, CancellationToken ct = default) =>
+        string name, string archivePath, CancellationToken ct = default)
+    {
+        FailIfAsked();
         await File.WriteAllBytesAsync(
             archivePath,
             VolumeContents.TryGetValue(name, out var content) ? content : [],
             ct).ConfigureAwait(false);
+    }
 
     /// <inheritdoc cref="ExportVolumeAsync"/>
     public async ValueTask ImportVolumeAsync(
-        string name, string archivePath, CancellationToken ct = default) =>
+        string name, string archivePath, CancellationToken ct = default)
+    {
+        FailIfAsked();
         VolumeContents[name] = await File.ReadAllBytesAsync(archivePath, ct).ConfigureAwait(false);
+    }
 
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default)
     {
