@@ -21,6 +21,6 @@ public sealed class UiTestPlugin : IUiPlugin
 
     public IEnumerable<PluginPage> GetPages() =>
     [
-        new PluginPage("editor", "Editor", "IconBox", () => new TextBlock { Text = "Editor" }),
+        new PluginPage("editor", "Editor", "IconBox", _ => new TextBlock { Text = "Editor" }),
     ];
 }

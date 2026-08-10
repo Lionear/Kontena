@@ -141,7 +141,7 @@ public partial class MainWindowViewModel
 
         try
         {
-            CurrentPage = page.CreateView();
+            CurrentPage = page.CreateView(this);
         }
         catch (Exception ex)
         {
