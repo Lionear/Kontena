@@ -21,6 +21,12 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+
+        // What macOS puts next to the Apple logo, and in "About …", "Hide …" and "Quit …" (KON-356).
+        // Avalonia builds that menu itself and reads Application.Name for it — not the bundle's
+        // CFBundleName, which is why the packaging work in KON-348 left it saying "Avalonia
+        // Application". Unset, that string is the property's default.
+        Name = ProductInfo.Name;
     }
 
     public override void OnFrameworkInitializationCompleted()
