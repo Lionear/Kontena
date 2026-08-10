@@ -15,9 +15,10 @@ namespace Kontena.Adapters.Docker.Tests;
 /// cleanly when Docker is not reachable (e.g. on CI runners without Docker),
 /// so the suite is green everywhere and meaningful where Docker runs.
 /// </summary>
+[Collection(DockerCollection.Name)]
 public class DockerEngineTests
 {
-    private static async Task<DockerEngine> ConnectOrSkipAsync()
+    internal static async Task<DockerEngine> ConnectOrSkipAsync()
     {
         var engine = new DockerEngine();
         string? osType = null;

@@ -74,6 +74,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         SupportsStats = true,
         SupportsEvents = true,
         SupportsVolumeBrowse = true,
+        SupportsVolumeTransfer = true,
     };
 
     private static Uri DefaultEndpoint() => OperatingSystem.IsWindows()
@@ -469,36 +470,13 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Exec(async () =>
         {
             var target = NormalizeBrowsePath(path);
-
-            // Any image will do — this container is never started, so nothing in it runs. Preferring a
-            // small one keeps the create cheap on engines that have to unpack layers.
-            var images = await _client.Images.ListImagesAsync(new ImagesListParameters { All = false }, ct)
-                .ConfigureAwait(false);
-            var image = images
-                .Where(i => i.RepoTags?.Count > 0)
-                .OrderBy(i => i.Size)
-                .Select(i => i.RepoTags![0])
-                .FirstOrDefault()
-                ?? throw new EngineException(
-                    "Browsing a volume needs an image to mount it into, and this engine has none. "
-                    + "Pull any image first — nothing from it is run.");
-
-            var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
-            {
-                Image = image,
-                Labels = new Dictionary<string, string> { ["kontena.purpose"] = "volume-browse" },
-                HostConfig = new HostConfig
-                {
-                    AutoRemove = false,
-                    Binds = [$"{name}:{MountPoint}:ro"],
-                },
-            }, ct).ConfigureAwait(false);
+            var id = await CreateVolumeCarrierAsync(name, readOnly: true, ct).ConfigureAwait(false);
 
             try
             {
                 var archivePath = MountPoint + target;
                 var response = await _client.Containers.GetArchiveFromContainerAsync(
-                    created.ID,
+                    id,
                     new GetArchiveFromContainerParameters { Path = archivePath },
                     statOnly: false,
                     ct).ConfigureAwait(false);
@@ -508,20 +486,112 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             }
             finally
             {
-                // The container exists only for the mount, so it goes whatever happened above.
-                try
-                {
-                    await _client.Containers.RemoveContainerAsync(
-                        created.ID, new ContainerRemoveParameters { Force = true }, CancellationToken.None)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Leaving a stopped, never-started container behind is untidy, not harmful, and it
-                    // must not turn a successful listing into an error.
-                }
+                await RemoveVolumeCarrierAsync(id).ConfigureAwait(false);
             }
         });
+
+    /// <summary>
+    /// Writes a volume's contents to a tar on the host. The archive endpoints work on a container that
+    /// was never started — measured against Docker 29.6.1 — so this needs no image to actually run.
+    /// </summary>
+    public ValueTask ExportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var id = await CreateVolumeCarrierAsync(name, readOnly: true, ct).ConfigureAwait(false);
+
+            try
+            {
+                // "/." asks for the *contents* of the mount point, which is what makes the entries
+                // relative to the volume root — the same spelling `docker cp src/. dest` uses.
+                var response = await _client.Containers.GetArchiveFromContainerAsync(
+                    id,
+                    new GetArchiveFromContainerParameters { Path = MountPoint + "/." },
+                    statOnly: false,
+                    ct).ConfigureAwait(false);
+
+                await using var source = response.Stream;
+                await using var file = File.Create(archivePath);
+                await source.CopyToAsync(file, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                await RemoveVolumeCarrierAsync(id).ConfigureAwait(false);
+            }
+        });
+
+    /// <summary>
+    /// Unpacks a tar into a volume. The daemon restores the uid, gid and mode each entry carries, which
+    /// is why the archive is handed over whole instead of copied out onto the host first.
+    /// </summary>
+    public ValueTask ImportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var id = await CreateVolumeCarrierAsync(name, readOnly: false, ct).ConfigureAwait(false);
+
+            try
+            {
+                await using var file = File.OpenRead(archivePath);
+                await _client.Containers.ExtractArchiveToContainerAsync(
+                    id,
+                    new ContainerPathStatParameters { Path = MountPoint },
+                    file,
+                    ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                await RemoveVolumeCarrierAsync(id).ConfigureAwait(false);
+            }
+        });
+
+    /// <summary>
+    /// A container that exists only to have the volume bound into it, so the archive endpoints have
+    /// somewhere to read from and write to. It is never started: any image will do, and nothing in it
+    /// runs. Preferring a small one keeps the create cheap on engines that have to unpack layers.
+    /// </summary>
+    private async Task<string> CreateVolumeCarrierAsync(string name, bool readOnly, CancellationToken ct)
+    {
+        var images = await _client.Images.ListImagesAsync(new ImagesListParameters { All = false }, ct)
+            .ConfigureAwait(false);
+        var image = images
+            .Where(i => i.RepoTags?.Count > 0)
+            .OrderBy(i => i.Size)
+            .Select(i => i.RepoTags![0])
+            .FirstOrDefault()
+            ?? throw new EngineException(
+                "Reading a volume needs an image to mount it into, and this engine has none. "
+                + "Pull any image first — nothing from it is run.");
+
+        var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
+        {
+            Image = image,
+            Labels = new Dictionary<string, string> { ["kontena.purpose"] = "volume-browse" },
+            HostConfig = new HostConfig
+            {
+                AutoRemove = false,
+                Binds = [readOnly ? $"{name}:{MountPoint}:ro" : $"{name}:{MountPoint}"],
+            },
+        }, ct).ConfigureAwait(false);
+
+        return created.ID;
+    }
+
+    /// <summary>Removes a carrier container, whatever happened to the work it was made for.</summary>
+    private async Task RemoveVolumeCarrierAsync(string id)
+    {
+        try
+        {
+            await _client.Containers.RemoveContainerAsync(
+                id, new ContainerRemoveParameters { Force = true }, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (DockerApiException)
+        {
+            // Leaving a stopped, never-started container behind is untidy, not harmful, and it must
+            // not turn a successful transfer into an error.
+        }
+    }
 
 
     /// <summary>

@@ -87,6 +87,7 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
         SupportsRestartPolicy = false,
         SupportsPrune = true,
         SupportsVolumeBrowse = true,
+        SupportsVolumeTransfer = true,
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = false,
@@ -748,12 +749,75 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
             .Select(i => $"{i.Repository}:{i.Tag}")
             .FirstOrDefault()
             ?? throw new EngineException(
-                "Browsing a volume needs an image to mount it into, and this engine has none. "
+                "Reading a volume needs an image to mount it into, and this engine has none. "
                 + "Pull any image first — nothing of your own runs in it.");
     }
 
     /// <summary>Where the volume is mounted inside the throwaway container.</summary>
     private const string MountPoint = "/kontena-volume";
+
+    /// <summary>Where the staging directory is mounted inside the throwaway container.</summary>
+    private const string StagePoint = "/kontena-stage";
+
+    /// <summary>
+    /// Packs a volume into a tar on the host, by mounting both the volume and the archive's directory
+    /// into a throwaway container and running <c>tar</c> there. Running it inside the container is
+    /// what keeps uid, gid and mode on the files — see <see cref="IContainerEngine.ExportVolumeAsync"/>.
+    /// </summary>
+    public async ValueTask ExportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default)
+    {
+        var (directory, file) = SplitArchivePath(archivePath);
+        var image = await SmallestLocalImageAsync(ct).ConfigureAwait(false);
+
+        // Every volume on this runtime carries a lost+found nobody created — they are ext4 images.
+        // Only the root one is excluded, so a directory a user happens to name that deeper survives.
+        var pack = $"tar -cf {StagePoint}/{file} --exclude=./lost+found -C {MountPoint} .";
+
+        await cli.RunAsync(
+            ct,
+            "run", "--rm",
+            "--volume", $"{name}:{MountPoint}",
+            "--volume", $"{directory}:{StagePoint}",
+            image,
+            "sh", "-c", pack).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Unpacks an archive into a volume, as root inside the container, so the ownership recorded in
+    /// the tar is restored rather than replaced by whoever is logged in on the host.
+    /// </summary>
+    public async ValueTask ImportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default)
+    {
+        var (directory, file) = SplitArchivePath(archivePath);
+        var image = await SmallestLocalImageAsync(ct).ConfigureAwait(false);
+
+        var unpack = $"tar -xf {StagePoint}/{file} -C {MountPoint}";
+
+        await cli.RunAsync(
+            ct,
+            "run", "--rm",
+            "--volume", $"{name}:{MountPoint}",
+            "--volume", $"{directory}:{StagePoint}",
+            image,
+            "sh", "-c", unpack).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Splits a host archive path into the directory to mount and the file name inside it. The
+    /// container never sees the host path, only the mount point, so the two have to be handed over
+    /// separately.
+    /// </summary>
+    private static (string Directory, string File) SplitArchivePath(string archivePath)
+    {
+        var full = Path.GetFullPath(archivePath);
+
+        return (
+            Path.GetDirectoryName(full)
+                ?? throw new EngineException($"'{archivePath}' has no directory to mount."),
+            Path.GetFileName(full));
+    }
 
     /// <summary>
     /// A directory with more entries than this is listed up to here and says so. The same ceiling the
