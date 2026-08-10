@@ -31,6 +31,10 @@
     <ProjectReference Include="..\Kontena.HostilePlugin\Kontena.HostilePlugin.csproj"
                       ReferenceOutputAssembly="false"
                       Private="false" />
+    <!-- And the UI-only fixture (KON-331): a plugin with no IEnginePlugin in it at all. -->
+    <ProjectReference Include="..\Kontena.UiTestPlugin\Kontena.UiTestPlugin.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
   </ItemGroup>
 
 </Project>

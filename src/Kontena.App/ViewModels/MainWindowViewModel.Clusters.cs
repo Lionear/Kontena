@@ -370,7 +370,7 @@ public partial class MainWindowViewModel
         // for the reason NavigateCluster records: the per-kind children are rebuilt as workloads come
         // and go, so on a per-kind page there may be no selected item at all — and this then quietly
         // navigated to Overview instead of reloading the page you were on.
-        _ = NavigateClusterAfterCountsAsync(_clusterPageKey);
+        _ = NavigateClusterAfterKindsAsync(_clusterPageKey);
     }
     // ── New clusters (KON-120) ──────────────────────────────────────────────
 

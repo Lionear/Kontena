@@ -107,6 +107,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _updateService = updateService ?? new VelopackUpdateService();
 
         NavGroups = [];
+        // Before the nav is built: SetEngineNav appends what the plugins contribute (KON-331), and an
+        // empty snapshot here would build a sidebar that only a later rebuild would correct.
+        _plugins = plugins ?? [];
         SetEngineNav();
         _portForwards.Changed += OnPortForwardsChanged;
 
@@ -133,7 +136,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Activity = new ActivityViewModel(_activityLog);
 
         SyncThemeToggleIcon();
-        _plugins = plugins ?? [];
         _pluginRoot = pluginRoot ?? PluginLoader.DefaultRoot;
         _ = InitAsync();
     }

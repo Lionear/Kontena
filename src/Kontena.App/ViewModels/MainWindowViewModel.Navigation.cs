@@ -1,10 +1,14 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
+using Kontena.Engines.Plugins;
+using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Models;
@@ -34,7 +38,16 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private void Navigate(string key)
     {
+        Diag.Mark($"navigate to {key}");
         Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => Navigate(key));
+
+        // Before the mode switch: a plugin page belongs to neither nav, and both of the switches below
+        // fall through to a page of their own on an unknown key.
+        if (_pluginPages.TryGetValue(key, out var pluginPage))
+        {
+            ShowPluginPage(key, pluginPage);
+            return;
+        }
 
         if (IsClusterMode)
         {
@@ -76,6 +89,72 @@ public partial class MainWindowViewModel
             new NavItem("volumes", "Volumes", "IconDatabase"),
             new NavItem("networks", "Networks", "IconNetwork"),
             new NavItem("projects", "Projects", "IconBox")));
+
+        AddPluginNav();
+    }
+
+    /// <summary>Nav key to the page behind it, for everything a plugin contributed (KON-331).</summary>
+    private readonly Dictionary<string, PluginPage> _pluginPages = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Appends what the loaded plugins contribute to the nav that was just built (KON-331).
+    /// <para>
+    /// Its own group, at the end, in both navs: a plugin page is not part of the engine's story or the
+    /// cluster's, and where it would otherwise sit is a question with no answer that stays true for the
+    /// next plugin.
+    /// </para>
+    /// </summary>
+    private void AddPluginNav()
+    {
+        _pluginPages.Clear();
+
+        var items = new List<NavItem>();
+
+        foreach (var plugin in _plugins.Where(p => p.Status == PluginStatus.Loaded && p.Manifest is not null))
+        {
+            foreach (var page in plugin.Pages)
+            {
+                // Prefixed with the plugin id: two plugins naming a page "editor" would otherwise be one
+                // entry, and the second would open the first's page.
+                var key = $"plugin:{plugin.Manifest!.Id}:{page.Key}";
+                _pluginPages[key] = page;
+                items.Add(new NavItem(key, page.Label, page.IconKey)
+                {
+                    IsPlugin = true,
+                    PluginTip = $"From the plugin {plugin.Manifest.Name} {plugin.Manifest.Version}",
+                });
+            }
+        }
+
+        if (items.Count > 0)
+            NavGroups.Add(Group("Plugins", [.. items]));
+    }
+
+    /// <summary>
+    /// Opens a page a plugin contributed, building its control inside the host's containment (KON-331).
+    /// The loader already keeps a plugin that cannot load out of the start; this is the same promise for
+    /// one that cannot draw — it costs its own content area, not the window around it.
+    /// </summary>
+    private void ShowPluginPage(string key, PluginPage page)
+    {
+        CloseDetail();
+
+        try
+        {
+            CurrentPage = page.CreateView();
+        }
+        catch (Exception ex)
+        {
+            CurrentPage = new TextBlock
+            {
+                Margin = new Thickness(24),
+                TextWrapping = TextWrapping.Wrap,
+                Text = $"{page.Label} could not be opened: {ex.Message}",
+            };
+        }
+
+        foreach (var item in NavItems)
+            item.IsSelected = item.Key == key;
     }
 
     /// <summary>A section, with the shared navigate command already on every item in it.</summary>
@@ -121,16 +200,20 @@ public partial class MainWindowViewModel
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
+
+        AddPluginNav();
     }
-    /// <param name="refreshCounts">
-    /// False only where the caller has just counted, so the badges are not refetched twice for one
-    /// navigation.
+    /// <param name="refreshNav">
+    /// False only where the caller has just read the cluster, so the sidebar is not refetched twice
+    /// for one navigation.
     /// </param>
-    private void NavigateCluster(string key, bool refreshCounts = true)
+    private void NavigateCluster(string key, bool refreshNav = true)
     {
         if (_cluster is null)
             return;
 
+        Diag.Mark($"navigate to {key}");
+        var built = System.Diagnostics.Stopwatch.StartNew();
         CloseDetail();
         // Any page that holds something running — a port-forward registry, a watch stream (KON-250).
         // By interface rather than by type: the list of page types that own a resource has grown
@@ -210,28 +293,28 @@ public partial class MainWindowViewModel
             "terminal" when CreateClusterTerminals() is { } terminals => terminals,
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
             {
-                // An apply can create or remove anything — refresh the counts, not the open page.
-                _ = UpdateClusterNavCountsAsync();
+                // An apply can create or remove anything — refresh the sidebar, not the open page.
+                _ = UpdateClusterNavAsync();
                 return Task.CompletedTask;
             }, ActiveNamespace),
             _ => new ClusterOverviewViewModel(_cluster),
         };
 
-        // The counts follow the same event the page just reloaded on (KON-339). Set here rather than
+        Diag.Mark($"{key} page built in {built.Elapsed.TotalMilliseconds:F1} ms");
+
+        // The sidebar follows the same event the page just reloaded on (KON-339). Set here rather than
         // on each of the constructors above: one place that knows a page is on screen, and the watch
         // having already started in the constructor costs nothing — the callback is read when it
         // fires, not when the stream opens.
         if (CurrentPage is IClusterLivePage live)
-            live.Changed = () => _ = RefreshClusterNavCountsAsync();
+            live.Changed = () => _ = RefreshClusterNavAsync();
 
-        // Only the open page's stream drives that callback, so the badges stop following the moment
-        // you land somewhere that watches nothing — the Workloads dashboard, Config maps, Events. Seen
-        // for real: a pod deleted while its page was open refreshed the counts mid-termination, the
-        // page was navigated away from before the pod actually went, and the badge kept the number it
-        // had caught in between. After the page rather than before it, and not awaited: a count is
-        // worth a round-trip but never worth making the click wait for one.
-        if (refreshCounts)
-            _ = RefreshClusterNavCountsAsync();
+        // Only the open page's stream drives that callback, so the sidebar stops following the moment
+        // you land somewhere that watches nothing — the Workloads dashboard, Config maps, Events. After
+        // the page rather than before it, and not awaited: a namespace that appeared is worth a
+        // round-trip but never worth making the click wait for one.
+        if (refreshNav)
+            _ = RefreshClusterNavAsync();
 
         // The search term does not survive navigating away, and that is the honest behaviour while
         // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
@@ -240,15 +323,15 @@ public partial class MainWindowViewModel
         SearchText = string.Empty;
     }
     /// <summary>
-    /// Refresh the badges after the open page saw the cluster change (KON-339). Failure is silent on
-    /// purpose: this runs off a watch stream nobody asked to be told about, and a count that could not
-    /// be refetched is a number that stays as it was — the page itself reports an unreachable cluster.
+    /// Follow the cluster after the open page saw it change (KON-339). Failure is silent on purpose:
+    /// this runs off a watch stream nobody asked to be told about, and a picker that could not be
+    /// refetched is a list that stays as it was — the page itself reports an unreachable cluster.
     /// </summary>
-    private async Task RefreshClusterNavCountsAsync()
+    private async Task RefreshClusterNavAsync()
     {
         try
         {
-            await UpdateClusterNavCountsAsync();
+            await Diag.TimeAsync("refresh the sidebar", UpdateClusterNavAsync());
         }
         catch (Exception)
         {
@@ -262,28 +345,28 @@ public partial class MainWindowViewModel
         if (!IsClusterMode)
             return;
 
-        _ = NavigateClusterAfterCountsAsync(_clusterPageKey);
+        _ = NavigateClusterAfterKindsAsync(_clusterPageKey);
     }
 
     /// <summary>
-    /// Count first, then build the page (KON-200).
+    /// Read the workload kinds first, then build the page (KON-200).
     /// <para>
     /// Which page Workloads is — the dashboard or the plain list — depends on how many kinds exist,
-    /// and that answer arrives with the counts. Navigating first meant deciding on the namespace you
+    /// and that answer arrives with that read. Navigating first meant deciding on the namespace you
     /// had just left: one kind to several gave the list, several to one gave the dashboard. Both
     /// directions were reported. The same order applies after an apply, which can add the first
     /// DaemonSet or remove the last.
     /// </para>
     /// <para>
-    /// The counts failing must not cost the navigation — a page built from a stale count is still
+    /// That read failing must not cost the navigation — a page built from a stale answer is still
     /// better than no page at all — so the await is guarded and the key resolved either way.
     /// </para>
     /// </summary>
-    private async Task NavigateClusterAfterCountsAsync(string key)
+    private async Task NavigateClusterAfterKindsAsync(string key)
     {
         try
         {
-            await UpdateClusterNavCountsAsync();
+            await Diag.TimeAsync("read the workload kinds", UpdateClusterNavAsync());
         }
         catch (Exception)
         {
@@ -292,65 +375,39 @@ public partial class MainWindowViewModel
         }
 
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshCounts: false);
+            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshNav: false);
     }
     /// <summary>
-    /// Fill the sidebar badges. Every lister is started before any of them is awaited (KON-338):
-    /// twelve badges that know nothing of each other were costing twelve round-trips one behind the
-    /// other, and since this runs before the page is built, it is what a namespace switch waits on.
-    /// The adapter already fetches its five workload kinds exactly this way.
+    /// Bring the sidebar in step with the cluster: the namespace picker and the per-kind Workloads
+    /// submenu.
+    /// <para>
+    /// This used to fill a badge on every entry as well, and that cost twelve cluster-wide list calls
+    /// — pods, secrets, configmaps, events and the rest — every time it ran, which is before every
+    /// cluster navigation and again on every watch event of the open page. Measured on a 72-pod
+    /// cluster (KON-352): 20 MB allocated per round, 250–450 ms, and the UI thread stalled for
+    /// 150–330 ms of it. Twelve numbers are not worth that, so they are gone (KON-354). What is left
+    /// is the two calls the sidebar cannot be drawn without: the namespaces the picker is built from,
+    /// and the workloads that say which kinds the submenu has entries for.
+    /// </para>
     /// </summary>
-    private async Task UpdateClusterNavCountsAsync()
+    private async Task UpdateClusterNavAsync()
     {
         if (_cluster is null)
             return;
 
-        var ci = CultureInfo.InvariantCulture;
         var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
 
-        var nodes = _cluster.ListNodesAsync().AsTask();
         var namespaces = _cluster.ListNamespacesAsync().AsTask();
 
-        // One call, grouped here, rather than one per kind: five round-trips to fill five badges is
-        // five chances for them to disagree with each other and with the list they label (KON-169).
+        // One call, grouped here, rather than one per kind: five round-trips to fill five submenu
+        // entries is five chances for them to disagree with each other and with the list they label
+        // (KON-169).
         var workloads = _cluster.ListWorkloadsAsync(null, ns).AsTask();
 
-        var pods = _cluster.ListPodsAsync(ns).AsTask();
-        var services = _cluster.ListServicesAsync(ns).AsTask();
-        var configMaps = _cluster.ListConfigMapsAsync(ns).AsTask();
-        var secrets = _cluster.ListSecretsAsync(ns).AsTask();
-        var events = _cluster.ListEventsAsync(ns).AsTask();
-        var ingresses = _cluster.ListIngressesAsync(ns).AsTask();
-        var pvcs = _cluster.ListPvcsAsync(ns).AsTask();
-        var volumes = _cluster.ListVolumesAsync().AsTask();
-        var storageClasses = _cluster.ListStorageClassesAsync().AsTask();
+        await Task.WhenAll(namespaces, workloads);
 
-        await Task.WhenAll(
-            nodes, namespaces, workloads, pods, services, configMaps,
-            secrets, events, ingresses, pvcs, volumes, storageClasses);
-
-        SetNavCount("nodes", nodes.Result.Count.ToString(ci));
-        SetNavCount("namespaces", namespaces.Result.Count.ToString(ci));
         SyncNamespacePicker(namespaces.Result);
-
-        SetNavCount("workloads", workloads.Result.Count.ToString(ci));
         SyncWorkloadKindNav(workloads.Result);
-
-        SetNavCount("pods", pods.Result.Count.ToString(ci));
-        SetNavCount("services", services.Result.Count.ToString(ci));
-        SetNavCount("configmaps", configMaps.Result.Count.ToString(ci));
-        SetNavCount("secrets", secrets.Result.Count.ToString(ci));
-
-        // Warnings, not events (KON-248). Every namespace has events all the time, so a total is a
-        // badge that is always lit and therefore says nothing; the count of warnings is the one number
-        // worth carrying into the sidebar, and no warnings means no badge at all.
-        var warnings = events.Result.Count(e => e.Severity == EventSeverity.Warning);
-        SetNavCount("events", warnings > 0 ? warnings.ToString(ci) : string.Empty);
-
-        SetNavCount("ingresses", ingresses.Result.Count.ToString(ci));
-        SetNavCount("pvcs", pvcs.Result.Count.ToString(ci));
-        SetNavCount("volumes", volumes.Result.Count.ToString(ci));
-        SetNavCount("storageclasses", storageClasses.Result.Count.ToString(ci));
         UpdatePortForwardCount();
     }
     /// <summary>
@@ -421,9 +478,12 @@ public partial class MainWindowViewModel
         {
             var key = WorkloadNavGroups.KeyFor(group.Kind);
 
+            // No count, like every other entry in this sidebar (KON-354). This one was free — the
+            // number comes out of a list that had to be fetched anyway — but "free" is not the reason
+            // a number belongs on screen, and five kinds wearing one while nothing around them does
+            // reads as the others having lost theirs rather than as a deliberate list.
             items.Insert(at++, new NavItem(key, WorkloadNavGroups.LabelFor(group.Kind), "IconLayers", isChild: true)
             {
-                Count = group.Count.ToString(CultureInfo.InvariantCulture),
                 Command = NavigateCommand,
                 IsSelected = _clusterPageKey == key,
             });
@@ -581,7 +641,7 @@ public partial class MainWindowViewModel
         ThemeToggleIconKey = isDark ? "IconSun" : "IconMoon";
         ThemeToggleTip = isDark ? "Switch to light theme" : "Switch to dark theme";
     }
-    /// <inheritdoc cref="RefreshClusterNavCountsAsync"/>
+    /// <inheritdoc cref="RefreshClusterNavAsync"/>
     private async Task RefreshNavCountsAsync()
     {
         try

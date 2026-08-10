@@ -42,7 +42,10 @@ it keeps a one-person project alive.
    `ct` as the last parameter.
 3. **Build clean and green.** `dotnet build` with zero warnings, and `dotnet test` passing. Run the
    affected flow to verify behaviour (`dotnet run --project src/Kontena.App`); UI changes should be
-   checked visually.
+   checked visually. If the change is about speed, measure it rather than describing it:
+   `KONTENA_TRACE=1` prints a timestamped trace of startup, connecting and navigation to stderr, and
+   reports every stall longer than 100 ms on the thread that draws the window — which is what "feels
+   slow" usually turns out to be. Quote the before and after in the PR.
 4. **Respect the backend boundary.** A new backend is **not** a change to the host — the UI and
    business logic only ever talk to an abstraction layer: `IContainerEngine` for container engines
    (the CEAL) or `IClusterEngine` for orchestrators (the OAL). Both live in `Kontena.Sdk`, along with

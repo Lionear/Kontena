@@ -29,6 +29,13 @@ public sealed class PluginLoaderTests : IDisposable
         Path.Combine(AppContext.BaseDirectory, "hostile-plugin-fixture");
 
     /// <summary>
+    /// The UI-only fixture, built by <c>tests/Kontena.UiTestPlugin</c>: an assembly with an
+    /// <c>IUiPlugin</c> and no <c>IEnginePlugin</c> at all (KON-331).
+    /// </summary>
+    private static string UiFixtureDirectory =>
+        Path.Combine(AppContext.BaseDirectory, "ui-plugin-fixture");
+
+    /// <summary>
     /// A directory outside <see cref="_root"/> entirely — sibling, not nested — so an escape test that
     /// points a manifest at it is not also scanned by <c>Discover(_root, …)</c> as a plugin directory of
     /// its own.
@@ -86,6 +93,29 @@ public sealed class PluginLoaderTests : IDisposable
             description = "A plugin whose provider throws.",
             minSdkVersion = "0.1.0",
             assembly = "Kontena.HostilePlugin.dll",
+        }));
+
+        return dir;
+    }
+
+    /// <summary>Copy the built UI-only fixture into the plugins root and give it a manifest.</summary>
+    private string InstallUiFixture(string id = "com.kontena.uitest")
+    {
+        var dir = Path.Combine(_root, id);
+        Directory.CreateDirectory(dir);
+
+        foreach (var file in Directory.GetFiles(UiFixtureDirectory))
+            File.Copy(file, Path.Combine(dir, Path.GetFileName(file)), overwrite: true);
+
+        File.WriteAllText(Path.Combine(dir, "plugin.json"), JsonSerializer.Serialize(new
+        {
+            id,
+            name = "UI Test Plugin",
+            version = "1.0.0",
+            author = "Kontena",
+            description = "A plugin that contributes pages.",
+            minSdkVersion = "0.1.0",
+            assembly = "Kontena.UiTestPlugin.dll",
         }));
 
         return dir;
@@ -376,5 +406,33 @@ public sealed class PluginLoaderTests : IDisposable
         Assert.Equal(PluginStatus.Rejected, found.Status);
         Assert.NotNull(found.Reason);
         Assert.Empty(found.Providers);
+    }
+
+    [Fact]
+    public void A_plugin_that_contributes_only_pages_loads()
+    {
+        // Manifest Studio's shape (KON-331): no IEnginePlugin anywhere in the assembly. That used to be
+        // the loader's rejection reason, so this is the test that says a plugin need not be an engine.
+        InstallUiFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Empty(found.Providers);
+        var page = Assert.Single(found.Pages);
+        Assert.Equal("editor", page.Key);
+        Assert.Equal("Editor", page.Label);
+    }
+
+    [Fact]
+    public void A_plugin_that_contributes_both_registers_both()
+    {
+        InstallFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Single(found.Providers);
+        Assert.Single(found.Pages);
     }
 }

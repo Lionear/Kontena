@@ -81,28 +81,46 @@ public static class PluginLoader
     {
         var assembly = new PluginLoadContext(assemblyPath).LoadFromAssemblyPath(assemblyPath);
 
-        var entry = assembly.GetExportedTypes()
-            .FirstOrDefault(t => typeof(IEnginePlugin).IsAssignableFrom(t)
-                                 && t is { IsAbstract: false, IsInterface: false });
+        var types = assembly.GetExportedTypes()
+            .Where(t => t is { IsAbstract: false, IsInterface: false })
+            .ToList();
 
-        if (entry is null)
-            return new DiscoveredPlugin(
-                directory, manifest, PluginStatus.Rejected, "No IEnginePlugin in " + manifest.Assembly, []);
+        var engineType = types.Find(typeof(IEnginePlugin).IsAssignableFrom);
+        var uiType = types.Find(typeof(IUiPlugin).IsAssignableFrom);
 
-        if (Activator.CreateInstance(entry) is not IEnginePlugin plugin)
-            return new DiscoveredPlugin(
-                directory, manifest, PluginStatus.Rejected, entry.FullName + " is not an IEnginePlugin", []);
+        DiscoveredPlugin Reject(string reason) =>
+            new(directory, manifest, PluginStatus.Rejected, reason, []);
+
+        if (engineType is null && uiType is null)
+            return Reject("No IEnginePlugin or IUiPlugin in " + manifest.Assembly);
+
+        var plugin = engineType is null ? null : Activator.CreateInstance(engineType) as IEnginePlugin;
+        if (engineType is not null && plugin is null)
+            return Reject(engineType.FullName + " is not an IEnginePlugin");
+
+        // One instance when one type does both (KON-331). A plugin that contributes a backend and a
+        // page is one plugin; constructing it twice would give it two of whatever it opened.
+        var ui = ReferenceEquals(engineType, uiType)
+            ? plugin as IUiPlugin
+            : uiType is null ? null : Activator.CreateInstance(uiType) as IUiPlugin;
+        if (uiType is not null && ui is null)
+            return Reject(uiType.FullName + " is not an IUiPlugin");
 
         // The user agreed to what plugin.json said. Code that describes itself differently is not what
         // was agreed to — and until signing lands, this is the only thing tying the two together.
-        var declared = plugin.Manifest;
-        if (declared.Id != manifest.Id || declared.Version != manifest.Version)
-            return new DiscoveredPlugin(
-                directory, manifest, PluginStatus.Rejected,
-                $"plugin.json says {manifest.Id} {manifest.Version}, the assembly says "
-                + $"{declared.Id} {declared.Version}", []);
+        // Both entry points are asked: two types in one assembly can disagree, and the one that would
+        // go unchecked is the one worth lying in.
+        foreach (var declared in new[] { plugin?.Manifest, ui?.Manifest })
+        {
+            if (declared is null || (declared.Id == manifest.Id && declared.Version == manifest.Version))
+                continue;
 
-        var providers = plugin.GetProviders().ToList();
+            return Reject(
+                $"plugin.json says {manifest.Id} {manifest.Version}, the assembly says "
+                + $"{declared.Id} {declared.Version}");
+        }
+
+        var providers = plugin?.GetProviders().ToList() ?? [];
 
         // Touch every identity member here, inside the containment this method already sits in. The
         // host reads these while building the very first switcher — outside any try, before there is a
@@ -111,7 +129,15 @@ public static class PluginLoader
         foreach (var provider in providers)
             _ = (provider.Backend, provider.DisplayName, provider.Chip, provider.Kind, provider.ChipStyle);
 
-        return new DiscoveredPlugin(directory, manifest, PluginStatus.Loaded, null, providers);
+        // The pages, for the same reason. Not CreateView: building a control is the plugin's code
+        // running in the shell's window, which the host does under its own containment at the moment
+        // it navigates — here there is no UI thread yet, and no page to show a failure on.
+        IReadOnlyList<PluginPage> pages = ui is null ? [] : [.. ui.GetPages()];
+
+        return new DiscoveredPlugin(directory, manifest, PluginStatus.Loaded, null, providers)
+        {
+            Pages = pages,
+        };
     }
 
     /// <summary>

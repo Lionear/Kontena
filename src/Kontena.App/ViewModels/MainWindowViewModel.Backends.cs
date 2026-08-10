@@ -22,8 +22,8 @@ public partial class MainWindowViewModel
     {
         try
         {
-            _probes = await _registry.ProbeAllAsync();
-            BuildSettingsPage();
+            _probes = await Diag.TimeAsync("probe every backend", _registry.ProbeAllAsync());
+            Diag.Time("build the settings page", BuildSettingsPage);
             RebuildEngineList();
             RefreshNewClusters();
 
@@ -33,7 +33,8 @@ public partial class MainWindowViewModel
                 return;
             }
 
-            await ConnectPreferredAsync();
+            await Diag.TimeAsync("connect", ConnectPreferredAsync());
+            Diag.Mark("shell usable");
 
             // After the shell is usable, never before: a slow or unreachable update server must not
             // hold up connecting to an engine, which is what the user actually opened Kontena for.
@@ -454,12 +455,12 @@ public partial class MainWindowViewModel
 
         if (backend is IClusterEngine cluster)
         {
-            if (!await EnterClusterModeAsync(cluster))
+            if (!await Diag.TimeAsync("open the cluster", EnterClusterModeAsync(cluster)))
                 return;
         }
         else if (backend is IContainerEngine engine)
         {
-            await EnterEngineModeAsync(engine);
+            await Diag.TimeAsync("open the engine", EnterEngineModeAsync(engine));
         }
         else
         {
@@ -623,7 +624,7 @@ public partial class MainWindowViewModel
         Navigate("overview");
 
         SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
-        await UpdateClusterNavCountsAsync();
+        await UpdateClusterNavAsync();
         IsReady = true;
         return true;
     }

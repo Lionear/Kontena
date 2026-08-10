@@ -18,6 +18,14 @@
          adapters provide, not something the app provides to them — the CLI-driven backends cannot
          offer one without it. -->
     <PackageReference Include="Porta.Pty" Version="1.0.7" />
+
+    <!-- The UI-contribution seam (KON-331): a plugin that contributes a page hands over a Control, so
+         the type has to be in the contract. MIT, same reasoning as above.
+         The cost is real and deliberate: an adapter that only speaks to a CLI now restores Avalonia it
+         never uses. The alternative — a second Kontena.Sdk.Ui assembly — keeps that adapter clean at
+         the price of a second artefact to ship, sign and version in step with this one, for a host
+         that has exactly one UI framework and no plan for a second (Plans/plugin-store.md §3.3). -->
+    <PackageReference Include="Avalonia" Version="12.0.3" />
   </ItemGroup>
 
 </Project>
