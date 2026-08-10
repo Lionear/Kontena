@@ -74,6 +74,20 @@ public class ClusterVisibilityTests
     }
 
     [Fact]
+    public void An_install_that_was_offered_the_choice_is_not_adopted()
+    {
+        // Skipping the wizard leaves "onboarded, no answers" behind — the same shape as an install from
+        // before Kontena asked (KON-351). Only one of the two should be adopted, and it is not the one
+        // whose user just said "not now".
+        var skipped = new KontenaSettings { Onboarded = true, ClusterChoiceOffered = true };
+
+        var after = skipped.AdoptExistingClusters([Prod, Staging]);
+
+        Assert.Empty(after.KnownClusters);
+        Assert.Equal([Prod, Staging], after.NewClusters([Prod, Staging]));
+    }
+
+    [Fact]
     public void Adoption_happens_once()
     {
         // Otherwise a context the user declined would be adopted back on the next launch.

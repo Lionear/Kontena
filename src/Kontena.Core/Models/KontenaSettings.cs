@@ -112,6 +112,22 @@ public sealed record KontenaSettings
     /// <summary>Whether the first-run onboarding (engine connect) has been completed.</summary>
     public bool Onboarded { get; init; }
 
+    /// <summary>
+    /// Whether this installation has been shown the cluster choice at all (KON-351).
+    /// <para>
+    /// It exists to keep the one-time adoption in <c>AdoptExistingClusters</c> honest. That adoption
+    /// reads "onboarded, but no cluster answers" as "an installation from before Kontena asked", and
+    /// puts every discovered context in the switcher so an update does not empty it. Skipping the
+    /// wizard leaves the same two facts behind, and skipping means "not now" — so without this, the
+    /// next launch turned a declined question into yes to everything.
+    /// </para>
+    /// <para>
+    /// Only ever written going forward, which is what makes it work: an installation that predates
+    /// this field has it false, and is exactly the one adoption is for.
+    /// </para>
+    /// </summary>
+    public bool ClusterChoiceOffered { get; init; }
+
     /// <summary>Start Kontena at login (stored preference; wiring is platform-specific).</summary>
     public bool LaunchAtLogin { get; init; }
 

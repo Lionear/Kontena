@@ -326,6 +326,14 @@ public partial class MainWindowViewModel
         IsReady = false;
         IsBackendDown = false;
         CurrentPage = null;
+
+        // What is ticked on the screen being replaced, if one is (KON-351). A rescan builds a fresh
+        // wizard, and nothing is written down until Continue — so a cluster the user unticked is still
+        // "never offered" as far as the settings are concerned, and would come back ticked. The wizard
+        // rescans itself after starting an engine (KON-335), so this is not a rare path: the user
+        // unticks two clusters, lets Kontena start Podman, and continues with all four.
+        var ticked = Onboarding?.Clusters
+            .ToDictionary(c => c.Backend, c => c.IsSelected, StringComparer.Ordinal);
         Onboarding = new OnboardingViewModel(
             _probes.Where(p => p.Provider.Kind == BackendKind.Engine).ToList(),
             FakeBackend,
@@ -340,8 +348,11 @@ public partial class MainWindowViewModel
             // itself the answer this screen is asking for, so at first run there are none (KON-336).
             clusters: BackendCatalog.DiscoverClusters(_settings.KubeconfigPaths),
             // New arrives ticked, declined comes back unticked rather than hidden — the same three
-            // states the switcher's "new clusters" row keeps (KON-120).
-            clusterTicked: id => _settings.ShowsCluster(id) || _settings.NewClusters([id]).Count > 0);
+            // states the switcher's "new clusters" row keeps (KON-120). An answer already given on the
+            // screen this one replaces outranks all of that: it is newer than what is stored.
+            clusterTicked: id => ticked is not null && ticked.TryGetValue(id, out var chosen)
+                ? chosen
+                : _settings.ShowsCluster(id) || _settings.NewClusters([id]).Count > 0);
         IsOnboarding = true;
 
         _ = OfferWizardEngineStartAsync(Onboarding);
@@ -427,7 +438,13 @@ public partial class MainWindowViewModel
         // follow me anywhere else". Activating it records it as last used, which is enough.
         _settings = _store.Update(s =>
         {
-            var next = s with { Onboarded = true, AutoDetectEngines = autoDetect };
+            // ClusterChoiceOffered whether they answered or skipped: the question has been put, so the
+            // one-time adoption at startup must stop treating this install as one that predates it
+            // (KON-351). Skip still writes no answers — "not now" keeps the contexts new.
+            var next = s with
+            {
+                Onboarded = true, AutoDetectEngines = autoDetect, ClusterChoiceOffered = true,
+            };
 
             // Both answers are recorded, not just yes: a cluster ticked off here is declined, and a
             // declined cluster must not be offered again on every launch (KON-120).
