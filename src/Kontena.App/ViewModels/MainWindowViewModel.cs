@@ -22,8 +22,15 @@ namespace Kontena.App.ViewModels;
 /// made it the place where unrelated branches met (KON-139).
 /// </para>
 /// </summary>
-public partial class MainWindowViewModel : ViewModelBase, IDisposable
+public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHost
 {
+    /// <summary>
+    /// What a plugin page is lent while it is built (KON-331). Explicit, because this is a seam for
+    /// plugins and not part of how the shell talks to itself — and it reads <c>_cluster</c> live, so a
+    /// page opened after a backend switch gets the cluster that is open now.
+    /// </summary>
+    IClusterEngine? IPluginHost.Cluster => _cluster;
+
     private readonly BackendRegistry _registry;
     private readonly IToolRunner _toolRunner;
     private readonly BackendCatalog.CatalogBuilder _buildCatalog;
