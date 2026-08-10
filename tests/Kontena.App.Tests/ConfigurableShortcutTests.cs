@@ -209,15 +209,32 @@ public sealed class ConfigurableShortcutTests : IDisposable
         Assert.False(row.IsRecording);
     }
 
+    /// <summary>
+    /// Everything a page answers for has a command behind it — a row in Settings that binds to nothing
+    /// is a shortcut that cannot work.
+    /// <para>
+    /// Full screen is the exception and is named here rather than skipped, so that a second window-owned
+    /// action has to be added to this list on purpose (KON-361). It is the window's own state, so
+    /// <c>MainWindow.RebindShortcuts</c> supplies that command instead; a view model that reached the
+    /// frame around it to toggle a window state would be the wrong shape entirely.
+    /// </para>
+    /// </summary>
     [Fact]
     public void Every_action_in_the_registry_has_a_command_behind_it()
     {
-        // A row in Settings that binds to nothing is a shortcut that cannot work.
         var store = new SettingsStore(_path);
         using var shell = new MainWindowViewModel(
             new BackendRegistry([]), store, store.Load(), new FakeUpdateService());
 
-        Assert.All(ShellActions.All, a => Assert.True(shell.ShortcutCommands.ContainsKey(a.Id)));
+        string[] ownedByTheWindow = [ShellActions.ToggleFullScreen];
+
+        Assert.All(
+            ShellActions.All.Where(a => !ownedByTheWindow.Contains(a.Id)),
+            a => Assert.True(shell.ShortcutCommands.ContainsKey(a.Id), $"{a.Id} has no command."));
+
+        // The other half of the same rule: the window-owned ones stay out of the view model, so this
+        // does not quietly turn into a list of exemptions for actions that simply forgot their command.
+        Assert.All(ownedByTheWindow, id => Assert.False(shell.ShortcutCommands.ContainsKey(id)));
     }
 
     [Fact]
@@ -234,5 +251,33 @@ public sealed class ConfigurableShortcutTests : IDisposable
             new BackendRegistry([]), store, store.Load(), new FakeUpdateService());
 
         Assert.Equal("Refresh (Ctrl+Shift+R)", shell.RefreshTooltip);
+    }
+
+    /// <summary>
+    /// Every default in the registry is a gesture Avalonia can parse — on both platforms, not just the
+    /// one running the test.
+    /// <para>
+    /// A default that does not parse costs nothing at build time and silently binds nothing at run
+    /// time: <c>RebindShortcuts</c> skips what it cannot parse, so the shortcut is simply absent. Cheap
+    /// to get wrong the moment a row is added — <c>Ctrl+Cmd+F</c> was the first entry to combine two
+    /// modifiers — and invisible until someone presses the keys on the platform that has it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Every_default_gesture_parses_on_both_platforms()
+    {
+        foreach (var action in ShellActions.All)
+        {
+            Assert.False(
+                string.IsNullOrEmpty(ShellActions.Normalise(action.Gesture)),
+                $"{action.Id}: '{action.Gesture}' is not a gesture Avalonia understands.");
+
+            if (action.MacGesture is { Length: > 0 } mac)
+            {
+                Assert.False(
+                    string.IsNullOrEmpty(ShellActions.Normalise(mac)),
+                    $"{action.Id}: macOS default '{mac}' is not a gesture Avalonia understands.");
+            }
+        }
     }
 }

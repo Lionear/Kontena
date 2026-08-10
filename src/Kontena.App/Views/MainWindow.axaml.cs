@@ -1,4 +1,6 @@
 using System.Linq;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -95,7 +97,15 @@ public partial class MainWindow : Window
 
         foreach (var (action, gesture) in ShellActions.Resolve(configured))
         {
-            if (!vm.ShortcutCommands.TryGetValue(action.Id, out var command))
+            // Full screen is the window's own state, so the window answers for it rather than the view
+            // model (KON-361). Everything else in the registry is a page's business and comes from
+            // ShortcutCommands, which is where a command belongs when it has nothing to do with the
+            // frame around it.
+            var command = action.Id == ShellActions.ToggleFullScreen
+                ? ToggleFullScreenCommand
+                : vm.ShortcutCommands.GetValueOrDefault(action.Id);
+
+            if (command is null)
                 continue;
 
             // Resolve already discards anything unparseable, so this is belt and braces against a
@@ -191,19 +201,52 @@ public partial class MainWindow : Window
     // differently on each one.
     private void OnMinimiseClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
+    /// <summary>
+    /// What the middle caption button expands the window into (KON-361).
+    /// <para>
+    /// Full screen on macOS, because there this button is the only way in. <c>WindowDecorations</c> is
+    /// <c>BorderOnly</c>, which removes the traffic lights — the intended result, since our own three
+    /// buttons would otherwise sit beside a second set — but the green one is macOS's only route to
+    /// full screen, and ⌃⌘F drives that same button rather than the window directly. With it gone and
+    /// this button only zooming, full screen was unreachable, and with it Split View and a Space of its
+    /// own under Stage Manager.
+    /// </para>
+    /// <para>
+    /// Elsewhere maximise stays maximise: Windows and Linux have no equivalent mode, and full screen
+    /// there is a different gesture with a different meaning (F11, chrome gone entirely).
+    /// </para>
+    /// </summary>
+    private static WindowState ExpandedState =>
+        OperatingSystem.IsMacOS() ? WindowState.FullScreen : WindowState.Maximized;
+
+    /// <summary>
+    /// Full screen from the keyboard (KON-361). Always full screen, on every platform — unlike the
+    /// caption button, which means "as big as this platform's convention says" and so stops at maximise
+    /// off macOS. The gesture is the registry's, so it is rebindable like the rest.
+    /// </summary>
+    private ICommand ToggleFullScreenCommand => _toggleFullScreen ??= new RelayCommand(() =>
+        WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen);
+
+    private ICommand? _toggleFullScreen;
+
     private void OnMaximiseClick(object? sender, RoutedEventArgs e) =>
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        WindowState = WindowState == ExpandedState ? WindowState.Normal : ExpandedState;
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
 
     /// <summary>Keeps the maximise button saying what it will do rather than what the window is.</summary>
     private void SyncMaximiseButton()
     {
-        var maximised = WindowState == WindowState.Maximized;
+        var expanded = WindowState == ExpandedState;
 
         MaximiseGlyph.Data = (Geometry?)this.FindResource(
-            maximised ? "IconWindowRestore" : "IconWindowMaximize");
-        ToolTip.SetTip(MaximiseButton, maximised ? "Restore" : "Maximise");
+            expanded ? "IconWindowRestore" : "IconWindowMaximize");
+
+        // The tooltip names the mode, not the glyph: a button that says "Maximise" and goes full screen
+        // is worse than no tooltip. macOS's own wording, so it reads as the thing the user knows.
+        ToolTip.SetTip(MaximiseButton, OperatingSystem.IsMacOS()
+            ? expanded ? "Exit Full Screen" : "Enter Full Screen"
+            : expanded ? "Restore" : "Maximise");
     }
 
     // Picking a backend (or the "add…" row) should dismiss the switcher flyout — a Button click

@@ -53,12 +53,20 @@ public static class ShellActions
     public const string GoBack = "nav.back";
     public const string FocusSearch = "search.focus";
     public const string RefreshPage = "page.refresh";
+    public const string ToggleFullScreen = "window.fullscreen";
 
     public static IReadOnlyList<ShellAction> All { get; } =
     [
         new(GoBack, "Back", "Return to the page you came from.", "Alt+Left", "Cmd+Left"),
         new(FocusSearch, "Focus search", "Put the cursor in the search box of the current list.", "Ctrl+F", "Cmd+F"),
         new(RefreshPage, "Refresh page", "Reload what the current page shows.", "Ctrl+R", "Cmd+R"),
+
+        // The window's own, not a page's — and the only entry here the shell rather than the view model
+        // answers (KON-361). macOS routes ⌃⌘F through the green title-bar button, which
+        // WindowDecorations="BorderOnly" removes, so the system shortcut reaches nothing and the app has
+        // to own it. F11 is the same gesture everywhere else, and this is the one place the two
+        // platforms mean exactly the same thing.
+        new(ToggleFullScreen, "Full screen", "Fill the screen with Kontena, and leave it again.", "F11", "Ctrl+Cmd+F"),
         new(Dismiss, "Close dialog", "Close the open dialog. Does nothing when none is open.", "Escape"),
         new(ConfirmPrimary, "Confirm dialog", "Run the open dialog's primary action, where it has one.", "Enter"),
     ];
