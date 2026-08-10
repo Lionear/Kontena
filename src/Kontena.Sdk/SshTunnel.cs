@@ -127,9 +127,8 @@ public sealed class SshTunnel : IAsyncDisposable
         if (OperatingSystem.IsWindows())
             return SshForward.OverLoopback(SshForward.FreeLoopbackPort());
 
-        // A socket per tunnel, under the runtime dir where sockets belong and are cleaned up on logout.
-        var directory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
-            ?? Path.Combine(Path.GetTempPath(), "kontena");
+        // A socket per tunnel, in the directory resolved once for this run.
+        var directory = SocketDirectory.Value;
         Directory.CreateDirectory(directory);
 
         var socket = Path.Combine(directory, $"kontena-{remote.Id}.sock");
@@ -137,6 +136,30 @@ public sealed class SshTunnel : IAsyncDisposable
             File.Delete(socket);                             // a socket left by a previous run blocks bind
 
         return SshForward.OverSocket(socket);
+    }
+
+    /// <summary>Resolved once: every tunnel in one run listens under the same directory.</summary>
+    private static readonly Lazy<string> SocketDirectory = new(() => ResolveSocketDirectory());
+
+    /// <summary>
+    /// Where the local sockets go (KON-364).
+    /// <para>
+    /// <c>XDG_RUNTIME_DIR</c> when the session has one: it belongs to the user, is already owner-only,
+    /// and is swept at logout. Without one — a headless session, cron, some sandbox runtimes — a fixed
+    /// name under the temp path is not a substitute. <c>/tmp</c> is world-writable, so another user can
+    /// create <c>/tmp/kontena</c> before we do and own the directory our socket lands in; and that
+    /// socket carries the Docker API of a remote host, which is root on it. A directory made fresh for
+    /// this run cannot have been created by anyone else, and comes out 0700.
+    /// </para>
+    /// </summary>
+    /// <param name="readEnvironment">Reads the current environment; injectable so tests need none.</param>
+    public static string ResolveSocketDirectory(Func<string, string?>? readEnvironment = null)
+    {
+        var read = readEnvironment ?? Environment.GetEnvironmentVariable;
+
+        return read("XDG_RUNTIME_DIR") is { Length: > 0 } runtime
+            ? runtime
+            : Directory.CreateTempSubdirectory("kontena-").FullName;
     }
 
     /// <summary>

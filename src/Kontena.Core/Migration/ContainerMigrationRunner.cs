@@ -31,7 +31,7 @@ public sealed class ContainerMigrationRunner(
                 + "here means a caller skipped the check.");
         }
 
-        var staging = Directory.CreateDirectory(stagingRoot).FullName;
+        var staging = CreateStaging(stagingRoot);
 
         try
         {
@@ -81,6 +81,21 @@ public sealed class ContainerMigrationRunner(
             }
         }
     }
+
+    /// <summary>
+    /// The staging directory, readable only by its owner (KON-364).
+    /// <para>
+    /// What passes through here is the contents of the container's volumes — a database, a config, the
+    /// keys it was given — and the root it is made under is a temp path, which on Unix every user on the
+    /// machine can read. Same reasoning as the shell session directory in <c>HostShellLauncher</c>.
+    /// </para>
+    /// </summary>
+    private static string CreateStaging(string root) =>
+        (OperatingSystem.IsWindows()
+            ? Directory.CreateDirectory(root)
+            : Directory.CreateDirectory(
+                root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute))
+        .FullName;
 
     private async ValueTask<MigrationProgress> EnsureImageAsync(string image, CancellationToken ct)
     {
