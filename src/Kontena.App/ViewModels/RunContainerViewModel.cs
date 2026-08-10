@@ -480,12 +480,18 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
                     env[e.Key.Trim()] = e.Value.Trim();
             }
 
-            var volumes = new Dictionary<string, string>();
-            foreach (var v in Volumes)
-            {
-                if (!string.IsNullOrWhiteSpace(v.Source) && !string.IsNullOrWhiteSpace(v.Destination))
-                    volumes[v.Source.Trim()] = v.Destination.Trim();
-            }
+            // A source that looks like a path is a bind, anything else names a volume — the same
+            // reading the engines' own CLIs do with `-v`. This dialog has no read-only switch, so
+            // every mount stays read-write; that option never existed here.
+            var mounts = Volumes
+                .Where(v => !string.IsNullOrWhiteSpace(v.Source) && !string.IsNullOrWhiteSpace(v.Destination))
+                .Select(v => new MountSpec(
+                    v.Source.StartsWith('/') || v.Source.Contains(":\\", StringComparison.Ordinal)
+                        ? MountSpec.Bind
+                        : MountSpec.Volume,
+                    v.Source.Trim(),
+                    v.Destination.Trim()))
+                .ToList();
 
             var request = new CreateContainerRequest
             {
@@ -493,7 +499,7 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
                 Name = string.IsNullOrWhiteSpace(ContainerName) ? null : ContainerName.Trim(),
                 Ports = ports,
                 Environment = env,
-                Volumes = volumes,
+                Mounts = mounts,
                 Network = SelectedNetwork is "(default)" ? null : SelectedNetwork,
                 RestartPolicy = ParseRestart(SelectedRestartPolicy),
                 Start = true,

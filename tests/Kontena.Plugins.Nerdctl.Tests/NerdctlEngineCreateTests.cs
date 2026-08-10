@@ -33,7 +33,7 @@ public sealed class NerdctlEngineCreateTests
             Name = "web",
             Ports = [new PortBinding(8080, 80, "tcp"), new PortBinding(null, 53, "udp")],
             Environment = new Dictionary<string, string> { ["FOO"] = "bar" },
-            Volumes = new Dictionary<string, string> { ["data"] = "/var/data" },
+            Mounts = [new MountSpec(MountSpec.Volume, "data", "/var/data")],
             Network = "mynet",
             RestartPolicy = RestartPolicy.Always,
             Start = false,

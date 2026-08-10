@@ -139,7 +139,9 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 HostConfig = new HostConfig
                 {
                     PortBindings = bindings,
-                    Binds = request.Volumes.Select(kv => $"{kv.Key}:{kv.Value}").ToList(),
+                    Binds = request.Mounts
+                        .Select(m => m.ReadOnly ? $"{m.Source}:{m.Target}:ro" : $"{m.Source}:{m.Target}")
+                        .ToList(),
                     NetworkMode = request.Network,
                     RestartPolicy = new DockerRestartPolicy { Name = MapRestart(request.RestartPolicy) },
                 },

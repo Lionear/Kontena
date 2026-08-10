@@ -59,7 +59,7 @@ public sealed class AppleEngineWriteTests
             Name = "web",
             Ports = [new PortBinding(8080, 80), new PortBinding(9090, 90, "udp")],
             Environment = new Dictionary<string, string> { ["FOO"] = "bar" },
-            Volumes = new Dictionary<string, string> { ["data"] = "/data" },
+            Mounts = [new MountSpec(MountSpec.Volume, "data", "/data")],
             Network = "backend",
         });
 

@@ -64,6 +64,17 @@ public sealed record ContainerInspect
 
     /// <summary>Entry point and command joined into a single line.</summary>
     public string Command { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The entry point as separate arguments. <see cref="Command"/> joins entry point and command
+    /// into one line for display, and that line cannot be split back apart once an argument contains
+    /// a space or a quote — so anything that has to *re-run* this container reads these two lists.
+    /// </summary>
+    public IReadOnlyList<string> Entrypoint { get; init; } = [];
+
+    /// <summary>The command as separate arguments. See <see cref="Entrypoint"/>.</summary>
+    public IReadOnlyList<string> Cmd { get; init; } = [];
+
     public string WorkingDirectory { get; init; } = string.Empty;
     public string User { get; init; } = string.Empty;
 

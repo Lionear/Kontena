@@ -589,8 +589,10 @@ public sealed class NerdctlEngine : IContainerEngine
         foreach (var (key, value) in request.Environment)
             args.AddRange(["-e", $"{key}={value}"]);
 
-        foreach (var (source, target) in request.Volumes)
-            args.AddRange(["-v", $"{source}:{target}"]);
+        foreach (var mount in request.Mounts)
+            args.AddRange(["-v", mount.ReadOnly
+                ? $"{mount.Source}:{mount.Target}:ro"
+                : $"{mount.Source}:{mount.Target}"]);
 
         if (request.Network is { } network)
             args.AddRange(["--network", network]);

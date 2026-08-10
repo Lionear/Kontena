@@ -252,10 +252,21 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
             arguments.Add($"{key}={value}");
         }
 
-        foreach (var (source, destination) in request.Volumes)
+        foreach (var mount in request.Mounts)
         {
-            arguments.Add("--volume");
-            arguments.Add($"{source}:{destination}");
+            // `--volume` has no read-only form on this CLI; `--mount` is the only flag that does, so
+            // a read-only mount goes through the longer spelling rather than silently becoming
+            // writable.
+            if (mount.ReadOnly)
+            {
+                arguments.Add("--mount");
+                arguments.Add($"type={mount.Type},source={mount.Source},target={mount.Target},readonly");
+            }
+            else
+            {
+                arguments.Add("--volume");
+                arguments.Add($"{mount.Source}:{mount.Target}");
+            }
         }
 
         if (request.Network is { Length: > 0 } network)
