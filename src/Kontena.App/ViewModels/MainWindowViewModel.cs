@@ -44,6 +44,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     private IReadOnlyList<DiscoveredPlugin> _plugins;
     // Where AskPluginConsent's OnConfirm re-scans — see the pluginRoot constructor parameter.
     private readonly string _pluginRoot;
+    private readonly TimeSpan _probeGrace;
     private readonly ClusterTerminals _terminals = new();
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
@@ -87,13 +88,19 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// pointing at a real directory would either find nothing (a machine with no plugins folder) or the
     /// developer's actual plugins (a machine with one) — neither is what a test of the consent flow
     /// itself is asking about.</param>
+    /// <param name="probeGrace">How long startup waits for the probe round before carrying on without
+    /// the stragglers — see <see cref="ProbeRoundGrace"/>, which is what this defaults to. A test that
+    /// is about the carrying-on passes something short, because the alternative is a suite that sleeps
+    /// for two seconds to watch one branch.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
         BackendCatalog.CatalogBuilder? buildCatalog = null,
         IReadOnlyList<DiscoveredPlugin>? plugins = null,
-        string? pluginRoot = null)
+        string? pluginRoot = null,
+        TimeSpan? probeGrace = null)
     {
+        _probeGrace = probeGrace ?? ProbeRoundGrace;
         // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
         // seam to its own dialog host means those read like every other confirm in the app rather
         // than hand-rolling a second ConfirmViewModel next to ShowConfirm.
