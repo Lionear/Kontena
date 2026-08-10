@@ -18,6 +18,7 @@ public sealed class FakeEngine : IContainerEngine
     private readonly Dictionary<string, VolumeSummary> _volumes = [];
     private readonly Dictionary<string, NetworkSummary> _networks = [];
     private readonly List<CreateContainerRequest> _createdRequests = [];
+    private readonly Dictionary<string, IReadOnlyList<MountSpec>> _createdMounts = [];
     private int _idSeed = 1000;
     private readonly string _backend;
     private readonly string _displayName;
@@ -116,10 +117,15 @@ public sealed class FakeEngine : IContainerEngine
             State = request.Start ? ContainerState.Running : ContainerState.Created,
             Status = request.Start ? "Up now" : "Created",
             Ports = request.Ports,
+            Labels = request.Labels,
             CreatedAt = DateTimeOffset.UtcNow,
             Backend = Backend,
         };
         _containers[id] = summary;
+
+        // Remembered so the inspect describes this container rather than the demo one: a fake that
+        // reports mounts nobody asked for makes anything reading them untestable.
+        _createdMounts[id] = request.Mounts;
         return ValueTask.FromResult(id);
     }
 
@@ -182,10 +188,18 @@ public sealed class FakeEngine : IContainerEngine
                 ["maintainer"] = "NGINX Docker Maintainers",
                 ["com.kontena.demo"] = "true",
             },
-            Mounts =
-            [
-                new InspectMount("volume", $"{c.Name}-data", "/var/lib/data", ReadWrite: true),
-            ],
+            // A container this fake was asked to create reports what it was asked for; the seeded
+            // demo ones keep their one made-up volume.
+            Mounts = _createdMounts.TryGetValue(id, out var created)
+                ?
+                [
+                    .. created.Select(m => new InspectMount(
+                        m.Type, m.Source, m.Target, ReadWrite: !m.ReadOnly)),
+                ]
+                :
+                [
+                    new InspectMount("volume", $"{c.Name}-data", "/var/lib/data", ReadWrite: true),
+                ],
             Networks =
             [
                 new InspectNetwork("bridge", running ? "172.17.0.2" : string.Empty, "172.17.0.1"),

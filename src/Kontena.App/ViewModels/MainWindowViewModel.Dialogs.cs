@@ -90,6 +90,28 @@ public partial class MainWindowViewModel
             }
         }, start);
     }
+    /// <summary>
+    /// "Migrate to…" on a container row (KON-350). The dialog does its own reading — the plan needs
+    /// both engines — so this only hands it what it needs to find them.
+    /// </summary>
+    private async Task ShowMigrateDialogAsync(string containerId)
+    {
+        if (_engine is null)
+            return;
+
+        var model = new MigrateContainerViewModel(
+            _engine, _registry, containerId,
+            onClose: CloseDialog,
+            onMigrated: async () =>
+            {
+                if (Containers is not null)
+                    await Containers.LoadAsync();
+            });
+
+        Dialog = model;
+        await model.InitializeAsync();
+    }
+
     private async Task ShowRunDialogAsync(string? initialImage = null)
     {
         if (_engine is null)
