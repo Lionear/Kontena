@@ -7,6 +7,7 @@ using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Core.Models;
+using Kontena.Core.Versioning;
 using Kontena.Engines;
 using Kontena.Engines.Plugins;
 
@@ -77,6 +78,11 @@ public partial class MainWindowViewModel
             Diag.Time("build the settings page", BuildSettingsPage);
             RebuildEngineList();
             RefreshNewClusters();
+
+            // Deliberately after the switcher is drawn and deliberately not awaited: this is the one
+            // thing here that needs the network, and a list that waited for it would take as long as
+            // the slowest lookup to show what is already known (the same shape KON-153 settled on).
+            _ = RefreshSupportAsync();
 
             if (!_settings.Onboarded)
             {
@@ -1024,6 +1030,52 @@ public partial class MainWindowViewModel
 
         return probe.Connected;
     }
+    /// <summary>
+    /// Where release calendars are read from (KON-370). Null means nothing is said about any version.
+    /// Set from the constructor, not by an object initializer: <c>InitAsync</c> starts during
+    /// construction and would read an init property that had not been assigned yet.
+    /// </summary>
+    private VersionSupportCheck? Versions { get; }
+
+    /// <summary>
+    /// What each backend's publisher says about the version it reports, once that answer has arrived
+    /// (KON-370). Kept here rather than on the row so <see cref="EngineOption"/> stays immutable — the
+    /// list is rebuilt wholesale anyway, and an answer landing is just another reason to rebuild.
+    /// </summary>
+    private readonly Dictionary<string, VersionSupport> _support = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Fill in which backends run a release nobody maintains any more. Answers are cached for a day, so
+    /// this is usually free; the first run of the day costs one lookup per distinct product. Offline it
+    /// quietly finds nothing, which is the same as having nothing to say.
+    /// </summary>
+    private async Task RefreshSupportAsync(CancellationToken ct = default)
+    {
+        if (Versions is null)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        var landed = false;
+
+        foreach (var probe in _probes.ToList())
+        {
+            if (ct.IsCancellationRequested)
+                return;
+
+            if (BackendProducts.For(probe.Provider.Backend) is not { } product)
+                continue;
+
+            if (await Versions.CheckAsync(product, probe.Version, now, ct) is not { } support)
+                continue;
+
+            _support[probe.Provider.Backend] = support;
+            landed = true;
+        }
+
+        if (landed)
+            RebuildEngineList();
+    }
+
     private void RebuildEngineList()
     {
         Engines.Clear();
@@ -1061,6 +1113,7 @@ public partial class MainWindowViewModel
                 IsActive = isActive,
                 IsConnected = probe.Connected,
                 IsRetrying = probe.Provider.Backend == _retryingBackend,
+                Support = _support.GetValueOrDefault(probe.Provider.Backend),
 
                 // A row that cannot be switched to is a row that can be asked again — never a dead
                 // button (KON-117, KON-328). Clicking an unreachable backend is the most direct way a

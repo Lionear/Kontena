@@ -11,6 +11,7 @@ using Kontena.Sdk.Models;
 using Kontena.Sdk;
 using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
+using Kontena.Core.Versioning;
 using Kontena.Engines;
 using Kontena.Engines.Plugins;
 
@@ -70,7 +71,9 @@ public partial class App : Application
 
             var window = Diag.Time("build the window", () => new MainWindow());
             Diag.Time("build the shell view model",
-                () => window.DataContext = new MainWindowViewModel(registry, store, settings, plugins: plugins));
+                () => window.DataContext = new MainWindowViewModel(
+                    registry, store, settings, plugins: plugins,
+                    versions: new VersionSupportCheck(new EndOfLifeCalendar())));
 
             // Both from here, because both are about the window: when it first appeared, and every
             // stall on the thread that draws it from then on.

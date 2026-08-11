@@ -1,0 +1,44 @@
+namespace Kontena.Core.Versioning;
+
+/// <summary>
+/// One published release line of a product — Docker Engine 28, Kubernetes 1.33, containerd 2.1 — and
+/// whether its publisher still maintains it.
+/// </summary>
+/// <param name="Name">The cycle as its publisher names it, e.g. <c>28</c> or <c>1.33</c>.</param>
+/// <param name="IsMaintained">Whether the publisher still supports this line.</param>
+/// <param name="EolFrom">The date support ends or ended, when one is published.</param>
+/// <param name="Latest">The newest release within this line, e.g. <c>28.5.2</c>.</param>
+public sealed record ReleaseCycle(string Name, bool IsMaintained, DateOnly? EolFrom, string? Latest);
+
+/// <summary>
+/// Where the release cycles of a product come from. An interface because the network is the one part
+/// of this that a test cannot have, not because a second implementation is planned.
+/// </summary>
+public interface IReleaseCalendar
+{
+    /// <summary>
+    /// Every published cycle for one product, or null when there is no answer — offline, an unknown
+    /// product, or a document that could not be read. Null is not an error; it means "say nothing".
+    /// </summary>
+    ValueTask<IReadOnlyList<ReleaseCycle>?> CyclesAsync(string product, CancellationToken ct = default);
+}
+
+/// <summary>
+/// What Kontena can say about the version a backend reports, measured against its publisher's own
+/// calendar (KON-370).
+/// </summary>
+/// <param name="Cycle">The release line this version belongs to.</param>
+/// <param name="IsMaintained">Whether that line is still supported by its publisher.</param>
+/// <param name="EolFrom">When support ends or ended, if published.</param>
+/// <param name="NewerPatch">
+/// A newer release within the same line, or null when this is already the newest. Separate from
+/// support: being a few patches behind on a maintained line is worth mentioning, not worth a warning.
+/// </param>
+public sealed record VersionSupport(string Cycle, bool IsMaintained, DateOnly? EolFrom, string? NewerPatch)
+{
+    /// <summary>
+    /// Whether this is worth putting in front of the user — the same question
+    /// <c>NodeVersionSkew.IsProblem</c> answers for the cluster side, so the two read alike.
+    /// </summary>
+    public bool IsProblem => !IsMaintained;
+}

@@ -8,6 +8,7 @@ using Kontena.Sdk.Tooling;
 using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Core.Versioning;
 using Kontena.Engines;
 using Kontena.Engines.Plugins;
 
@@ -92,14 +93,20 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// the stragglers — see <see cref="ProbeRoundGrace"/>, which is what this defaults to. A test that
     /// is about the carrying-on passes something short, because the alternative is a suite that sleeps
     /// for two seconds to watch one branch.</param>
+    /// <param name="versions">Where release calendars are read from (KON-370). Null — the default —
+    /// says nothing about any version, so a test never reaches the network by accident. A constructor
+    /// parameter rather than an init property because <c>InitAsync</c> starts from here and would read
+    /// an init property before it was assigned.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
         BackendCatalog.CatalogBuilder? buildCatalog = null,
         IReadOnlyList<DiscoveredPlugin>? plugins = null,
         string? pluginRoot = null,
-        TimeSpan? probeGrace = null)
+        TimeSpan? probeGrace = null,
+        VersionSupportCheck? versions = null)
     {
+        Versions = versions;
         _probeGrace = probeGrace ?? ProbeRoundGrace;
         // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
         // seam to its own dialog host means those read like every other confirm in the app rather
