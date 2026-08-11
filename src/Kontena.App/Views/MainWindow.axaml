@@ -55,6 +55,15 @@
                                     VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
                                 <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                             </Border>
+                            <!-- This backend runs a release its publisher has dropped (KON-370). The
+                                 sentence behind it — which line, and since when — is in the tooltip,
+                                 because the row is a row and not a place to explain things. -->
+                            <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                                    BorderThickness="1" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding IsUnsupported}"
+                                    ToolTip.Tip="{Binding SupportSummary}">
+                                <TextBlock Text="Unsupported" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource WarnText}"/>
+                            </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
