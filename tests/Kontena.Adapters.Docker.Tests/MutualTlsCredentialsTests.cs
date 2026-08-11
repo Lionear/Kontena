@@ -75,6 +75,23 @@ public class MutualTlsCredentialsTests
         Assert.True(credentials.IsTlsCredentials());
     }
 
+    /// <summary>
+    /// A leaf may never outlive the authority that signed it — .NET refuses to issue one that does,
+    /// with "the requested notAfter value is later than issuerCertificate.NotAfter". This fixture used
+    /// to read the clock separately for each certificate, so on a machine slow enough to cross a second
+    /// between the two it could not build its own test data. It failed on CI and passed on a laptop.
+    /// </summary>
+    [Fact]
+    public void A_leaf_never_outlives_the_authority_that_signed_it()
+    {
+        using var authority = Authority("CN=test-ca");
+        using var leaf = LeafSignedBy(authority, "docker.invalid");
+
+        Assert.True(
+            leaf.NotAfter <= authority.NotAfter,
+            $"leaf expires {leaf.NotAfter:O}, after its issuer at {authority.NotAfter:O}");
+    }
+
     /// <summary>A DOCKER_CERT_PATH directory holding the given CA, plus a client pair to load.</summary>
     private static MutualTlsCredentials CredentialsPinnedTo(X509Certificate2 authority)
     {
@@ -118,7 +135,19 @@ public class MutualTlsCredentialsTests
         return request.Create(issuer, Yesterday, Tomorrow, [1, 2, 3, 4, 5, 6, 7, 8]);
     }
 
-    private static DateTimeOffset Yesterday => DateTimeOffset.UtcNow.AddDays(-1);
+    /// <summary>
+    /// One clock reading for every certificate in this fixture.
+    /// <para>
+    /// These used to read <see cref="DateTimeOffset.UtcNow"/> on each access, so the leaf asked for a
+    /// <c>notAfter</c> a moment later than the authority that signed it — and .NET refuses that
+    /// outright: "the requested notAfter value is later than issuerCertificate.NotAfter". Generating a
+    /// 2048-bit key between the two reads is enough to cross a second boundary, which made this fail on
+    /// a loaded CI runner and pass on a quiet laptop.
+    /// </para>
+    /// </summary>
+    private static readonly DateTimeOffset Reference = DateTimeOffset.UtcNow;
 
-    private static DateTimeOffset Tomorrow => DateTimeOffset.UtcNow.AddDays(1);
+    private static DateTimeOffset Yesterday => Reference.AddDays(-1);
+
+    private static DateTimeOffset Tomorrow => Reference.AddDays(1);
 }
