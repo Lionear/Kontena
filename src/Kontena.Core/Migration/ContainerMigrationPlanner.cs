@@ -159,9 +159,10 @@ public static class ContainerMigrationPlanner
             Labels = container.Labels,
             Mounts = mounts,
 
-            // Ports are on the summary, not the inspect, so the caller reads them off the list entry
-            // for this same container — without them a web server arrives unpublished.
-            Ports = source.Ports,
+            // From the inspect, which carries what the container was created to publish. The list
+            // entry carries what is bound right now and is empty for a container that is stopped —
+            // which is a container whose web server would then arrive unpublished (KON-369).
+            Ports = container.Ports,
             Network = network,
             RestartPolicy = restartPolicy,
 

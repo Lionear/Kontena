@@ -84,6 +84,10 @@ internal static class AppleMap
             Labels = configuration?.Labels ?? new Dictionary<string, string>(),
             Mounts = [.. (configuration?.Mounts ?? []).Select(Mount)],
             Networks = [.. (source.Status?.Networks ?? []).Select(Network)],
+
+            // The same field the list reads. Here it costs nothing extra — this CLI's inspect prints
+            // exactly what its list prints — and it is where anything re-creating this container looks.
+            Ports = [.. (configuration?.PublishedPorts ?? []).Select(Port)],
         };
     }
 

@@ -55,20 +55,37 @@ public sealed class ContainerMigrationPlannerTests
     }
 
     /// <summary>
-    /// Ports live on the summary, not the inspect. A web server that arrives without its published
-    /// port is the exact shape of failure this ticket exists to avoid.
+    /// A web server that arrives without its published port is the exact shape of failure this ticket
+    /// exists to avoid. They come off the inspect, which carries what the container was created to
+    /// publish — the list entry carries only what is bound right now (KON-369).
     /// </summary>
     [Fact]
     public void Published_ports_are_carried_over()
     {
-        var source = new MigrationSource(Container(), ComposeSiblings: 0)
-        {
-            Ports = [new PortBinding(8080, 80)],
-        };
+        var source = new MigrationSource(
+            Container(c => c.Ports = [new PortBinding(8080, 80)]), ComposeSiblings: 0);
 
         var plan = ContainerMigrationPlanner.Plan(source, Target());
 
         Assert.Equal(8080, Assert.Single(plan.Request.Ports).HostPort);
+    }
+
+    /// <summary>
+    /// The case that made this move off the summary: Docker reports no ports at all for a container
+    /// that is stopped, so a stopped container migrated its ports away in silence.
+    /// </summary>
+    [Fact]
+    public void Published_ports_are_carried_over_from_a_stopped_container()
+    {
+        var source = new MigrationSource(Container(c =>
+        {
+            c.State = ContainerState.Exited;
+            c.Ports = [new PortBinding(25, 1025), new PortBinding(8025, 8025)];
+        }), ComposeSiblings: 0);
+
+        var plan = ContainerMigrationPlanner.Plan(source, Target());
+
+        Assert.Equal([25, 8025], plan.Request.Ports.Select(p => p.HostPort));
     }
 
     /// <summary>
@@ -391,6 +408,8 @@ internal sealed class ContainerInspectBuilder
 
     public IReadOnlyList<InspectMount> Mounts { get; set; } = [];
     public IReadOnlyList<InspectNetwork> Networks { get; set; } = [];
+    public IReadOnlyList<PortBinding> Ports { get; set; } = [];
+    public ContainerState State { get; set; } = ContainerState.Running;
 
     public ContainerInspect Build() => new()
     {
@@ -398,7 +417,7 @@ internal sealed class ContainerInspectBuilder
         Name = Name,
         Image = Image,
         ImageId = "sha256:abc",
-        State = ContainerState.Running,
+        State = State,
         Entrypoint = Entrypoint,
         Cmd = Cmd,
         WorkingDirectory = WorkingDirectory,
@@ -408,6 +427,7 @@ internal sealed class ContainerInspectBuilder
         EnvironmentVariables = EnvironmentVariables,
         Mounts = Mounts,
         Networks = Networks,
+        Ports = Ports,
     };
 }
 

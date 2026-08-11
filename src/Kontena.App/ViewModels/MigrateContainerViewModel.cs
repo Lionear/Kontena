@@ -178,10 +178,7 @@ public sealed partial class MigrateContainerViewModel : ViewModelBase
             _plan = ContainerMigrationPlanner.Plan(
                 new MigrationSource(
                     Container with { Name = ContainerName.Trim() },
-                    _composeSiblings)
-                {
-                    Ports = _summary?.Ports ?? [],
-                },
+                    _composeSiblings),
                 target);
 
             foreach (var note in _plan.Notes)

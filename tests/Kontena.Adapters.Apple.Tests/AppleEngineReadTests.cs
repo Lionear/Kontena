@@ -121,6 +121,23 @@ public sealed class AppleEngineReadTests
         Assert.True(detail.MemoryLimitBytes > 0);
     }
 
+    /// <summary>
+    /// The inspect carries the published ports as well as the list does. Anything that re-creates this
+    /// container reads them there, because on other engines the list only reports them while the
+    /// container runs (KON-369).
+    /// </summary>
+    [Fact]
+    public async Task InspectContainerAsync_carries_the_published_ports()
+    {
+        var runner = Runner("inspect", Fixture("inspect-web.json"));
+
+        var detail = await Engine(runner).InspectContainerAsync("web");
+
+        Assert.Equal(
+            [(8080, 80, "tcp"), (9090, 90, "udp")],
+            detail.Ports.Select(p => (p.HostPort, p.ContainerPort, p.Protocol)));
+    }
+
     [Fact]
     public async Task InspectContainerAsync_joins_the_init_process_into_a_command()
     {

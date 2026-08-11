@@ -85,4 +85,15 @@ public sealed record ContainerInspect
 
     public IReadOnlyList<InspectMount> Mounts { get; init; } = [];
     public IReadOnlyList<InspectNetwork> Networks { get; init; } = [];
+
+    /// <summary>
+    /// The ports this container was created to publish, read from its configuration.
+    /// <para>
+    /// <see cref="ContainerSummary.Ports"/> answers the same question about a <b>running</b>
+    /// container — Docker's list reports no ports at all for one that is stopped. So anything that
+    /// has to re-create this container reads them here, where they survive the container stopping
+    /// (KON-369).
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PortBinding> Ports { get; init; } = [];
 }
