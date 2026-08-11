@@ -335,7 +335,7 @@
                                             </Button>
                                             <Button Classes="qa" Command="{Binding MigrateCommand}" IsVisible="{Binding CanMigrate}"
                                                     ToolTip.Tip="Migrate to another engine">
-                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconExternalLink}"/>
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconMigrate}"/>
                                             </Button>
                                             <Button Classes="qa danger" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove">
                                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Danger}" Data="{StaticResource IconTrash}"/>

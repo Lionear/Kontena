@@ -21,14 +21,34 @@ public sealed class AppleEngineWriteTests
     // ── Create ──────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// A create asks the image which architectures it carries before it builds its command line
+    /// (KON-369), so a runner for these has to answer <c>image</c> as well as <c>create</c>.
+    /// </summary>
+    private static FakeToolRunner Creating(string architecture = "arm64") =>
+        Installed()
+            .When(i => i.Arguments[0] == "image", output: [Inspect(architecture)])
+            .When(_ => true, output: ["web"]);
+
+    /// <summary>One image with one platform variant, in the shape <c>image inspect</c> prints.</summary>
+    private static string Inspect(string architecture) =>
+        $$$"""
+           [{"id":"a","configuration":{"name":"alpine:3.20"},"variants":[{"size":4093973,"platform":{"architecture":"{{{architecture}}}","os":"linux"}}]}]
+           """;
+
+    /// <summary>The create itself, past the image question that now precedes it.</summary>
+    private static IReadOnlyList<string> Created(FakeToolRunner runner) =>
+        runner.Invocations.Single(i => i.Arguments[0] is "create" or "run").Arguments;
+
+    /// <summary>
     /// <c>run</c> narrates before it answers: "[6/6] Starting container" comes out ahead of the name.
     /// Taking the first line would hand the caller a progress message as a container id.
     /// </summary>
     [Fact]
     public async Task CreateContainerAsync_takes_the_id_from_the_last_line()
     {
-        var runner = Installed().When(
-            _ => true, output: ["[5/6] Unpacking init image", "[6/6] Starting container", "web"]);
+        var runner = Installed()
+            .When(i => i.Arguments[0] == "image", output: [Inspect("arm64")])
+            .When(_ => true, output: ["[5/6] Unpacking init image", "[6/6] Starting container", "web"]);
 
         Assert.Equal("web", await Engine(runner).CreateContainerAsync(Request));
     }
@@ -39,19 +59,69 @@ public sealed class AppleEngineWriteTests
     [InlineData(false, "create")]
     public async Task CreateContainerAsync_runs_or_creates_as_asked(bool start, string expected)
     {
-        var runner = Installed().When(_ => true, output: ["web"]);
+        var runner = Creating();
 
         await Engine(runner).CreateContainerAsync(Request with { Start = start });
 
-        var arguments = Assert.Single(runner.Invocations).Arguments;
+        var arguments = Created(runner);
         Assert.Equal(expected, arguments[0]);
         Assert.Equal(start, arguments.Contains("--detach"));
+    }
+
+    /// <summary>
+    /// Without <c>--arch</c> the CLI creates for this host, and an amd64-only image — SQL Server is the
+    /// one that found this — fails with the bare line <c>Error: platform linux/arm64</c>. Measured
+    /// against 1.2.2: naming the architecture the image carries creates it and runs it emulated.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_asks_for_the_architecture_the_image_carries()
+    {
+        var runner = Creating(architecture: "amd64");
+
+        await Engine(runner).CreateContainerAsync(Request);
+
+        Assert.Equal(["--arch", "amd64"], Window(Created(runner), "--arch"));
+    }
+
+    /// <summary>
+    /// An image that has a variant for this host is created without an opinion about architecture. Both
+    /// variants are scripted rather than the host's own, so the assertion holds on every runner.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_says_nothing_about_an_image_that_runs_natively()
+    {
+        var runner = Installed()
+            .When(i => i.Arguments[0] == "image", output: ["""
+                [{"id":"a","configuration":{"name":"alpine:3.20"},"variants":[
+                  {"size":4093973,"platform":{"architecture":"amd64","os":"linux"}},
+                  {"size":4093973,"platform":{"architecture":"arm64","os":"linux"}}]}]
+                """])
+            .When(_ => true, output: ["web"]);
+
+        await Engine(runner).CreateContainerAsync(Request);
+
+        Assert.DoesNotContain("--arch", Created(runner));
+    }
+
+    /// <summary>
+    /// An image the CLI cannot describe must not stop the create: the create's own error is the one
+    /// that says what is wrong, and refusing here would replace it with a worse one.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_still_creates_when_the_image_cannot_be_inspected()
+    {
+        var runner = Installed()
+            .When(i => i.Arguments[0] == "image", exitCode: 1, errorOutput: ["Error: image not found"])
+            .When(_ => true, output: ["web"]);
+
+        Assert.Equal("web", await Engine(runner).CreateContainerAsync(Request));
+        Assert.DoesNotContain("--arch", Created(runner));
     }
 
     [Fact]
     public async Task CreateContainerAsync_passes_every_part_of_the_request()
     {
-        var runner = Installed().When(_ => true, output: ["web"]);
+        var runner = Creating();
 
         await Engine(runner).CreateContainerAsync(new CreateContainerRequest
         {
@@ -63,7 +133,7 @@ public sealed class AppleEngineWriteTests
             Network = "backend",
         });
 
-        var arguments = Assert.Single(runner.Invocations).Arguments;
+        var arguments = Created(runner);
         Assert.Equal(["--name", "web"], Window(arguments, "--name"));
         Assert.Equal(["--publish", "8080:80/tcp"], Window(arguments, "--publish"));
         Assert.Contains("9090:90/udp", arguments);
@@ -83,7 +153,7 @@ public sealed class AppleEngineWriteTests
     [Fact]
     public async Task CreateContainerAsync_passes_command_workdir_user_and_labels()
     {
-        var runner = Installed().When(_ => true, output: ["web"]);
+        var runner = Creating();
 
         await Engine(runner).CreateContainerAsync(new CreateContainerRequest
         {
@@ -95,7 +165,7 @@ public sealed class AppleEngineWriteTests
             Labels = new Dictionary<string, string> { ["role"] = "web" },
         });
 
-        var arguments = Assert.Single(runner.Invocations).Arguments;
+        var arguments = Created(runner);
 
         Assert.Equal(["--entrypoint", "/docker-entrypoint.sh"], Window(arguments, "--entrypoint"));
         Assert.Equal(["--workdir", "/srv"], Window(arguments, "--workdir"));
@@ -115,7 +185,7 @@ public sealed class AppleEngineWriteTests
     [Fact]
     public async Task CreateContainerAsync_folds_a_multi_part_entrypoint_into_the_command()
     {
-        var runner = Installed().When(_ => true, output: ["web"]);
+        var runner = Creating();
 
         await Engine(runner).CreateContainerAsync(new CreateContainerRequest
         {
@@ -124,7 +194,7 @@ public sealed class AppleEngineWriteTests
             Command = ["echo hi"],
         });
 
-        var arguments = Assert.Single(runner.Invocations).Arguments;
+        var arguments = Created(runner);
 
         Assert.Equal(["--entrypoint", "/bin/sh"], Window(arguments, "--entrypoint"));
 
@@ -195,11 +265,11 @@ public sealed class AppleEngineWriteTests
     [Fact]
     public async Task CreateContainerAsync_skips_a_port_with_nothing_to_publish_on()
     {
-        var runner = Installed().When(_ => true, output: ["web"]);
+        var runner = Creating();
 
         await Engine(runner).CreateContainerAsync(Request with { Ports = [new PortBinding(null, 80)] });
 
-        Assert.DoesNotContain("--publish", Assert.Single(runner.Invocations).Arguments);
+        Assert.DoesNotContain("--publish", Created(runner));
     }
 
     /// <summary>

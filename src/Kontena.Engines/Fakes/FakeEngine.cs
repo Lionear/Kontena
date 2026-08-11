@@ -204,6 +204,10 @@ public sealed class FakeEngine : IContainerEngine
             [
                 new InspectNetwork("bridge", running ? "172.17.0.2" : string.Empty, "172.17.0.1"),
             ],
+
+            // From the container's own row, not from whether it happens to run: on a real engine these
+            // come out of the container's configuration and survive it stopping (KON-369).
+            Ports = c.Ports,
         });
     }
 

@@ -96,6 +96,23 @@ public static class ContainerMigrationPlanner
             restartPolicy = RestartPolicy.No;
         }
 
+        var network = container.Networks.Count > 0 ? container.Networks[0].Name : null;
+
+        // A network name is engine-local vocabulary. Docker's default is called "bridge", Apple's is
+        // called "default", and a network someone made themselves exists on one engine only — asking
+        // for a name the target does not have fails the create outright ("network bridge not found").
+        if (network is not null
+            && target.Networks.Count > 0
+            && !target.Networks.Contains(network, StringComparer.Ordinal))
+        {
+            notes.Add(new MigrationNote(MigrationNoteKind.Dropped, "Network",
+                $"The target engine has no network called '{network}', so the container lands on its "
+                + "default network. That is the same thing Docker's built-in 'bridge' is; a network "
+                + "you created yourself has to be created on the target as well."));
+
+            network = null;
+        }
+
         if (container.Networks.Count > 1)
         {
             var dropped = container.Networks.Skip(1).Select(n => n.Name);
@@ -142,10 +159,11 @@ public static class ContainerMigrationPlanner
             Labels = container.Labels,
             Mounts = mounts,
 
-            // Ports are on the summary, not the inspect, so the caller reads them off the list entry
-            // for this same container — without them a web server arrives unpublished.
-            Ports = source.Ports,
-            Network = container.Networks.Count > 0 ? container.Networks[0].Name : null,
+            // From the inspect, which carries what the container was created to publish. The list
+            // entry carries what is bound right now and is empty for a container that is stopped —
+            // which is a container whose web server would then arrive unpublished (KON-369).
+            Ports = container.Ports,
+            Network = network,
             RestartPolicy = restartPolicy,
 
             // Handed back stopped on purpose: starting it is the moment the user finds out whether

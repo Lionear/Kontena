@@ -44,14 +44,7 @@ public sealed record VolumePlan(string Name, bool ExistsOnTarget, bool TargetHas
 /// <c>com.docker.compose.project</c> label. Zero for a container that is not part of a project, and
 /// zero for the last survivor of an old one — which is why it is a count and not a flag.
 /// </param>
-public sealed record MigrationSource(ContainerInspect Container, int ComposeSiblings)
-{
-    /// <summary>
-    /// The container's published ports, which live on <see cref="ContainerSummary"/> rather than on
-    /// the inspect — so the caller reads them off the list entry for the same container.
-    /// </summary>
-    public IReadOnlyList<PortBinding> Ports { get; init; } = [];
-}
+public sealed record MigrationSource(ContainerInspect Container, int ComposeSiblings);
 
 /// <summary>Everything the planner needs to know about where it is going.</summary>
 public sealed record MigrationTarget
@@ -61,6 +54,12 @@ public sealed record MigrationTarget
 
     /// <summary>Container names already taken on the target.</summary>
     public IReadOnlyCollection<string> ContainerNames { get; init; } = [];
+
+    /// <summary>
+    /// Network names the target has. Empty means "not known", which leaves the source's network
+    /// alone — an engine that answers with nothing must not cost every container its network.
+    /// </summary>
+    public IReadOnlyCollection<string> Networks { get; init; } = [];
 
     /// <summary>Volume name → true when it already holds data.</summary>
     public IReadOnlyDictionary<string, bool> Volumes { get; init; } =

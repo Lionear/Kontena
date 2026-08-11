@@ -178,10 +178,7 @@ public sealed partial class MigrateContainerViewModel : ViewModelBase
             _plan = ContainerMigrationPlanner.Plan(
                 new MigrationSource(
                     Container with { Name = ContainerName.Trim() },
-                    _composeSiblings)
-                {
-                    Ports = _summary?.Ports ?? [],
-                },
+                    _composeSiblings),
                 target);
 
             foreach (var note in _plan.Notes)
@@ -201,12 +198,13 @@ public sealed partial class MigrateContainerViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Asks the target what it already has: names in use, which of this container's volumes exist and
-    /// whether they hold anything, and whether the image is there.
+    /// Asks the target what it already has: names in use, the networks it knows, which of this
+    /// container's volumes exist and whether they hold anything, and whether the image is there.
     /// </summary>
     private async Task<MigrationTarget> ProbeTargetAsync(IContainerEngine engine)
     {
         var names = (await engine.ListContainersAsync()).Select(c => c.Name).ToList();
+        var networks = (await engine.ListNetworksAsync()).Select(n => n.Name).ToList();
         var existing = (await engine.ListVolumesAsync()).Select(v => v.Name)
             .ToHashSet(StringComparer.Ordinal);
 
@@ -225,6 +223,7 @@ public sealed partial class MigrateContainerViewModel : ViewModelBase
         {
             Capabilities = engine.Capabilities,
             ContainerNames = names,
+            Networks = networks,
             Volumes = volumes,
             HasImage = await engine.InspectImageAsync(Container.Image) is not null,
         };

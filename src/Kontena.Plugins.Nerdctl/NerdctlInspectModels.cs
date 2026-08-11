@@ -14,6 +14,15 @@ public sealed class NerdctlInspectRestartPolicy
     public string Name { get; init; } = string.Empty;
 }
 
+/// <summary>One host side of a published port, keyed by "&lt;port&gt;/&lt;protocol&gt;" in the map below.</summary>
+public sealed class NerdctlInspectPortBinding
+{
+    public string HostIp { get; init; } = string.Empty;
+
+    /// <summary>A string in this payload, as in Docker's; empty when the engine picks the port.</summary>
+    public string HostPort { get; init; } = string.Empty;
+}
+
 /// <summary>The subset of <c>HostConfig</c> <see cref="NerdctlMap.ToInspect"/> needs.</summary>
 public sealed class NerdctlInspectHostConfig
 {
@@ -21,6 +30,13 @@ public sealed class NerdctlInspectHostConfig
     public long Memory { get; init; }
 
     public NerdctlInspectRestartPolicy RestartPolicy { get; init; } = new();
+
+    /// <summary>
+    /// What the container was created to publish: "8025/tcp" → the host bindings for it. Read from
+    /// here rather than from <c>NetworkSettings.Ports</c>, which is what is bound right now and is
+    /// empty for a stopped container (KON-369).
+    /// </summary>
+    public Dictionary<string, List<NerdctlInspectPortBinding>?> PortBindings { get; init; } = [];
 }
 
 /// <summary>A mount entry — same fields Docker's mapping reads, nerdctl adds more (Mode, Propagation) that are not needed.</summary>

@@ -214,6 +214,48 @@ public sealed class NerdctlMapTests
         Assert.Equal("local-path-provisioner", inspect.Name);
     }
 
+    /// <summary>
+    /// The captured container publishes nothing, and its <c>HostConfig.PortBindings</c> is <c>{}</c> —
+    /// so the key really is in this payload, and an empty one means no ports rather than a mapping the
+    /// adapter failed to read (KON-369).
+    /// </summary>
+    [Fact]
+    public void An_empty_port_bindings_map_means_no_published_ports()
+    {
+        Assert.Empty(Inspect().ToInspect().Ports);
+    }
+
+    /// <summary>
+    /// Populated bindings, constructed the way the other HostConfig edge cases in this file are: the
+    /// capture has none, and this payload is Docker-shaped, so the pairing follows Docker's own.
+    /// </summary>
+    [Fact]
+    public void Published_ports_are_read_from_host_config()
+    {
+        var inspect = new NerdctlInspectContainer
+        {
+            Id = "abc",
+            Config = new NerdctlInspectConfig { Image = "nginx:alpine" },
+            State = new NerdctlInspectState { Status = "exited" },
+            HostConfig = new NerdctlInspectHostConfig
+            {
+                PortBindings = new Dictionary<string, List<NerdctlInspectPortBinding>?>
+                {
+                    ["80/tcp"] =
+                    [
+                        new NerdctlInspectPortBinding { HostIp = "0.0.0.0", HostPort = "8080" },
+                        new NerdctlInspectPortBinding { HostIp = "::", HostPort = "8080" },
+                    ],
+                    // Asked for a random host port: nothing to carry over.
+                    ["443/tcp"] = [new NerdctlInspectPortBinding { HostPort = string.Empty }],
+                },
+            },
+        }.ToInspect();
+
+        var port = Assert.Single(inspect.Ports);
+        Assert.Equal((8080, 80, "tcp"), (port.HostPort, port.ContainerPort, port.Protocol));
+    }
+
     [Fact]
     public void Zero_memory_means_no_limit()
     {

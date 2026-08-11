@@ -1,4 +1,5 @@
 using Kontena.Sdk.Models;
+using System.Globalization;
 
 namespace Kontena.Plugins.Nerdctl;
 
@@ -205,7 +206,41 @@ public static class NerdctlMap
                 : new Dictionary<string, string>(),
             Mounts = mounts,
             Networks = networks,
+            Ports = ConfiguredPorts(inspect.HostConfig.PortBindings),
         };
+    }
+
+    /// <summary>
+    /// The ports a container was created to publish, from <c>HostConfig.PortBindings</c>. A binding
+    /// without a host port is the engine being asked to pick one, and there is nothing to carry over
+    /// from that.
+    /// </summary>
+    private static List<PortBinding> ConfiguredPorts(
+        Dictionary<string, List<NerdctlInspectPortBinding>?> bindings)
+    {
+        var ports = new List<PortBinding>();
+
+        foreach (var (key, hostBindings) in bindings)
+        {
+            var slash = key.IndexOf('/', StringComparison.Ordinal);
+            var number = slash < 0 ? key : key[..slash];
+            var protocol = slash < 0 ? "tcp" : key[(slash + 1)..];
+
+            if (!int.TryParse(number, CultureInfo.InvariantCulture, out var containerPort))
+                continue;
+
+            foreach (var binding in hostBindings ?? [])
+            {
+                if (!int.TryParse(binding.HostPort, CultureInfo.InvariantCulture, out var hostPort))
+                    continue;
+
+                // One key holds the IPv4 and the IPv6 binding of the same mapping.
+                if (!ports.Any(p => p.HostPort == hostPort && p.ContainerPort == containerPort))
+                    ports.Add(new PortBinding(hostPort, containerPort, protocol));
+            }
+        }
+
+        return ports;
     }
 
     /// <summary>

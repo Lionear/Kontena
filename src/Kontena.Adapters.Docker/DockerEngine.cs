@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Formats.Tar;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -1299,7 +1300,44 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 : new Dictionary<string, string>(),
             Mounts = mounts,
             Networks = networks,
+            Ports = MapConfiguredPorts(r),
         };
+    }
+
+    /// <summary>
+    /// The ports a container was created to publish, read from <c>HostConfig.PortBindings</c> rather
+    /// than from what the engine has bound right now. The bound view is empty for a container that is
+    /// stopped, and that is exactly when a migration reads them (KON-369).
+    /// </summary>
+    private static List<KontenaPort> MapConfiguredPorts(ContainerInspectResponse r)
+    {
+        var ports = new List<KontenaPort>();
+
+        foreach (var (key, hostBindings) in r.HostConfig?.PortBindings
+            ?? new Dictionary<string, IList<DockerPortBinding>>())
+        {
+            // "8025/tcp" — the protocol is part of the key, and absent on a key that is a bare number.
+            var slash = key.IndexOf('/', StringComparison.Ordinal);
+            var number = slash < 0 ? key : key[..slash];
+            var protocol = slash < 0 ? "tcp" : key[(slash + 1)..];
+
+            if (!int.TryParse(number, CultureInfo.InvariantCulture, out var containerPort))
+                continue;
+
+            foreach (var binding in hostBindings ?? [])
+            {
+                // No host port means Docker was asked to pick one. There is nothing to carry over, and
+                // inventing a number would publish somewhere the user never chose.
+                if (!int.TryParse(binding?.HostPort, CultureInfo.InvariantCulture, out var hostPort))
+                    continue;
+
+                // One key holds the IPv4 and the IPv6 binding of the same mapping.
+                if (!ports.Any(p => p.HostPort == hostPort && p.ContainerPort == containerPort))
+                    ports.Add(new KontenaPort(hostPort, containerPort, protocol));
+            }
+        }
+
+        return ports;
     }
 
     /// <summary>Docker returns RFC3339 timestamps; a zero value means "never".</summary>
