@@ -1,4 +1,5 @@
 using Kontena.Sdk;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Engines;
 
@@ -76,7 +77,8 @@ public sealed class BackendRegistry
             await backend.PingAsync(ct).ConfigureAwait(false);
             var info = await backend.GetInfoAsync(ct).ConfigureAwait(false);
             var detail = string.IsNullOrEmpty(info.Version) ? info.Endpoint : $"{info.Version} · {info.Endpoint}";
-            return new BackendProbe(provider, true, detail, info.Version);
+            return new BackendProbe(
+                provider, true, detail, info.Version, (info as ClusterInfo)?.Distribution);
         }
         catch
         {
