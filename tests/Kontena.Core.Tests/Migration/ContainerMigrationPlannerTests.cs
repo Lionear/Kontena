@@ -152,6 +152,52 @@ public sealed class ContainerMigrationPlannerTests
     }
 
     /// <summary>
+    /// The name of a network is engine-local vocabulary. Docker's default is "bridge" and Apple's is
+    /// "default", so carrying the name over verbatim made every migrated container fail on
+    /// <c>Error: network bridge not found</c> (KON-369).
+    /// </summary>
+    [Fact]
+    public void A_network_the_target_does_not_have_is_dropped()
+    {
+        var source = new MigrationSource(Container(c => c.Networks =
+            [new InspectNetwork("bridge", "172.17.0.2", "172.17.0.1")]), ComposeSiblings: 0);
+
+        var plan = ContainerMigrationPlanner.Plan(source, Target(t => t.Networks = ["default"]));
+
+        Assert.Null(plan.Request.Network);
+        Assert.Contains(plan.Notes, n =>
+            n.Kind is MigrationNoteKind.Dropped && n.Subject == "Network");
+        Assert.True(plan.CanRun);
+    }
+
+    [Fact]
+    public void A_network_the_target_has_is_carried_over()
+    {
+        var source = new MigrationSource(Container(c => c.Networks =
+            [new InspectNetwork("backend", "10.0.1.2", "10.0.1.1")]), ComposeSiblings: 0);
+
+        var plan = ContainerMigrationPlanner.Plan(source, Target(t => t.Networks = ["default", "backend"]));
+
+        Assert.Equal("backend", plan.Request.Network);
+        Assert.DoesNotContain(plan.Notes, n => n.Subject == "Network");
+    }
+
+    /// <summary>
+    /// A target that named no networks said "I do not know", not "I have none". Reading it the other
+    /// way would take every container's network away on an engine that simply does not list them.
+    /// </summary>
+    [Fact]
+    public void A_target_that_lists_no_networks_leaves_the_network_alone()
+    {
+        var source = new MigrationSource(Container(c => c.Networks =
+            [new InspectNetwork("bridge", "172.17.0.2", "172.17.0.1")]), ComposeSiblings: 0);
+
+        var plan = ContainerMigrationPlanner.Plan(source, Target());
+
+        Assert.Equal("bridge", plan.Request.Network);
+    }
+
+    /// <summary>
     /// Always said, never conditional on labels: two plain containers that address each other by name
     /// are undetectable, so the only honest place for this is a line every migration reads.
     /// </summary>
@@ -373,6 +419,7 @@ internal sealed class MigrationTargetBuilder
     public bool SupportsVolumeTransfer { get; set; } = true;
     public bool HasImage { get; set; } = true;
     public IReadOnlyCollection<string> ContainerNames { get; set; } = [];
+    public IReadOnlyCollection<string> Networks { get; set; } = [];
 
     public IReadOnlyDictionary<string, bool> Volumes { get; set; } =
         new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -386,6 +433,7 @@ internal sealed class MigrationTargetBuilder
             SupportsVolumeTransfer = SupportsVolumeTransfer,
         },
         ContainerNames = ContainerNames,
+        Networks = Networks,
         Volumes = Volumes,
         HasImage = HasImage,
     };

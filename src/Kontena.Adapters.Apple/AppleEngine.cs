@@ -210,8 +210,10 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     public async ValueTask<string> CreateContainerAsync(
         CreateContainerRequest request, CancellationToken ct = default)
     {
+        var architecture = await ForeignArchitectureAsync(request.Image, ct).ConfigureAwait(false);
+
         var stdout = await cli
-            .RunAsync(ct, [.. CreateArguments(request)])
+            .RunAsync(ct, [.. CreateArguments(request, architecture)])
             .ConfigureAwait(false);
 
         var lines = stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
@@ -221,7 +223,48 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
             : throw new EngineException("Apple container created the container but did not name it.");
     }
 
-    private static List<string> CreateArguments(CreateContainerRequest request)
+    /// <summary>
+    /// The architecture to ask for, or null when this host's own will do.
+    /// <para>
+    /// Without <c>--arch</c> the CLI creates for the host, and an image that has no variant for it
+    /// fails with the bare line <c>Error: platform linux/arm64</c> — which is what an amd64-only image
+    /// such as <c>mcr.microsoft.com/mssql/server</c> is (KON-369). Naming the architecture the image
+    /// actually carries runs it under emulation instead, which this runtime does.
+    /// </para>
+    /// <para>
+    /// Every failure to read the image answers null — it is not here yet, or its inspect came back in a
+    /// shape this adapter cannot parse. Both leave the create exactly as it was before this method
+    /// existed, and the create's own error is the one worth reading; refusing here would turn a
+    /// question about the image into a failure to create anything at all.
+    /// </para>
+    /// </summary>
+    private async ValueTask<string?> ForeignArchitectureAsync(string reference, CancellationToken ct)
+    {
+        IReadOnlyList<AppleImage> images;
+
+        try
+        {
+            images = await cli.ListAsync<AppleImage>(ct, "image", "inspect", reference).ConfigureAwait(false);
+        }
+        catch (EngineException)
+        {
+            return null;
+        }
+
+        var variants = (images.Count > 0 ? images[0].Variants ?? [] : [])
+            .Where(v => v.IsRealPlatform)
+            .ToList();
+
+        if (variants.Count == 0 || variants.Exists(v => string.Equals(
+                v.Platform!.Architecture, ToolPlatform.Architecture, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return variants[0].Platform!.Architecture;
+    }
+
+    private static List<string> CreateArguments(CreateContainerRequest request, string? architecture)
     {
         // `create` makes one without starting it; `run --detach` does both. Creating and then starting
         // separately would work too, but it turns one failure into two states to unwind.
@@ -229,6 +272,12 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
 
         if (request.RestartPolicy is not RestartPolicy.No)
             throw new NotSupportedException(RestartPolicyUnsupported);
+
+        if (architecture is { Length: > 0 } arch)
+        {
+            arguments.Add("--arch");
+            arguments.Add(arch);
+        }
 
         if (request.Name is { Length: > 0 } name)
         {

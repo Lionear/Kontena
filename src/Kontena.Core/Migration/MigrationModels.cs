@@ -62,6 +62,12 @@ public sealed record MigrationTarget
     /// <summary>Container names already taken on the target.</summary>
     public IReadOnlyCollection<string> ContainerNames { get; init; } = [];
 
+    /// <summary>
+    /// Network names the target has. Empty means "not known", which leaves the source's network
+    /// alone — an engine that answers with nothing must not cost every container its network.
+    /// </summary>
+    public IReadOnlyCollection<string> Networks { get; init; } = [];
+
     /// <summary>Volume name → true when it already holds data.</summary>
     public IReadOnlyDictionary<string, bool> Volumes { get; init; } =
         new Dictionary<string, bool>(StringComparer.Ordinal);
