@@ -42,6 +42,39 @@ public class BackendProductsTests
         Assert.Equal("kubernetes", BackendProducts.For("kubernetes:prod-eu-west"));
     }
 
+    [Theory]
+    [InlineData("GKE", "google-kubernetes-engine")]
+    [InlineData("EKS", "amazon-eks")]
+    [InlineData("AKS", "azure-kubernetes-service")]
+    public void A_managed_cluster_is_measured_against_its_own_calendar(string distribution, string product)
+    {
+        // The nuance that split KON-95 in the first place: the managed offerings each run their own
+        // support window, and GKE's is not upstream's. Measuring an AKS cluster against upstream would
+        // call it unsupported about a month early — a wrong warning, which is worse than none.
+        Assert.Equal(product, BackendProducts.For("kubernetes:prod-eu-west", distribution));
+    }
+
+    [Theory]
+    [InlineData("kind")]
+    [InlineData("minikube")]
+    [InlineData("k3s")]
+    [InlineData("Kubernetes")]
+    [InlineData(null)]
+    public void A_cluster_that_is_not_a_managed_offering_uses_upstream(string? distribution)
+    {
+        // kind and minikube run upstream Kubernetes exactly, so upstream is not an approximation for
+        // them. k3s tracks upstream minors and nobody publishes its own calendar.
+        Assert.Equal("kubernetes", BackendProducts.For("kubernetes:local", distribution));
+    }
+
+    [Fact]
+    public void A_distribution_never_changes_a_container_engine()
+    {
+        // Distribution is a cluster's word about itself. An engine never has one, and a stray value
+        // must not be able to point Docker at somebody's Kubernetes calendar.
+        Assert.Equal("docker-engine", BackendProducts.For("docker", "GKE"));
+    }
+
     [Fact]
     public void A_backend_nobody_publishes_a_calendar_for_maps_to_nothing()
     {

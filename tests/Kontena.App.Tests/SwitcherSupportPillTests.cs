@@ -5,6 +5,7 @@ using Kontena.Core.Versioning;
 using Kontena.Engines;
 using Kontena.Sdk;
 using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.Tests;
 
@@ -57,13 +58,78 @@ public sealed class SwitcherSupportPillTests : IDisposable
 
     private sealed class Calendar : IReleaseCalendar
     {
+        /// <summary>Which products were asked about — the managed offerings each have their own.</summary>
+        public List<string> Asked { get; } = [];
+
         public ValueTask<IReadOnlyList<ReleaseCycle>?> CyclesAsync(
-            string product, CancellationToken ct = default) =>
-            ValueTask.FromResult<IReadOnlyList<ReleaseCycle>?>(
+            string product, CancellationToken ct = default)
+        {
+            Asked.Add(product);
+
+            return ValueTask.FromResult<IReadOnlyList<ReleaseCycle>?>(
             [
                 new("29", IsMaintained: true, EolFrom: null, Latest: "29.7.2"),
                 new("28", IsMaintained: false, EolFrom: new DateOnly(2026, 5, 13), Latest: "28.5.2"),
+                new("1.34", IsMaintained: true, EolFrom: new DateOnly(2026, 10, 27), Latest: "1.34.10"),
             ]);
+        }
+    }
+
+    private sealed class ClusterEngine(string backend, string version, string distribution) : IBackend
+    {
+        public string Backend => backend;
+
+        public ValueTask PingAsync(CancellationToken ct = default) => ValueTask.CompletedTask;
+
+        public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
+            ValueTask.FromResult<BackendInfo>(new ClusterInfo
+            {
+                Backend = backend,
+                DisplayName = backend,
+                Kind = "Kubernetes",
+                Version = version,
+                Endpoint = "https://cluster.invalid",
+                Distribution = distribution,
+            });
+    }
+
+    private sealed class ClusterProvider(string backend, string version, string distribution) : IBackendProvider
+    {
+        public string Backend => backend;
+        public string DisplayName => backend;
+        public string Chip => "K";
+        public BackendKind Kind => BackendKind.Cluster;
+        public IBackend CreateBackend() => new ClusterEngine(backend, version, distribution);
+    }
+
+    /// <summary>
+    /// A managed cluster is measured against its provider's own window, not upstream's (KON-95).
+    /// Upstream drops 1.34 on 27 October 2026; GKE and AKS each stop on their own date, so upstream
+    /// would call a still-supported cluster unsupported.
+    /// </summary>
+    [Theory]
+    [InlineData("GKE", "google-kubernetes-engine")]
+    [InlineData("AKS", "azure-kubernetes-service")]
+    [InlineData("kind", "kubernetes")]
+    public async Task A_cluster_is_asked_about_under_its_own_distribution(string distribution, string product)
+    {
+        var store = new SettingsStore(_path);
+        var settings = new KontenaSettings { Onboarded = true };
+        store.Save(settings);
+
+        var calendar = new Calendar();
+        var vm = new MainWindowViewModel(
+            new BackendRegistry([new ClusterProvider("kubernetes:prod", "v1.34.4-gke.1043000", distribution)]),
+            store,
+            settings,
+            new FakeUpdateService(),
+            versions: new VersionSupportCheck(calendar, _cache));
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (calendar.Asked.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.Equal(product, Assert.Single(calendar.Asked));
     }
 
     private async Task<MainWindowViewModel> ShellAsync(string version)

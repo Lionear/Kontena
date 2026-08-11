@@ -1062,7 +1062,7 @@ public partial class MainWindowViewModel
             if (ct.IsCancellationRequested)
                 return;
 
-            if (BackendProducts.For(probe.Provider.Backend) is not { } product)
+            if (BackendProducts.For(probe.Provider.Backend, probe.Distribution) is not { } product)
                 continue;
 
             if (await Versions.CheckAsync(product, probe.Version, now, ct) is not { } support)
