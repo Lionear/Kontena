@@ -33,7 +33,7 @@ public sealed class NerdctlEngineCreateTests
             Name = "web",
             Ports = [new PortBinding(8080, 80, "tcp"), new PortBinding(null, 53, "udp")],
             Environment = new Dictionary<string, string> { ["FOO"] = "bar" },
-            Volumes = new Dictionary<string, string> { ["data"] = "/var/data" },
+            Mounts = [new MountSpec(MountSpec.Volume, "data", "/var/data")],
             Network = "mynet",
             RestartPolicy = RestartPolicy.Always,
             Start = false,
@@ -57,6 +57,68 @@ public sealed class NerdctlEngineCreateTests
         Assert.Equal(DummyId, id);
         // Start was false: create must be the only call.
         Assert.Single(runner.Invocations);
+    }
+
+    /// <summary>
+    /// A container carries a command, a workdir, a user and labels, and none of them reached the CLI
+    /// before KON-350 — a migrated container would have run the image's default CMD instead of its
+    /// own. <c>--entrypoint</c> takes one string here and cannot be repeated, so the remaining parts
+    /// move to the front of the command, the same shape the Apple adapter uses.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_passes_command_workdir_user_and_labels()
+    {
+        var runner = Installed().When(_ => true, output: [DummyId]);
+
+        await Engine(runner).CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "nginx:alpine",
+            Entrypoint = ["/docker-entrypoint.sh"],
+            Command = ["nginx", "-g", "daemon off;"],
+            WorkingDirectory = "/srv",
+            User = "999:999",
+            Labels = new Dictionary<string, string> { ["role"] = "web" },
+            Mounts = [new MountSpec(MountSpec.Volume, "data", "/data", ReadOnly: true)],
+            Start = false,
+        });
+
+        var arguments = runner.Invocations[0].Arguments;
+
+        Assert.Contains("--entrypoint", arguments);
+        Assert.Contains("/docker-entrypoint.sh", arguments);
+        Assert.Contains("--workdir", arguments);
+        Assert.Contains("/srv", arguments);
+        Assert.Contains("--user", arguments);
+        Assert.Contains("999:999", arguments);
+        Assert.Contains("role=web", arguments);
+        Assert.Contains("data:/data:ro", arguments);
+
+        var image = Array.IndexOf(arguments.ToArray(), "nginx:alpine");
+        Assert.Equal(["nginx", "-g", "daemon off;"], arguments.Skip(image + 1));
+    }
+
+    /// <summary>
+    /// The parts of a multi-part entry point that <c>--entrypoint</c> cannot carry keep their meaning
+    /// in front of the command: <c>--entrypoint foo image a b</c> runs <c>foo a b</c>.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_folds_a_multi_part_entrypoint_into_the_command()
+    {
+        var runner = Installed().When(_ => true, output: [DummyId]);
+
+        await Engine(runner).CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "alpine:3.20",
+            Entrypoint = ["/bin/sh", "-c"],
+            Command = ["echo hi"],
+            Start = false,
+        });
+
+        var arguments = runner.Invocations[0].Arguments;
+        var image = Array.IndexOf(arguments.ToArray(), "alpine:3.20");
+
+        Assert.Equal(["--entrypoint", "/bin/sh"], arguments.SkipWhile(a => a != "--entrypoint").Take(2));
+        Assert.Equal(["-c", "echo hi"], arguments.Skip(image + 1));
     }
 
     [Fact]

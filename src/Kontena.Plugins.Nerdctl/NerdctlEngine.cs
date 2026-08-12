@@ -64,6 +64,12 @@ public sealed class NerdctlEngine : IContainerEngine
         "exist in this containerd namespace and a pull that the caller never asked for. Neither that " +
         "command nor its output has been captured, so this backend does not offer it.";
 
+    private const string VolumeTransferUnobserved =
+        "Copying a volume's contents needs the same throwaway container browsing does — an image that " +
+        "may not exist in this containerd namespace, and a pull nobody asked for — and it has not been " +
+        "run against a real containerd. Offering it would hand back an archive whose contents were " +
+        "never verified, which on a migration is silent data loss rather than an error.";
+
     /// <summary>
     /// The buildkit candidate sockets nerdctl itself named when it refused to build
     /// (Notes/nerdctl-advanced-formats.md) — <c>/run/buildkit-&lt;namespace&gt;/buildkitd.sock</c> first,
@@ -145,11 +151,17 @@ public sealed class NerdctlEngine : IContainerEngine
         SupportsBuild = _buildkit,
         SupportsCompose = true,
         SupportsExec = false,
+
+        // `nerdctl run --restart` takes the same policy names Docker's CLI does — see MapRestart.
+        SupportsRestartPolicy = true,
         SupportsPrune = true,
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = true,
         SupportsVolumeBrowse = false,
+
+        // Same throwaway container, same missing capture — see VolumeTransferUnobserved.
+        SupportsVolumeTransfer = false,
     };
 
     public ValueTask PingAsync(CancellationToken ct = default) =>
@@ -586,8 +598,10 @@ public sealed class NerdctlEngine : IContainerEngine
         foreach (var (key, value) in request.Environment)
             args.AddRange(["-e", $"{key}={value}"]);
 
-        foreach (var (source, target) in request.Volumes)
-            args.AddRange(["-v", $"{source}:{target}"]);
+        foreach (var mount in request.Mounts)
+            args.AddRange(["-v", mount.ReadOnly
+                ? $"{mount.Source}:{mount.Target}:ro"
+                : $"{mount.Source}:{mount.Target}"]);
 
         if (request.Network is { } network)
             args.AddRange(["--network", network]);
@@ -595,7 +609,25 @@ public sealed class NerdctlEngine : IContainerEngine
         if (request.RestartPolicy != RestartPolicy.No)
             args.AddRange(["--restart", MapRestart(request.RestartPolicy)]);
 
+        // `--entrypoint` takes one string here and cannot be repeated, so a multi-part entry point
+        // puts part 0 in the flag and the rest in front of the command — `--entrypoint foo image a b`
+        // runs `foo a b`, the same shape the Apple adapter builds.
+        if (request.Entrypoint.Count > 0)
+            args.AddRange(["--entrypoint", request.Entrypoint[0]]);
+
+        if (request.WorkingDirectory is { Length: > 0 } workingDirectory)
+            args.AddRange(["--workdir", workingDirectory]);
+
+        if (request.User is { Length: > 0 } user)
+            args.AddRange(["--user", user]);
+
+        foreach (var (key, value) in request.Labels)
+            args.AddRange(["--label", $"{key}={value}"]);
+
         args.Add(request.Image);
+
+        args.AddRange(request.Entrypoint.Skip(1));
+        args.AddRange(request.Command);
 
         return [.. args];
     }
@@ -1016,6 +1048,20 @@ public sealed class NerdctlEngine : IContainerEngine
     public ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default) =>
         throw new NotSupportedException(VolumeBrowseUnobserved);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Refused for the same reason as <see cref="BrowseVolumeAsync"/>: both need a throwaway container
+    /// nobody has captured against a real containerd (<see cref="VolumeTransferUnobserved"/>).
+    /// </remarks>
+    public ValueTask ExportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        throw new NotSupportedException(VolumeTransferUnobserved);
+
+    /// <inheritdoc cref="ExportVolumeAsync"/>
+    public ValueTask ImportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        throw new NotSupportedException(VolumeTransferUnobserved);
 
     /// <summary>
     /// Runs <c>nerdctl volume prune -f --all</c>. <c>--all</c> is not optional here the way it is on

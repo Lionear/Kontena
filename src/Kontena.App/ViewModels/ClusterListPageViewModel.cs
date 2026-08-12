@@ -5,25 +5,46 @@ using Kontena.Sdk.Orchestration.Models;
 namespace Kontena.App.ViewModels;
 
 /// <summary>
-/// The following half of a cluster list page, without its row type. Anything that cares whether a
-/// page is keeping up with the cluster — a check across every page, a shared header — should not
-/// have to know what the page lists to ask.
+/// A cluster page that keeps itself up to date, without its rows. Anything that cares whether a page
+/// is keeping up with the cluster — a check across every page, a shared header — should not have to
+/// know what the page shows to ask.
+/// <para>
+/// Named for being live rather than for being a list since KON-340: the overview and the Workloads
+/// dashboard follow the cluster too, and they have no rows at all.
+/// </para>
 /// </summary>
-public interface IClusterListPage : IDisposable
+public interface IClusterLivePage : IDisposable
 {
-    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.IsLive"/>
+    /// <summary>Whether this page is currently following the cluster rather than a stale snapshot.</summary>
     bool IsLive { get; }
 
-    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.LiveNotice"/>
+    /// <summary>
+    /// Why it is not live, when it is not. Never null-and-silent: a page that has quietly stopped
+    /// moving is indistinguishable from a cluster where nothing is happening, and those two want
+    /// opposite reactions.
+    /// </summary>
     string? LiveNotice { get; }
 
-    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.WatchedKind"/>
-    GroupVersionKind? WatchedKind { get; }
+    /// <summary>
+    /// The kinds this page follows, empty when it has none to follow. Readable because it is a claim
+    /// on the adapter: an adapter with no watcher for one of them hands back an empty stream, and the
+    /// page then blames the cluster for closing something nobody opened.
+    /// </summary>
+    IReadOnlyList<GroupVersionKind> WatchedKinds { get; }
 
-    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.Changed"/>
+    /// <summary>
+    /// Told after a watch event has been folded in, for whatever else on screen was reading the same
+    /// cluster (KON-339). The sidebar's counts sit beside these pages and were not following
+    /// anything, so a workload that appeared showed up next to a badge that still said the old
+    /// number — two figures contradicting each other, which is worse than one that is merely old.
+    /// <para>
+    /// A callback the shell sets, like <c>RequestConfirm</c> elsewhere, rather than the page reaching
+    /// for the counts itself: a page knows what it shows and nothing about what else is drawn.
+    /// </para>
+    /// </summary>
     Action? Changed { get; set; }
 
-    /// <inheritdoc cref="ClusterListPageViewModel{TRow}.StartWatching"/>
+    /// <summary>Start following the cluster. Safe to call more than once.</summary>
     void StartWatching();
 }
 
@@ -44,23 +65,16 @@ public interface IClusterListPage : IDisposable
 /// is what keeps it from showing.
 /// </para>
 /// </summary>
-public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel<TRow>, IClusterListPage
+public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel<TRow>, IClusterLivePage
 {
     private readonly IClusterEngine _cluster;
-    private readonly GroupVersionKind? _kind;
     private readonly string? _namespace;
     private readonly string? _unwatchable;
     private CancellationTokenSource? _watch;
 
-    /// <summary>
-    /// How long to wait after an event before reloading.
-    /// <para>
-    /// A rollout produces a burst — one event per pod, several per pod — and reloading on each would
-    /// be a dozen round trips to draw the same list. Long enough to collapse a burst, short enough
-    /// that it still reads as live.
-    /// </para>
-    /// </summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
+    // Separate from _watch because a cluster that cannot watch hands back no source to hold, and
+    // "already tried" is what makes a second call a no-op rather than a second set of streams.
+    private bool _started;
 
     /// <param name="kind">The kind to follow, or null when this page has no single kind to follow.</param>
     /// <param name="unwatchable">Why not, when <paramref name="kind"/> is null.</param>
@@ -68,96 +82,49 @@ public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel
         IClusterEngine cluster, GroupVersionKind? kind, string? ns, string? unwatchable = null)
     {
         _cluster = cluster;
-        _kind = kind;
         _namespace = ns;
         _unwatchable = unwatchable;
+        WatchedKinds = kind is { } k ? [k] : [];
     }
 
-    /// <summary>
-    /// The kind this page follows, or null when it has none to follow. Readable because it is a claim
-    /// on the adapter: an adapter with no watcher for it hands back an empty stream, and the page
-    /// then blames the cluster for closing something nobody opened.
-    /// </summary>
-    public GroupVersionKind? WatchedKind => _kind;
+    /// <inheritdoc/>
+    public IReadOnlyList<GroupVersionKind> WatchedKinds { get; }
 
-    /// <summary>Whether this page is currently following the cluster rather than a stale snapshot.</summary>
+    /// <inheritdoc/>
     [ObservableProperty] private bool _isLive;
 
-    /// <summary>
-    /// Told after a watch event has been folded in, for whatever else on screen was reading the same
-    /// cluster (KON-339). The sidebar's counts sit beside this list and were not following anything,
-    /// so a workload that appeared showed up as a new row next to a badge that still said the old
-    /// number — two figures contradicting each other, which is worse than one that is merely old.
-    /// <para>
-    /// A callback the shell sets, like <c>RequestConfirm</c> elsewhere, rather than the page reaching
-    /// for the counts itself: a list page knows what it lists and nothing about what else is drawn.
-    /// </para>
-    /// </summary>
+    /// <inheritdoc/>
     public Action? Changed { get; set; }
 
-    /// <summary>
-    /// Why it is not live, when it is not. Never null-and-silent: a list that has quietly stopped
-    /// moving is indistinguishable from a cluster where nothing is happening, and those two want
-    /// opposite reactions.
-    /// </summary>
+    /// <inheritdoc/>
     [ObservableProperty] private string? _liveNotice;
 
-    /// <summary>Start following the cluster. Safe to call more than once.</summary>
+    /// <inheritdoc/>
     public void StartWatching()
     {
-        if (_watch is not null)
+        if (_started)
             return;
 
-        if (_kind is null)
+        _started = true;
+
+        if (WatchedKinds.Count == 0)
         {
             LiveNotice = _unwatchable;
             return;
         }
 
-        if (!_cluster.Capabilities.Watch)
-        {
-            LiveNotice = "This cluster does not support watching, so this list updates when you refresh it.";
-            return;
-        }
-
-        _watch = new CancellationTokenSource();
-        IsLive = true;
-        LiveNotice = null;
-        _ = FollowAsync(_watch.Token);
-    }
-
-    private async Task FollowAsync(CancellationToken ct)
-    {
-        try
-        {
-            await foreach (var _ in _cluster.WatchAsync(_kind!.Value, _namespace, ct))
+        _watch = ClusterWatch.Follow(
+            _cluster, WatchedKinds, _namespace,
+            reload: async () =>
             {
-                // Collapse the burst: keep draining until the stream goes quiet for Settle, then
-                // reload once. Task.Delay is the wait; the enumerator resumes on the UI thread.
-                await Task.Delay(Settle, ct);
                 await LoadAsync();
                 Changed?.Invoke();
-            }
-
-            // The stream ended without being cancelled. An apiserver closes a watch on its own
-            // schedule, and a list that silently stops moving is the failure this notice exists for.
-            if (!ct.IsCancellationRequested)
-                Stopped("The cluster closed the update stream. Refresh to see the current state.");
-        }
-        catch (OperationCanceledException)
-        {
-            // Navigating away. Not a failure and not worth a notice.
-        }
-        catch (Exception failure)
-        {
-            Stopped($"Live updates stopped — {failure.Message}");
-        }
-    }
-
-    private void Stopped(string reason)
-    {
-        IsLive = false;
-        LiveNotice = reason;
+            },
+            onState: (live, notice) =>
+            {
+                IsLive = live;
+                LiveNotice = notice;
+            });
     }
 
     /// <summary>

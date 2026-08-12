@@ -173,4 +173,41 @@ public class EngineConfigCredentialsTests
     [Fact]
     public void Missing_files_are_not_an_error() =>
         Assert.Empty(new EngineConfigCredentials(["/nonexistent/config.json"]).List());
+
+    /// <summary>
+    /// The helper is found in a directory that is not on PATH (KON-358).
+    /// <para>
+    /// This is the macOS case, and the reason the fix exists: launched from Finder or the Dock the app
+    /// reads no shell profile, so <c>/usr/local/bin</c> — where <c>docker-credential-desktop</c> lives —
+    /// is missing from PATH and every private pull silently went out anonymous. The temp directory here
+    /// stands in for it: nothing put it on PATH, so a lookup that only consults PATH cannot find it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_helper_outside_PATH_is_still_found()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kontena-helper-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var helper = Path.Combine(directory, "docker-credential-fake");
+        File.WriteAllText(helper, "");
+
+        try
+        {
+            Assert.Equal(helper, EngineConfigCredentials.HelperPath("fake", [directory]));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_helper_that_is_installed_nowhere_has_no_path() =>
+        Assert.Null(EngineConfigCredentials.HelperPath("kontena-no-such-helper"));
+
+    [Theory]
+    [InlineData("x/../../../tmp/evil")]
+    [InlineData("/tmp/evil")]
+    public void A_path_shaped_helper_name_is_never_resolved(string helper) =>
+        Assert.Null(EngineConfigCredentials.HelperPath(helper));
 }

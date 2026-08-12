@@ -55,6 +55,15 @@
                                     VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
                                 <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                             </Border>
+                            <!-- This backend runs a release its publisher has dropped (KON-370). The
+                                 sentence behind it — which line, and since when — is in the tooltip,
+                                 because the row is a row and not a place to explain things. -->
+                            <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                                    BorderThickness="1" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding IsUnsupported}"
+                                    ToolTip.Tip="{Binding SupportSummary}">
+                                <TextBlock Text="Unsupported" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource WarnText}"/>
+                            </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
@@ -419,21 +428,29 @@
                                  indent would be a second way of saying the same thing (KON-219). -->
                             <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
                                     Command="{Binding Command}" CommandParameter="{Binding Key}">
-                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                                     <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                           Stroke="{Binding $parent[Button].Foreground}"
                                           Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
                                     <TextBlock Grid.Column="1" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
 
+                                    <!-- Not decoration: a user has to be able to see which parts of this
+                                         window are not ours (KON-331). -->
+                                    <Border Grid.Column="2" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
+                                            Padding="5,0" Margin="0,0,7,0" VerticalAlignment="Center"
+                                            IsVisible="{Binding IsPlugin}" ToolTip.Tip="{Binding PluginTip}">
+                                        <TextBlock Text="plugin" FontSize="9.5" Foreground="{DynamicResource TextFaint}"/>
+                                    </Border>
+
                                     <!-- Something on this page fell over; separate from the count, which
                                          says how many are working (KON-107). -->
-                                    <Ellipse Grid.Column="2" Width="7" Height="7" Margin="0,0,7,0"
+                                    <Ellipse Grid.Column="3" Width="7" Height="7" Margin="0,0,7,0"
                                              VerticalAlignment="Center" Fill="{DynamicResource Warn}"
                                              IsVisible="{Binding NeedsAttention}"
                                              ToolTip.Tip="{Binding AttentionTip}"/>
                                     <!-- Only where there is something to count: an empty pill on every
                                          other row is noise that reads as a control (KON-219). -->
-                                    <Border Grid.Column="3" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
+                                    <Border Grid.Column="4" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
                                             Padding="7,1" VerticalAlignment="Center" IsVisible="{Binding HasCount}">
                                         <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>

@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Kontena.Sdk;
 using Kontena.Sdk.Models;
 
@@ -7,9 +8,18 @@ namespace Kontena.TestPlugin;
 /// A real plugin in a real assembly, for the loader tests. It is deliberately not a working engine:
 /// what is under test is that the host finds it, agrees to it, loads it in its own context, and gets
 /// back a provider whose interface type is the host's — not that it can list containers.
+/// <para>
+/// It implements both entry points on one type (KON-331), which is the case worth having a fixture
+/// for: the loader has to register both halves and must not build the plugin twice to do it.
+/// </para>
 /// </summary>
-public sealed class TestPlugin : IEnginePlugin
+public sealed class TestPlugin : IEnginePlugin, IUiPlugin
 {
+    public IEnumerable<PluginPage> GetPages() =>
+    [
+        new PluginPage("tools", "Test tools", "IconBox", _ => new TextBlock { Text = "Test tools" }),
+    ];
+
     public EngineManifest Manifest => new()
     {
         Id = "com.kontena.test",

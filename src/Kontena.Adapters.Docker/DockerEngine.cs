@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Formats.Tar;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -68,16 +69,71 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         SupportsBuild = true,
         SupportsCompose = true,
         SupportsExec = true,
+        SupportsRestartPolicy = true,
         SupportsPrune = true,
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = true,
         SupportsVolumeBrowse = true,
+        SupportsVolumeTransfer = true,
     };
 
-    private static Uri DefaultEndpoint() => OperatingSystem.IsWindows()
+    private static Uri DefaultEndpoint() =>
+        ResolveEndpoint(Environment.GetEnvironmentVariable("DOCKER_HOST"));
+
+    /// <summary>Where the engine listens when nobody said otherwise.</summary>
+    private static Uri PlatformEndpoint() => OperatingSystem.IsWindows()
         ? new Uri("npipe://./pipe/docker_engine")
         : new Uri("unix:///var/run/docker.sock");
+
+    /// <summary>What Docker.DotNet can open a connection to.</summary>
+    private static readonly string[] SupportedSchemes = ["unix", "npipe", "tcp", "http", "https"];
+
+    /// <summary>
+    /// The endpoint <paramref name="dockerHost"/> asks for, or the platform's own when it asks for
+    /// nothing (KON-359).
+    /// <para>
+    /// <c>DOCKER_HOST</c> has to be read here because <see cref="DockerEngineProvider.IsInstalled"/>
+    /// already reads it, and treats it as the strongest signal there is: a user who set it has said
+    /// where their engine lives. Connecting to a fixed path anyway made those two disagree — the
+    /// switcher listed Docker as installed while every call went to a socket that need not exist.
+    /// </para>
+    /// <para>
+    /// Most visible on macOS, where <c>/var/run/docker.sock</c> is not the engine's own socket but a
+    /// symlink Docker Desktop offers behind a password prompt. Decline it and only
+    /// <c>~/.docker/run/docker.sock</c> is left; Colima, OrbStack and Rancher Desktop never create it
+    /// and publish their socket through this variable instead.
+    /// </para>
+    /// <para>
+    /// A value that cannot be connected to throws rather than quietly falling back to the platform
+    /// socket. Falling back would rebuild the very confusion this fixes: the engine would answer from
+    /// somewhere the user did not point at, or fail with "cannot reach Docker" while naming a path they
+    /// never chose.
+    /// </para>
+    /// </summary>
+    internal static Uri ResolveEndpoint(string? dockerHost)
+    {
+        if (string.IsNullOrWhiteSpace(dockerHost))
+            return PlatformEndpoint();
+
+        var value = dockerHost.Trim();
+
+        // ssh:// is a real Docker setup and a common one, but Docker.DotNet cannot speak it — the
+        // transport is a tunnel, which Kontena already builds for remote engines (KON-46). So say that,
+        // rather than reporting it as an endpoint we failed to reach.
+        if (value.StartsWith("ssh://", StringComparison.OrdinalIgnoreCase))
+            throw new EngineUnreachableException(
+                $"DOCKER_HOST is set to \"{value}\". Kontena cannot connect to an engine over ssh from " +
+                "this variable — add it as a remote engine instead, which tunnels the connection for you.");
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !SupportedSchemes.Contains(uri.Scheme, StringComparer.OrdinalIgnoreCase))
+            throw new EngineUnreachableException(
+                $"DOCKER_HOST is set to \"{value}\", which is not an endpoint Kontena can connect to. " +
+                "Supported: unix://, npipe://, tcp://, http:// and https://.");
+
+        return uri;
+    }
 
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         Exec(async () =>
@@ -135,10 +191,22 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 Name = request.Name,
                 Env = request.Environment.Select(kv => $"{kv.Key}={kv.Value}").ToList(),
                 ExposedPorts = exposed,
+
+                // Null rather than an empty list: to this API an empty Cmd means "no command", not
+                // "keep the image's", and that is a container which starts and stops again.
+                Entrypoint = request.Entrypoint.Count > 0 ? request.Entrypoint.ToList() : null,
+                Cmd = request.Command.Count > 0 ? request.Command.ToList() : null,
+                WorkingDir = request.WorkingDirectory,
+                User = request.User,
+                Labels = request.Labels.Count > 0
+                    ? new Dictionary<string, string>(request.Labels)
+                    : null,
                 HostConfig = new HostConfig
                 {
                     PortBindings = bindings,
-                    Binds = request.Volumes.Select(kv => $"{kv.Key}:{kv.Value}").ToList(),
+                    Binds = request.Mounts
+                        .Select(m => m.ReadOnly ? $"{m.Source}:{m.Target}:ro" : $"{m.Source}:{m.Target}")
+                        .ToList(),
                     NetworkMode = request.Network,
                     RestartPolicy = new DockerRestartPolicy { Name = MapRestart(request.RestartPolicy) },
                 },
@@ -456,36 +524,13 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         Exec(async () =>
         {
             var target = NormalizeBrowsePath(path);
-
-            // Any image will do — this container is never started, so nothing in it runs. Preferring a
-            // small one keeps the create cheap on engines that have to unpack layers.
-            var images = await _client.Images.ListImagesAsync(new ImagesListParameters { All = false }, ct)
-                .ConfigureAwait(false);
-            var image = images
-                .Where(i => i.RepoTags?.Count > 0)
-                .OrderBy(i => i.Size)
-                .Select(i => i.RepoTags![0])
-                .FirstOrDefault()
-                ?? throw new EngineException(
-                    "Browsing a volume needs an image to mount it into, and this engine has none. "
-                    + "Pull any image first — nothing from it is run.");
-
-            var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
-            {
-                Image = image,
-                Labels = new Dictionary<string, string> { ["kontena.purpose"] = "volume-browse" },
-                HostConfig = new HostConfig
-                {
-                    AutoRemove = false,
-                    Binds = [$"{name}:{MountPoint}:ro"],
-                },
-            }, ct).ConfigureAwait(false);
+            var id = await CreateVolumeCarrierAsync(name, readOnly: true, ct).ConfigureAwait(false);
 
             try
             {
                 var archivePath = MountPoint + target;
                 var response = await _client.Containers.GetArchiveFromContainerAsync(
-                    created.ID,
+                    id,
                     new GetArchiveFromContainerParameters { Path = archivePath },
                     statOnly: false,
                     ct).ConfigureAwait(false);
@@ -495,20 +540,112 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             }
             finally
             {
-                // The container exists only for the mount, so it goes whatever happened above.
-                try
-                {
-                    await _client.Containers.RemoveContainerAsync(
-                        created.ID, new ContainerRemoveParameters { Force = true }, CancellationToken.None)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Leaving a stopped, never-started container behind is untidy, not harmful, and it
-                    // must not turn a successful listing into an error.
-                }
+                await RemoveVolumeCarrierAsync(id).ConfigureAwait(false);
             }
         });
+
+    /// <summary>
+    /// Writes a volume's contents to a tar on the host. The archive endpoints work on a container that
+    /// was never started — measured against Docker 29.6.1 — so this needs no image to actually run.
+    /// </summary>
+    public ValueTask ExportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var id = await CreateVolumeCarrierAsync(name, readOnly: true, ct).ConfigureAwait(false);
+
+            try
+            {
+                // "/." asks for the *contents* of the mount point, which is what makes the entries
+                // relative to the volume root — the same spelling `docker cp src/. dest` uses.
+                var response = await _client.Containers.GetArchiveFromContainerAsync(
+                    id,
+                    new GetArchiveFromContainerParameters { Path = MountPoint + "/." },
+                    statOnly: false,
+                    ct).ConfigureAwait(false);
+
+                await using var source = response.Stream;
+                await using var file = File.Create(archivePath);
+                await source.CopyToAsync(file, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                await RemoveVolumeCarrierAsync(id).ConfigureAwait(false);
+            }
+        });
+
+    /// <summary>
+    /// Unpacks a tar into a volume. The daemon restores the uid, gid and mode each entry carries, which
+    /// is why the archive is handed over whole instead of copied out onto the host first.
+    /// </summary>
+    public ValueTask ImportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default) =>
+        Exec(async () =>
+        {
+            var id = await CreateVolumeCarrierAsync(name, readOnly: false, ct).ConfigureAwait(false);
+
+            try
+            {
+                await using var file = File.OpenRead(archivePath);
+                await _client.Containers.ExtractArchiveToContainerAsync(
+                    id,
+                    new ContainerPathStatParameters { Path = MountPoint },
+                    file,
+                    ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                await RemoveVolumeCarrierAsync(id).ConfigureAwait(false);
+            }
+        });
+
+    /// <summary>
+    /// A container that exists only to have the volume bound into it, so the archive endpoints have
+    /// somewhere to read from and write to. It is never started: any image will do, and nothing in it
+    /// runs. Preferring a small one keeps the create cheap on engines that have to unpack layers.
+    /// </summary>
+    private async Task<string> CreateVolumeCarrierAsync(string name, bool readOnly, CancellationToken ct)
+    {
+        var images = await _client.Images.ListImagesAsync(new ImagesListParameters { All = false }, ct)
+            .ConfigureAwait(false);
+        var image = images
+            .Where(i => i.RepoTags?.Count > 0)
+            .OrderBy(i => i.Size)
+            .Select(i => i.RepoTags![0])
+            .FirstOrDefault()
+            ?? throw new EngineException(
+                "Reading a volume needs an image to mount it into, and this engine has none. "
+                + "Pull any image first — nothing from it is run.");
+
+        var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
+        {
+            Image = image,
+            Labels = new Dictionary<string, string> { ["kontena.purpose"] = "volume-browse" },
+            HostConfig = new HostConfig
+            {
+                AutoRemove = false,
+                Binds = [readOnly ? $"{name}:{MountPoint}:ro" : $"{name}:{MountPoint}"],
+            },
+        }, ct).ConfigureAwait(false);
+
+        return created.ID;
+    }
+
+    /// <summary>Removes a carrier container, whatever happened to the work it was made for.</summary>
+    private async Task RemoveVolumeCarrierAsync(string id)
+    {
+        try
+        {
+            await _client.Containers.RemoveContainerAsync(
+                id, new ContainerRemoveParameters { Force = true }, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (DockerApiException)
+        {
+            // Leaving a stopped, never-started container behind is untidy, not harmful, and it must
+            // not turn a successful transfer into an error.
+        }
+    }
 
 
     /// <summary>
@@ -1100,7 +1237,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         _ => Kontena.Sdk.Models.RestartPolicy.No,
     };
 
-    private static ContainerInspect MapInspect(ContainerInspectResponse r)
+    internal static ContainerInspect MapInspect(ContainerInspectResponse r)
     {
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var entry in r.Config?.Env ?? [])
@@ -1149,6 +1286,12 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
             Error = r.State?.Error ?? string.Empty,
             RestartPolicy = MapRestart(r.HostConfig?.RestartPolicy?.Name),
             Command = string.Join(" ", command),
+
+            // The joined line above is for display; re-running this container needs the two lists
+            // it was joined from — see ContainerInspect.Entrypoint.
+            Entrypoint = r.Config?.Entrypoint is { } configEntrypoint ? [.. configEntrypoint] : [],
+            Cmd = r.Config?.Cmd is { } configCmd ? [.. configCmd] : [],
+
             WorkingDirectory = r.Config?.WorkingDir ?? string.Empty,
             User = r.Config?.User ?? string.Empty,
             EnvironmentVariables = env,
@@ -1157,7 +1300,44 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
                 : new Dictionary<string, string>(),
             Mounts = mounts,
             Networks = networks,
+            Ports = MapConfiguredPorts(r),
         };
+    }
+
+    /// <summary>
+    /// The ports a container was created to publish, read from <c>HostConfig.PortBindings</c> rather
+    /// than from what the engine has bound right now. The bound view is empty for a container that is
+    /// stopped, and that is exactly when a migration reads them (KON-369).
+    /// </summary>
+    private static List<KontenaPort> MapConfiguredPorts(ContainerInspectResponse r)
+    {
+        var ports = new List<KontenaPort>();
+
+        foreach (var (key, hostBindings) in r.HostConfig?.PortBindings
+            ?? new Dictionary<string, IList<DockerPortBinding>>())
+        {
+            // "8025/tcp" — the protocol is part of the key, and absent on a key that is a bare number.
+            var slash = key.IndexOf('/', StringComparison.Ordinal);
+            var number = slash < 0 ? key : key[..slash];
+            var protocol = slash < 0 ? "tcp" : key[(slash + 1)..];
+
+            if (!int.TryParse(number, CultureInfo.InvariantCulture, out var containerPort))
+                continue;
+
+            foreach (var binding in hostBindings ?? [])
+            {
+                // No host port means Docker was asked to pick one. There is nothing to carry over, and
+                // inventing a number would publish somewhere the user never chose.
+                if (!int.TryParse(binding?.HostPort, CultureInfo.InvariantCulture, out var hostPort))
+                    continue;
+
+                // One key holds the IPv4 and the IPv6 binding of the same mapping.
+                if (!ports.Any(p => p.HostPort == hostPort && p.ContainerPort == containerPort))
+                    ports.Add(new KontenaPort(hostPort, containerPort, protocol));
+            }
+        }
+
+        return ports;
     }
 
     /// <summary>Docker returns RFC3339 timestamps; a zero value means "never".</summary>

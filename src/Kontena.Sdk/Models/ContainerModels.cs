@@ -6,6 +6,23 @@ namespace Kontena.Sdk.Models;
 /// <param name="Protocol">Transport protocol, e.g. "tcp" or "udp".</param>
 public sealed record PortBinding(int? HostPort, int ContainerPort, string Protocol = "tcp");
 
+/// <summary>
+/// One mount to attach to a container: a host path (<see cref="Bind"/>) or a named volume
+/// (<see cref="Volume"/>).
+/// </summary>
+/// <param name="Type">Either <see cref="Bind"/> or <see cref="Volume"/>.</param>
+/// <param name="Source">Host path for a bind, volume name for a volume.</param>
+/// <param name="Target">Path inside the container.</param>
+/// <param name="ReadOnly">True to mount it read-only.</param>
+public sealed record MountSpec(string Type, string Source, string Target, bool ReadOnly = false)
+{
+    /// <summary>A path on the host, passed through as-is.</summary>
+    public const string Bind = "bind";
+
+    /// <summary>A named volume managed by the engine.</summary>
+    public const string Volume = "volume";
+}
+
 /// <summary>Engine-neutral summary of a container as shown in lists.</summary>
 public sealed record ContainerSummary
 {
@@ -68,8 +85,31 @@ public sealed record CreateContainerRequest
     public IReadOnlyDictionary<string, string> Environment { get; init; } =
         new Dictionary<string, string>();
 
-    /// <summary>Volume mounts (source volume/path → container path).</summary>
-    public IReadOnlyDictionary<string, string> Volumes { get; init; } =
+    /// <summary>
+    /// Mounts to attach. Replaces the source→target dictionary this used to be: that shape could not
+    /// express read-only, could not tell a host path from a volume, and collapsed two mounts that
+    /// share one source into one.
+    /// </summary>
+    public IReadOnlyList<MountSpec> Mounts { get; init; } = [];
+
+    /// <summary>
+    /// Entry point to run instead of the image's own. Empty keeps the image's.
+    /// </summary>
+    public IReadOnlyList<string> Entrypoint { get; init; } = [];
+
+    /// <summary>
+    /// Command and arguments to run instead of the image's own. Empty keeps the image's.
+    /// </summary>
+    public IReadOnlyList<string> Command { get; init; } = [];
+
+    /// <summary>Working directory inside the container; the image's own when null.</summary>
+    public string? WorkingDirectory { get; init; }
+
+    /// <summary>User to run as (name, uid, or uid:gid); the image's own when null.</summary>
+    public string? User { get; init; }
+
+    /// <summary>Labels to set on the container.</summary>
+    public IReadOnlyDictionary<string, string> Labels { get; init; } =
         new Dictionary<string, string>();
 
     /// <summary>Network to attach to; engine default when null.</summary>

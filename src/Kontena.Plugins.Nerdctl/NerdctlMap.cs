@@ -1,4 +1,5 @@
 using Kontena.Sdk.Models;
+using System.Globalization;
 
 namespace Kontena.Plugins.Nerdctl;
 
@@ -144,17 +145,20 @@ public static class NerdctlMap
                 env[entry] = string.Empty;
         }
 
-        var command = new List<string>();
-        if (inspect.Config.Entrypoint is { } entrypoint)
-            command.AddRange(entrypoint);
-        if (inspect.Config.Cmd is { } cmd)
-            command.AddRange(cmd);
-        if (command.Count == 0)
+        // Kept apart as well as joined: the joined line is for display, and re-running this container
+        // needs the parts back — a line cannot be split once an argument holds a space (KON-350).
+        List<string> entrypoint = [.. inspect.Config.Entrypoint ?? []];
+        List<string> cmd = [.. inspect.Config.Cmd ?? []];
+        if (entrypoint.Count == 0 && cmd.Count == 0)
         {
+            // A CRI-managed container has its config nowhere but Path/Args.
             if (!string.IsNullOrEmpty(inspect.Path))
-                command.Add(inspect.Path);
-            command.AddRange(inspect.Args);
+                entrypoint.Add(inspect.Path);
+            cmd.AddRange(inspect.Args);
         }
+
+        var command = new List<string>(entrypoint);
+        command.AddRange(cmd);
 
         var mounts = inspect.Mounts
             .Select(m => new InspectMount(m.Type, m.Source, m.Destination, m.RW))
@@ -192,6 +196,8 @@ public static class NerdctlMap
             // above).
             RestartPolicy = MapRestartPolicy(inspect.HostConfig.RestartPolicy.Name),
             Command = string.Join(" ", command),
+            Entrypoint = entrypoint,
+            Cmd = cmd,
             WorkingDirectory = inspect.Config.WorkingDir ?? string.Empty,
             User = inspect.Config.User ?? string.Empty,
             EnvironmentVariables = env,
@@ -200,7 +206,41 @@ public static class NerdctlMap
                 : new Dictionary<string, string>(),
             Mounts = mounts,
             Networks = networks,
+            Ports = ConfiguredPorts(inspect.HostConfig.PortBindings),
         };
+    }
+
+    /// <summary>
+    /// The ports a container was created to publish, from <c>HostConfig.PortBindings</c>. A binding
+    /// without a host port is the engine being asked to pick one, and there is nothing to carry over
+    /// from that.
+    /// </summary>
+    private static List<PortBinding> ConfiguredPorts(
+        Dictionary<string, List<NerdctlInspectPortBinding>?> bindings)
+    {
+        var ports = new List<PortBinding>();
+
+        foreach (var (key, hostBindings) in bindings)
+        {
+            var slash = key.IndexOf('/', StringComparison.Ordinal);
+            var number = slash < 0 ? key : key[..slash];
+            var protocol = slash < 0 ? "tcp" : key[(slash + 1)..];
+
+            if (!int.TryParse(number, CultureInfo.InvariantCulture, out var containerPort))
+                continue;
+
+            foreach (var binding in hostBindings ?? [])
+            {
+                if (!int.TryParse(binding.HostPort, CultureInfo.InvariantCulture, out var hostPort))
+                    continue;
+
+                // One key holds the IPv4 and the IPv6 binding of the same mapping.
+                if (!ports.Any(p => p.HostPort == hostPort && p.ContainerPort == containerPort))
+                    ports.Add(new PortBinding(hostPort, containerPort, protocol));
+            }
+        }
+
+        return ports;
     }
 
     /// <summary>

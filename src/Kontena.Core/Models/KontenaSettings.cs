@@ -112,6 +112,22 @@ public sealed record KontenaSettings
     /// <summary>Whether the first-run onboarding (engine connect) has been completed.</summary>
     public bool Onboarded { get; init; }
 
+    /// <summary>
+    /// Whether this installation has been shown the cluster choice at all (KON-351).
+    /// <para>
+    /// It exists to keep the one-time adoption in <c>AdoptExistingClusters</c> honest. That adoption
+    /// reads "onboarded, but no cluster answers" as "an installation from before Kontena asked", and
+    /// puts every discovered context in the switcher so an update does not empty it. Skipping the
+    /// wizard leaves the same two facts behind, and skipping means "not now" — so without this, the
+    /// next launch turned a declined question into yes to everything.
+    /// </para>
+    /// <para>
+    /// Only ever written going forward, which is what makes it work: an installation that predates
+    /// this field has it false, and is exactly the one adoption is for.
+    /// </para>
+    /// </summary>
+    public bool ClusterChoiceOffered { get; init; }
+
     /// <summary>Start Kontena at login (stored preference; wiring is platform-specific).</summary>
     public bool LaunchAtLogin { get; init; }
 
@@ -178,29 +194,44 @@ public sealed record KontenaSettings
     public IReadOnlyList<string> KubeconfigPaths { get; init; } = [];
 
     /// <summary>
-    /// Plugins the user has agreed to run, as <c>"&lt;id&gt;@&lt;version&gt;"</c>. Until releases are
-    /// signed (KON-53), a dll in the plugins directory is arbitrary code in Kontena's process, so
-    /// nothing loads without an answer here.
+    /// Plugins the user has agreed to run, as <c>"&lt;id&gt;@&lt;version&gt;#&lt;sha256&gt;"</c>. Until
+    /// releases are signed (KON-53), a dll in the plugins directory is arbitrary code in Kontena's
+    /// process, so nothing loads without an answer here.
     /// <para>
-    /// Per id <b>and</b> version on purpose: an update is different bytes, and the permission was given
-    /// for the old ones. It is a weak boundary — a hostile replacement can lie about its own version to
-    /// reuse an answer — and that is exactly the hole the signature check closes. It is not worked
-    /// around here, because a workaround would only look like a boundary.
+    /// The digest is the answer's subject, and the id and version are how a person recognises it
+    /// (KON-362). Keying on id and version alone made this a statement about a name: <c>plugin.json</c>
+    /// is a text file beside the code it describes, so anything able to replace the dll could leave the
+    /// text saying what it said and inherit the answer. The digest is checked on every scan rather than
+    /// once at install, for the reason <c>ManagedToolStore</c> gives about the tools it downloads.
+    /// </para>
+    /// <para>
+    /// Entries written before this carry no <c>#</c> and match nothing, so a plugin allowed under the
+    /// old scheme is asked about once more. That is the honest outcome: there is no record of which
+    /// bytes were agreed to, and inventing one would only look like a boundary.
     /// </para>
     /// </summary>
     public IReadOnlyList<string> AllowedPlugins { get; init; } = [];
 
-    /// <summary>Whether this exact build of this plugin has been agreed to.</summary>
-    public bool AllowsPlugin(string id, string version) =>
-        AllowedPlugins.Contains(PluginKey(id, version), StringComparer.Ordinal);
+    /// <summary>Whether these exact bytes, under this id and version, have been agreed to.</summary>
+    public bool AllowsPlugin(string id, string version, string sha256) =>
+        sha256.Length > 0
+        && AllowedPlugins.Contains(PluginKey(id, version, sha256), StringComparer.Ordinal);
 
-    /// <summary>Record agreement for this exact build, leaving earlier versions recorded.</summary>
-    public KontenaSettings WithAllowedPlugin(string id, string version) =>
-        AllowsPlugin(id, version)
+    /// <summary>
+    /// Whether this id and version were ever agreed to, whatever the bytes were — so the question for
+    /// an assembly that has changed underneath an answer can be asked as the different question it is.
+    /// </summary>
+    public bool KnowsPlugin(string id, string version) =>
+        AllowedPlugins.Any(entry => entry.StartsWith($"{id}@{version}#", StringComparison.Ordinal));
+
+    /// <summary>Record agreement for these exact bytes, leaving earlier answers recorded.</summary>
+    public KontenaSettings WithAllowedPlugin(string id, string version, string sha256) =>
+        AllowsPlugin(id, version, sha256)
             ? this
-            : this with { AllowedPlugins = [.. AllowedPlugins, PluginKey(id, version)] };
+            : this with { AllowedPlugins = [.. AllowedPlugins, PluginKey(id, version, sha256)] };
 
-    private static string PluginKey(string id, string version) => $"{id}@{version}";
+    private static string PluginKey(string id, string version, string sha256) =>
+        $"{id}@{version}#{sha256}";
 
     /// <summary>
     /// Names the user gave a backend, keyed by backend id (KON-119). Empty means "use what the source
@@ -262,6 +293,7 @@ public sealed record KontenaSettings
     /// <summary>Enable programming-font ligatures in the terminal.</summary>
     public bool TerminalLigatures { get; init; } = true;
 
+
     /// <summary>
     /// How wide the detail drawer is, in layout pixels (KON-307). Dragged rather than chosen in
     /// Settings: how much of the list you want to keep in view depends on the list, and the answer
@@ -291,6 +323,37 @@ public sealed record KontenaSettings
 
 /// <summary>Terminal font settings resolved for a session (family carries a mono fallback).</summary>
 public sealed record TerminalFont(string Family, double Size, bool Ligatures);
+
+/// <summary>
+/// What the pod-detail usage charts can and cannot reach (KON-345).
+/// <para>
+/// No placement setting: the sparkline in the header and the Metrics tab are both always there.
+/// They answer different questions — one is a glance, the other is where you go to dig — so making
+/// them alternatives only forced a choice between two things you want at once.
+/// </para>
+/// </summary>
+public static class UsageGraphs
+{
+    /// <summary>
+    /// The furthest back the in-session buffer is kept. Not a display choice: sampling every 15s,
+    /// an hour of history is 240 points held per open pod for a chart nobody asked to see, and
+    /// anything past the buffer belongs to a real history source anyway (KON-84).
+    /// </summary>
+    public static readonly TimeSpan LiveBuffer = TimeSpan.FromMinutes(15);
+
+    /// <summary>Ranges the range selector offers, in minutes.</summary>
+    public static readonly IReadOnlyList<int> Ranges = [5, 15, 60, 360, 1440, 10080];
+
+    /// <summary>What a pod opens on — the whole buffer, so nothing sampled is hidden by default.</summary>
+    public const int DefaultRangeMinutes = 15;
+
+    /// <summary>Whether a range is reachable from the live buffer alone.</summary>
+    public static bool IsLive(int minutes) => minutes <= LiveBuffer.TotalMinutes;
+
+    /// <summary>The range to actually chart — never further back than the buffer can answer.</summary>
+    public static TimeSpan Range(int minutes) =>
+        TimeSpan.FromMinutes(Math.Clamp(minutes, 1, (int)LiveBuffer.TotalMinutes));
+}
 
 /// <summary>
 /// One port forward as it is remembered between launches: what it pointed at and which ports it

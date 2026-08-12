@@ -120,4 +120,10 @@ public partial class ContainerRowViewModel : ContainerListRowViewModel
 
     [RelayCommand]
     private void Remove() => _parent.ConfirmRemove(this);
+
+    /// <summary>Only where there is a second engine to migrate to — see ContainersViewModel.</summary>
+    public bool CanMigrate => _parent.HasMigrationTargets;
+
+    [RelayCommand]
+    private void Migrate() => _parent.RequestMigrateContainer?.Invoke(Id);
 }

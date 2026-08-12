@@ -20,6 +20,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kontena.Core\Kontena.Core.csproj" />
+
+    <!-- Test-only: FakeEngine is what the migration runner's tests run against. Kontena.Core itself
+         does not reference Kontena.Engines, and this must not become the reason it starts to. -->
+    <ProjectReference Include="..\..\src\Kontena.Engines\Kontena.Engines.csproj" />
   </ItemGroup>
 
 </Project>

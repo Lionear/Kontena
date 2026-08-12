@@ -26,7 +26,7 @@ namespace Kontena.Adapters.Kubernetes;
 /// designed around.
 /// </para>
 /// </summary>
-public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDisposable
+public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IDisposable
 {
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
@@ -38,6 +38,7 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     private ClusterCapabilities _capabilities;
 
     private readonly string? _kubeconfigPath;
+    private readonly PrometheusSource _history;
 
     /// <param name="context">The kube-context to connect through.</param>
     /// <param name="kubeconfigPath">The kubeconfig it came from, or null for the default one (KON-118).</param>
@@ -46,10 +47,15 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         _context = context;
         _kubeconfigPath = string.IsNullOrWhiteSpace(kubeconfigPath) ? null : kubeconfigPath;
         _contexts = [.. Kubeconfig.LoadContexts(_kubeconfigPath)];
-        _client = new k8s.Kubernetes(Kubeconfig.ConfigFor(context, _kubeconfigPath));
+        var client = new k8s.Kubernetes(Kubeconfig.ConfigFor(context, _kubeconfigPath));
+        _client = client;
         _metrics = new ClusterMetrics(
             new MetricsServerSource(_client),
             new KubeletSummarySource(_client, NodeNamesAsync));
+
+        // The raw HttpClient rather than a generated operation: the service proxy has to carry a
+        // query string through to Prometheus, and the generated method has nowhere to put one.
+        _history = new PrometheusSource(client.HttpClient, client.BaseUri, client);
         _resources = new ApiResourceResolver(_client);
         _apply = new KubernetesApply(_client, _resources);
 
@@ -80,6 +86,9 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
     public IReadOnlyList<KubeContext> Contexts => _contexts;
 
     public IMetricsSource Metrics => _metrics;
+
+    /// <summary>Where the past comes from, when the cluster keeps one (KON-345).</summary>
+    public IMetricsHistory History => _history;
 
     // ── Identity & health ────────────────────────────────────────────────────
 
@@ -471,6 +480,8 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "Pod", "Service", "Node", "Namespace",
         "Deployment", "StatefulSet", "DaemonSet",
         "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
+        "ConfigMap", "Secret", "Event",
+        "Job", "CronJob",
     };
 
     /// <summary>
@@ -503,6 +514,26 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IDi
         "PersistentVolumeClaim" => Box(ns is null
             ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
             : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),
+        // The batch kinds, missing since KON-250 (KON-344). The per-kind Jobs page always claimed to
+        // follow batch/v1 Job, got an empty stream back, and blamed the cluster for closing it.
+        "Job" => Box(ns is null
+            ? _client.BatchV1.WatchListJobForAllNamespacesAsync(cancellationToken: ct)
+            : _client.BatchV1.WatchListNamespacedJobAsync(ns, cancellationToken: ct)),
+        "CronJob" => Box(ns is null
+            ? _client.BatchV1.WatchListCronJobForAllNamespacesAsync(cancellationToken: ct)
+            : _client.BatchV1.WatchListNamespacedCronJobAsync(ns, cancellationToken: ct)),
+        "ConfigMap" => Box(ns is null
+            ? _client.CoreV1.WatchListConfigMapForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedConfigMapAsync(ns, cancellationToken: ct)),
+        // Only the metadata travels either way — the watch carries what the listing carries, and the
+        // page holds key names and sizes, never a value (KON-249).
+        "Secret" => Box(ns is null
+            ? _client.CoreV1.WatchListSecretForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedSecretAsync(ns, cancellationToken: ct)),
+        // Core v1, matching ListEventsAsync above rather than events.k8s.io.
+        "Event" => Box(ns is null
+            ? _client.CoreV1.WatchListEventForAllNamespacesAsync(cancellationToken: ct)
+            : _client.CoreV1.WatchListNamespacedEventAsync(ns, cancellationToken: ct)),
         // Cluster-scoped, so no namespaced variant to choose between.
         "PersistentVolume" => Box(_client.CoreV1.WatchListPersistentVolumeAsync(cancellationToken: ct)),
         "StorageClass" => Box(_client.StorageV1.WatchListStorageClassAsync(cancellationToken: ct)),

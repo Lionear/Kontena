@@ -46,8 +46,12 @@ public sealed class TitleBarDoubleTapTests
     [Theory]
     [InlineData(WindowState.Minimized)]
     [InlineData(WindowState.FullScreen)]
-    public void States_with_no_title_bar_to_click_do_nothing(WindowState state)
+    public void States_the_double_click_has_no_answer_for_do_nothing(WindowState state)
     {
+        // Minimised has no title bar on screen to hit. Full screen does have ours drawn in it since
+        // KON-361, and is still left alone on purpose: macOS zooms on a title-bar double-click, it does
+        // not leave full screen, and inventing that gesture here would make the window behave unlike
+        // every other one on the machine.
         Assert.Null(TitleBarDoubleTap.Resolve(state, state));
     }
 }

@@ -6,6 +6,26 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/icon.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+
+    <!--
+      Ship native code alongside the IL, so the first run of a method does not wait for the JIT
+      (KON-357). Startup is where that bill lands: nothing in the app is warm yet, and the whole
+      window is drawn, the kubeconfigs parsed and the first backend contacted by code that has never
+      run. Measured on linux-x64, five runs each, published exactly as the build workflow does:
+
+        first pixels    1572 ms -> 1019 ms
+        usable shell    3649 ms -> 2326 ms
+
+      It costs size — 48.6 MB compressed to 62.6 MB — which is a real trade and the reason this is
+      written down rather than switched on quietly. A third off every launch, forever, against 14 MB
+      once per install and per full update.
+
+      Only with a RuntimeIdentifier: ReadyToRun compiles for a target it has to be told, and a
+      publish without one (the plugin projects, a local `dotnet publish`) would fail rather than
+      quietly skip. Cross-publishing is not a concern here — the workflow builds each RID on its own
+      operating system.
+    -->
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != ''">true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,6 +62,7 @@
     <ProjectReference Include="..\Kontena.Core\Kontena.Core.csproj" />
     <ProjectReference Include="..\Kontena.Core.Orchestration\Kontena.Core.Orchestration.csproj" />
     <ProjectReference Include="..\Kontena.Engines\Kontena.Engines.csproj" />
+    <ProjectReference Include="..\Kontena.Adapters.Apple\Kontena.Adapters.Apple.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Docker\Kontena.Adapters.Docker.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Podman\Kontena.Adapters.Podman.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Kubernetes\Kontena.Adapters.Kubernetes.csproj" />

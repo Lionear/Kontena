@@ -17,6 +17,8 @@ public sealed class FakeEngine : IContainerEngine
     private readonly Dictionary<string, ImageSummary> _images = [];
     private readonly Dictionary<string, VolumeSummary> _volumes = [];
     private readonly Dictionary<string, NetworkSummary> _networks = [];
+    private readonly List<CreateContainerRequest> _createdRequests = [];
+    private readonly Dictionary<string, IReadOnlyList<MountSpec>> _createdMounts = [];
     private int _idSeed = 1000;
     private readonly string _backend;
     private readonly string _displayName;
@@ -38,14 +40,21 @@ public sealed class FakeEngine : IContainerEngine
 
     public string Backend => _backend;
 
-    public EngineCapabilities Capabilities { get; } = new()
+    /// <summary>
+    /// Everything on, so a caller sees the full UI by default. Settable because "what does this screen
+    /// do against an engine that cannot do X" is a question only a fake can answer cheaply — the real
+    /// adapters each hard-code their own answer.
+    /// </summary>
+    public EngineCapabilities Capabilities { get; init; } = new()
     {
         Rootless = true,
         SupportsBuild = true,
         SupportsCompose = true,
         SupportsExec = true,
+        SupportsRestartPolicy = true,
         SupportsPrune = true,
         SupportsVolumeBrowse = true,
+        SupportsVolumeTransfer = true,
         SupportsGpu = false,
         SupportsStats = true,
         SupportsEvents = true,
@@ -76,9 +85,29 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.FromResult(list);
     }
 
+    /// <summary>Every request this fake was asked to create, in order. Read by migration tests.</summary>
+    public IReadOnlyList<CreateContainerRequest> CreatedRequests => _createdRequests;
+
+    /// <summary>
+    /// Name of a method that should throw instead of doing its work, e.g.
+    /// <c>nameof(IContainerEngine.CreateContainerAsync)</c>. The only way to walk a caller's failure
+    /// path without a second fake standing next to this one.
+    /// </summary>
+    public string? FailOn { get; set; }
+
+    /// <summary>Throws when <see cref="FailOn"/> names the caller.</summary>
+    private void FailIfAsked([CallerMemberName] string method = "")
+    {
+        if (string.Equals(FailOn, method, StringComparison.Ordinal))
+            throw new EngineException($"{method} was asked to fail by the test that set FailOn.");
+    }
+
     public ValueTask<string> CreateContainerAsync(
         CreateContainerRequest request, CancellationToken ct = default)
     {
+        FailIfAsked();
+        _createdRequests.Add(request);
+
         var id = NextId();
         var summary = new ContainerSummary
         {
@@ -88,10 +117,15 @@ public sealed class FakeEngine : IContainerEngine
             State = request.Start ? ContainerState.Running : ContainerState.Created,
             Status = request.Start ? "Up now" : "Created",
             Ports = request.Ports,
+            Labels = request.Labels,
             CreatedAt = DateTimeOffset.UtcNow,
             Backend = Backend,
         };
         _containers[id] = summary;
+
+        // Remembered so the inspect describes this container rather than the demo one: a fake that
+        // reports mounts nobody asked for makes anything reading them untestable.
+        _createdMounts[id] = request.Mounts;
         return ValueTask.FromResult(id);
     }
 
@@ -154,14 +188,26 @@ public sealed class FakeEngine : IContainerEngine
                 ["maintainer"] = "NGINX Docker Maintainers",
                 ["com.kontena.demo"] = "true",
             },
-            Mounts =
-            [
-                new InspectMount("volume", $"{c.Name}-data", "/var/lib/data", ReadWrite: true),
-            ],
+            // A container this fake was asked to create reports what it was asked for; the seeded
+            // demo ones keep their one made-up volume.
+            Mounts = _createdMounts.TryGetValue(id, out var created)
+                ?
+                [
+                    .. created.Select(m => new InspectMount(
+                        m.Type, m.Source, m.Target, ReadWrite: !m.ReadOnly)),
+                ]
+                :
+                [
+                    new InspectMount("volume", $"{c.Name}-data", "/var/lib/data", ReadWrite: true),
+                ],
             Networks =
             [
                 new InspectNetwork("bridge", running ? "172.17.0.2" : string.Empty, "172.17.0.1"),
             ],
+
+            // From the container's own row, not from whether it happens to run: on a real engine these
+            // come out of the container's configuration and survive it stopping (KON-369).
+            Ports = c.Ports,
         });
     }
 
@@ -365,6 +411,32 @@ public sealed class FakeEngine : IContainerEngine
         };
 
         return ValueTask.FromResult(new VolumeListing(normalized, entries, Truncated: false));
+    }
+
+    /// <summary>Volume name → its contents, as the migration tests stand them up and read them back.</summary>
+    public IDictionary<string, byte[]> VolumeContents { get; } =
+        new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Writes a real file, so a caller's staging, ordering and cleanup are exercised for real instead
+    /// of against a method that only remembers it was called.
+    /// </summary>
+    public async ValueTask ExportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default)
+    {
+        FailIfAsked();
+        await File.WriteAllBytesAsync(
+            archivePath,
+            VolumeContents.TryGetValue(name, out var content) ? content : [],
+            ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc cref="ExportVolumeAsync"/>
+    public async ValueTask ImportVolumeAsync(
+        string name, string archivePath, CancellationToken ct = default)
+    {
+        FailIfAsked();
+        VolumeContents[name] = await File.ReadAllBytesAsync(archivePath, ct).ConfigureAwait(false);
     }
 
     public ValueTask RemoveVolumeAsync(string name, bool force = false, CancellationToken ct = default)

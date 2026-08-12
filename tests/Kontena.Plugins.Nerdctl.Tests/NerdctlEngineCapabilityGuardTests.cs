@@ -84,6 +84,21 @@ public sealed class NerdctlEngineCapabilityGuardTests
         [
             e => e.BrowseVolumeAsync("v").AsTask(),
         ],
+        [nameof(EngineCapabilities.SupportsVolumeTransfer)] =
+        [
+            e => e.ExportVolumeAsync("v", "/tmp/v.tar").AsTask(),
+            e => e.ImportVolumeAsync("v", "/tmp/v.tar").AsTask(),
+        ],
+        [nameof(EngineCapabilities.SupportsRestartPolicy)] =
+        [
+            // The policy has to be a real one: `No` is what every engine does anyway, so a request
+            // carrying it would pass this probe even on an engine that cannot honour any other.
+            e => e.CreateContainerAsync(new CreateContainerRequest
+            {
+                Image = "alpine",
+                RestartPolicy = RestartPolicy.Always,
+            }).AsTask(),
+        ],
         [nameof(EngineCapabilities.SupportsStats)] =
         [
             async e =>
@@ -143,6 +158,13 @@ public sealed class NerdctlEngineCapabilityGuardTests
                 catch (NotSupportedException)
                 {
                     threwNotSupported = true;
+                }
+                catch (Exception)
+                {
+                    // Any other failure is this runner being a stub, not the flag being wrong — which is
+                    // what the remarks above already promise this test ignores. CreateContainerAsync is
+                    // the case that made the promise real: it has to read an id back, and an
+                    // empty-output runner cannot give it one.
                 }
 
                 Assert.True(

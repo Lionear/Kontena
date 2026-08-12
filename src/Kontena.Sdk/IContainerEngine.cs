@@ -31,6 +31,12 @@ public interface IContainerEngine : IBackend
         bool all = true, CancellationToken ct = default);
 
     /// <summary>Create (and optionally start) a container. Returns its id.</summary>
+    /// <remarks>
+    /// A <see cref="CreateContainerRequest.RestartPolicy"/> other than <see cref="Models.RestartPolicy.No"/>
+    /// requires <see cref="EngineCapabilities.SupportsRestartPolicy"/>. An engine without one must throw
+    /// rather than drop the policy: accepting it silently hands back a container the caller believes will
+    /// come back after a crash.
+    /// </remarks>
     ValueTask<string> CreateContainerAsync(
         CreateContainerRequest request, CancellationToken ct = default);
 
@@ -123,6 +129,26 @@ public interface IContainerEngine : IBackend
     /// <remarks>Requires <see cref="EngineCapabilities.SupportsVolumeBrowse"/>.</remarks>
     ValueTask<VolumeListing> BrowseVolumeAsync(
         string name, string path = "/", CancellationToken ct = default);
+
+    /// <summary>
+    /// Writes a volume's contents to a tar archive at <paramref name="archivePath"/> on the host.
+    /// <para>
+    /// A tar and not an unpacked directory, because ownership has to survive the trip: a host
+    /// filesystem writes those files as the logged-in user, so a volume owned by uid 999 would arrive
+    /// as somebody else and the container that needs it would not start. A tar carries uid, gid and
+    /// mode, and is unpacked back inside a container, where root can restore them.
+    /// </para>
+    /// <para>Entries are relative to the volume root — <c>./data/file</c>, never <c>/mnt/data/file</c>.</para>
+    /// </summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsVolumeTransfer"/>.</remarks>
+    ValueTask ExportVolumeAsync(string name, string archivePath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Unpacks a tar archive written by <see cref="ExportVolumeAsync"/> into a volume, which must
+    /// already exist. Existing files with the same paths are overwritten; nothing else is removed.
+    /// </summary>
+    /// <remarks>Requires <see cref="EngineCapabilities.SupportsVolumeTransfer"/>.</remarks>
+    ValueTask ImportVolumeAsync(string name, string archivePath, CancellationToken ct = default);
 
     /// <summary>Remove all volumes not used by any container.</summary>
     ValueTask<PruneResult> PruneVolumesAsync(CancellationToken ct = default);

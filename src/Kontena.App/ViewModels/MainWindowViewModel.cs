@@ -8,6 +8,7 @@ using Kontena.Sdk.Tooling;
 using Kontena.Engines.Fakes;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Core.Versioning;
 using Kontena.Engines;
 using Kontena.Engines.Plugins;
 
@@ -22,8 +23,15 @@ namespace Kontena.App.ViewModels;
 /// made it the place where unrelated branches met (KON-139).
 /// </para>
 /// </summary>
-public partial class MainWindowViewModel : ViewModelBase, IDisposable
+public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHost
 {
+    /// <summary>
+    /// What a plugin page is lent while it is built (KON-331). Explicit, because this is a seam for
+    /// plugins and not part of how the shell talks to itself — and it reads <c>_cluster</c> live, so a
+    /// page opened after a backend switch gets the cluster that is open now.
+    /// </summary>
+    IClusterEngine? IPluginHost.Cluster => _cluster;
+
     private readonly BackendRegistry _registry;
     private readonly IToolRunner _toolRunner;
     private readonly BackendCatalog.CatalogBuilder _buildCatalog;
@@ -37,6 +45,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private IReadOnlyList<DiscoveredPlugin> _plugins;
     // Where AskPluginConsent's OnConfirm re-scans — see the pluginRoot constructor parameter.
     private readonly string _pluginRoot;
+    private readonly TimeSpan _probeGrace;
     private readonly ClusterTerminals _terminals = new();
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
@@ -80,13 +89,25 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// pointing at a real directory would either find nothing (a machine with no plugins folder) or the
     /// developer's actual plugins (a machine with one) — neither is what a test of the consent flow
     /// itself is asking about.</param>
+    /// <param name="probeGrace">How long startup waits for the probe round before carrying on without
+    /// the stragglers — see <see cref="ProbeRoundGrace"/>, which is what this defaults to. A test that
+    /// is about the carrying-on passes something short, because the alternative is a suite that sleeps
+    /// for two seconds to watch one branch.</param>
+    /// <param name="versions">Where release calendars are read from (KON-370). Null — the default —
+    /// says nothing about any version, so a test never reaches the network by accident. A constructor
+    /// parameter rather than an init property because <c>InitAsync</c> starts from here and would read
+    /// an init property before it was assigned.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
         BackendCatalog.CatalogBuilder? buildCatalog = null,
         IReadOnlyList<DiscoveredPlugin>? plugins = null,
-        string? pluginRoot = null)
+        string? pluginRoot = null,
+        TimeSpan? probeGrace = null,
+        VersionSupportCheck? versions = null)
     {
+        Versions = versions;
+        _probeGrace = probeGrace ?? ProbeRoundGrace;
         // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
         // seam to its own dialog host means those read like every other confirm in the app rather
         // than hand-rolling a second ConfirmViewModel next to ShowConfirm.
@@ -107,6 +128,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _updateService = updateService ?? new VelopackUpdateService();
 
         NavGroups = [];
+        // Before the nav is built: SetEngineNav appends what the plugins contribute (KON-331), and an
+        // empty snapshot here would build a sidebar that only a later rebuild would correct.
+        _plugins = plugins ?? [];
         SetEngineNav();
         _portForwards.Changed += OnPortForwardsChanged;
 
@@ -133,7 +157,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Activity = new ActivityViewModel(_activityLog);
 
         SyncThemeToggleIcon();
-        _plugins = plugins ?? [];
         _pluginRoot = pluginRoot ?? PluginLoader.DefaultRoot;
         _ = InitAsync();
     }

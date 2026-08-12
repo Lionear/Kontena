@@ -3,6 +3,7 @@ using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Controls;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
@@ -59,6 +60,44 @@ public sealed partial class ClusterNodeDetailViewModel : ClusterObjectDetailView
         CanMaintain = cluster.Capabilities.NodeMaintenance && onCordon is not null;
 
         Skew = VersionSkewPolicy.Evaluate(apiServerVersion, node.KubeletVersion);
+
+        // Disk gets a chart here and nowhere else: the kubelet is the only source that reports it,
+        // and a node is the only thing it is reported for. No history metric for any of the three —
+        // node-exporter keys its series by scrape address, not by node name (KON-347).
+        // Allocatable is the ceiling a node is read against, and the one number that turns "8.1
+        // cores" into "8.1 of 16".
+        List<UsageChartSpec> charts =
+        [
+            new("CPU", UsageChartUnit.Millicores, "Primary", UsageMetric.Cpu, "millicores",
+                cap.CpuMillicores > 0 ? cap.CpuMillicores : null,
+                cap.CpuMillicores > 0 ? $"allocatable {cap.CpuMillicores}m" : null),
+            new("Memory", UsageChartUnit.Bytes, "Accent", UsageMetric.Memory, "working set",
+                cap.MemoryBytes > 0 ? cap.MemoryBytes : null,
+                cap.MemoryBytes > 0 ? $"allocatable {Format.Size(cap.MemoryBytes)}" : null),
+        ];
+
+        // Disk has no stored series: only the kubelet reports it, so it stays on the live buffer
+        // and its own axis says so.
+        if (node.Usage?.DiskUsedBytes is not null)
+            charts.Add(new UsageChartSpec("Disk", UsageChartUnit.Bytes, "Info", null, "used"));
+
+        ConfigureUsage(charts, UsageTarget.Node(node.Name),
+            caveat: "Node history comes from node-exporter, which counts memory as total minus "
+                    + "available where the kubelet reports a working set. Expect roughly a tenth of "
+                    + "a difference from the live figure above.",
+            sample: async ct =>
+        {
+            if (cluster is not IMetricsAware aware)
+                return null;
+
+            var usage = await aware.Metrics.GetNodeUsageAsync(ct).ConfigureAwait(false);
+            if (!usage.TryGetValue(node.Name, out var mine))
+                return null;
+
+            return charts.Count == 3
+                ? [mine.CpuMillicores, mine.MemoryBytes, mine.DiskUsedBytes ?? 0]
+                : [mine.CpuMillicores, mine.MemoryBytes];
+            });
 
         _ = LoadPodsAsync();
     }
@@ -173,6 +212,25 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
 
         _cluster = cluster;
         _onOpenKind = onOpenKind;
+
+        // Everything in the namespace, summed. Live from the pod snapshot the metrics source
+        // already answers with, and from Prometheus for the longer ranges (KON-347).
+        ConfigureUsage(
+            [
+                new UsageChartSpec("CPU", UsageChartUnit.Millicores, "Primary", UsageMetric.Cpu, "millicores"),
+                new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", UsageMetric.Memory, "working set"),
+            ],
+            UsageTarget.Namespaced(ns.Name),
+            async ct =>
+            {
+                if (cluster is not IMetricsAware aware)
+                    return null;
+
+                var pods = await aware.Metrics.GetPodUsageAsync(ns.Name, ct).ConfigureAwait(false);
+                return pods.Count == 0
+                    ? null
+                    : [pods.Sum(p => (double)p.CpuMillicores), pods.Sum(p => (double)p.MemoryBytes)];
+            });
 
         Phase = ns.Phase;
         Age = Format.Duration(ns.Age);

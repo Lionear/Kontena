@@ -4,6 +4,7 @@ using System.Threading;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.App.Controls;
 using Kontena.App.Services;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
@@ -95,6 +96,24 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
         foreach (var c in all)
             ContainerRows.Add(new PodContainerRow(c));
+
+        // The declared ceiling, when every container has one. A partial sum would be a limit the
+        // pod does not actually have, so a single unlimited container means no line at all.
+        var limits = all.Select(c => c.MemoryLimitBytes).ToList();
+        double? memoryLimit = limits.Count > 0 && limits.All(l => l is > 0)
+            ? limits.Sum(l => l!.Value)
+            : null;
+
+        Usage = new UsageTrackViewModel(
+            [
+                new UsageChartSpec("CPU", UsageChartUnit.Millicores, "Primary", UsageMetric.Cpu, "millicores"),
+                new UsageChartSpec("Memory", UsageChartUnit.Bytes, "Accent", UsageMetric.Memory, "working set",
+                    memoryLimit,
+                    memoryLimit is { } cap ? $"limit {ByteSize.Format((long)cap)}" : null),
+            ],
+            UsageTarget.Pod(pod.Namespace, pod.Name),
+            cluster is IMetricsHistoryAware historyAware ? historyAware.History : null,
+            cluster is IMetricsAware metricsAware ? metricsAware.Metrics.Name : "the metrics source");
 
         Start();
     }
@@ -276,6 +295,17 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     [ObservableProperty] private string _cpuText = "—";
     [ObservableProperty] private string _memText = "—";
 
+    // ── Usage graphs (KON-345) ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Both the header sparklines and the Metrics tab, or neither. They are not alternatives: the
+    /// sparkline answers "is it steady", the tab answers "what happened at 14:02". Only a cluster
+    /// with no metrics source has neither.
+    /// </summary>
+    public bool ShowUsageGraphs => SupportsMetrics;
+
+    public UsageTrackViewModel Usage { get; }
+
     // ── Tabs ─────────────────────────────────────────────────────────────────
 
     [ObservableProperty] private string _selectedTab = "overview";
@@ -286,6 +316,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         OnPropertyChanged(nameof(IsLogsSelected));
         OnPropertyChanged(nameof(IsShellSelected));
         OnPropertyChanged(nameof(IsEventsSelected));
+        OnPropertyChanged(nameof(IsMetricsSelected));
         OnPropertyChanged(nameof(IsYamlSelected));
         OnPropertyChanged(nameof(IsTerminalSelected));
 
@@ -299,6 +330,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     public bool IsLogsSelected => SelectedTab == "logs";
     public bool IsShellSelected => SelectedTab == "shell";
     public bool IsEventsSelected => SelectedTab == "events";
+    public bool IsMetricsSelected => SelectedTab == "metrics";
     public bool IsYamlSelected => SelectedTab == "yaml";
 
     [RelayCommand]
@@ -523,7 +555,13 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         _ = LoadEventsAsync();
 
         if (SupportsMetrics && IsRunning)
+        {
             _ = StreamMetricsAsync(_cts.Token);
+
+            // Lazily, and never blocking the page: a cluster with no Prometheus should cost nothing
+            // more than one refused request, and the ranges light up if and when it answers.
+            _ = Usage.ProbeAsync(_cts.Token);
+        }
 
         if (_cluster.Capabilities.Watch)
             _ = FollowForGoneAsync(_cts.Token);
@@ -588,6 +626,11 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
             {
                 CpuText = $"{m.CpuMillicores}m";
                 MemText = Format.Size(m.MemoryBytes);
+
+                // Fall back to arrival time: a source that leaves Timestamp unset would otherwise
+                // hand every sample the same instant, and UsageSeries drops those as duplicates.
+                var at = m.Timestamp == default ? DateTimeOffset.UtcNow : m.Timestamp;
+                Usage.Add(at, m.CpuMillicores, m.MemoryBytes);
             }
         }
         catch (OperationCanceledException) { /* page closed */ }
@@ -728,3 +771,9 @@ public sealed class PodEventRow
     public bool IsWarning { get; }
     public IBrush SeverityBrush { get; }
 }
+
+/// <summary>
+/// One button in the usage-graph range selector (KON-345). <paramref name="IsAvailable"/> is false
+/// for the ranges only a history source can answer; those stay on screen, disabled.
+/// </summary>
+public sealed record UsageRangeOption(int Minutes, string Label, bool IsAvailable, bool IsSelected);

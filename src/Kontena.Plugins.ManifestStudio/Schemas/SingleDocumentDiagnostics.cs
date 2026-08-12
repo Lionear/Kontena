@@ -14,14 +14,10 @@ public static class SingleDocumentDiagnostics
         if (schema is null)
             return [];
 
-        var outline = YamlOutline.Parse(document);
-        var apiVersion = outline.Children.FirstOrDefault(c => c.Key == "apiVersion")?.InlineValue;
-        var kind = outline.Children.FirstOrDefault(c => c.Key == "kind")?.InlineValue;
-        if (apiVersion is null || kind is null)
+        if (ManifestKind.Of(document) is not { } declared)
             return [];
 
-        var (group, version) = ManifestDiagnostics.SplitApiVersion(apiVersion);
-        var schemas = new Dictionary<GroupVersionKind, JsonSchemaNode?> { [new(group, version, kind)] = schema };
+        var schemas = new Dictionary<GroupVersionKind, JsonSchemaNode?> { [declared] = schema };
 
         return ManifestDiagnostics.Validate(document, schemas);
     }

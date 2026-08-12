@@ -33,6 +33,18 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     [RelayCommand]
     private void RunTemplate(string image) => RequestRunContainer?.Invoke(image);
 
+    /// <summary>Raised when a row's "Migrate to…" is chosen; the shell shows the migrate modal.</summary>
+    public Action<string>? RequestMigrateContainer { get; set; }
+
+    /// <summary>
+    /// Whether there is a second engine backend to migrate to at all. False hides the action rather
+    /// than offering one that can only end in "there is nowhere to put this".
+    /// </summary>
+    public bool HasMigrationTargets { get; init; }
+
+    [RelayCommand]
+    private void MigrateContainer(string id) => RequestMigrateContainer?.Invoke(id);
+
     /// <summary>Raised when the Pull image button is clicked; the shell shows the Pull modal.</summary>
     public Action? RequestPullImage { get; set; }
 

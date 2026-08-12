@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
+using Kontena.Plugins.ManifestStudio.Schemas;
 using Kontena.Plugins.ManifestStudio.Views;
 using Kontena.Plugins.ManifestStudio.Workspace;
 
@@ -40,6 +41,48 @@ public sealed class WorkspaceViewTests(HeadlessSessionFixture headless) : IDispo
         Settle();
         return (window, view, vm);
     }
+
+    /// <summary>
+    /// The schema the editor validates against comes from the index the workspace was handed
+    /// (KON-296): the document says what it is, the index answers, and neither KON-290's completion nor
+    /// KON-291's diagnostics can light up before that hand-off works.
+    /// </summary>
+    [Fact]
+    public Task The_editor_is_given_the_schema_for_the_kind_the_document_declares() =>
+        headless.Session.Dispatch(
+            () =>
+            {
+                var source = new Schemas.FakeClusterSchemaSource("v1.31.0");
+                source.Documents[("apps", "v1")] = """
+                {
+                  "components": {
+                    "schemas": {
+                      "io.k8s.api.apps.v1.Deployment": {
+                        "type": "object",
+                        "x-kubernetes-group-version-kind":
+                          [{ "group": "apps", "version": "v1", "kind": "Deployment" }]
+                      }
+                    }
+                  }
+                }
+                """;
+
+                var (_, view, _) = Show();
+                view.Schemas = new SchemaIndex(source);
+
+                view.Editor.Text = "apiVersion: apps/v1\nkind: Deployment\n";
+                Settle();
+
+                Assert.NotNull(view.Editor.Schema);
+
+                // A keystroke that leaves apiVersion/kind alone must not re-ask the cluster: resolving
+                // per keystroke would put a request on the wire for every character typed.
+                view.Editor.Text = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n";
+                Settle();
+
+                Assert.Equal(1, source.RequestCount);
+            },
+            CancellationToken.None);
 
     [Fact]
     public Task Double_tapping_a_file_node_opens_it_as_a_tab() =>

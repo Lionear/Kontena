@@ -11,6 +11,57 @@ public class FakeEngineTests
 {
     private static FakeEngine NewEngine() => new();
 
+    /// <summary>
+    /// The migration runner's tests assert what it asked the engine to do, so the fake has to
+    /// remember it. A fake that accepts everything and records nothing lets any ordering bug through.
+    /// </summary>
+    [Fact]
+    public async Task CreateContainerAsync_records_the_request_it_was_given()
+    {
+        var engine = NewEngine();
+
+        await engine.CreateContainerAsync(new CreateContainerRequest
+        {
+            Image = "alpine:3.20",
+            Name = "web",
+            Start = false,
+            Mounts = [new MountSpec(MountSpec.Volume, "data", "/data")],
+        });
+
+        var recorded = Assert.Single(engine.CreatedRequests);
+        Assert.Equal("web", recorded.Name);
+        Assert.False(recorded.Start);
+        Assert.Equal("data", Assert.Single(recorded.Mounts).Source);
+    }
+
+    /// <summary>
+    /// The fake writes and reads a real file, so the migration runner's tests exercise the real path:
+    /// staging directory, archive per volume, deletion afterwards. A fake that only remembers a name
+    /// would let a missing file through.
+    /// </summary>
+    [Fact]
+    public async Task Volume_contents_round_trip_through_an_archive()
+    {
+        var engine = NewEngine();
+        var archive = Path.Combine(Path.GetTempPath(), $"kon350-{Guid.NewGuid():N}.tar");
+
+        engine.VolumeContents["src"] = [1, 2, 3];
+        await engine.CreateVolumeAsync(new CreateVolumeRequest { Name = "dst" });
+
+        try
+        {
+            await engine.ExportVolumeAsync("src", archive);
+            Assert.True(File.Exists(archive));
+
+            await engine.ImportVolumeAsync("dst", archive);
+            Assert.Equal<byte[]>([1, 2, 3], engine.VolumeContents["dst"]);
+        }
+        finally
+        {
+            File.Delete(archive);
+        }
+    }
+
     [Fact]
     public void Capabilities_advertise_expected_flags()
     {

@@ -29,6 +29,13 @@ public sealed class PluginLoaderTests : IDisposable
         Path.Combine(AppContext.BaseDirectory, "hostile-plugin-fixture");
 
     /// <summary>
+    /// The UI-only fixture, built by <c>tests/Kontena.UiTestPlugin</c>: an assembly with an
+    /// <c>IUiPlugin</c> and no <c>IEnginePlugin</c> at all (KON-331).
+    /// </summary>
+    private static string UiFixtureDirectory =>
+        Path.Combine(AppContext.BaseDirectory, "ui-plugin-fixture");
+
+    /// <summary>
     /// A directory outside <see cref="_root"/> entirely — sibling, not nested — so an escape test that
     /// points a manifest at it is not also scanned by <c>Discover(_root, …)</c> as a plugin directory of
     /// its own.
@@ -91,9 +98,45 @@ public sealed class PluginLoaderTests : IDisposable
         return dir;
     }
 
-    /// <summary>Write a plugin directory containing only a manifest — no assembly.</summary>
+    /// <summary>Copy the built UI-only fixture into the plugins root and give it a manifest.</summary>
+    private string InstallUiFixture(string id = "com.kontena.uitest")
+    {
+        var dir = Path.Combine(_root, id);
+        Directory.CreateDirectory(dir);
+
+        foreach (var file in Directory.GetFiles(UiFixtureDirectory))
+            File.Copy(file, Path.Combine(dir, Path.GetFileName(file)), overwrite: true);
+
+        File.WriteAllText(Path.Combine(dir, "plugin.json"), JsonSerializer.Serialize(new
+        {
+            id,
+            name = "UI Test Plugin",
+            version = "1.0.0",
+            author = "Kontena",
+            description = "A plugin that contributes pages.",
+            minSdkVersion = "0.1.0",
+            assembly = "Kontena.UiTestPlugin.dll",
+        }));
+
+        return dir;
+    }
+
+    /// <summary>
+    /// Write a plugin directory: a manifest, and a stand-in file where it says the assembly is.
+    /// <para>
+    /// The stand-in is not a loadable assembly and is not meant to be — these tests are about the
+    /// decisions taken before anything loads. It has to exist, though: since KON-362 a directory whose
+    /// assembly is absent is rejected outright rather than left waiting for consent, because there is
+    /// nothing to give consent about. Pass <paramref name="writeAssembly"/> false for the tests that
+    /// want that rejection.
+    /// </para>
+    /// </summary>
     private string WriteManifest(
-        string id, string version = "1.0.0", string minSdk = "0.1.0", string assembly = "Nothing.dll")
+        string id,
+        string version = "1.0.0",
+        string minSdk = "0.1.0",
+        string assembly = "Nothing.dll",
+        bool writeAssembly = true)
     {
         var dir = Path.Combine(_root, id);
         Directory.CreateDirectory(dir);
@@ -107,6 +150,10 @@ public sealed class PluginLoaderTests : IDisposable
             minSdkVersion = minSdk,
             assembly,
         }));
+
+        if (writeAssembly && !Path.IsPathRooted(assembly))
+            File.WriteAllText(Path.Combine(dir, assembly), "not a real assembly");
+
         return dir;
     }
 
@@ -173,20 +220,91 @@ public sealed class PluginLoaderTests : IDisposable
         WriteManifest("com.kontena.test", version: "2.0.0");
 
         var found = Assert.Single(PluginLoader.Discover(
-            _root, m => m.Id == "com.kontena.test" && m.Version == "1.0.0"));
+            _root, c => c.Manifest.Id == "com.kontena.test" && c.Manifest.Version == "1.0.0"));
 
         Assert.Equal(PluginStatus.AwaitingConsent, found.Status);
     }
 
     [Fact]
+    public void An_assembly_that_changed_under_an_answer_is_asked_about_again()
+    {
+        // The hole KON-362 closes: an answer recorded for one dll used to cover any dll that kept the
+        // same id and version, because plugin.json is a text file beside the code it describes.
+        //
+        // Deliberately not the loadable fixture: this test rewrites the assembly between two scans, and
+        // Windows holds a file it has loaded. Nothing here needs the file to be real — the digest is
+        // taken before anything decides whether to load it.
+        var directory = WriteManifest("com.kontena.test", assembly: "Plugin.dll");
+        var assembly = Path.Combine(directory, "Plugin.dll");
+        File.WriteAllText(assembly, "the build the user saw");
+
+        var agreed = Sha256Of(assembly);
+
+        // What settings hold after the user answers: the id and version they recognised it by, and the
+        // digest of what they were answering about.
+        bool Allowed(PluginCandidate c) =>
+            c.Manifest.Id == "com.kontena.test"
+            && c.Manifest.Version == "1.0.0"
+            && c.Sha256 == agreed;
+
+        // Past the consent gate — this stand-in is not loadable, so it is rejected further along, and
+        // what matters here is only that it was not stopped at the question.
+        // (That the digest travels out on a plugin that does load is
+        // A_loaded_plugin_reports_the_digest_it_was_allowed_on.)
+        var before = Assert.Single(PluginLoader.Discover(_root, Allowed));
+        Assert.NotEqual(PluginStatus.AwaitingConsent, before.Status);
+
+        // Same directory, same manifest, same id, same version — different code.
+        File.WriteAllText(assembly, "something else entirely");
+
+        var after = Assert.Single(PluginLoader.Discover(_root, Allowed));
+
+        Assert.Equal(PluginStatus.AwaitingConsent, after.Status);
+        Assert.NotEqual(agreed, after.Sha256);
+        Assert.Empty(after.Providers);
+    }
+
+    [Fact]
+    public void A_loaded_plugin_reports_the_digest_it_was_allowed_on()
+    {
+        // The prompt records what the scan hashed rather than hashing again on confirm, so the value
+        // has to travel out on the result.
+        var directory = InstallFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Equal(Sha256Of(Path.Combine(directory, "Kontena.TestPlugin.dll")), found.Sha256);
+    }
+
+    private static string Sha256Of(string path)
+    {
+        using var file = File.OpenRead(path);
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(file));
+    }
+
+    [Fact]
     public void A_missing_assembly_is_rejected_rather_than_thrown()
     {
-        WriteManifest("com.kontena.test", assembly: "NotThere.dll");
+        WriteManifest("com.kontena.test", assembly: "NotThere.dll", writeAssembly: false);
 
         var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
 
         Assert.Equal(PluginStatus.Rejected, found.Status);
         Assert.NotNull(found.Reason);
+    }
+
+    [Fact]
+    public void A_missing_assembly_is_rejected_rather_than_left_waiting_for_consent()
+    {
+        // Even with nothing agreed to: the prompt asks whether to run an assembly, and there is none
+        // here to run. Awaiting consent would mean the same unanswerable question every launch.
+        WriteManifest("com.kontena.test", assembly: "NotThere.dll", writeAssembly: false);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => false));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Equal(string.Empty, found.Sha256);
     }
 
     [Fact]
@@ -376,5 +494,33 @@ public sealed class PluginLoaderTests : IDisposable
         Assert.Equal(PluginStatus.Rejected, found.Status);
         Assert.NotNull(found.Reason);
         Assert.Empty(found.Providers);
+    }
+
+    [Fact]
+    public void A_plugin_that_contributes_only_pages_loads()
+    {
+        // Manifest Studio's shape (KON-331): no IEnginePlugin anywhere in the assembly. That used to be
+        // the loader's rejection reason, so this is the test that says a plugin need not be an engine.
+        InstallUiFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Empty(found.Providers);
+        var page = Assert.Single(found.Pages);
+        Assert.Equal("editor", page.Key);
+        Assert.Equal("Editor", page.Label);
+    }
+
+    [Fact]
+    public void A_plugin_that_contributes_both_registers_both()
+    {
+        InstallFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Single(found.Providers);
+        Assert.Single(found.Pages);
     }
 }

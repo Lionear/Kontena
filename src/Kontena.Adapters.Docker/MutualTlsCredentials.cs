@@ -53,8 +53,14 @@ internal sealed class MutualTlsCredentials : Credentials
             ? X509CertificateLoader.LoadPkcs12(pair.Export(X509ContentType.Pkcs12), password: null)
             : pair;
 
+        // CreateFromPem, not CreateFromPemFile: the single-argument file overload looks for the private
+        // key in that same file and throws when it is not there. A ca.pem is a certificate and nothing
+        // else, so every standard DOCKER_CERT_PATH directory took that throw — which is to say the CA
+        // was never loaded and a TLS endpoint with one never connected (KON-368).
         var caPath = Path.Combine(directory, "ca.pem");
-        var authority = File.Exists(caPath) ? X509Certificate2.CreateFromPemFile(caPath) : null;
+        var authority = File.Exists(caPath)
+            ? X509Certificate2.CreateFromPem(File.ReadAllText(caPath))
+            : null;
 
         return new MutualTlsCredentials(client, authority);
     }
@@ -78,15 +84,19 @@ internal sealed class MutualTlsCredentials : Credentials
     /// Accepts the server only when the chain ends at the CA from <c>ca.pem</c>. Everything else about the
     /// chain — expiry, signatures — is still checked; the CA is added as a trusted root for this
     /// connection only, rather than the check being skipped.
+    /// <para>
+    /// Every certificate goes through that, including one the platform was already happy with (KON-366).
+    /// It used to return early on <c>SslPolicyErrors.None</c>, which means "this chains to a root in the
+    /// machine store" — a different claim from the one <c>ca.pem</c> makes, and a weaker one: anyone who
+    /// can get a certificate for that host from any public CA would have passed, which is the outcome
+    /// someone naming their own CA is trying to rule out.
+    /// </para>
     /// </summary>
-    private bool ValidateAgainstAuthority(
+    internal bool ValidateAgainstAuthority(
         object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors)
     {
         if (certificate is null || _authority is null)
             return false;
-
-        if (errors == SslPolicyErrors.None)
-            return true;
 
         // A name mismatch is not something to wave through: it is the one error that means "this is not the
         // host you asked for".
@@ -101,6 +111,10 @@ internal sealed class MutualTlsCredentials : Credentials
             ChainPolicy =
             {
                 TrustMode = X509ChainTrustMode.CustomRootTrust,
+
+                // A CA minted for one Docker daemon publishes neither a CRL nor an OCSP responder, so
+                // asking would fail every connection rather than catch anything. Revocation for this
+                // shape of trust is removing ca.pem.
                 RevocationMode = X509RevocationMode.NoCheck,
             },
         };
