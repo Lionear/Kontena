@@ -265,6 +265,40 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
     }
 
+    // ── Namespace picker (KON-373) ───────────────────────────────────────────
+    //
+    // An AutoCompleteBox filters, which is why it is here, but it is a text box underneath: its text
+    // is whatever you have typed so far, and it drops its own SelectedItem on every keystroke. Two-way
+    // binding it would set SelectedNamespace to null halfway through a word — one cluster reload per
+    // key. So the binding runs out of the view model only, and these three handlers are the way back
+    // in: nothing but a real pick reaches SelectedNamespace, and half-typed text never outlives focus.
+
+    /// <summary>Open on the whole list, the way the ComboBox before it did — clicking a picker should
+    /// show what there is to pick, not the one entry that happens to match the current name.</summary>
+    private void OnNamespacePickerGotFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not AutoCompleteBox picker || picker.IsDropDownOpen)
+            return;
+
+        picker.Text = string.Empty;
+        picker.IsDropDownOpen = true;
+    }
+
+    /// <summary>A pick — and only a pick, never the null the control writes while you type.</summary>
+    private void OnNamespacePicked(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is AutoCompleteBox { SelectedItem: string ns } && DataContext is MainWindowViewModel vm)
+            vm.SelectedNamespace = ns;
+    }
+
+    /// <summary>Leaving with "kube-sys" typed in shows a filter that is not running. Put the selection
+    /// back; setting it is what restores the text.</summary>
+    private void OnNamespacePickerLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is AutoCompleteBox picker && DataContext is MainWindowViewModel vm)
+            picker.SelectedItem = vm.SelectedNamespace;
+    }
+
     // The drawer grows leftwards, so a drag towards the left — a negative X — widens it (KON-307).
     // The clamp and the saving live in the view model; this only turns a gesture into a delta.
     private void OnDetailResize(object? sender, VectorEventArgs e)

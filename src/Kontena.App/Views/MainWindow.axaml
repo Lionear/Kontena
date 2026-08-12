@@ -107,8 +107,10 @@
     </Window.Resources>
 
     <Window.Styles>
-        <!-- Flat search input: the wrapping Border supplies the frame -->
-        <Style Selector="TextBox.bare">
+        <!-- Flat search input: the wrapping Border supplies the frame. The second selector is the
+             text box inside the namespace picker's AutoCompleteBox (KON-373) — the same flat input,
+             one control deeper. -->
+        <Style Selector="TextBox.bare, AutoCompleteBox.bare /template/ TextBox#PART_TextBox">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
@@ -123,15 +125,18 @@
                  surface in PaletteContrastTests. -->
             <Setter Property="PlaceholderForeground" Value="{DynamicResource TextFaint}"/>
         </Style>
-        <Style Selector="TextBox.bare /template/ Border#PART_BorderElement">
+        <Style Selector="TextBox.bare /template/ Border#PART_BorderElement,
+                         AutoCompleteBox.bare /template/ TextBox#PART_TextBox /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
-        <Style Selector="TextBox.bare:pointerover /template/ Border#PART_BorderElement">
+        <Style Selector="TextBox.bare:pointerover /template/ Border#PART_BorderElement,
+                         AutoCompleteBox.bare /template/ TextBox#PART_TextBox:pointerover /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
-        <Style Selector="TextBox.bare:focus /template/ Border#PART_BorderElement">
+        <Style Selector="TextBox.bare:focus /template/ Border#PART_BorderElement,
+                         AutoCompleteBox.bare /template/ TextBox#PART_TextBox:focus /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
@@ -503,15 +508,37 @@
                     </Border>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <!-- Namespace picker — only in cluster mode -->
+                        <!-- Namespace picker — only in cluster mode.
+                             A fixed width, like the search box on the left. The ComboBox that was here
+                             measured itself on the selected name, so every switch resized the picker and
+                             shoved the refresh and theme buttons sideways (KON-373).
+                             An AutoCompleteBox rather than a ComboBox because the list this filters is
+                             as long as the cluster has namespaces, and scrolling was the only way through
+                             it. It is a text box, so the selection is not its own truth: SelectedNamespace
+                             stays that, the binding runs one way out of the view model, and the code-behind
+                             commits only a real pick. Half-typed text is thrown away on the way out. -->
                         <Border IsVisible="{Binding IsClusterMode}" Background="{DynamicResource Bg}"
                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource RadiusSm}"
-                                Height="34" Padding="10,0" VerticalAlignment="Center">
+                                Height="34" Padding="10,0" VerticalAlignment="Center"
+                                ToolTip.Tip="{Binding SelectedNamespace}">
                             <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                 <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}"
                                       Data="{StaticResource IconBox}" VerticalAlignment="Center"/>
-                                <ComboBox ItemsSource="{Binding Namespaces}" SelectedItem="{Binding SelectedNamespace, Mode=TwoWay}"
-                                          MinWidth="150" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"/>
+                                <AutoCompleteBox x:Name="NamespacePicker" Classes="bare" Width="180"
+                                                 ItemsSource="{Binding Namespaces}"
+                                                 SelectedItem="{Binding SelectedNamespace, Mode=OneWay}"
+                                                 FilterMode="Contains" MinimumPrefixLength="0"
+                                                 IsTextCompletionEnabled="False"
+                                                 Watermark="Filter namespaces…" VerticalAlignment="Center"
+                                                 GotFocus="OnNamespacePickerGotFocus"
+                                                 LostFocus="OnNamespacePickerLostFocus"
+                                                 SelectionChanged="OnNamespacePicked">
+                                    <AutoCompleteBox.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding}"/>
+                                        </DataTemplate>
+                                    </AutoCompleteBox.ItemTemplate>
+                                </AutoCompleteBox>
                             </StackPanel>
                         </Border>
                         <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="{Binding RefreshTooltip}">
