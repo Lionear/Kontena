@@ -665,7 +665,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     }
 
     public ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Service>>(_services.Where(s => Match(ns, s.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Service>>(
+            nameof(ListServicesAsync), _services.Where(s => Match(ns, s.Namespace)).ToList()));
 
     public ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Ingress>>(_ingresses.Where(i => Match(ns, i.Namespace)).ToList());
