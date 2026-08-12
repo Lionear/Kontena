@@ -280,6 +280,37 @@
                                    FontSize="12.5" TextWrapping="Wrap"
                                    IsVisible="{Binding KubeconfigProblem, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
+                        <!-- KON-365 · what connecting to these contexts starts on this machine -->
+                        <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                                BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="12,11"
+                                IsVisible="{Binding HasPendingExec}">
+                            <StackPanel Spacing="9">
+                                <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                                           Text="Connecting runs a program on this machine"/>
+                                <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                           Foreground="{DynamicResource Text}"
+                                           Text="These contexts fetch their login token by starting a command, as you, before Kontena talks to the cluster. For EKS and GKE that is the normal path. If this kubeconfig came from someone else, read the command first."/>
+                                <ItemsControl ItemsSource="{Binding PendingExec}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:KubeContextChoice">
+                                            <StackPanel Spacing="1" Margin="0,3">
+                                                <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Text}"/>
+                                                <TextBlock Text="{Binding ExecCommand}" FontSize="11.5"
+                                                           FontFamily="{StaticResource Mono}" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextDim}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Classes="ghost" HorizontalAlignment="Left"
+                                        Command="{Binding AllowExecCommandsCommand}"
+                                        Content="Run these commands"/>
+                                <TextBlock Classes="hint"
+                                           Text="Asked once per command. Leave it unanswered and the other contexts in this file still work."/>
+                            </StackPanel>
+                        </Border>
+
                         <StackPanel Spacing="9" IsVisible="{Binding HasContexts}">
                             <TextBlock Classes="label" Text="CONTEXTS IN THIS FILE"/>
                             <Border Classes="card">
