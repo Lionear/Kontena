@@ -9,6 +9,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Security
+
+- **Adding a kubeconfig says so when connecting would run a program on your machine.** A context can
+  fetch its login token by starting a command — `gke-gcloud-auth-plugin`, `aws eks get-token`, or
+  anything else the file names — and the wizard used to start it the moment the file was read, as part
+  of checking which contexts are reachable. That is the ordinary path for EKS and GKE, but a kubeconfig
+  is not always your own: they get forwarded, pasted out of a ticket, pulled from a repo, and "I am
+  adding a cluster to have a look" is not an action anyone expects code execution behind. The command
+  and its arguments are now shown before the first connection, and nothing reaches that context — not
+  the reachability check, not the connection test — until you say to run it. The other contexts in the
+  same file are unaffected, so this is a question rather than a wall. Your answer is remembered per
+  command, the way plugin consent is: the same context naming a different command asks again.
+  (KON-365)
+
 ### Changed
 
 - **The first-run wizard no longer advertises a runtime your machine can never run.** The "Apple

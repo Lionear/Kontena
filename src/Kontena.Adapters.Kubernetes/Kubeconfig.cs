@@ -1,4 +1,5 @@
 using k8s;
+using k8s.KubeConfigModels;
 using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
@@ -24,10 +25,7 @@ public static class Kubeconfig
     {
         try
         {
-            var config = string.IsNullOrWhiteSpace(path)
-                ? KubernetesClientConfiguration.LoadKubeConfig()
-                : KubernetesClientConfiguration.LoadKubeConfig(Expand(path));
-
+            var config = Read(path);
             var current = config.CurrentContext;
 
             return
@@ -69,9 +67,7 @@ public static class Kubeconfig
     {
         try
         {
-            var config = string.IsNullOrWhiteSpace(path)
-                ? KubernetesClientConfiguration.LoadKubeConfig()
-                : KubernetesClientConfiguration.LoadKubeConfig(Expand(path));
+            var config = Read(path);
 
             var loopback = config.Clusters
                 .Where(c => IsLoopback(c.ClusterEndpoint?.Server))
@@ -94,6 +90,64 @@ public static class Kubeconfig
     /// <summary><see cref="Uri.IsLoopback"/> already covers <c>localhost</c>, <c>127.0.0.0/8</c> and <c>::1</c>.</summary>
     private static bool IsLoopback(string? server) =>
         Uri.TryCreate(server, UriKind.Absolute, out var uri) && uri.IsLoopback;
+
+    /// <summary>
+    /// The command each context would run to get a token, keyed by context name (KON-365). A context's
+    /// user may carry an <c>exec:</c> credential plugin — <c>gke-gcloud-auth-plugin</c>,
+    /// <c>aws eks get-token</c>, or anything else — and connecting to that context starts that program on
+    /// this machine, as this user. Read from the file, so it can be shown before anything is contacted.
+    /// <para>
+    /// Command and arguments joined into the one line a person would recognise from a terminal. It is
+    /// what gets shown and what the user's answer is recorded against, so a kubeconfig that later names a
+    /// different command is a different question.
+    /// </para>
+    /// <para>
+    /// Only <c>exec:</c>. The legacy <c>auth-provider</c> with a <c>cmd-path</c> can start a program too,
+    /// but the Kubernetes client this runs on no longer honours it, so listing it here would warn about
+    /// something that cannot happen.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> LoadExecCommands(string? path = null)
+    {
+        var byContext = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        try
+        {
+            var config = Read(path);
+
+            var byUser = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var user in config.Users)
+            {
+                if (user.UserCredentials?.ExternalExecution is { Command.Length: > 0 } exec)
+                    byUser[user.Name] = Describe(exec);
+            }
+
+            // Assigned rather than collected into a dictionary in one go: a kubeconfig with two entries
+            // under one name is malformed but readable, and throwing here would fall into the catch and
+            // report no exec plugin at all — the one wrong answer this must never give.
+            foreach (var context in config.Contexts)
+            {
+                if (context.ContextDetails?.User is { } user && byUser.TryGetValue(user, out var command))
+                    byContext[context.Name] = command;
+            }
+        }
+        catch (Exception)
+        {
+            // Same contract as LoadContexts: an unreadable kubeconfig has no contexts to offer either,
+            // so there is nothing here to warn about.
+        }
+
+        return byContext;
+    }
+
+    private static string Describe(ExternalExecution exec) =>
+        string.Join(' ', new[] { exec.Command }.Concat(exec.Arguments ?? []));
+
+    /// <summary>The chosen kubeconfig, or the default one when no path is given.</summary>
+    private static K8SConfiguration Read(string? path) =>
+        string.IsNullOrWhiteSpace(path)
+            ? KubernetesClientConfiguration.LoadKubeConfig()
+            : KubernetesClientConfiguration.LoadKubeConfig(Expand(path));
 
     /// <summary>Build a client configuration for one context, from the default kubeconfig or a named one.</summary>
     internal static KubernetesClientConfiguration ConfigFor(string context, string? path = null) =>
