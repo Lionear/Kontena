@@ -18,13 +18,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
-- **Switching to another update channel works in both directions.** Moving from preview to nightly —
-  or back to stable — did nothing: the updater kept reporting that you were on the newest release. The
-  channel is part of the version number, and `0.4.0-nightly.…` sorts *below* `0.4.0-preview.…`, so the
-  updater read a deliberate switch as a downgrade and refused it. Reinstalling was the only way out.
-  A channel you pick yourself is now followed wherever it leads, and the card says you are switching to
-  it rather than claiming a newer version. A feed rolling backwards on your *own* channel is still
-  refused. (KON-372)
 - **The first-run wizard shows the clusters in your kubeconfig.** With a kubeconfig and no local
   engine it reported "no engines detected" and offered the Podman install guide — sending you off to
   install software you do not need, past clusters that were ready to use. The contexts in your
