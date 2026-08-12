@@ -704,7 +704,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
                           Data="{StaticResource IconDownload}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding Update.Version, StringFormat='Kontena {0} is available'}"
+                    <TextBlock Text="{Binding Update.Headline}"
                                FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
                                VerticalAlignment="Center"/>
                 </StackPanel>

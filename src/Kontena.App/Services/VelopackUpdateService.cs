@@ -155,14 +155,28 @@ public sealed class VelopackUpdateService : IUpdateService
             ? $"{repositoryUrl}/releases/latest/download"
             : $"{repositoryUrl}/releases/download/{ReleaseChannel.Stream(channel)}";
 
+    /// <summary>
+    /// Without <see cref="UpdateOptions.AllowVersionDowngrade"/> the updater answers "no updates" to
+    /// every channel whose newest build is semver-lower than the running one, and the channel is part
+    /// of the version: the prerelease tag is compared as text, so <c>0.4.0-nightly.…</c> sorts below
+    /// <c>0.4.0-preview.…</c>. Switching preview → nightly was therefore silently impossible (KON-372).
+    /// <para>
+    /// Allowed only when the target channel is not the one this build came from. A switch is a jump to
+    /// a different stream that the user asked for by name; the default guards against a feed on *your
+    /// own* channel rolling backwards, and that stays guarded.
+    /// </para>
+    /// </summary>
+    internal static UpdateOptions OptionsFor(UpdateChannel channel, UpdateChannel buildChannel) => new()
+    {
+        ExplicitChannel = ReleaseChannel.ForCurrentPlatform(channel),
+        AllowVersionDowngrade = channel != buildChannel,
+    };
+
     private UpdateManager ManagerFor(UpdateChannel channel)
     {
         _channel = channel;
 
         var source = new SimpleWebSource(BaseUrlFor(RepositoryUrl, channel));
-        return new UpdateManager(source, new UpdateOptions
-        {
-            ExplicitChannel = ReleaseChannel.ForCurrentPlatform(channel),
-        });
+        return new UpdateManager(source, OptionsFor(channel, BuildChannel));
     }
 }
