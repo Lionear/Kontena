@@ -530,7 +530,6 @@
                                                  FilterMode="Contains" MinimumPrefixLength="0"
                                                  IsTextCompletionEnabled="False"
                                                  Watermark="Filter namespaces…" VerticalAlignment="Center"
-                                                 GotFocus="OnNamespacePickerGotFocus"
                                                  LostFocus="OnNamespacePickerLostFocus"
                                                  SelectionChanged="OnNamespacePicked">
                                     <AutoCompleteBox.ItemTemplate>

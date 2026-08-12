@@ -95,7 +95,7 @@ public sealed class NamespacePickerTests(HeadlessSessionFixture headless)
             CancellationToken.None);
 
     [Fact]
-    public Task Focusing_it_offers_every_namespace_with_All_namespaces_first() =>
+    public Task Pressing_it_offers_every_namespace_with_All_namespaces_first() =>
         headless.Session.Dispatch(
             () =>
             {
@@ -103,8 +103,7 @@ public sealed class NamespacePickerTests(HeadlessSessionFixture headless)
                 // already selected would show that one name and nothing else.
                 var (_, picker, _) = Build();
 
-                picker.Focus();
-                Dispatcher.UIThread.RunJobs();
+                Click(picker);
 
                 Assert.True(picker.IsDropDownOpen);
                 Assert.Equal(
@@ -151,6 +150,27 @@ public sealed class NamespacePickerTests(HeadlessSessionFixture headless)
             CancellationToken.None);
 
     [Fact]
+    public Task Clicking_an_entry_picks_it_and_the_window_lives() =>
+        headless.Session.Dispatch(
+            () =>
+            {
+                // The mouse takes a different road out of the drop-down than the keyboard does, and it
+                // used to take the window with it: clicking an entry hands focus back to the field
+                // while that same click is closing the popup, and opening the list from there reopened
+                // a popup halfway torn down. Avalonia then walked off the end of a child list it was
+                // detaching. A pick made with the keyboard lands after the close and never showed it.
+                var (_, picker, vm) = Build();
+
+                Click(picker);
+
+                Click(Entry(picker, "kube-system"));
+
+                Assert.Equal("kube-system", vm.SelectedNamespace);
+                Assert.False(picker.IsDropDownOpen);
+            },
+            CancellationToken.None);
+
+    [Fact]
     public Task Half_typed_text_is_dropped_when_the_picker_loses_focus() =>
         headless.Session.Dispatch(
             () =>
@@ -188,13 +208,35 @@ public sealed class NamespacePickerTests(HeadlessSessionFixture headless)
         Dispatcher.UIThread.RunJobs();
     }
 
-    /// <summary>What the open list is holding out — read from the popup, which hangs beside the
-    /// picker's own tree rather than under it.</summary>
-    private static string[] Offered(AutoCompleteBox picker)
-    {
-        var popup = picker.GetVisualDescendants().OfType<Popup>().FirstOrDefault();
-        var list = (popup?.Child as Visual)?.GetVisualDescendants().OfType<ListBox>().FirstOrDefault();
+    /// <summary>The open list itself — it hangs in the popup, beside the picker's tree rather than
+    /// under it.</summary>
+    private static ListBox? List(AutoCompleteBox picker) =>
+        (picker.GetVisualDescendants().OfType<Popup>().FirstOrDefault()?.Child as Visual)?
+            .GetVisualDescendants().OfType<ListBox>().FirstOrDefault();
 
-        return list?.ItemsSource?.Cast<string>().ToArray() ?? [];
+    /// <summary>What the open list is holding out.</summary>
+    private static string[] Offered(AutoCompleteBox picker) =>
+        List(picker)?.ItemsSource?.Cast<string>().ToArray() ?? [];
+
+    /// <summary>One row of the open list, by the name on it.</summary>
+    private static Control Entry(AutoCompleteBox picker, string name) =>
+        List(picker)!.GetRealizedContainers()!.First(c => Equals(c.DataContext, name));
+
+    /// <summary>Press and release, which is where the list commits a pick.</summary>
+    private static void Click(Control entry)
+    {
+        var pointer = new Pointer(1, PointerType.Mouse, true);
+
+        entry.RaiseEvent(new PointerPressedEventArgs(
+            entry, pointer, entry, default, 0,
+            new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed),
+            KeyModifiers.None));
+        Dispatcher.UIThread.RunJobs();
+
+        entry.RaiseEvent(new PointerReleasedEventArgs(
+            entry, pointer, entry, default, 0,
+            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.LeftButtonReleased),
+            KeyModifiers.None, MouseButton.Left));
+        Dispatcher.UIThread.RunJobs();
     }
 }

@@ -55,6 +55,10 @@ public partial class MainWindow : Window
         // did (KON-173). Tunnelled so a list row cannot swallow it on the way up.
         AddHandler(PointerPressedEvent, OnPointerPressedPreview, RoutingStrategies.Tunnel);
 
+        // Same reason, one control down: the namespace picker's own text box handles the press
+        // (KON-373), so a bubbling handler on the picker would never hear the click that opens it.
+        NamespacePicker.AddHandler(PointerPressedEvent, OnNamespacePickerPressed, RoutingStrategies.Tunnel);
+
         // Focus belongs to the view, so the shell asks rather than reaching into the tree (KON-172).
         DataContextChanged += (_, _) =>
         {
@@ -273,15 +277,25 @@ public partial class MainWindow : Window
     // key. So the binding runs out of the view model only, and these three handlers are the way back
     // in: nothing but a real pick reaches SelectedNamespace, and half-typed text never outlives focus.
 
-    /// <summary>Open on the whole list, the way the ComboBox before it did — clicking a picker should
-    /// show what there is to pick, not the one entry that happens to match the current name.</summary>
-    private void OnNamespacePickerGotFocus(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// Open on the whole list, the way the ComboBox before it did — clicking a picker should show what
+    /// there is to pick, not the one entry that happens to match the name already in the box.
+    /// <para>
+    /// Hung on the press rather than on focus, and this is not a preference: opening from GotFocus
+    /// crashed the window. Clicking an entry hands focus back to the field while the drop-down is
+    /// closing on that same click, so the handler reopened a popup that was halfway torn down and
+    /// Avalonia walked off the end of a child list it was detaching. A press lands on the field only
+    /// when the field is what was pressed — an entry in the popup is not — so the commit is left
+    /// alone. Tunnelled because the text box inside marks the press handled on its way up.
+    /// </para>
+    /// </summary>
+    private void OnNamespacePickerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is not AutoCompleteBox picker || picker.IsDropDownOpen)
+        if (NamespacePicker.IsDropDownOpen)
             return;
 
-        picker.Text = string.Empty;
-        picker.IsDropDownOpen = true;
+        NamespacePicker.Text = string.Empty;
+        NamespacePicker.IsDropDownOpen = true;
     }
 
     /// <summary>A pick — and only a pick, never the null the control writes while you type.</summary>
