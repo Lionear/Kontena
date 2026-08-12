@@ -593,6 +593,11 @@ public partial class MainWindowViewModel
         EngineName = NameOf(provider);
         EngineChip = BackendChipInfo.For(provider);
 
+        // Said before the wait rather than after it (KON-375). Everything below this line is the wait.
+        ConnectingMessage = provider.Kind == BackendKind.Cluster
+            ? $"Opening {EngineName}…"
+            : $"Connecting to {EngineName}…";
+
         RebuildEngineList();
         CloseDetail();
         CloseDialog();

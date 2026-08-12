@@ -332,6 +332,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// </summary>
     public bool IsConnecting => !IsReady && !IsBackendDown && !IsOnboarding && !IsBackendIndependentPage;
 
+    /// <summary>
+    /// What the connecting state says it is waiting for. Named rather than fixed (KON-375): opening a
+    /// Kubernetes context spends this whole wait on the apiserver — the ping, the namespaces, the
+    /// first page's reads — under a line that said "Connecting to your container engine…", which is
+    /// not what the user clicked and not where the time is going. Startup keeps the generic wording,
+    /// because at that point nothing has been picked yet.
+    /// </summary>
+    [ObservableProperty] private string _connectingMessage = "Connecting to your container engine…";
+
     partial void OnIsReadyChanged(bool value) => RefreshContentVisibility();
     partial void OnIsBackendDownChanged(bool value) => RefreshContentVisibility();
     partial void OnIsOnboardingChanged(bool value) => RefreshContentVisibility();

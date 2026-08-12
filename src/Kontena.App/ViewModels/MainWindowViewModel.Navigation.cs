@@ -364,6 +364,7 @@ public partial class MainWindowViewModel
     /// </summary>
     private async Task NavigateClusterAfterKindsAsync(string key)
     {
+        IsReadingCluster = true;
         try
         {
             await Diag.TimeAsync("read the workload kinds", UpdateClusterNavAsync());
@@ -373,10 +374,31 @@ public partial class MainWindowViewModel
             // Unreachable cluster, a call that timed out: the page itself reports that far better
             // than a nav that never happens.
         }
+        finally
+        {
+            IsReadingCluster = false;
+        }
 
         if (IsClusterMode)
             NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshNav: false);
     }
+
+    /// <summary>
+    /// Set while the shell is reading the cluster before it can build a page (KON-375).
+    /// <para>
+    /// The one wait in cluster mode that nothing on screen could show. Picking a namespace, or an
+    /// action that rebuilds the page, goes through <see cref="NavigateClusterAfterKindsAsync"/>, and
+    /// that has to know the workload kinds before it can decide which page Workloads even is
+    /// (KON-200) — two cluster-wide reads, in front of a page that has not been replaced yet. So the
+    /// old page sat there, fully drawn and already wrong, for as long as the cluster took to answer:
+    /// the click looked ignored rather than slow, which is the worse of the two.
+    /// </para>
+    /// <para>
+    /// A page's own spinner cannot cover this. The page that would carry it is the one being replaced,
+    /// and it is not the one loading.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isReadingCluster;
     /// <summary>
     /// Bring the sidebar in step with the cluster: the namespace picker and the per-kind Workloads
     /// submenu.
