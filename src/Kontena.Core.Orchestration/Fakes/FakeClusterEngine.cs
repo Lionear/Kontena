@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Kontena.Sdk.Models;
@@ -540,19 +541,44 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         }
     }
 
+    /// <summary>
+    /// How many times each list has been asked for (KON-375).
+    /// <para>
+    /// A fake that answers instantly makes wasted work invisible: every test in the suite passed while
+    /// opening a cluster listed its namespaces five times and built the overview page twice. A count is
+    /// the only thing that shows it, and it is the only thing a test can assert about it — a real
+    /// cluster's cost is latency, which this fake by design does not have.
+    /// </para>
+    /// <para>
+    /// Concurrent because watch-driven reloads run off their own tasks, and a count that races is worse
+    /// than no count: it fails a test occasionally rather than saying something true.
+    /// </para>
+    /// </summary>
+    public ConcurrentDictionary<string, int> Calls { get; } = new(StringComparer.Ordinal);
+
+    public int CallsTo(string call) => Calls.GetValueOrDefault(call);
+
+    private T Counted<T>(string call, T result)
+    {
+        Calls.AddOrUpdate(call, 1, (_, n) => n + 1);
+        return result;
+    }
+
     public ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<KubeNamespace>>(_namespaces);
+        ValueTask.FromResult(Counted<IReadOnlyList<KubeNamespace>>(nameof(ListNamespacesAsync), _namespaces));
 
     public ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Node>>(_nodes);
+        ValueTask.FromResult(Counted<IReadOnlyList<Node>>(nameof(ListNodesAsync), _nodes));
 
     public ValueTask<IReadOnlyList<Workload>> ListWorkloadsAsync(
         WorkloadKind? kind = null, string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Workload>>(
-            _workloads.Where(w => (kind is null || w.Kind == kind) && Match(ns, w.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Workload>>(
+            nameof(ListWorkloadsAsync),
+            _workloads.Where(w => (kind is null || w.Kind == kind) && Match(ns, w.Namespace)).ToList()));
 
     public ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Pod>>(_pods.Where(p => Match(ns, p.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Pod>>(
+            nameof(ListPodsAsync), _pods.Where(p => Match(ns, p.Namespace)).ToList()));
 
     // ── Generic resources (KON-75) ───────────────────────────────────────────
 

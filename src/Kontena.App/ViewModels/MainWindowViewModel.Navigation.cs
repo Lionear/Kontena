@@ -36,10 +36,21 @@ public partial class MainWindowViewModel
     }
 
     [RelayCommand]
-    private void Navigate(string key)
+    private void Navigate(string key) => NavigateTo(key);
+
+    /// <param name="refreshNav">
+    /// False only where the caller has just read the cluster, the same reason
+    /// <see cref="NavigateCluster"/> takes it (KON-375). Opening a cluster reads the picker and the
+    /// workload kinds before it builds the first page, because it has to — and then landing on that
+    /// page fired a refresh of what had just been read, two cluster-wide lists behind an open shell.
+    /// </param>
+    private void NavigateTo(string key, bool refreshNav = true)
     {
         Diag.Mark($"navigate to {key}");
-        Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => Navigate(key));
+
+        // The history step replays as an ordinary visit, refresh and all: coming back to a page later
+        // is exactly the moment its sidebar is most likely to be out of date.
+        Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => NavigateTo(key));
 
         // Before the mode switch: a plugin page belongs to neither nav, and both of the switches below
         // fall through to a page of their own on an unknown key.
@@ -51,7 +62,7 @@ public partial class MainWindowViewModel
 
         if (IsClusterMode)
         {
-            NavigateCluster(key);
+            NavigateCluster(key, refreshNav);
             return;
         }
 
