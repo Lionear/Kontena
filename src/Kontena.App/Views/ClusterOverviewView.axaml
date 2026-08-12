@@ -24,6 +24,10 @@
                 <TextBlock Text="Cluster overview" FontSize="13" Foreground="{DynamicResource TextDim}"/>
             </StackPanel>
 
+            <!-- Until the six reads land, every count below is zero and the node table is empty, which
+                 is what a cluster with nothing on it looks like too (KON-375). -->
+            <Border Height="2" Margin="0,-12,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
+
             <!-- Never silent about not being live (KON-250, KON-340). This page summarises five kinds
                  in five numbers, and a stale number looks exactly like a current one — there is no
                  empty table here to hint that something stopped. -->

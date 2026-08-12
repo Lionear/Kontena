@@ -129,7 +129,35 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
 
     // ── Loading ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Set for the duration of the first read, the same rule the list pages follow (KON-319,
+    /// KON-375). Cards and an attention banner, so an unfinished read draws as "nothing needs you" —
+    /// the one wrong answer on this page that looks exactly like the right one.
+    /// <para>
+    /// Only the first: this page reloads on every settled watch event, and a spinner on each of those
+    /// is noise rather than news.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isLoading;
+
     public async Task LoadAsync()
+    {
+        var isFirstLoad = !HasLoaded;
+        if (isFirstLoad)
+            IsLoading = true;
+
+        try
+        {
+            await ReadAsync();
+        }
+        finally
+        {
+            if (isFirstLoad)
+                IsLoading = false;
+        }
+    }
+
+    private async Task ReadAsync()
     {
         // Both lists once. The cards are a rollup of the workloads and the reasons come from the pods,
         // so fetching them separately per section is two sources for one screen — and two chances to

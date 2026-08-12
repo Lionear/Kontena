@@ -556,10 +556,17 @@
             <Panel Grid.Row="1">
                 <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsPageVisible}"/>
 
+                <!-- The shell reading the cluster before it can build the page it is about to show
+                     (KON-375). Over the top of the old page rather than in place of it: the page
+                     underneath is what you were just looking at, and blanking it to say "working"
+                     costs more than it tells. -->
+                <ProgressBar IsIndeterminate="True" Height="2" VerticalAlignment="Top"
+                             IsVisible="{Binding IsReadingCluster}"/>
+
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding IsConnecting}">
                     <ProgressBar IsIndeterminate="True" Width="220" Height="4"
                                  Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
-                    <TextBlock Text="Connecting to your container engine…" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding ConnectingMessage}" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Engine-down. Yields to Activity, Settings and About: those are the pages you

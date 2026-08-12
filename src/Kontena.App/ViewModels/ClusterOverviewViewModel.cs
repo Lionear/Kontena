@@ -174,11 +174,48 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     public ObservableCollection<NodeRow> Nodes { get; } = [];
 
     /// <summary>
+    /// Set for the duration of the first read, the same rule the list pages follow (KON-319,
+    /// KON-375). This is the page a cluster opens on, and until its six reads land every count on it
+    /// is zero and the node table is empty — which is indistinguishable from a cluster that really
+    /// has nothing on it. The one page with no rows to be conspicuously absent was the one page with
+    /// no sign that anything was happening.
+    /// <para>
+    /// Only the first read: this page reloads on every settled watch event, and a spinner on each of
+    /// those is noise rather than news.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isLoading;
+
+    private bool _hasLoaded;
+
+    /// <summary>
     /// Six reads that know nothing of each other, so all six are started before any is awaited
     /// (KON-338). Sequentially they were six round-trips deep, and this page is the first thing a
     /// cluster shows — on a remote one that wait is the whole first impression.
+    /// <para>
+    /// Internal rather than private so a test can reload it the way a watch event does — the
+    /// first-fetch-only rule above is a claim about the second load, and there is no other way in.
+    /// </para>
     /// </summary>
-    private async Task LoadAsync()
+    internal async Task LoadAsync()
+    {
+        var isFirstLoad = !_hasLoaded;
+        if (isFirstLoad)
+            IsLoading = true;
+
+        try
+        {
+            await ReadAsync();
+            _hasLoaded = true;
+        }
+        finally
+        {
+            if (isFirstLoad)
+                IsLoading = false;
+        }
+    }
+
+    private async Task ReadAsync()
     {
         var infoTask = _cluster.GetInfoAsync().AsTask();
         var nodesTask = _cluster.ListNodesAsync().AsTask();
