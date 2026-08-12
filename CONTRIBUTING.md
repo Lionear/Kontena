@@ -118,7 +118,7 @@ CI lives in [`.github/workflows`](.github/workflows): `test.yml` runs the unit t
 and PR; `changelog.yml` validates the changelog fragments; `build.yml` publishes cross-platform
 builds. Pushing to `main` refreshes the rolling **preview** release; a nightly schedule refreshes
 the rolling **nightly** prerelease from `develop`; pushing a `v<semver>` tag cuts a real **stable**
-release. The builds are unsigned / not notarized for now.
+release. The downloads are unsigned / not notarized for now; the update feed is signed (below).
 
 ### Cutting a release
 
@@ -150,6 +150,41 @@ and a mixed feed would offer a Windows package to a Linux install; the app deriv
 from `Kontena.Core.Models.ReleaseChannel`, so the two sides cannot drift apart. Alongside the
 download, a release carries a `.nupkg` and a `releases.<channel>.json` — those are the updater's,
 not the user's.
+
+### Release signing
+
+Velopack checks every package it downloads against the SHA256 in `releases.<channel>.json` and then
+unpacks it over the installation, so that one file decides what runs on every machine on the channel.
+HTTPS says the bytes came from github.com and nothing about who put them there — so anyone able to
+write a release asset could ship code to every install. The Build workflow therefore publishes a
+detached signature next to each feed, `releases.<channel>.json.sig`, and the app refuses a feed whose
+signature does not verify against the public key it carries.
+
+- **Public half:** [`src/Kontena.App/Assets/release-signing.pub.pem`](src/Kontena.App/Assets/release-signing.pub.pem),
+  embedded in the app and used by the workflow to verify what it just signed. One file, so a rotation
+  cannot land on only one side.
+- **Private half:** the `RELEASE_SIGNING_KEY` repository secret, an EC P-256 key in PEM. It exists
+  nowhere else, and a release without it fails the build rather than being published unsigned.
+
+Generating or rotating the pair means both halves at once, and every installed copy will refuse
+updates until it is running a build that carries the new public half — so a rotation is a release, not
+a config change. The private key never touches the working tree:
+
+```bash
+KEY=$(mktemp)
+openssl ecparam -name prime256v1 -genkey -noout -out "$KEY"
+openssl ec -in "$KEY" -pubout -out src/Kontena.App/Assets/release-signing.pub.pem
+gh secret set RELEASE_SIGNING_KEY < "$KEY"
+shred -u "$KEY"
+```
+
+Both halves have to move together, and the workflow enforces it: it verifies each signature it makes
+against the committed public key, so a secret that no longer matches turns one build red instead of
+every user's update.
+
+This covers updates only. The downloads themselves — `Setup.exe`, the `.dmg`, the `.AppImage` — are
+still unsigned, because the platforms trust their own authorities and not ours: Windows wants an
+Authenticode certificate and macOS a Developer ID with notarization (KON-53).
 
 ## Dependencies & notices
 

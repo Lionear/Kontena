@@ -149,6 +149,10 @@ public sealed class VelopackUpdateService : IUpdateService
     /// release — so their assets sit at a fixed URL too. Either way this is a plain <c>github.com</c>
     /// download URL, never <c>api.github.com</c> (KON-312): unlike <see cref="GithubSource"/>, nothing
     /// here is rate-limited to 60 requests an hour.
+    /// <para>
+    /// The URL is where the assets are, not why they can be trusted — that is
+    /// <see cref="SignedWebSource"/>'s job (KON-363).
+    /// </para>
     /// </summary>
     internal static string BaseUrlFor(string repositoryUrl, UpdateChannel channel) =>
         channel == UpdateChannel.Stable
@@ -176,7 +180,7 @@ public sealed class VelopackUpdateService : IUpdateService
     {
         _channel = channel;
 
-        var source = new SimpleWebSource(BaseUrlFor(RepositoryUrl, channel));
+        var source = new SignedWebSource(BaseUrlFor(RepositoryUrl, channel));
         return new UpdateManager(source, OptionsFor(channel, BuildChannel));
     }
 }
