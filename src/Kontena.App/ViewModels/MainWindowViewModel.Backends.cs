@@ -762,23 +762,38 @@ public partial class MainWindowViewModel
         ComposeProjects = null;
         Activity = null;
 
+        // The ping answered, so the promise this makes can be kept: offering to reopen tunnels on a
+        // cluster we cannot reach would be an empty one (KON-105).
+        RestorePortForwards(cluster, _activeBackend);
+
+        // Everything a page is built from, before the first page is built (KON-375).
+        //
+        // This used to run the other way round, and it cost the whole open. The picker was filled by
+        // hand here, the overview was built, and then selecting a namespace read the workload kinds
+        // and rebuilt the page — because which page Workloads is depends on those kinds (KON-200).
+        // So one open listed the namespaces six times, and built the landing page twice: six reads
+        // and seven watch streams opened, torn down, and started again, with nobody ever seeing the
+        // first set of answers. On a remote cluster every one of those is a round-trip, and they
+        // compete with each other for the same connection pool — which is most of what "fetching a
+        // cluster feels slow" was.
         Namespaces.Clear();
         Namespaces.Add(AllNamespaces);
-        foreach (var ns in await cluster.ListNamespacesAsync())
-            Namespaces.Add(ns.Name);
 
-        // Only now that the cluster answered: offering to reopen tunnels on a cluster we cannot reach
-        // would be an empty promise (KON-105).
-        RestorePortForwards(cluster, _activeBackend);
+        // The field rather than the property: the change handler's job is to rebuild the open page,
+        // and there is no page yet. Announced below, once the picker behind it holds real names.
+        _selectedNamespace = AllNamespaces;
+
+        // Fills both the picker and the Workloads submenu, in one round.
+        await UpdateClusterNavAsync();
+        OnPropertyChanged(nameof(SelectedNamespace));
 
         SearchText = string.Empty;
 
         // Same door, same reason (KON-263). This side had the identical gap: the overview was built
-        // here rather than navigated to, so a cluster's first Back was missing too.
-        Navigate("overview");
+        // here rather than navigated to, so a cluster's first Back was missing too. Without the
+        // sidebar refresh it normally brings, since the line above is that read.
+        NavigateTo("overview", refreshNav: false);
 
-        SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
-        await UpdateClusterNavAsync();
         IsReady = true;
         return true;
     }
