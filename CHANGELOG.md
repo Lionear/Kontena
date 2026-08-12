@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **Sorting a list no longer duplicates its rows.** Clicking a column header on any cluster list
+  turned three rows into five, a second click into seven, and nothing brought them back — not a
+  refresh, not sorting again. The list reconcile could add, remove and replace a row but not move
+  one, so a sort put each row at its new position and left the old copy standing below it. Rows are
+  now moved into place, which also keeps them as the same rows: sorting no longer loses your
+  selection or your scroll position. (KON-374)
 - **Switching to another update channel works in both directions.** Moving from preview to nightly —
   or back to stable — did nothing: the updater kept reporting that you were on the newest release. The
   channel is part of the version number, and `0.4.0-nightly.…` sorts *below* `0.4.0-preview.…`, so the
