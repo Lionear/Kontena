@@ -218,7 +218,11 @@ public partial class MainWindowViewModel
     /// False only where the caller has just read the cluster, so the sidebar is not refetched twice
     /// for one navigation.
     /// </param>
-    private void NavigateCluster(string key, bool refreshNav = true)
+    /// <param name="keepSearch">
+    /// The term to put back on the rebuilt page — set only by a reload in place, never by a real
+    /// navigation (KON-377).
+    /// </param>
+    private void NavigateCluster(string key, bool refreshNav = true, string? keepSearch = null)
     {
         if (_cluster is null)
             return;
@@ -331,7 +335,16 @@ public partial class MainWindowViewModel
         // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
         // pages keep theirs because they are long-lived fields. Restoring a term onto a fresh page
         // would show a filtered list with no way to tell it had been filtered (KON-164).
-        SearchText = string.Empty;
+        //
+        // A reload in place is the exception, and the one case where clearing is the dishonest answer
+        // (KON-377): the user never left. They clicked Restart or Scale on the one row their search
+        // had left standing, and the list they were working in came back showing everything. Put on
+        // the page rather than left to the shell's own SearchText, which still holds the term and so
+        // raises nothing to push down — a filled box over an unfiltered list.
+        if (keepSearch is { Length: > 0 } && CurrentPage is IListPage { SupportsSearch: true } page)
+            page.SearchText = keepSearch;
+
+        SearchText = keepSearch ?? string.Empty;
     }
     /// <summary>
     /// Follow the cluster after the open page saw it change (KON-339). Failure is silent on purpose:
@@ -350,13 +363,16 @@ public partial class MainWindowViewModel
         }
     }
 
-    /// <summary>Rebuild the currently-selected cluster page (e.g. after an action mutates it).</summary>
+    /// <summary>
+    /// Rebuild the currently-selected cluster page (e.g. after an action mutates it), keeping the
+    /// search term the user is looking through (KON-377).
+    /// </summary>
     private void ReloadCurrentClusterPage()
     {
         if (!IsClusterMode)
             return;
 
-        _ = NavigateClusterAfterKindsAsync(_clusterPageKey);
+        _ = NavigateClusterAfterKindsAsync(_clusterPageKey, SearchText);
     }
 
     /// <summary>
@@ -373,7 +389,8 @@ public partial class MainWindowViewModel
     /// better than no page at all — so the await is guarded and the key resolved either way.
     /// </para>
     /// </summary>
-    private async Task NavigateClusterAfterKindsAsync(string key)
+    /// <param name="keepSearch"><inheritdoc cref="NavigateCluster" path="/param[@name='keepSearch']"/></param>
+    private async Task NavigateClusterAfterKindsAsync(string key, string? keepSearch = null)
     {
         IsReadingCluster = true;
         try
@@ -391,7 +408,7 @@ public partial class MainWindowViewModel
         }
 
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshNav: false);
+            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshNav: false, keepSearch);
     }
 
     /// <summary>
