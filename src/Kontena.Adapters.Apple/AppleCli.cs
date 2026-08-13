@@ -39,10 +39,40 @@ internal sealed class AppleCli(IToolRunner runner)
         var invocation = new ToolInvocation(AppleTool.Definition, args);
         var result = await runner.RunAsync(invocation, ct).ConfigureAwait(false);
 
+        if (!result.Ok && ApiserverDown(result.Complaint) && await StartApiserverAsync(ct).ConfigureAwait(false))
+            result = await runner.RunAsync(invocation, ct).ConfigureAwait(false);
+
         if (!result.Ok)
             throw Failure(invocation.CommandLine, result.Complaint);
 
         return result.StandardOutput;
+    }
+
+    /// <summary>
+    /// Brings the launchd-managed apiserver up, and says whether that worked. Called at most once per
+    /// command: <see cref="RunAsync"/> retries the command that failed exactly once and then gives up,
+    /// because a loop that keeps restarting hides a service that structurally refuses to run.
+    /// <para>
+    /// Cheap enough to do unasked. The service lives in the user domain
+    /// (<c>gui/501/com.apple.container.apiserver</c>), so there is no sudo and no password prompt, and
+    /// starting one that is already running exits 0 — which is why nothing checks first.
+    /// <c>--disable-kernel-install</c> declines the one interactive question <c>system start</c> can ask.
+    /// Declining rather than accepting is deliberate: downloading a kernel is a real install, not a
+    /// service restart, and doing that silently is not what "start what is already here" means. Without a
+    /// kernel the start fails, this returns false, and the CLI's own advice — including the manual
+    /// command — reaches the user unchanged.
+    /// </para>
+    /// </summary>
+    private async ValueTask<bool> StartApiserverAsync(CancellationToken ct)
+    {
+        var start = new ToolInvocation(
+            AppleTool.Definition, ["system", "start", "--disable-kernel-install"]);
+
+        // Straight at the runner, not back through RunAsync: a start that fails with the same complaint
+        // would otherwise try to start the service to be able to start the service.
+        var result = await runner.RunAsync(start, ct).ConfigureAwait(false);
+
+        return result.Ok;
     }
 
     /// <summary>
@@ -176,13 +206,27 @@ internal sealed class AppleCli(IToolRunner runner)
         // The apiserver is a launchd service that `container system start` brings up, so "it is
         // installed but nothing is listening" is an ordinary state here, not a broken install — and it
         // is the one the switcher must report as unreachable rather than as a failed command.
-        if (complaint.Contains("failed to connect", StringComparison.OrdinalIgnoreCase) ||
-            complaint.Contains("apiserver", StringComparison.OrdinalIgnoreCase) ||
-            complaint.Contains("XPC", StringComparison.Ordinal))
-        {
+        if (ApiserverDown(complaint))
             return new EngineUnreachableException(complaint);
-        }
 
         return new EngineException($"`{commandLine}` failed: {complaint}");
     }
+
+    /// <summary>
+    /// Whether a complaint says the apiserver is not up. One predicate rather than two, because the
+    /// same condition decides both what to throw and whether starting the service is worth trying, and
+    /// two lists of strings would drift apart.
+    /// <para>
+    /// It takes three markers because the CLI reports the same stopped service in two shapes, measured
+    /// against 1.2.2: <c>system status</c> exits 1 with the plain sentence <c>apiserver is not running
+    /// and not registered with launchd</c> on <b>stdout</b>, while every other command fails with
+    /// <c>Error: internalError: "failed to list containers" (cause: "interrupted: "XPC connection
+    /// error: Connection invalid"")</c> on stderr. Matching only the XPC one would miss the ping — the
+    /// first thing the switcher asks, and the first thing a user would want started.
+    /// </para>
+    /// </summary>
+    private static bool ApiserverDown(string complaint) =>
+        complaint.Contains("failed to connect", StringComparison.OrdinalIgnoreCase) ||
+        complaint.Contains("apiserver", StringComparison.OrdinalIgnoreCase) ||
+        complaint.Contains("XPC", StringComparison.Ordinal);
 }
