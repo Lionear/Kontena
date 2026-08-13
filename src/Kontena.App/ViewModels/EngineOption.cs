@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Windows.Input;
 using Kontena.Core.Versioning;
 
@@ -43,20 +42,16 @@ public sealed class EngineOption
     /// </summary>
     public VersionSupport? Support { get; init; }
 
-    /// <summary>Whether to show the pill. Only a release its publisher has dropped earns one.</summary>
+    /// <summary>Whether to show the warning pill. Only a release its publisher has dropped earns one.</summary>
     public bool IsUnsupported => Support?.IsProblem == true;
 
     /// <summary>
-    /// The sentence behind the row: why the pill is there, or — for a supported release that is behind
-    /// on patches — the newer one that exists. Empty when there is nothing to say, which is most of the
-    /// time and is the point.
+    /// A newer release on a line that is still maintained (KON-371). Quieter than
+    /// <see cref="IsUnsupported"/> and never both: a dropped release is the news, and "there is also a
+    /// patch" beside it would be advice about the wrong problem.
     /// </summary>
-    public string SupportSummary => Support switch
-    {
-        { IsMaintained: false, EolFrom: { } eol } =>
-            $"Release {Support.Cycle} has not been supported since {eol.ToString("d MMMM yyyy", CultureInfo.InvariantCulture)}.",
-        { IsMaintained: false } => $"Release {Support.Cycle} is no longer supported.",
-        { NewerPatch: { } newer } => $"{newer} is available.",
-        _ => string.Empty,
-    };
+    public bool HasNewerPatch => Support is { IsProblem: false, NewerPatch: not null };
+
+    /// <summary>The sentence behind the row, worded once in <see cref="VersionSupport.Detail"/>.</summary>
+    public string SupportSummary => Support?.Detail ?? string.Empty;
 }

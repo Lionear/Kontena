@@ -515,6 +515,7 @@ public partial class MainWindowViewModel
         EngineChip = new BackendChipInfo("!");
         EngineDetail = "not connected";
         EngineEndpoint = string.Empty;
+        EngineSupport = null;
         CurrentPage = null;
         OnPropertyChanged(nameof(HasAlternatives));
 
@@ -1098,6 +1099,14 @@ public partial class MainWindowViewModel
 
     private void RebuildEngineList()
     {
+        // The same verdict the dropdown row carries, on the pill you are looking at anyway (KON-371).
+        // Outside the loop below and keyed on the active backend rather than set from its row, because
+        // the two things this needs arrive in either order: the support lookup is fired before the
+        // preferred backend is opened, so the rebuild it triggers can run while nothing is active yet,
+        // and the rebuild the open triggers can run before any answer has landed. Recomputing it on
+        // every rebuild is right whichever way round they finish.
+        EngineSupport = IsBackendDown ? null : _support.GetValueOrDefault(_activeBackend);
+
         Engines.Clear();
         Clusters.Clear();
         foreach (var probe in _probes)

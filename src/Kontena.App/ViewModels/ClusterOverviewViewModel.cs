@@ -4,6 +4,7 @@ using Kontena.App.Controls;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Core.Versioning;
 
 namespace Kontena.App.ViewModels;
 
@@ -17,13 +18,15 @@ namespace Kontena.App.ViewModels;
 public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 {
     private readonly IClusterEngine _cluster;
+    private readonly VersionSupportCheck? _versions;
     private CancellationTokenSource? _watch;
     private CancellationTokenSource? _usage;
     private bool _started;
 
-    public ClusterOverviewViewModel(IClusterEngine cluster)
+    public ClusterOverviewViewModel(IClusterEngine cluster, VersionSupportCheck? versions = null)
     {
         _cluster = cluster;
+        _versions = versions;
 
         // The page you land on, and until now the only one that could not answer "is the cluster
         // busy" (KON-347). Summed over pods rather than over nodes, so it agrees with the namespace
@@ -165,6 +168,24 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     [ObservableProperty] private string _distribution = string.Empty;
     [ObservableProperty] private string _version = string.Empty;
 
+    /// <summary>
+    /// What the distribution's own calendar says about the version in the header (KON-371). Kept apart
+    /// from <see cref="NodeRow.Skew"/> on purpose, even though the two draw the same icon: skew asks
+    /// whether the parts of this cluster agree with each other, and is a comparison that is always
+    /// right; support asks whether anybody still repairs this release, and is somebody else's
+    /// published date. Merging them would make one warning that can only half explain itself.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSupportWarning))]
+    [NotifyPropertyChangedFor(nameof(SupportDetail))]
+    private VersionSupport? _support;
+
+    /// <summary>Whether this release is one its publisher has dropped.</summary>
+    public bool HasSupportWarning => Support?.IsProblem == true;
+
+    /// <summary>The sentence behind that icon — which line, and since when.</summary>
+    public string SupportDetail => Support?.Detail ?? string.Empty;
+
     [ObservableProperty] private int _nodeCount;
     [ObservableProperty] private int _namespaceCount;
     [ObservableProperty] private int _workloadCount;
@@ -213,6 +234,26 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
             if (isFirstLoad)
                 IsLoading = false;
         }
+
+        // Once, not on every watch event: the answer is cached for a day anyway, and this page reloads
+        // whenever anything on the cluster moves (KON-375). A cluster does not change version under a
+        // page that is already open, and if it does, the page is rebuilt on the next visit.
+        if (isFirstLoad)
+            await CheckSupportAsync();
+    }
+
+    /// <summary>
+    /// Ask the distribution's publisher whether this release is still maintained (KON-371). Measured
+    /// against the distribution's own calendar rather than upstream's, which is the whole reason KON-95
+    /// was split: an AKS cluster read against upstream is called unsupported about a month early.
+    /// </summary>
+    private async Task CheckSupportAsync()
+    {
+        if (_versions is null)
+            return;
+
+        var product = BackendProducts.For(_cluster.Backend, Distribution);
+        Support = await _versions.CheckAsync(product, Version, DateTimeOffset.UtcNow);
     }
 
     private async Task ReadAsync()

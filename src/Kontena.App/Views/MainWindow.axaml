@@ -64,6 +64,14 @@
                                     ToolTip.Tip="{Binding SupportSummary}">
                                 <TextBlock Text="Unsupported" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource WarnText}"/>
                             </Border>
+                            <!-- A newer release on a line that is still maintained (KON-371). The
+                                 answer already carried this and nothing showed it. Grey, not amber:
+                                 being a patch behind is worth mentioning, not worth a warning. -->
+                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding HasNewerPatch}"
+                                    ToolTip.Tip="{Binding SupportSummary}">
+                                <TextBlock Text="Update" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                            </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
@@ -306,6 +314,12 @@
                                          Fill="{DynamicResource Danger}" IsVisible="{Binding IsBackendDown}"/>
                                 <TextBlock Text="{Binding EngineDetail}" FontSize="10.5" FontFamily="{StaticResource Mono}"
                                            Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                <!-- The open backend runs a dropped release (KON-371). An icon rather
+                                     than the switcher's pill: there is no room for a word here, and
+                                     this line is the one place the version is always on screen. -->
+                                <Path Classes="icon" Width="11" Height="11" VerticalAlignment="Center"
+                                      IsVisible="{Binding IsEngineUnsupported}" Stroke="{DynamicResource Warn}"
+                                      Data="{StaticResource IconWarning}" ToolTip.Tip="{Binding EngineSupportSummary}"/>
                             </StackPanel>
                             <TextBlock Text="{Binding EngineEndpoint}" FontSize="10.5" FontFamily="{StaticResource Mono}"
                                        Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"

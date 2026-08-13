@@ -20,6 +20,12 @@
                     </Border>
                     <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}"
                                Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                    <!-- This release is one its publisher has dropped (KON-371). Same icon as the node
+                         rows below, deliberately: both say "this version needs looking at". What is
+                         wrong differs, and that is what the two tooltips are for. -->
+                    <Path Classes="icon" Width="13" Height="13" VerticalAlignment="Center"
+                          IsVisible="{Binding HasSupportWarning}" Stroke="{DynamicResource Warn}"
+                          Data="{StaticResource IconWarning}" ToolTip.Tip="{Binding SupportDetail}"/>
                 </StackPanel>
                 <TextBlock Text="Cluster overview" FontSize="13" Foreground="{DynamicResource TextDim}"/>
             </StackPanel>
