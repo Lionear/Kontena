@@ -306,6 +306,23 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// <summary>Third line of the sidebar pill — the active backend's endpoint (socket/URL).</summary>
     [ObservableProperty] private string _engineEndpoint = string.Empty;
 
+    /// <summary>
+    /// What the publisher's calendar says about the backend that is open, as opposed to the ones in the
+    /// dropdown (KON-371). The switcher is where you choose between backends, not where you work: a
+    /// user with one engine who never opens it never learned that their daemon was out of support.
+    /// The sidebar pill is where that version number already is, so that is where the verdict goes.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEngineUnsupported))]
+    [NotifyPropertyChangedFor(nameof(EngineSupportSummary))]
+    private VersionSupport? _engineSupport;
+
+    /// <summary>Whether the open backend runs a release its publisher has dropped.</summary>
+    public bool IsEngineUnsupported => EngineSupport?.IsProblem == true;
+
+    /// <summary>The sentence behind that icon — which line, and since when.</summary>
+    public string EngineSupportSummary => EngineSupport?.Detail ?? string.Empty;
+
     /// <summary>False until the first page is on screen (drives the connecting state).</summary>
     [ObservableProperty] private bool _isReady;
 

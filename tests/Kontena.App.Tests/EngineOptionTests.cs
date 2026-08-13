@@ -51,9 +51,23 @@ public class EngineOptionTests
     {
         var row = Row(new VersionSupport("29", IsMaintained: true, EolFrom: null, NewerPatch: "29.7.2"));
 
-        // The second signal the same document carries. Worth a sentence, not worth a pill.
+        // The second signal the same document carries, and until KON-371 the one nothing showed. Its
+        // own quiet pill, never the amber one.
         Assert.False(row.IsUnsupported);
+        Assert.True(row.HasNewerPatch);
         Assert.Equal("29.7.2 is available.", row.SupportSummary);
+    }
+
+    [Fact]
+    public void A_dropped_release_is_not_also_offered_a_patch()
+    {
+        // The calendar names a newest release for a dead line too. "Release 28 is gone" and "there is
+        // a 28.5.2" side by side reads as advice to install the thing that is already unsupported.
+        var row = Row(new VersionSupport("28", IsMaintained: false, new DateOnly(2026, 5, 13), "28.5.2"));
+
+        Assert.True(row.IsUnsupported);
+        Assert.False(row.HasNewerPatch);
+        Assert.Equal("Release 28 has not been supported since 13 May 2026.", row.SupportSummary);
     }
 
     [Fact]

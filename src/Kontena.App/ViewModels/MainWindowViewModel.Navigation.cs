@@ -242,7 +242,7 @@ public partial class MainWindowViewModel
         // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker.
         CurrentPage = key switch
         {
-            "overview" => new ClusterOverviewViewModel(_cluster),
+            "overview" => new ClusterOverviewViewModel(_cluster, Versions),
             // RequestConfirm because the metrics-server install writes to the cluster and asks first
             // (KON-93); the other cluster pages route their confirms through the shell callbacks they
             // are handed.
@@ -308,7 +308,7 @@ public partial class MainWindowViewModel
                 _ = UpdateClusterNavAsync();
                 return Task.CompletedTask;
             }, ActiveNamespace),
-            _ => new ClusterOverviewViewModel(_cluster),
+            _ => new ClusterOverviewViewModel(_cluster, Versions),
         };
 
         Diag.Mark($"{key} page built in {built.Elapsed.TotalMilliseconds:F1} ms");
