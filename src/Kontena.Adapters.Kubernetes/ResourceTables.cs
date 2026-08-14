@@ -51,14 +51,15 @@ internal static class ResourceTables
 
     /// <summary>
     /// Where to ask: <c>/api/v1/...</c> for the core group, <c>/apis/&lt;group&gt;/&lt;version&gt;/...</c>
-    /// for the rest, with the namespace segment only where the kind is namespaced.
+    /// for the rest, with the namespace segment only where the kind is namespaced. With
+    /// <paramref name="name"/> it addresses one object instead of the collection.
     /// <para>
     /// Absolute, built against the cluster's own base address. The client's <c>HttpClient</c> carries the
     /// credentials and the server certificate but no <c>BaseAddress</c>, so a relative path here does not
     /// produce a wrong request — it produces no request at all.
     /// </para>
     /// </summary>
-    internal static Uri RequestUri(Uri baseUri, ApiResourceInfo resource, string? ns)
+    internal static Uri RequestUri(Uri baseUri, ApiResourceInfo resource, string? ns, string? name = null)
     {
         var root = string.IsNullOrEmpty(resource.Group)
             ? $"api/{resource.Version}"
@@ -71,7 +72,10 @@ internal static class ResourceTables
         // A base address without its trailing slash would swallow its last segment when combined.
         var rootUri = baseUri.AbsoluteUri.EndsWith('/') ? baseUri : new Uri(baseUri.AbsoluteUri + "/");
 
-        return new Uri(rootUri, path + "?includeObject=Metadata");
+        // The Table projection is a listing concern; asking for one object by name never wants it.
+        return new Uri(rootUri, string.IsNullOrEmpty(name)
+            ? path + "?includeObject=Metadata"
+            : $"{path}/{Uri.EscapeDataString(name)}");
     }
 
     internal static ResourceTable Read(JsonElement table, GroupVersionKind kind, string? fallbackNamespace)

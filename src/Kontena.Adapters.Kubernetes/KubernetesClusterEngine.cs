@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using k8s;
 using k8s.Autorest;
@@ -550,30 +551,48 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     // ── Manifests ────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// One object's live YAML, for any kind the cluster serves — the API server renders it itself
+    /// (<c>Accept: application/yaml</c>), so this is the same text <c>kubectl get -o yaml</c> shows.
+    /// <para>
+    /// Generic on the same footing as apply and delete: discovery names the plural, and nothing here
+    /// knows a Dragonfly from a Deployment. It used to be a switch over the dozen kinds this adapter
+    /// has a typed reader for, which left every custom resource — the half of the cluster the
+    /// Resources page exists for — showing a placeholder comment where its manifest should be.
+    /// </para>
+    /// </summary>
     public async ValueTask<string> GetManifestAsync(ResourceRef resource, CancellationToken ct = default)
     {
-        var ns = resource.Namespace;
-        var name = resource.Name;
+        // A kind the cluster does not serve is a fact about the cluster rather than a failed fetch,
+        // so it is stated in the panel instead of thrown at the caller.
+        if (await _resources.ResolveAsync(resource.Kind, ct).ConfigureAwait(false) is not { } info)
+            return $"# This cluster does not serve {resource.Kind.Kind}.";
 
-        object? obj = resource.Kind.Kind switch
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            ResourceTables.RequestUri(_client.BaseUri, info, resource.Namespace, resource.Name));
+
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(MediaTypeWithQualityHeaderValue.Parse("application/yaml"));
+
+        using var response = await _client.HttpClient.SendAsync(request, ct).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
         {
-            "Pod" => await _client.CoreV1.ReadNamespacedPodAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Service" => await _client.CoreV1.ReadNamespacedServiceAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Namespace" => await _client.CoreV1.ReadNamespaceAsync(name, cancellationToken: ct).ConfigureAwait(false),
-            "Node" => await _client.CoreV1.ReadNodeAsync(name, cancellationToken: ct).ConfigureAwait(false),
-            "PersistentVolumeClaim" => await _client.CoreV1.ReadNamespacedPersistentVolumeClaimAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Ingress" => await _client.NetworkingV1.ReadNamespacedIngressAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Deployment" => await _client.AppsV1.ReadNamespacedDeploymentAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "StatefulSet" => await _client.AppsV1.ReadNamespacedStatefulSetAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "DaemonSet" => await _client.AppsV1.ReadNamespacedDaemonSetAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Job" => await _client.BatchV1.ReadNamespacedJobAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "CronJob" => await _client.BatchV1.ReadNamespacedCronJobAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            _ => null,
-        };
+            // Mapped like every other call here, so a 403 reads as a permission problem rather than
+            // as a manifest that happens to be a Status object.
+            throw K8sErrors.Map(
+                new HttpOperationException(
+                    $"{resource.Kind.Kind} \"{resource.Name}\" could not be read: the cluster answered "
+                    + $"{(int)response.StatusCode} {response.ReasonPhrase}.")
+                {
+                    Response = new HttpResponseMessageWrapper(response, body),
+                },
+                _context);
+        }
 
-        return obj is null
-            ? $"# {resource.Kind.Kind} is not a kind this adapter can read yet."
-            : KubernetesYaml.Serialize(obj);
+        return body;
     }
 
     // ── Streams ──────────────────────────────────────────────────────────────
