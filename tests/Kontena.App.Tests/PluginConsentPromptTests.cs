@@ -28,8 +28,24 @@ public sealed class PluginConsentPromptTests : IDisposable
             File.Delete(_settingsPath);
     }
 
+    /// <summary>
+    /// What the stand-in assembly written by <see cref="WritePluginManifest"/> contains, and therefore
+    /// the digest a scan of it produces. Consent is recorded against that digest since KON-362, so a
+    /// hand-built <see cref="DiscoveredPlugin"/> and the directory a re-scan reads have to agree on it —
+    /// otherwise the re-scan finds bytes the answer does not cover and asks again.
+    /// </summary>
+    private const string StandInAssembly = "not a real assembly";
+
+    private static string StandInSha => Sha256Of(StandInAssembly);
+
+    private static string Sha256Of(string text) => Convert.ToHexStringLower(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
+
     private static DiscoveredPlugin Awaiting(
-        string id = "com.acme.nerdctl", string version = "1.0.0", string name = "nerdctl") =>
+        string id = "com.acme.nerdctl",
+        string version = "1.0.0",
+        string name = "nerdctl",
+        string? sha256 = null) =>
         new(
             Directory: Path.Combine(Path.GetTempPath(), id),
             Manifest: new PluginManifest
@@ -37,13 +53,16 @@ public sealed class PluginConsentPromptTests : IDisposable
                 Id = id,
                 Name = name,
                 Version = version,
-                Assembly = "Kontena.Plugins.Nerdctl.dll",
+                Assembly = "Plugin.dll",
                 Author = "Acme",
                 Description = "containerd containers.",
             },
             Status: PluginStatus.AwaitingConsent,
             Reason: null,
-            Providers: []);
+            Providers: [])
+        {
+            Sha256 = sha256 ?? StandInSha,
+        };
 
     private MainWindowViewModel Build(params DiscoveredPlugin[] plugins) =>
         new(
@@ -73,11 +92,13 @@ public sealed class PluginConsentPromptTests : IDisposable
             buildCatalog: (_, _, _, _) => [],
             plugins: plugins);
 
-    /// <summary>Write a real plugin directory — manifest only, no assembly — under <paramref
-    /// name="root"/>, for tests that exercise a real <see cref="PluginLoader.Discover"/> re-scan rather
-    /// than a hand-built <see cref="DiscoveredPlugin"/>. No assembly is needed: whether it loads or is
-    /// rejected for a missing file, either way it is no longer <see cref="PluginStatus.AwaitingConsent"/>
-    /// once consent has been given, which is all these tests need.</summary>
+    /// <summary>Write a real plugin directory under <paramref name="root"/>, for tests that exercise a
+    /// real <see cref="PluginLoader.Discover"/> re-scan rather than a hand-built
+    /// <see cref="DiscoveredPlugin"/>. The assembly is a stand-in and does not load — it does not need
+    /// to: rejected for being unloadable is still not <see cref="PluginStatus.AwaitingConsent"/>, which
+    /// is all these tests need. It does have to <em>exist</em> and to hold <see cref="StandInAssembly"/>,
+    /// though: since KON-362 a directory with no assembly is rejected outright, and consent is recorded
+    /// against the digest of the one that is there.</summary>
     private static void WritePluginManifest(string root, string id, string name, string version = "1.0.0")
     {
         var dir = Path.Combine(root, id);
@@ -90,8 +111,9 @@ public sealed class PluginConsentPromptTests : IDisposable
             author = "Acme",
             description = "containerd containers.",
             minSdkVersion = "",
-            assembly = "Missing.dll",
+            assembly = "Plugin.dll",
         }));
+        File.WriteAllText(Path.Combine(dir, "Plugin.dll"), StandInAssembly);
     }
 
     [Fact]
@@ -115,6 +137,30 @@ public sealed class PluginConsentPromptTests : IDisposable
         var dialog = Assert.IsType<ConfirmViewModel>(vm.Dialog);
         Assert.Contains(dialog.Details, d => d.Detail.Contains("Acme"));
         Assert.Contains(dialog.Details, d => d.Detail.Contains("1.0.0"));
+    }
+
+    [Fact]
+    public void The_confirm_renders_what_the_plugin_says_it_will_do()
+    {
+        // Rendered, not composed (KON-296): the host repeats the author's claim, it does not decide what
+        // the plugin may do. Nothing enforces these — which is why a user has to see them before saying
+        // yes to code from a named author.
+        var manifest = Awaiting();
+        var declaring = manifest with
+        {
+            Manifest = manifest.Manifest! with
+            {
+                Permissions = ["Read and write the folder you open", "Talk to the cluster you have open"],
+            },
+        };
+
+        var vm = Build(declaring);
+
+        vm.AskPluginConsent();
+
+        var dialog = Assert.IsType<ConfirmViewModel>(vm.Dialog);
+        Assert.Contains(dialog.Details, d => d.Detail.Contains("folder you open", StringComparison.Ordinal));
+        Assert.Contains(dialog.Details, d => d.Detail.Contains("cluster you have open", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -158,8 +204,41 @@ public sealed class PluginConsentPromptTests : IDisposable
         await ((ConfirmViewModel)vm.Dialog!).ConfirmCommand.ExecuteAsync(null);
 
         var stored = new SettingsStore(_settingsPath).Load();
-        Assert.True(stored.AllowsPlugin("com.acme.nerdctl", "1.0.0"));
-        Assert.False(stored.AllowsPlugin("com.acme.nerdctl", "1.1.0"));
+        Assert.True(stored.AllowsPlugin("com.acme.nerdctl", "1.0.0", StandInSha));
+        Assert.False(stored.AllowsPlugin("com.acme.nerdctl", "1.1.0", StandInSha));
+
+        // And for that exact build of it (KON-362): the answer covers the bytes the dialog described,
+        // not every dll that later calls itself 1.0.0.
+        Assert.False(stored.AllowsPlugin("com.acme.nerdctl", "1.0.0", Sha256Of("something else")));
+    }
+
+    [Fact]
+    public void A_plugin_that_changed_since_it_was_allowed_is_asked_about_as_a_change()
+    {
+        // Same id, same version, different code. Telling the user "we found something in your plugins
+        // folder" here would leave out the only part worth waking them up for.
+        var settings = new KontenaSettings()
+            .WithAllowedPlugin("com.acme.nerdctl", "1.0.0", Sha256Of("the build they allowed"));
+
+        var vm = Build(settings, Awaiting());
+
+        vm.AskPluginConsent();
+
+        var dialog = Assert.IsType<ConfirmViewModel>(vm.Dialog);
+        Assert.Contains("changed", dialog.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not the build you allowed", dialog.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_plugin_nobody_has_seen_before_is_asked_about_as_a_new_one()
+    {
+        var vm = Build(Awaiting());
+
+        vm.AskPluginConsent();
+
+        var dialog = Assert.IsType<ConfirmViewModel>(vm.Dialog);
+        Assert.DoesNotContain("changed", dialog.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("was found in your plugins folder", dialog.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -223,7 +302,8 @@ public sealed class PluginConsentPromptTests : IDisposable
         // _plugins still says AwaitingConsent for it, because nothing has re-scanned since. No confirm
         // step and no re-scan here — this constructs that disagreement directly, which is what the
         // `!_settings.AllowsPlugin(...)` clause in the pending filter exists for.
-        var settings = new KontenaSettings().WithAllowedPlugin("com.acme.nerdctl", "1.0.0");
+        var settings = new KontenaSettings()
+            .WithAllowedPlugin("com.acme.nerdctl", "1.0.0", StandInSha);
         var vm = Build(settings, Awaiting(id: "com.acme.nerdctl", version: "1.0.0"));
 
         vm.AskPluginConsent();

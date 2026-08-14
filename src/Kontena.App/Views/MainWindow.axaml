@@ -55,6 +55,23 @@
                                     VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
                                 <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                             </Border>
+                            <!-- This backend runs a release its publisher has dropped (KON-370). The
+                                 sentence behind it — which line, and since when — is in the tooltip,
+                                 because the row is a row and not a place to explain things. -->
+                            <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                                    BorderThickness="1" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding IsUnsupported}"
+                                    ToolTip.Tip="{Binding SupportSummary}">
+                                <TextBlock Text="Unsupported" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource WarnText}"/>
+                            </Border>
+                            <!-- A newer release on a line that is still maintained (KON-371). The
+                                 answer already carried this and nothing showed it. Grey, not amber:
+                                 being a patch behind is worth mentioning, not worth a warning. -->
+                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                    VerticalAlignment="Center" IsVisible="{Binding HasNewerPatch}"
+                                    ToolTip.Tip="{Binding SupportSummary}">
+                                <TextBlock Text="Update" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                            </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
@@ -98,8 +115,10 @@
     </Window.Resources>
 
     <Window.Styles>
-        <!-- Flat search input: the wrapping Border supplies the frame -->
-        <Style Selector="TextBox.bare">
+        <!-- Flat search input: the wrapping Border supplies the frame. The second selector is the
+             text box inside the namespace picker's AutoCompleteBox (KON-373) — the same flat input,
+             one control deeper. -->
+        <Style Selector="TextBox.bare, AutoCompleteBox.bare /template/ TextBox#PART_TextBox">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
@@ -114,15 +133,18 @@
                  surface in PaletteContrastTests. -->
             <Setter Property="PlaceholderForeground" Value="{DynamicResource TextFaint}"/>
         </Style>
-        <Style Selector="TextBox.bare /template/ Border#PART_BorderElement">
+        <Style Selector="TextBox.bare /template/ Border#PART_BorderElement,
+                         AutoCompleteBox.bare /template/ TextBox#PART_TextBox /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
-        <Style Selector="TextBox.bare:pointerover /template/ Border#PART_BorderElement">
+        <Style Selector="TextBox.bare:pointerover /template/ Border#PART_BorderElement,
+                         AutoCompleteBox.bare /template/ TextBox#PART_TextBox:pointerover /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
-        <Style Selector="TextBox.bare:focus /template/ Border#PART_BorderElement">
+        <Style Selector="TextBox.bare:focus /template/ Border#PART_BorderElement,
+                         AutoCompleteBox.bare /template/ TextBox#PART_TextBox:focus /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
@@ -292,6 +314,12 @@
                                          Fill="{DynamicResource Danger}" IsVisible="{Binding IsBackendDown}"/>
                                 <TextBlock Text="{Binding EngineDetail}" FontSize="10.5" FontFamily="{StaticResource Mono}"
                                            Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                <!-- The open backend runs a dropped release (KON-371). An icon rather
+                                     than the switcher's pill: there is no room for a word here, and
+                                     this line is the one place the version is always on screen. -->
+                                <Path Classes="icon" Width="11" Height="11" VerticalAlignment="Center"
+                                      IsVisible="{Binding IsEngineUnsupported}" Stroke="{DynamicResource Warn}"
+                                      Data="{StaticResource IconWarning}" ToolTip.Tip="{Binding EngineSupportSummary}"/>
                             </StackPanel>
                             <TextBlock Text="{Binding EngineEndpoint}" FontSize="10.5" FontFamily="{StaticResource Mono}"
                                        Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"
@@ -419,21 +447,29 @@
                                  indent would be a second way of saying the same thing (KON-219). -->
                             <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,0,0,2"
                                     Command="{Binding Command}" CommandParameter="{Binding Key}">
-                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                                     <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                           Stroke="{Binding $parent[Button].Foreground}"
                                           Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
                                     <TextBlock Grid.Column="1" Text="{Binding Label}" Margin="11,0,0,0" VerticalAlignment="Center"/>
 
+                                    <!-- Not decoration: a user has to be able to see which parts of this
+                                         window are not ours (KON-331). -->
+                                    <Border Grid.Column="2" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
+                                            Padding="5,0" Margin="0,0,7,0" VerticalAlignment="Center"
+                                            IsVisible="{Binding IsPlugin}" ToolTip.Tip="{Binding PluginTip}">
+                                        <TextBlock Text="plugin" FontSize="9.5" Foreground="{DynamicResource TextFaint}"/>
+                                    </Border>
+
                                     <!-- Something on this page fell over; separate from the count, which
                                          says how many are working (KON-107). -->
-                                    <Ellipse Grid.Column="2" Width="7" Height="7" Margin="0,0,7,0"
+                                    <Ellipse Grid.Column="3" Width="7" Height="7" Margin="0,0,7,0"
                                              VerticalAlignment="Center" Fill="{DynamicResource Warn}"
                                              IsVisible="{Binding NeedsAttention}"
                                              ToolTip.Tip="{Binding AttentionTip}"/>
                                     <!-- Only where there is something to count: an empty pill on every
                                          other row is noise that reads as a control (KON-219). -->
-                                    <Border Grid.Column="3" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
+                                    <Border Grid.Column="4" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
                                             Padding="7,1" VerticalAlignment="Center" IsVisible="{Binding HasCount}">
                                         <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
                                     </Border>
@@ -486,15 +522,36 @@
                     </Border>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <!-- Namespace picker — only in cluster mode -->
+                        <!-- Namespace picker — only in cluster mode.
+                             A fixed width, like the search box on the left. The ComboBox that was here
+                             measured itself on the selected name, so every switch resized the picker and
+                             shoved the refresh and theme buttons sideways (KON-373).
+                             An AutoCompleteBox rather than a ComboBox because the list this filters is
+                             as long as the cluster has namespaces, and scrolling was the only way through
+                             it. It is a text box, so the selection is not its own truth: SelectedNamespace
+                             stays that, the binding runs one way out of the view model, and the code-behind
+                             commits only a real pick. Half-typed text is thrown away on the way out. -->
                         <Border IsVisible="{Binding IsClusterMode}" Background="{DynamicResource Bg}"
                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource RadiusSm}"
-                                Height="34" Padding="10,0" VerticalAlignment="Center">
+                                Height="34" Padding="10,0" VerticalAlignment="Center"
+                                ToolTip.Tip="{Binding SelectedNamespace}">
                             <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                 <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextFaint}"
                                       Data="{StaticResource IconBox}" VerticalAlignment="Center"/>
-                                <ComboBox ItemsSource="{Binding Namespaces}" SelectedItem="{Binding SelectedNamespace, Mode=TwoWay}"
-                                          MinWidth="150" BorderThickness="0" Background="Transparent" VerticalAlignment="Center"/>
+                                <AutoCompleteBox x:Name="NamespacePicker" Classes="bare" Width="180"
+                                                 ItemsSource="{Binding Namespaces}"
+                                                 SelectedItem="{Binding SelectedNamespace, Mode=OneWay}"
+                                                 FilterMode="Contains" MinimumPrefixLength="0"
+                                                 IsTextCompletionEnabled="False"
+                                                 Watermark="Filter namespaces…" VerticalAlignment="Center"
+                                                 LostFocus="OnNamespacePickerLostFocus"
+                                                 SelectionChanged="OnNamespacePicked">
+                                    <AutoCompleteBox.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding}"/>
+                                        </DataTemplate>
+                                    </AutoCompleteBox.ItemTemplate>
+                                </AutoCompleteBox>
                             </StackPanel>
                         </Border>
                         <Button Classes="qa" Width="34" Height="34" Command="{Binding RefreshCurrentPageCommand}" ToolTip.Tip="{Binding RefreshTooltip}">
@@ -513,10 +570,17 @@
             <Panel Grid.Row="1">
                 <ContentControl Content="{Binding CurrentPage}" IsVisible="{Binding IsPageVisible}"/>
 
+                <!-- The shell reading the cluster before it can build the page it is about to show
+                     (KON-375). Over the top of the old page rather than in place of it: the page
+                     underneath is what you were just looking at, and blanking it to say "working"
+                     costs more than it tells. -->
+                <ProgressBar IsIndeterminate="True" Height="2" VerticalAlignment="Top"
+                             IsVisible="{Binding IsReadingCluster}"/>
+
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" IsVisible="{Binding IsConnecting}">
                     <ProgressBar IsIndeterminate="True" Width="220" Height="4"
                                  Foreground="{DynamicResource Primary}" Background="{DynamicResource Surface2}"/>
-                    <TextBlock Text="Connecting to your container engine…" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding ConnectingMessage}" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Engine-down. Yields to Activity, Settings and About: those are the pages you
@@ -687,7 +751,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Path Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
                           Data="{StaticResource IconDownload}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding Update.Version, StringFormat='Kontena {0} is available'}"
+                    <TextBlock Text="{Binding Update.Headline}"
                                FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
                                VerticalAlignment="Center"/>
                 </StackPanel>

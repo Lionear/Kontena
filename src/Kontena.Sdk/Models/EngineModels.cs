@@ -46,6 +46,17 @@ public sealed record EngineCapabilities
     /// <summary>Can exec into running containers.</summary>
     public bool SupportsExec { get; init; }
 
+    /// <summary>
+    /// Can be told to restart a container automatically — Docker's <c>--restart</c> and its equivalents.
+    /// <para>
+    /// Its own flag rather than something assumed of every engine, because Apple's <c>container</c> has
+    /// no such option at all: a policy sent there is accepted by a form and then never happens, which
+    /// leaves someone believing a container comes back after a crash. Engines that cannot honour it must
+    /// say so, so the UI can stop asking.
+    /// </para>
+    /// </summary>
+    public bool SupportsRestartPolicy { get; init; }
+
     /// <summary>Can prune unused resources.</summary>
     public bool SupportsPrune { get; init; }
 
@@ -54,6 +65,13 @@ public sealed record EngineCapabilities
     /// answered per engine rather than assumed — see <c>BrowseVolumeAsync</c>.
     /// </summary>
     public bool SupportsVolumeBrowse { get; init; }
+
+    /// <summary>
+    /// Can copy a volume's contents to and from a tar on the host. Like
+    /// <see cref="SupportsVolumeBrowse"/> this is not a native operation anywhere — it needs an image
+    /// to mount the volume into — so it is answered per engine rather than assumed.
+    /// </summary>
+    public bool SupportsVolumeTransfer { get; init; }
 
     /// <summary>Supports GPU passthrough.</summary>
     public bool SupportsGpu { get; init; }

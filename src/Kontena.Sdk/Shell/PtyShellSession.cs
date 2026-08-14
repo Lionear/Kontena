@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using Kontena.Sdk.Models;
 using Porta.Pty;
 
-namespace Kontena.Core.Shell;
+namespace Kontena.Sdk.Shell;
 
 /// <summary>
 /// A shell running on this machine, behind the same <see cref="IExecSession"/> the container and pod
@@ -37,14 +37,14 @@ public sealed class PtyShellSession : IExecSession
     }
 
     /// <summary>
-    /// Start <paramref name="plan"/> in a pseudo-terminal of the given size.
+    /// Start <paramref name="command"/> in a pseudo-terminal of the given size.
     /// </summary>
     /// <param name="supportDirectory">
-    /// Removed when the session ends. Holds the generated rcfile and kubeconfig overlay, which exist
-    /// only for this shell.
+    /// Removed when the session ends. Holds files that exist only for this session — the host shell's
+    /// generated rcfile and kubeconfig overlay. A caller with nothing to write leaves it null.
     /// </param>
     public static async ValueTask<PtyShellSession> StartAsync(
-        ShellPlan plan,
+        PtyCommand command,
         string workingDirectory,
         int columns,
         int rows,
@@ -54,15 +54,15 @@ public sealed class PtyShellSession : IExecSession
         var options = new PtyOptions
         {
             Name = "Kontena",
-            App = plan.Executable,
+            App = command.Executable,
             // Arguments only. Porta prepends the program itself, so passing argv[0] here hands the
             // shell its own binary as a script to run: "/bin/sh: cannot execute binary file", and a
             // terminal that echoes what you type without ever running it.
-            CommandLine = [.. plan.Arguments],
+            CommandLine = [.. command.Arguments],
             Cwd = workingDirectory,
             Cols = Math.Max(columns, 1),
             Rows = Math.Max(rows, 1),
-            Environment = Inherited(plan.Environment),
+            Environment = Inherited(command.Environment),
         };
 
         var pty = await PtyProvider.SpawnAsync(options, ct).ConfigureAwait(false);

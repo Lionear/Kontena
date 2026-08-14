@@ -21,13 +21,15 @@ namespace Kontena.App.ViewModels;
 /// its health split or next to a reason.
 /// </para>
 /// </summary>
-public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPage
+public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPage, IClusterLivePage
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
     private readonly Action<WorkloadKind>? _onOpenKind;
     private readonly Action<Workload>? _onOpenWorkload;
     private readonly Action? _onOpenPods;
+    private CancellationTokenSource? _watch;
+    private bool _started;
 
     public ClusterWorkloadsDashboardViewModel(
         IClusterEngine cluster, string? @namespace,
@@ -41,6 +43,62 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
         _onOpenPods = onOpenPods;
 
         _ = LoadAsync();
+        StartWatching();
+    }
+
+    /// <summary>
+    /// The five workload kinds this page rolls up, plus Pods — the two lists <see cref="LoadAsync"/>
+    /// reads (KON-340). The batch two only became followable in KON-344; before that the per-kind
+    /// Jobs page was already claiming a coordinate the adapter had no watcher for.
+    /// </summary>
+    public IReadOnlyList<GroupVersionKind> WatchedKinds { get; } =
+    [
+        GroupVersionKind.Deployment,
+        GroupVersionKind.StatefulSet,
+        GroupVersionKind.DaemonSet,
+        GroupVersionKind.Job,
+        GroupVersionKind.CronJob,
+        GroupVersionKind.Pod,
+    ];
+
+    /// <inheritdoc/>
+    [ObservableProperty] private bool _isLive;
+
+    /// <inheritdoc/>
+    [ObservableProperty] private string? _liveNotice;
+
+    /// <inheritdoc/>
+    public Action? Changed { get; set; }
+
+    /// <inheritdoc/>
+    public void StartWatching()
+    {
+        if (_started)
+            return;
+
+        _started = true;
+        _watch = ClusterWatch.Follow(
+            _cluster, WatchedKinds, _namespace,
+            reload: async () =>
+            {
+                await LoadAsync();
+                Changed?.Invoke();
+            },
+            onState: (live, notice) =>
+            {
+                IsLive = live;
+                LiveNotice = notice;
+            });
+    }
+
+    /// <summary>Stop following; this page is rebuilt on every visit like the rest.</summary>
+    public void Dispose()
+    {
+        _watch?.Cancel();
+        _watch?.Dispose();
+        _watch = null;
+        IsLive = false;
+        GC.SuppressFinalize(this);
     }
 
     public ObservableCollection<KindCard> Kinds { get; } = [];
@@ -71,7 +129,35 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
 
     // ── Loading ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Set for the duration of the first read, the same rule the list pages follow (KON-319,
+    /// KON-375). Cards and an attention banner, so an unfinished read draws as "nothing needs you" —
+    /// the one wrong answer on this page that looks exactly like the right one.
+    /// <para>
+    /// Only the first: this page reloads on every settled watch event, and a spinner on each of those
+    /// is noise rather than news.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isLoading;
+
     public async Task LoadAsync()
+    {
+        var isFirstLoad = !HasLoaded;
+        if (isFirstLoad)
+            IsLoading = true;
+
+        try
+        {
+            await ReadAsync();
+        }
+        finally
+        {
+            if (isFirstLoad)
+                IsLoading = false;
+        }
+    }
+
+    private async Task ReadAsync()
     {
         // Both lists once. The cards are a rollup of the workloads and the reasons come from the pods,
         // so fetching them separately per section is two sources for one screen — and two chances to
@@ -82,6 +168,10 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
         var workloads = workloadsTask.Result;
         var pods = podsTask.Result;
 
+        // Rebuilt rather than reconciled, unlike the lists: a KindCard is a small mutable object with
+        // no value equality, so ListSync would replace every card anyway. Four or five cards with no
+        // scroll position and no selection to lose is a different proposition from a fifty-row table
+        // — worth revisiting only if a reload turns out to be visible.
         Kinds.Clear();
         foreach (var group in WorkloadNavGroups.For(workloads))
         {

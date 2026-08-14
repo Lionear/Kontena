@@ -15,7 +15,13 @@ name: Build
 # NOTE: scheduled workflows only ever run from the default branch, so the cron here is dormant until
 # this file reaches main.
 #
-# Builds are unsigned / not notarized for now (see the release notes footer).
+# The downloads are unsigned / not notarized for now (see the release notes footer). The update *feed*
+# is signed with our own key, which needs no CA and covers all three platforms (KON-363).
+#
+# ponytail: no Authenticode over the setup and the app (`vpk pack --signParams`) and no macOS
+# notarization — both want a certificate from an authority, and neither exists yet: Windows needs an
+# OV/EV code signing certificate, macOS a Developer ID (KON-53). Add them where the pack step builds
+# EXTRA below; the feed signature above is independent of both and does not change when they land.
 on:
   schedule:
     # 03:00 UTC — after a European working day, before the next one.
@@ -271,6 +277,34 @@ jobs:
           done
           iconutil -c icns "$ICONSET" -o icon.icns
 
+      # The bundle's Info.plist comes from the repo rather than from vpk (KON-360): vpk derives
+      # CFBundleShortVersionString from the pack version and pads it to four components, so
+      # 0.4.0-nightly.65 shipped as 0.4.0.0 where Apple allows at most three integers. Only the values
+      # that change per build are filled in here; the rest lives in the template.
+      - name: Prepare macOS Info.plist
+        if: matrix.platform == 'osx'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          MAIN_EXE: ${{ matrix.mainExe }}
+        run: |
+          set -euo pipefail
+
+          # CFBundleVersion takes the version whole — it is a build identifier and may carry the
+          # pre-release suffix. CFBundleShortVersionString is the one with the rule, so it drops the
+          # suffix and keeps at most three components.
+          SHORT=$(printf '%s' "$VERSION" | sed -E 's/[-+].*$//' | cut -d. -f1-3)
+          if ! printf '%s' "$SHORT" | grep -Eq '^[0-9]+(\.[0-9]+){0,2}$'; then
+            echo "Refusing CFBundleShortVersionString '$SHORT', derived from version '$VERSION'" >&2
+            exit 1
+          fi
+
+          cp tools/macos/Info.plist Info.plist
+          plutil -replace CFBundleExecutable -string "$MAIN_EXE" Info.plist
+          plutil -replace CFBundleShortVersionString -string "$SHORT" Info.plist
+          plutil -replace CFBundleVersion -string "$VERSION" Info.plist
+          plutil -lint Info.plist
+
       - name: Package (vpk)
         shell: bash
         env:
@@ -286,7 +320,25 @@ jobs:
           set -euo pipefail
           EXTRA=()
           case "$PLATFORM" in
-            osx)   ICON=icon.icns ;;
+            # Ad-hoc sign the bundle vpk builds (KON-348). Without this the .app ships with the
+            # signature the .NET SDK left on the apphost and no seal around it — no
+            # Contents/_CodeSignature, and an identifier of "apphost" rather than com.Lionear.Kontena.
+            # macOS reads a signature that claims resources against a bundle that has none as damaged,
+            # which is the one refusal a user cannot click past. Ad-hoc does not make it trusted, it
+            # makes it ordinary: the verdict drops back to "no usable signature", the state every
+            # unsigned app is in. Real trust needs the Developer ID from KON-53, and the installer
+            # package needs --signInstallIdentity on top of that; this flag signs the app only.
+            # The bundle id is set rather than left to vpk, which derives com.<packAuthors>.<packId> —
+            # com.Lionear.Kontena, reverse-DNS for a domain nobody owns. app.kontena.Kontena is the
+            # domain this product actually has, and it is already what MacKeychainStore stores secrets
+            # under and what Autostart names its LaunchAgent, so this makes the three agree instead of
+            # adding a fourth name. Nothing of ours is keyed on the old one: settings live in a plain
+            # path under Application Support. Changing it later would be the expensive version — a
+            # notarization ticket is issued against a specific bundle id, and macOS files a user's
+            # permissions and Launch Services entry under it too. It now lives in tools/macos/Info.plist
+            # rather than on this line, because --plist and --bundleId cannot both be given (KON-360).
+            osx)   ICON=icon.icns
+                   EXTRA+=(--signAppIdentity - --plist Info.plist) ;;
             win)   ICON=src/Kontena.App/Assets/icon.ico ;;
             *)     ICON=src/Kontena.App/Assets/icon.png
                    # Same desktop-menu categories the hand-rolled .desktop entry carried.
@@ -307,6 +359,53 @@ jobs:
             --channel "$CHANNEL" \
             --outputDir artifacts
 
+      # A second macOS download, alongside the .pkg vpk makes (KON-348). Not a duplicate: Gatekeeper
+      # treats the two completely differently. A .pkg is *executed* by Installer.app, so an unsigned one
+      # is refused before its payload is touched — and there is nothing for the user to clear, because
+      # the app does not exist yet. A .dmg is passive data: it mounts, the app is dragged out, and the
+      # ordinary unsigned-app path applies (right-click → Open, or xattr -cr). Until KON-53 buys a
+      # Developer ID, this is the only macOS download that works without a terminal.
+      #
+      # Built from the Portable.zip rather than a fresh publish, so the image carries exactly what the
+      # portable download carries, ad-hoc seal included. Re-signing here would be a second
+      # implementation of that, free to drift from the one in the pack step above.
+      - name: Package (macOS dmg)
+        if: matrix.platform == 'osx'
+        shell: bash
+        env:
+          CHANNEL: ${{ matrix.platform }}-${{ needs.setup.outputs.channel }}
+        run: |
+          set -euo pipefail
+          ZIP="artifacts/Kontena-$CHANNEL-Portable.zip"
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::expected $ZIP from the pack step" >&2
+            ls -la artifacts >&2
+            exit 1
+          fi
+
+          STAGE="$(mktemp -d)"
+          # -x __MACOSX/*: zip keeps resource forks in a sibling directory, which would otherwise sit
+          # next to the app in the mounted image.
+          unzip -q "$ZIP" -d "$STAGE" -x '__MACOSX/*'
+          ln -s /Applications "$STAGE/Applications"   # the drag-to-install gesture people expect
+
+          DMG="artifacts/Kontena-$CHANNEL.dmg"
+
+          # hdiutil intermittently fails with "Resource busy" on CI — Spotlight indexing the freshly
+          # written staging directory is the usual suspect. The same retry the DataTray workflow carries,
+          # for the same reason: the step is otherwise deterministic, so a race must not fail a build.
+          for attempt in 1 2 3; do
+            if hdiutil create -volname Kontena -srcfolder "$STAGE" -ov -format UDZO "$DMG"; then
+              echo "dmg created on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::hdiutil attempt $attempt failed; retrying in 10s"
+            sleep 10
+          done
+
+          echo "::error::hdiutil failed three times" >&2
+          exit 1
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -315,18 +414,25 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  # The nerdctl plugin does not ship in the box (Plans/plugin-loader.md §5): it is its own zip,
-  # unpacked by hand today and by the plugin store later — which is the point, since the in-the-box
-  # route would prove only that the loader can load one dll, not that downloading, unpacking and
-  # consenting work.
+  # No plugin ships in the box (Plans/plugin-loader.md §5, Plans/plugin-store.md §0): each is its own
+  # zip, unpacked by hand today and by the plugin store later — which is the point, since the
+  # in-the-box route would prove only that the loader can load one dll, not that downloading,
+  # unpacking and consenting work.
   #
-  # Its own job rather than a step in the matrix above: the plugin is one platform-independent
+  # Its own job rather than a step in the app matrix above: a plugin is one platform-independent
   # assembly, so building it three times would produce three identical zips racing for one asset name.
   plugin:
-    name: Package nerdctl plugin
+    name: Package ${{ matrix.slug }} plugin
     needs: setup
     if: ${{ needs.setup.outputs.should_build == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - slug: nerdctl
+            project: Kontena.Plugins.Nerdctl
+          - slug: manifest-studio
+            project: Kontena.Plugins.ManifestStudio
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -342,13 +448,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          dotnet publish src/Kontena.Plugins.Nerdctl/Kontena.Plugins.Nerdctl.csproj \
+          dotnet publish "src/${{ matrix.project }}/${{ matrix.project }}.csproj" \
             -c Release -o plugin-publish
 
           # The plugin's own version, not the app's: it is what plugin.json declares, what the host
           # keys consent on (id@version), and what the store will compare to decide there is a newer
           # one. Read from the manifest so there is a single place to bump it.
-          VERSION=$(python3 -c 'import json,sys; print(json.load(open("src/Kontena.Plugins.Nerdctl/plugin.json"))["version"])')
+          VERSION=$(python3 -c 'import json; print(json.load(open("src/${{ matrix.project }}/plugin.json"))["version"])')
           if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.+-]*$'; then
             echo "Refusing plugin version '$VERSION'" >&2; exit 1
           fi
@@ -361,16 +467,16 @@ jobs:
           # Both files are what the loader looks for by name. A zip missing either is a plugin the
           # host silently refuses, so this fails here instead of on a user's machine.
           test -f plugin-publish/plugin.json
-          test -f plugin-publish/Kontena.Plugins.Nerdctl.dll
+          test -f "plugin-publish/${{ matrix.project }}.dll"
 
           mkdir -p artifacts
-          (cd plugin-publish && zip -qr "../artifacts/kontena-plugin-nerdctl-$VERSION.zip" .)
+          (cd plugin-publish && zip -qr "../artifacts/kontena-plugin-${{ matrix.slug }}-$VERSION.zip" .)
           ls -l artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: plugin-nerdctl
+          name: plugin-${{ matrix.slug }}
           path: artifacts/*
           retention-days: 14
           if-no-files-found: error
@@ -399,6 +505,64 @@ jobs:
         with:
           path: dist
 
+      # Velopack checks every package it downloads — the full one and each delta — against the SHA256
+      # in releases.<channel>.json, and then unpacks it over the installation. That file is therefore
+      # the whole trust anchor, and until now the only thing behind it was GitHub's TLS certificate:
+      # writing a release asset was enough to run code on every install (KON-363). Signing the feed
+      # moves that bar from "can write an asset" to "has the private key", and it needs no CA, so it
+      # covers Linux too — the one platform with no signature format at all.
+      #
+      # One signature per channel feed, not per asset: the SHA256s inside it already carry the
+      # packages, so signing them again would be a second thing to keep in step for no extra guarantee.
+      - name: Sign the update feeds
+        env:
+          SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+
+          # One flat dir for the upload glob.
+          mkdir -p assets
+          find dist -type f -exec cp {} assets/ \;
+
+          if [ -z "${SIGNING_KEY:-}" ]; then
+            echo "::error::RELEASE_SIGNING_KEY is not set, so this release would have no signature." >&2
+            echo "::error::Installed copies refuse an unsigned feed, so publishing it would strand" >&2
+            echo "::error::every user on their current version. See CONTRIBUTING.md §Release signing." >&2
+            exit 1
+          fi
+
+          KEY=$(mktemp)
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s\n' "$SIGNING_KEY" > "$KEY"
+
+          # nullglob so a missing feed is caught by the count below rather than by openssl being
+          # handed the literal pattern.
+          shopt -s nullglob
+          FEEDS=(assets/releases.*.json)
+          if [ ${#FEEDS[@]} -eq 0 ]; then
+            echo "::error::no releases.*.json among the built assets — nothing to sign" >&2
+            ls -la assets >&2
+            exit 1
+          fi
+
+          for feed in "${FEEDS[@]}"; do
+            openssl dgst -sha256 -sign "$KEY" -out "$feed.sig" "$feed"
+
+            # Verified against the public key the app carries, not against the private one we just
+            # signed with: that is the pair a client actually checks. A secret that no longer matches
+            # the committed key has to fail here, where one build is red, rather than on every
+            # installation, where every update is refused.
+            if ! openssl dgst -sha256 -verify src/Kontena.App/Assets/release-signing.pub.pem \
+                   -signature "$feed.sig" "$feed"; then
+              echo "::error::RELEASE_SIGNING_KEY is not the private half of" >&2
+              echo "::error::src/Kontena.App/Assets/release-signing.pub.pem, so installed copies would" >&2
+              echo "::error::refuse this release. Rotate both halves together — CONTRIBUTING.md" >&2
+              echo "::error::§Release signing." >&2
+              exit 1
+            fi
+            echo "signed $(basename "$feed")"
+          done
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -409,9 +573,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # One flat dir for the upload glob.
-          mkdir -p assets
-          find dist -type f -exec cp {} assets/ \;
+          # assets/ was filled and signed by the step above.
 
           # Release notes are the maintainer-curated CHANGELOG.md [Unreleased] section, not the git log.
           # Fold the changelog fragments (changelog.d/, KON-104) into [Unreleased] first — that is where
@@ -424,20 +586,31 @@ jobs:
 
           BODY="$(cat notes.md)
 
-          These builds are unsigned / not notarized.
+          These downloads are unsigned / not notarized.
           Linux: the .AppImage is self-contained — chmod +x and run it.
-          macOS: run the Setup .pkg, or unzip the portable build — then clear quarantine before first
-          launch: xattr -cr Kontena.app.
+          macOS: use the .dmg — mount it, drag Kontena to Applications, then right-click → Open the
+          first time (or xattr -cr /Applications/Kontena.app). The .pkg is there for anyone who wants
+          it, but macOS refuses to run an unsigned installer package, and clearing quarantine
+          afterwards cannot help it: the package is checked before it unpacks anything.
           Windows: run the Setup .exe, or unzip the portable build; SmartScreen may warn on first launch.
 
           Installed copies update themselves from here — see Settings → Updates.
           The .nupkg and releases.*.json assets are what the updater reads; you do not need to download them.
+          Each releases.*.json is signed with Kontena's release key and every installed copy checks that
+          signature before it downloads anything, so an update can only come from a build published here.
 
-          kontena-plugin-nerdctl-*.zip is optional and separate from the app: it adds containerd
-          backends through the nerdctl CLI, one per containerd namespace. Unzip it into
-          %APPDATA%\\Lionear\\Kontena\\plugins\\nerdctl\\ (Windows) or
-          ~/.config/Lionear/Kontena/plugins/nerdctl/ (Linux, macOS), then start Kontena and approve it
-          when asked. It needs nerdctl on the machine; it does not install one."
+          The kontena-plugin-*.zip files are optional and separate from the app. Unzip one into its own
+          folder under %APPDATA%\\Lionear\\Kontena\\plugins\\ (Windows) or
+          ~/.config/Lionear/Kontena/plugins/ (Linux, macOS), then start Kontena and approve it when
+          asked.
+
+          kontena-plugin-nerdctl-*.zip adds containerd backends through the nerdctl CLI, one per
+          containerd namespace. It needs nerdctl on the machine; it does not install one.
+
+          kontena-plugin-manifest-studio-*.zip adds Manifest Studio: a workspace over a folder or Git
+          repository where you write Kubernetes manifests with completion and validation from the
+          cluster you have open, then plan and apply them. It uses the git and kustomize on your
+          machine when you ask for those."
 
           if [ "$CHANNEL" = stable ]; then
             TARGET=$(git rev-parse "${RELEASE_TAG}^{commit}")

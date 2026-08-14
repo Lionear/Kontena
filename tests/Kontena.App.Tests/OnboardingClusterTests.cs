@@ -21,7 +21,6 @@ public sealed class OnboardingClusterTests
         onInstallPodman: () => { },
         onRescan: () => Task.CompletedTask,
         onStartEngine: () => Task.CompletedTask,
-        showRoadmap: false,
         clusters: [.. contexts.Select(c => new KubernetesClusterProvider(c))]);
 
     [Fact]
@@ -72,7 +71,6 @@ public sealed class OnboardingClusterTests
             onInstallPodman: () => { },
             onRescan: () => Task.CompletedTask,
             onStartEngine: () => Task.CompletedTask,
-            showRoadmap: false,
             clusters: [new KubernetesClusterProvider("alpha"), new KubernetesClusterProvider("beta")]);
 
         wizard.Clusters[0].IsSelected = false;
@@ -95,7 +93,6 @@ public sealed class OnboardingClusterTests
             onInstallPodman: () => { },
             onRescan: () => Task.CompletedTask,
             onStartEngine: () => Task.CompletedTask,
-            showRoadmap: false,
             clusters: [new KubernetesClusterProvider("alpha"), new KubernetesClusterProvider("beta")],
             clusterTicked: id => id.EndsWith("alpha", StringComparison.Ordinal));
 

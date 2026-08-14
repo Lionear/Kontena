@@ -1,5 +1,6 @@
 using System.Text;
 using Kontena.Core.Shell;
+using Kontena.Sdk.Shell;
 
 namespace Kontena.Core.Tests;
 
@@ -26,9 +27,9 @@ public sealed class PtyShellSessionTests
         if (Unsupported)
             return;
 
-        var plan = new ShellPlan("/bin/sh", ["-i"], new Dictionary<string, string>(), new Dictionary<string, string>());
+        var command = new PtyCommand("/bin/sh", ["-i"], new Dictionary<string, string>());
         await using var session = await PtyShellSession.StartAsync(
-            plan, Path.GetTempPath(), columns: 80, rows: 24);
+            command, Path.GetTempPath(), columns: 80, rows: 24);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var output = new StringBuilder();
@@ -71,9 +72,9 @@ public sealed class PtyShellSessionTests
         if (Unsupported || !PathHas("stty"))
             return;
 
-        var plan = new ShellPlan("/bin/sh", ["-i"], new Dictionary<string, string>(), new Dictionary<string, string>());
+        var command = new PtyCommand("/bin/sh", ["-i"], new Dictionary<string, string>());
         await using var session = await PtyShellSession.StartAsync(
-            plan, Path.GetTempPath(), columns: 80, rows: 24);
+            command, Path.GetTempPath(), columns: 80, rows: 24);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var output = new StringBuilder();
@@ -107,7 +108,7 @@ public sealed class PtyShellSessionTests
     /// own. Without it every line starts in the column where the previous one ended and the output walks
     /// diagonally down the screen — unreadable for anything longer than one line.
     /// <para>
-    /// Driven through <see cref="HostShellLauncher"/> rather than a hand-made plan, because the repair
+    /// Driven through <see cref="HostShellLauncher"/> rather than a hand-made command, because the repair
     /// lives in the startup file the launcher writes. It has to be the shell's own doing: a shell copies
     /// the terminal's settings while it starts and restores that copy before running each command, so
     /// setting the mode from outside is a change it undoes. The command below is sent immediately, with
@@ -171,9 +172,9 @@ public sealed class PtyShellSessionTests
         if (Unsupported || !File.Exists("/bin/cat"))
             return;
 
-        var plan = new ShellPlan("/bin/cat", [], new Dictionary<string, string>(), new Dictionary<string, string>());
+        var command = new PtyCommand("/bin/cat", [], new Dictionary<string, string>());
         await using var session = await PtyShellSession.StartAsync(
-            plan, Path.GetTempPath(), columns: 80, rows: 24);
+            command, Path.GetTempPath(), columns: 80, rows: 24);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var output = new StringBuilder();
@@ -212,8 +213,8 @@ public sealed class PtyShellSessionTests
         Directory.CreateDirectory(directory);
         await File.WriteAllTextAsync(Path.Combine(directory, "kubeconfig.yaml"), "current-context: \"x\"\n");
 
-        var plan = new ShellPlan("/bin/sh", ["-i"], new Dictionary<string, string>(), new Dictionary<string, string>());
-        var session = await PtyShellSession.StartAsync(plan, Path.GetTempPath(), 80, 24, directory);
+        var command = new PtyCommand("/bin/sh", ["-i"], new Dictionary<string, string>());
+        var session = await PtyShellSession.StartAsync(command, Path.GetTempPath(), 80, 24, directory);
 
         await session.DisposeAsync();
 

@@ -1,0 +1,15 @@
+{
+  "id": "com.kontena.manifeststudio",
+  "name": "Manifest Studio",
+  "version": "0.1.0",
+  "author": "Kontena",
+  "description": "Write, validate and apply Kubernetes manifests from a folder or Git repository.",
+  "minSdkVersion": "0.4.0",
+  "assembly": "Kontena.Plugins.ManifestStudio.dll",
+  "permissions": [
+    "Read and write the folder you open as a workspace",
+    "Run git in that folder, against the remotes already in its .git/config",
+    "Run kustomize to render overlays in that folder",
+    "Talk to the cluster you have open, through Kontena"
+  ]
+}

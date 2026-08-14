@@ -1,11 +1,11 @@
-namespace Kontena.App;
+namespace Kontena.Adapters.Apple;
 
 /// <summary>
-/// The Apple mark, for the roadmap row on the onboarding screen (KON-80).
+/// The Apple mark, as path data for the backend chip (KON-80).
 /// <para>
-/// It lives in the app rather than beside <c>DockerBrand</c> and friends because there is no Apple
-/// adapter yet: that row is a promise the UI makes, not a provider being probed. It moves to
-/// <c>Kontena.Adapters.Apple</c> with the adapter (KON-31), and this file goes with it.
+/// It lived in <c>Kontena.App</c> while the onboarding row was a promise the UI made rather than a
+/// provider being probed; with the adapter here (KON-31) it moved beside <c>DockerBrand</c> and
+/// friends, which is where its own file said it belonged.
 /// </para>
 /// <para>
 /// Source: <c>apple.svg</c> from <see href="https://github.com/simple-icons/simple-icons">simple-icons</see>

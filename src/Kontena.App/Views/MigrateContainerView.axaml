@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:mig="using:Kontena.Core.Migration"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="640"
+             x:Class="Kontena.App.Views.MigrateContainerView"
+             x:DataType="vm:MigrateContainerViewModel">
+    <Border Width="720" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+            <StackPanel Margin="24,22,24,16" Spacing="16">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Migrate container" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" HorizontalAlignment="Left"
+                               Foreground="{DynamicResource TextDim}" MaxWidth="640"
+                               Text="The container is recreated on another engine with its configuration and the contents of its named volumes. The source is stopped first and then left alone — it is never removed."/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,16,*">
+                    <StackPanel Grid.Column="0" Spacing="7">
+                        <TextBlock Text="TARGET ENGINE" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                        <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Spacing="7">
+                        <TextBlock Text="NAME ON THE TARGET" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding ContainerName, Mode=TwoWay}"
+                                     FontFamily="{StaticResource Mono}"/>
+                            <Button Grid.Column="1" Classes="ghost" Margin="8,0,0,0"
+                                    Command="{Binding RenameCommand}">Check</Button>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Blocked first: it decides whether there is a button at all. -->
+                <ItemsControl ItemsSource="{Binding Blocked}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="mig:MigrationNote">
+                            <Border Background="{DynamicResource DangerSoft}" CornerRadius="{StaticResource Radius}"
+                                    Padding="12,10" Margin="0,0,0,8">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="{Binding Subject}" FontSize="12.5" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Danger}"/>
+                                    <TextBlock Text="{Binding Detail}" FontSize="12" TextWrapping="Wrap"
+                                               LineHeight="18" Foreground="{DynamicResource Text}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <ScrollViewer MaxHeight="230" HorizontalScrollBarVisibility="Disabled">
+                    <Grid ColumnDefinitions="*,16,*">
+                        <StackPanel Grid.Column="0" Spacing="8">
+                            <TextBlock Text="COMES ALONG" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <ItemsControl ItemsSource="{Binding Applied}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="mig:MigrationNote">
+                                        <StackPanel Spacing="2" Margin="0,0,0,8">
+                                            <TextBlock Text="{Binding Subject}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Text}"/>
+                                            <TextBlock Text="{Binding Detail}" FontSize="11.5" TextWrapping="Wrap"
+                                                       LineHeight="17" Foreground="{DynamicResource TextDim}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Spacing="8">
+                            <TextBlock Text="DOES NOT" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <ItemsControl ItemsSource="{Binding Dropped}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="mig:MigrationNote">
+                                        <StackPanel Spacing="2" Margin="0,0,0,8">
+                                            <TextBlock Text="{Binding Subject}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource WarnText}"/>
+                                            <TextBlock Text="{Binding Detail}" FontSize="11.5" TextWrapping="Wrap"
+                                                       LineHeight="17" Foreground="{DynamicResource TextDim}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <StackPanel Spacing="7" IsVisible="{Binding HasVolumes}">
+                    <TextBlock Text="VOLUMES" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                    <ItemsControl ItemsSource="{Binding Volumes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MigrationVolumeRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Text="{Binding Name}" FontSize="12" FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource Text}"/>
+                                        <TextBlock Text="{Binding Status}" FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding Overwrite, Mode=TwoWay}"
+                                              IsVisible="{Binding NeedsDecision}" Content="Overwrite"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="7">
+                    <TextBlock Text="WHAT WILL BE CREATED" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                    <Border Background="{DynamicResource CodeSurface}" CornerRadius="{StaticResource Radius}" Padding="12,10">
+                        <SelectableTextBlock Text="{Binding CommandPreview}" FontFamily="{StaticResource Mono}"
+                                             FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
+                    </Border>
+                </StackPanel>
+
+                <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="mig:MigrationProgress">
+                            <StackPanel Spacing="2" Margin="0,0,0,6">
+                                <TextBlock Text="{Binding Step}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text}"/>
+                                <TextBlock Text="{Binding Message}" FontSize="11.5" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextDim}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+            <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
+                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CancelCommand}">Close</Button>
+                <Button Grid.Column="2" Classes="primary" Command="{Binding MigrateCommand}">Migrate</Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

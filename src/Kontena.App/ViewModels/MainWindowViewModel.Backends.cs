@@ -7,6 +7,7 @@ using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Core.Models;
+using Kontena.Core.Versioning;
 using Kontena.Engines;
 using Kontena.Engines.Plugins;
 
@@ -18,14 +19,70 @@ namespace Kontena.App.ViewModels;
 /// </summary>
 public partial class MainWindowViewModel
 {
+    /// <summary>
+    /// How long the shell waits for the probe round before carrying on without the stragglers
+    /// (KON-357).
+    /// <para>
+    /// Every backend gets its own deadline to answer in, up to ten seconds for something across a
+    /// network (KON-327, KON-329), and that is right for the backend — but the round is awaited as a
+    /// whole, so one remote nobody can reach held the entire startup for its full deadline. Measured:
+    /// a single unreachable engine took the shell from 3.1 to 13.2 seconds, on a machine where
+    /// everything else answered in under a second.
+    /// </para>
+    /// <para>
+    /// Two seconds rather than something tighter, because the round is not only a question — it is
+    /// where the HTTP and Kubernetes stacks are first used, in parallel, and connecting afterwards
+    /// reuses all of it. Cutting it short costs more than it saves: opening the cluster took 800 ms
+    /// longer when the connect had to warm that up on its own. A healthy round finishes well inside
+    /// this, so nothing changes for anyone whose backends answer.
+    /// </para>
+    /// </summary>
+    internal static readonly TimeSpan ProbeRoundGrace = TimeSpan.FromSeconds(2);
+
     private async Task InitAsync()
     {
         try
         {
-            _probes = await _registry.ProbeAllAsync();
-            BuildSettingsPage();
+            // Started together, waited for apart: the backend being opened gets its own deadline, the
+            // rest get whatever is left of the grace window and land in the switcher when they answer.
+            var round = _registry.Providers.Select(p => BackendRegistry.ProbeAsync(p)).ToList();
+            var all = Task.WhenAll(round);
+            var target = StartupProbe(round);
+
+            if (target is null)
+            {
+                // Nothing to open yet, so nothing to be early for: the wizard lists the engines that
+                // answered, and picking "the first engine that answers" (KON-98) has to see them all
+                // before it can call one first. Carrying on early here would offer a choice missing
+                // whichever backend was merely slow.
+                _probes = await Diag.TimeAsync("probe every backend", all);
+            }
+            else
+            {
+                await Diag.TimeAsync("probe every backend", Task.WhenAny(all, Task.Delay(_probeGrace)));
+
+                // Whatever the window says, the one being opened is waited for: a target still in
+                // flight reads as one that did not answer, and that is the "is gone" card over a
+                // healthy cluster.
+                await Diag.TimeAsync("wait for the one we want", target);
+
+                _probes = [.. round.Where(t => t.IsCompletedSuccessfully).Select(t => t.Result)];
+
+                if (!all.IsCompleted)
+                {
+                    Diag.Mark($"carrying on without {round.Count - _probes.Count} probe(s) still out");
+                    _ = FinishRoundAsync(all, round);
+                }
+            }
+
+            Diag.Time("build the settings page", BuildSettingsPage);
             RebuildEngineList();
             RefreshNewClusters();
+
+            // Deliberately after the switcher is drawn and deliberately not awaited: this is the one
+            // thing here that needs the network, and a list that waited for it would take as long as
+            // the slowest lookup to show what is already known (the same shape KON-153 settled on).
+            _ = RefreshSupportAsync();
 
             if (!_settings.Onboarded)
             {
@@ -33,7 +90,8 @@ public partial class MainWindowViewModel
                 return;
             }
 
-            await ConnectPreferredAsync();
+            await Diag.TimeAsync("connect", ConnectPreferredAsync());
+            Diag.Mark("shell usable");
 
             // After the shell is usable, never before: a slow or unreachable update server must not
             // hold up connecting to an engine, which is what the user actually opened Kontena for.
@@ -45,6 +103,56 @@ public partial class MainWindowViewModel
         {
             EnterBackendDown("Can't reach a container engine", ex.Message);
         }
+    }
+
+    /// <summary>
+    /// The probe for the backend this launch is going to open, or null where nothing is owed a wait of
+    /// its own: a first run (the wizard lists whatever answered), no remembered target, a target that
+    /// is no longer a provider — its own message, rather than a silent landing somewhere else — or the
+    /// screenshot harness, which picks by connectedness.
+    /// </summary>
+    private Task<BackendProbe>? StartupProbe(IReadOnlyList<Task<BackendProbe>> round)
+    {
+        if (!_settings.Onboarded || Environment.GetEnvironmentVariable("KONTENA_SCREENSHOT") == "1")
+            return null;
+
+        if (_settings.StartupTarget is not { Length: > 0 } target)
+            return null;
+
+        var index = _registry.Providers.ToList().FindIndex(p => p.Backend == target);
+        return index < 0 ? null : round[index];
+    }
+
+    /// <summary>
+    /// Let the stragglers finish behind the open shell and put them where a probe belongs: the
+    /// switcher, the settings page, the "new clusters" row. Started from the UI thread, so all of that
+    /// lands back on it.
+    /// <para>
+    /// Nothing is torn down and nothing is retried on failure — a backend that never answered keeps
+    /// the "Not connected" it already has.
+    /// </para>
+    /// </summary>
+    private async Task FinishRoundAsync(Task all, IReadOnlyList<Task<BackendProbe>> round)
+    {
+        try
+        {
+            await all;
+        }
+        catch (Exception)
+        {
+            // ProbeAsync answers rather than throws, so this is the unlikely half. Whatever did
+            // answer is still worth showing.
+        }
+
+        var late = round.Where(t => t.IsCompletedSuccessfully).Select(t => t.Result).ToList();
+        if (late.Count <= _probes.Count)
+            return;
+
+        Diag.Mark($"late probes in: {late.Count - _probes.Count} more");
+        _probes = late;
+        BuildSettingsPage();
+        RebuildEngineList();
+        RefreshNewClusters();
     }
     /// <summary>
     /// Ask about a plugin that was found but never agreed to (KON-279). Startup only loads what already
@@ -63,15 +171,26 @@ public partial class MainWindowViewModel
         // session, without waiting for _plugins to catch up.
         var pending = _plugins.FirstOrDefault(p =>
             p.Status == PluginStatus.AwaitingConsent && p.Manifest is not null
-            && !_settings.AllowsPlugin(p.Manifest.Id, p.Manifest.Version));
+            && !_settings.AllowsPlugin(p.Manifest.Id, p.Manifest.Version, p.Sha256));
 
         if (pending?.Manifest is not { } manifest)
             return;
 
+        // A plugin whose id and version were answered before, presenting bytes that answer did not
+        // cover, is not a new plugin — it is one that changed underneath the answer (KON-362). Asking
+        // that as "we found something in your folder" would leave out the only part worth interrupting
+        // for: this is not what you allowed.
+        var changed = _settings.KnowsPlugin(manifest.Id, manifest.Version);
+
         ShowConfirm(new ConfirmRequest(
-            Title: "Run this plugin?",
-            Message: $"{manifest.Name} was found in your plugins folder. It runs inside Kontena with "
-                     + "the same access you have. Only allow it if you put it there.",
+            Title: changed ? "This plugin has changed — run it?" : "Run this plugin?",
+            Message: changed
+                ? $"{manifest.Name} is not the build you allowed: the same version, different code. "
+                  + "That happens when you reinstall it, and it happens when something replaces it. It "
+                  + "runs inside Kontena with the same access you have — only allow it if you changed "
+                  + "it yourself."
+                : $"{manifest.Name} was found in your plugins folder. It runs inside Kontena with "
+                  + "the same access you have. Only allow it if you put it there.",
             ConfirmLabel: "Allow",
             // Nothing is destroyed here. The question is whether to trust, and the danger styling
             // would answer a different one.
@@ -81,17 +200,26 @@ public partial class MainWindowViewModel
                 new ConfirmDetail("IconPlug", manifest.Name, $"{manifest.Id} · {manifest.Version}"),
                 new ConfirmDetail("IconInfo", "Published by", manifest.Author),
                 new ConfirmDetail("IconFolder", "Loaded from", pending.Directory),
+                // Rendered, never composed (KON-296): these are the author's own words about what the
+                // plugin will do. Nothing here enforces them — an in-process plugin can do whatever this
+                // app can — which is why they are shown as a claim, beside who made the claim.
+                .. manifest.Permissions.Select(p => new ConfirmDetail("IconCheck", "Says it will", p)),
             ],
             OnConfirm: async () =>
             {
-                var stored = _store.Update(s => s.WithAllowedPlugin(manifest.Id, manifest.Version));
-                _settings = _settings.WithAllowedPlugin(manifest.Id, manifest.Version);
+                // The digest from the scan the user was just shown, not one taken again here: rehashing
+                // at this point would record whatever is on disk now, which is not necessarily what the
+                // dialog described.
+                var sha = pending.Sha256;
+                var stored = _store.Update(s => s.WithAllowedPlugin(manifest.Id, manifest.Version, sha));
+                _settings = _settings.WithAllowedPlugin(manifest.Id, manifest.Version, sha);
 
                 // Load again rather than reaching into the loader for this one directory: the same call
                 // that ran at startup now sees the consent, and there is one path by which a plugin
                 // becomes a provider.
                 var loaded = PluginLoader.Discover(
-                    _pluginRoot, m => stored.AllowsPlugin(m.Id, m.Version));
+                    _pluginRoot,
+                    c => stored.AllowsPlugin(c.Manifest.Id, c.Manifest.Version, c.Sha256));
 
                 // Replace the snapshot, not just the providers: this plugin's entry is now Loaded
                 // rather than AwaitingConsent, so a later reconnect's InitAsync (which reuses _plugins,
@@ -220,6 +348,14 @@ public partial class MainWindowViewModel
         IsReady = false;
         IsBackendDown = false;
         CurrentPage = null;
+
+        // What is ticked on the screen being replaced, if one is (KON-351). A rescan builds a fresh
+        // wizard, and nothing is written down until Continue — so a cluster the user unticked is still
+        // "never offered" as far as the settings are concerned, and would come back ticked. The wizard
+        // rescans itself after starting an engine (KON-335), so this is not a rare path: the user
+        // unticks two clusters, lets Kontena start Podman, and continues with all four.
+        var ticked = Onboarding?.Clusters
+            .ToDictionary(c => c.Backend, c => c.IsSelected, StringComparer.Ordinal);
         Onboarding = new OnboardingViewModel(
             _probes.Where(p => p.Provider.Kind == BackendKind.Engine).ToList(),
             FakeBackend,
@@ -234,8 +370,11 @@ public partial class MainWindowViewModel
             // itself the answer this screen is asking for, so at first run there are none (KON-336).
             clusters: BackendCatalog.DiscoverClusters(_settings.KubeconfigPaths),
             // New arrives ticked, declined comes back unticked rather than hidden — the same three
-            // states the switcher's "new clusters" row keeps (KON-120).
-            clusterTicked: id => _settings.ShowsCluster(id) || _settings.NewClusters([id]).Count > 0);
+            // states the switcher's "new clusters" row keeps (KON-120). An answer already given on the
+            // screen this one replaces outranks all of that: it is newer than what is stored.
+            clusterTicked: id => ticked is not null && ticked.TryGetValue(id, out var chosen)
+                ? chosen
+                : _settings.ShowsCluster(id) || _settings.NewClusters([id]).Count > 0);
         IsOnboarding = true;
 
         _ = OfferWizardEngineStartAsync(Onboarding);
@@ -321,7 +460,13 @@ public partial class MainWindowViewModel
         // follow me anywhere else". Activating it records it as last used, which is enough.
         _settings = _store.Update(s =>
         {
-            var next = s with { Onboarded = true, AutoDetectEngines = autoDetect };
+            // ClusterChoiceOffered whether they answered or skipped: the question has been put, so the
+            // one-time adoption at startup must stop treating this install as one that predates it
+            // (KON-351). Skip still writes no answers — "not now" keeps the contexts new.
+            var next = s with
+            {
+                Onboarded = true, AutoDetectEngines = autoDetect, ClusterChoiceOffered = true,
+            };
 
             // Both answers are recorded, not just yes: a cluster ticked off here is declined, and a
             // declined cluster must not be offered again on every launch (KON-120).
@@ -370,6 +515,7 @@ public partial class MainWindowViewModel
         EngineChip = new BackendChipInfo("!");
         EngineDetail = "not connected";
         EngineEndpoint = string.Empty;
+        EngineSupport = null;
         CurrentPage = null;
         OnPropertyChanged(nameof(HasAlternatives));
 
@@ -448,18 +594,23 @@ public partial class MainWindowViewModel
         EngineName = NameOf(provider);
         EngineChip = BackendChipInfo.For(provider);
 
+        // Said before the wait rather than after it (KON-375). Everything below this line is the wait.
+        ConnectingMessage = provider.Kind == BackendKind.Cluster
+            ? $"Opening {EngineName}…"
+            : $"Connecting to {EngineName}…";
+
         RebuildEngineList();
         CloseDetail();
         CloseDialog();
 
         if (backend is IClusterEngine cluster)
         {
-            if (!await EnterClusterModeAsync(cluster))
+            if (!await Diag.TimeAsync("open the cluster", EnterClusterModeAsync(cluster)))
                 return;
         }
         else if (backend is IContainerEngine engine)
         {
-            await EnterEngineModeAsync(engine);
+            await Diag.TimeAsync("open the engine", EnterEngineModeAsync(engine));
         }
         else
         {
@@ -507,6 +658,11 @@ public partial class MainWindowViewModel
             RequestRunContainer = image => _ = ShowRunDialogAsync(image),
             RequestPullImage = ShowPullDialog,
             RequestConfirm = ShowConfirm,
+            RequestMigrateContainer = id => _ = ShowMigrateDialogAsync(id),
+
+            // Nothing to migrate to on a machine with one engine, so the action is not offered there
+            // rather than offered and then refused.
+            HasMigrationTargets = _registry.Providers.Count(p => p.Kind is BackendKind.Engine) > 1,
 
             // Grouping is remembered per backend (KON-159); the page owns the choice, the shell owns
             // where it is kept.
@@ -607,23 +763,38 @@ public partial class MainWindowViewModel
         ComposeProjects = null;
         Activity = null;
 
+        // The ping answered, so the promise this makes can be kept: offering to reopen tunnels on a
+        // cluster we cannot reach would be an empty one (KON-105).
+        RestorePortForwards(cluster, _activeBackend);
+
+        // Everything a page is built from, before the first page is built (KON-375).
+        //
+        // This used to run the other way round, and it cost the whole open. The picker was filled by
+        // hand here, the overview was built, and then selecting a namespace read the workload kinds
+        // and rebuilt the page — because which page Workloads is depends on those kinds (KON-200).
+        // So one open listed the namespaces six times, and built the landing page twice: six reads
+        // and seven watch streams opened, torn down, and started again, with nobody ever seeing the
+        // first set of answers. On a remote cluster every one of those is a round-trip, and they
+        // compete with each other for the same connection pool — which is most of what "fetching a
+        // cluster feels slow" was.
         Namespaces.Clear();
         Namespaces.Add(AllNamespaces);
-        foreach (var ns in await cluster.ListNamespacesAsync())
-            Namespaces.Add(ns.Name);
 
-        // Only now that the cluster answered: offering to reopen tunnels on a cluster we cannot reach
-        // would be an empty promise (KON-105).
-        RestorePortForwards(cluster, _activeBackend);
+        // The field rather than the property: the change handler's job is to rebuild the open page,
+        // and there is no page yet. Announced below, once the picker behind it holds real names.
+        _selectedNamespace = AllNamespaces;
+
+        // Fills both the picker and the Workloads submenu, in one round.
+        await UpdateClusterNavAsync();
+        OnPropertyChanged(nameof(SelectedNamespace));
 
         SearchText = string.Empty;
 
         // Same door, same reason (KON-263). This side had the identical gap: the overview was built
-        // here rather than navigated to, so a cluster's first Back was missing too.
-        Navigate("overview");
+        // here rather than navigated to, so a cluster's first Back was missing too. Without the
+        // sidebar refresh it normally brings, since the line above is that read.
+        NavigateTo("overview", refreshNav: false);
 
-        SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
-        await UpdateClusterNavCountsAsync();
         IsReady = true;
         return true;
     }
@@ -880,8 +1051,62 @@ public partial class MainWindowViewModel
 
         return probe.Connected;
     }
+    /// <summary>
+    /// Where release calendars are read from (KON-370). Null means nothing is said about any version.
+    /// Set from the constructor, not by an object initializer: <c>InitAsync</c> starts during
+    /// construction and would read an init property that had not been assigned yet.
+    /// </summary>
+    private VersionSupportCheck? Versions { get; }
+
+    /// <summary>
+    /// What each backend's publisher says about the version it reports, once that answer has arrived
+    /// (KON-370). Kept here rather than on the row so <see cref="EngineOption"/> stays immutable — the
+    /// list is rebuilt wholesale anyway, and an answer landing is just another reason to rebuild.
+    /// </summary>
+    private readonly Dictionary<string, VersionSupport> _support = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Fill in which backends run a release nobody maintains any more. Answers are cached for a day, so
+    /// this is usually free; the first run of the day costs one lookup per distinct product. Offline it
+    /// quietly finds nothing, which is the same as having nothing to say.
+    /// </summary>
+    private async Task RefreshSupportAsync(CancellationToken ct = default)
+    {
+        if (Versions is null)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        var landed = false;
+
+        foreach (var probe in _probes.ToList())
+        {
+            if (ct.IsCancellationRequested)
+                return;
+
+            if (BackendProducts.For(probe.Provider.Backend, probe.Distribution) is not { } product)
+                continue;
+
+            if (await Versions.CheckAsync(product, probe.Version, now, ct) is not { } support)
+                continue;
+
+            _support[probe.Provider.Backend] = support;
+            landed = true;
+        }
+
+        if (landed)
+            RebuildEngineList();
+    }
+
     private void RebuildEngineList()
     {
+        // The same verdict the dropdown row carries, on the pill you are looking at anyway (KON-371).
+        // Outside the loop below and keyed on the active backend rather than set from its row, because
+        // the two things this needs arrive in either order: the support lookup is fired before the
+        // preferred backend is opened, so the rebuild it triggers can run while nothing is active yet,
+        // and the rebuild the open triggers can run before any answer has landed. Recomputing it on
+        // every rebuild is right whichever way round they finish.
+        EngineSupport = IsBackendDown ? null : _support.GetValueOrDefault(_activeBackend);
+
         Engines.Clear();
         Clusters.Clear();
         foreach (var probe in _probes)
@@ -917,6 +1142,7 @@ public partial class MainWindowViewModel
                 IsActive = isActive,
                 IsConnected = probe.Connected,
                 IsRetrying = probe.Provider.Backend == _retryingBackend,
+                Support = _support.GetValueOrDefault(probe.Provider.Backend),
 
                 // A row that cannot be switched to is a row that can be asked again — never a dead
                 // button (KON-117, KON-328). Clicking an unreachable backend is the most direct way a

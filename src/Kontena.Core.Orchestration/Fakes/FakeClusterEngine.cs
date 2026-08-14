@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Kontena.Sdk.Models;
@@ -12,7 +13,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -35,11 +36,28 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     // simultaneous watches of the *same* kind on one engine would only deliver a pushed event to
     // whichever reads it first (a Channel<T> is a queue, not pub/sub). No test needs that yet; if one
     // ever does, key this per (kind, namespace) instead.
-    private readonly Channel<ResourceEvent> _watchEvents = Channel.CreateUnbounded<ResourceEvent>();
+    /// <summary>
+    /// One channel per open watch, because a cluster broadcasts and a channel does not.
+    /// <para>
+    /// This was a single shared channel, which delivers each event to exactly one reader — so with
+    /// two watches open an event reached one of them at random, and a reader whose kind did not match
+    /// swallowed it on the way past. Nothing noticed while every page followed at most one kind and
+    /// tests opened one watch at a time; the pages that summarise a cluster follow seven at once
+    /// (KON-340), and then it is every event that goes missing.
+    /// </para>
+    /// </summary>
+    private readonly List<Channel<ResourceEvent>> _watchers = [];
 
     /// <summary>Test hook (KON-308): push one more event into any watch already following this kind,
     /// after its initial snapshot. Filtered to matching kind/namespace the same way the snapshot is.</summary>
-    public void EmitWatchEvent(ResourceEvent evt) => _watchEvents.Writer.TryWrite(evt);
+    public void EmitWatchEvent(ResourceEvent evt)
+    {
+        lock (_watchers)
+        {
+            foreach (var watcher in _watchers)
+                watcher.Writer.TryWrite(evt);
+        }
+    }
 
     private string _activeContext;
 
@@ -233,7 +251,37 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     public ClusterCapabilities Capabilities => _capabilities;
 
     /// <summary>What answers for usage, so the UI can explain the gauges it is not drawing.</summary>
-    public IMetricsSource Metrics => _capabilities.Metrics ? FakeMetricsSource.Instance : NoMetricsSource.Instance;
+    /// <summary>
+    /// Per engine rather than the shared instance, so node usage can answer for the nodes this
+    /// cluster actually has. A source that returned an empty node map made the node page look as
+    /// though metrics were on and nothing was ever sampled (KON-347).
+    /// </summary>
+    private FakeMetricsSource? _metricsSource;
+
+    public IMetricsSource Metrics => _capabilities.Metrics
+        ? _metricsSource ??= new FakeMetricsSource(
+            () => [.. _nodes.Select(n => n.Name)],
+            () => [.. _pods.Select(p => (p.Namespace, p.Name))])
+        : NoMetricsSource.Instance;
+
+    /// <summary>
+    /// Whether this fake cluster pretends to have a Prometheus. Off by default: history is the
+    /// exceptional case on a real cluster, and a fake that always has it would let the "no history,
+    /// longer ranges disabled" path go untested everywhere it is used (KON-345).
+    /// </summary>
+    public bool HasHistory { get; init; }
+
+    /// <summary>
+    /// Make the history source answer with nothing, the way a real one does for an object younger
+    /// than its first scrape. That path has its own behaviour — fall back to the buffer rather than
+    /// report an empty answer — so it needs to be reachable (KON-347).
+    /// </summary>
+    public bool HistoryIsEmpty { get; init; }
+
+    public IMetricsHistory History =>
+        HasHistory && _capabilities.Metrics
+            ? (HistoryIsEmpty ? FakeMetricsHistory.Empty : FakeMetricsHistory.Instance)
+            : NoMetricsHistory.Instance;
 
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<BackendInfo>(new ClusterInfo
@@ -461,36 +509,76 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             _ => _workloads.Where(w => Match(ns, w.Namespace)).Select(w => new ResourceRef(kind, w.Namespace, w.Name)),
         };
 
-        foreach (var r in refs)
-        {
-            ct.ThrowIfCancellationRequested();
-            await Task.Yield();
-            yield return new ResourceEvent { Type = WatchEventType.Added, Resource = r };
-        }
+        // Subscribed before the snapshot is yielded, the way a real informer is: registering after it
+        // would drop anything emitted while the snapshot was still being drained.
+        var mine = Channel.CreateUnbounded<ResourceEvent>();
+        lock (_watchers)
+            _watchers.Add(mine);
 
-        // A real adapter stays open past the initial snapshot (KON-308); this fake now does too, reading
-        // whatever a test pushes via EmitWatchEvent. ReadAllAsync throws OperationCanceledException on
-        // ct — that is the "stays open until you stop watching" behaviour callers already rely on.
-        await foreach (var evt in _watchEvents.Reader.ReadAllAsync(ct))
+        try
         {
-            if (evt.Resource.Kind.Kind == kind.Kind && Match(ns, evt.Resource.Namespace))
-                yield return evt;
+            foreach (var r in refs)
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Yield();
+                yield return new ResourceEvent { Type = WatchEventType.Added, Resource = r };
+            }
+
+            // A real adapter stays open past the initial snapshot (KON-308); this fake now does too,
+            // reading whatever a test pushes via EmitWatchEvent. ReadAllAsync throws
+            // OperationCanceledException on ct — that is the "stays open until you stop watching"
+            // behaviour callers already rely on.
+            await foreach (var evt in mine.Reader.ReadAllAsync(ct))
+            {
+                if (evt.Resource.Kind.Kind == kind.Kind && Match(ns, evt.Resource.Namespace))
+                    yield return evt;
+            }
+        }
+        finally
+        {
+            lock (_watchers)
+                _watchers.Remove(mine);
         }
     }
 
+    /// <summary>
+    /// How many times each list has been asked for (KON-375).
+    /// <para>
+    /// A fake that answers instantly makes wasted work invisible: every test in the suite passed while
+    /// opening a cluster listed its namespaces five times and built the overview page twice. A count is
+    /// the only thing that shows it, and it is the only thing a test can assert about it — a real
+    /// cluster's cost is latency, which this fake by design does not have.
+    /// </para>
+    /// <para>
+    /// Concurrent because watch-driven reloads run off their own tasks, and a count that races is worse
+    /// than no count: it fails a test occasionally rather than saying something true.
+    /// </para>
+    /// </summary>
+    public ConcurrentDictionary<string, int> Calls { get; } = new(StringComparer.Ordinal);
+
+    public int CallsTo(string call) => Calls.GetValueOrDefault(call);
+
+    private T Counted<T>(string call, T result)
+    {
+        Calls.AddOrUpdate(call, 1, (_, n) => n + 1);
+        return result;
+    }
+
     public ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<KubeNamespace>>(_namespaces);
+        ValueTask.FromResult(Counted<IReadOnlyList<KubeNamespace>>(nameof(ListNamespacesAsync), _namespaces));
 
     public ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Node>>(_nodes);
+        ValueTask.FromResult(Counted<IReadOnlyList<Node>>(nameof(ListNodesAsync), _nodes));
 
     public ValueTask<IReadOnlyList<Workload>> ListWorkloadsAsync(
         WorkloadKind? kind = null, string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Workload>>(
-            _workloads.Where(w => (kind is null || w.Kind == kind) && Match(ns, w.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Workload>>(
+            nameof(ListWorkloadsAsync),
+            _workloads.Where(w => (kind is null || w.Kind == kind) && Match(ns, w.Namespace)).ToList()));
 
     public ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Pod>>(_pods.Where(p => Match(ns, p.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Pod>>(
+            nameof(ListPodsAsync), _pods.Where(p => Match(ns, p.Namespace)).ToList()));
 
     // ── Generic resources (KON-75) ───────────────────────────────────────────
 
@@ -577,7 +665,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
     }
 
     public ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Service>>(_services.Where(s => Match(ns, s.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Service>>(
+            nameof(ListServicesAsync), _services.Where(s => Match(ns, s.Namespace)).ToList()));
 
     public ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Ingress>>(_ingresses.Where(i => Match(ns, i.Namespace)).ToList());
@@ -770,7 +859,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
                 Namespace = pod.Namespace ?? "default",
                 CpuMillicores = 40 + i * 12,
                 MemoryBytes = (128 + i * 4) * 1024L * 1024,
-                Timestamp = DateTimeOffset.UtcNow,
+
+                // A scrape interval apart, ending now, the way a real source reports. Stamping all
+                // three with UtcNow would make them one instant to anything that charts a series
+                // (KON-345) — and on a coarse system clock they might genuinely be equal.
+                Timestamp = DateTimeOffset.UtcNow.AddSeconds(-15 * (2 - i)),
             };
         }
     }
@@ -1034,7 +1127,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware
             new NodeCondition("NetworkUnavailable", false, "RouteCreated", string.Empty),
         ],
         Capacity = new NodeCapacity { CpuMillicores = 4000, MemoryBytes = 16L * 1024 * 1024 * 1024, Pods = 110 },
-        Usage = new NodeUsage { CpuMillicores = 1200, MemoryBytes = 6L * 1024 * 1024 * 1024 },
+        // Disk included: the kubelet source reports it on a real cluster, and a fake that leaves it
+        // out means the one measure only a node has never gets exercised anywhere (KON-347).
+        Usage = new NodeUsage
+        {
+            CpuMillicores = 1200,
+            MemoryBytes = 6L * 1024 * 1024 * 1024,
+            DiskUsedBytes = 34L * 1024 * 1024 * 1024,
+        },
         ScheduledPods = 24,
         Age = TimeSpan.FromDays(9),
     };
@@ -1162,9 +1262,73 @@ public sealed class FakePortForward(int localPort, int remotePort) : IPortForwar
 /// A usage backend that answers, for the fake cluster. Only its name matters here — the numbers the
 /// gauges draw come from <see cref="FakeClusterEngine"/>'s own node and pod listings.
 /// </summary>
+/// <summary>
+/// A stand-in Prometheus (KON-345). Generates a deterministic series for any range, so the long
+/// ranges can be driven end to end without a cluster.
+/// </summary>
+internal sealed class FakeMetricsHistory : IMetricsHistory
+{
+    public static readonly FakeMetricsHistory Instance = new();
+
+    /// <summary>Available, and holding nothing — a target younger than the first scrape.</summary>
+    public static readonly FakeMetricsHistory Empty = new() { ReturnsNothing = true };
+
+    public bool ReturnsNothing { get; init; }
+
+    public string Name => "Prometheus";
+    public bool IsAvailable => true;
+
+    public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(true);
+
+    public TimeSpan RefreshInterval(TimeSpan range) =>
+        TimeSpan.FromSeconds(Math.Clamp(range.TotalSeconds / 120, 30, 300));
+
+    /// <summary>Every scope, mirroring what a real Prometheus source can express.</summary>
+    public bool Supports(UsageScope scope) => true;
+
+    public ValueTask<IReadOnlyList<UsageSample>> GetHistoryAsync(
+        UsageTarget target, UsageMetric metric, TimeSpan range, CancellationToken ct = default)
+    {
+        if (!Supports(target.Scope) || ReturnsNothing)
+            return ValueTask.FromResult<IReadOnlyList<UsageSample>>([]);
+
+        const int points = 60;
+        var end = DateTimeOffset.UtcNow;
+        var step = range / points;
+
+        // Seeded off the pod name so the same pod draws the same shape twice running — a chart that
+        // reshuffles on every refresh is a chart nobody can compare against the last look.
+        var seed = target.Name.Aggregate(17, (a, c) => a * 31 + c);
+        var samples = new List<UsageSample>(points);
+
+        for (var i = 0; i < points; i++)
+        {
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            var wobble = seed / (double)0x7fffffff;
+
+            samples.Add(new UsageSample(
+                end - step * (points - 1 - i),
+                metric == UsageMetric.Cpu
+                    ? 40 + wobble * 60
+                    : (150 + wobble * 30) * 1024 * 1024));
+        }
+
+        return ValueTask.FromResult<IReadOnlyList<UsageSample>>(samples);
+    }
+}
+
 internal sealed class FakeMetricsSource : IMetricsSource
 {
-    public static readonly FakeMetricsSource Instance = new();
+    private readonly Func<IReadOnlyList<string>> _nodeNames;
+    private readonly Func<IReadOnlyList<(string Namespace, string Name)>> _pods;
+
+    public FakeMetricsSource(
+        Func<IReadOnlyList<string>>? nodeNames = null,
+        Func<IReadOnlyList<(string Namespace, string Name)>>? pods = null)
+    {
+        _nodeNames = nodeNames ?? (() => []);
+        _pods = pods ?? (() => []);
+    }
 
     public string Name => "metrics-server";
 
@@ -1172,9 +1336,46 @@ internal sealed class FakeMetricsSource : IMetricsSource
 
     public ValueTask<bool> ProbeAsync(CancellationToken ct = default) => ValueTask.FromResult(true);
 
-    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(new Dictionary<string, NodeUsage>());
+    public ValueTask<IReadOnlyDictionary<string, NodeUsage>> GetNodeUsageAsync(CancellationToken ct = default)
+    {
+        var usage = new Dictionary<string, NodeUsage>(StringComparer.Ordinal);
+        var i = 0;
 
-    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<PodMetrics>>([]);
+        foreach (var name in _nodeNames())
+        {
+            // Spread across the nodes so a cluster of them does not draw one flat line repeated.
+            usage[name] = new NodeUsage
+            {
+                CpuMillicores = 900 + i * 260,
+                MemoryBytes = (5L + i) * 1024 * 1024 * 1024,
+                DiskUsedBytes = (30L + i * 4) * 1024 * 1024 * 1024,
+            };
+            i++;
+        }
+
+        return ValueTask.FromResult<IReadOnlyDictionary<string, NodeUsage>>(usage);
+    }
+
+    public ValueTask<IReadOnlyList<PodMetrics>> GetPodUsageAsync(string? ns = null, CancellationToken ct = default)
+    {
+        // Seeded off the pod name so a pod reads the same twice running, and so the namespace and
+        // workload sums over them are worth comparing (KON-347).
+        var now = DateTimeOffset.UtcNow;
+        var pods = _pods()
+            .Where(p => ns is null || p.Namespace == ns)
+            .Select(p =>
+            {
+                var seed = Math.Abs(p.Name.Aggregate(17, (a, c) => a * 31 + c));
+                return new PodMetrics
+                {
+                    Pod = p.Name,
+                    Namespace = p.Namespace,
+                    CpuMillicores = 20 + seed % 130,
+                    MemoryBytes = (60L + seed % 200) * 1024 * 1024,
+                    Timestamp = now,
+                };
+            });
+
+        return ValueTask.FromResult<IReadOnlyList<PodMetrics>>([.. pods]);
+    }
 }

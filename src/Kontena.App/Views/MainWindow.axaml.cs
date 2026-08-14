@@ -1,4 +1,6 @@
 using System.Linq;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -53,6 +55,10 @@ public partial class MainWindow : Window
         // did (KON-173). Tunnelled so a list row cannot swallow it on the way up.
         AddHandler(PointerPressedEvent, OnPointerPressedPreview, RoutingStrategies.Tunnel);
 
+        // Same reason, one control down: the namespace picker's own text box handles the press
+        // (KON-373), so a bubbling handler on the picker would never hear the click that opens it.
+        NamespacePicker.AddHandler(PointerPressedEvent, OnNamespacePickerPressed, RoutingStrategies.Tunnel);
+
         // Focus belongs to the view, so the shell asks rather than reaching into the tree (KON-172).
         DataContextChanged += (_, _) =>
         {
@@ -95,7 +101,15 @@ public partial class MainWindow : Window
 
         foreach (var (action, gesture) in ShellActions.Resolve(configured))
         {
-            if (!vm.ShortcutCommands.TryGetValue(action.Id, out var command))
+            // Full screen is the window's own state, so the window answers for it rather than the view
+            // model (KON-361). Everything else in the registry is a page's business and comes from
+            // ShortcutCommands, which is where a command belongs when it has nothing to do with the
+            // frame around it.
+            var command = action.Id == ShellActions.ToggleFullScreen
+                ? ToggleFullScreenCommand
+                : vm.ShortcutCommands.GetValueOrDefault(action.Id);
+
+            if (command is null)
                 continue;
 
             // Resolve already discards anything unparseable, so this is belt and braces against a
@@ -191,19 +205,52 @@ public partial class MainWindow : Window
     // differently on each one.
     private void OnMinimiseClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
+    /// <summary>
+    /// What the middle caption button expands the window into (KON-361).
+    /// <para>
+    /// Full screen on macOS, because there this button is the only way in. <c>WindowDecorations</c> is
+    /// <c>BorderOnly</c>, which removes the traffic lights — the intended result, since our own three
+    /// buttons would otherwise sit beside a second set — but the green one is macOS's only route to
+    /// full screen, and ⌃⌘F drives that same button rather than the window directly. With it gone and
+    /// this button only zooming, full screen was unreachable, and with it Split View and a Space of its
+    /// own under Stage Manager.
+    /// </para>
+    /// <para>
+    /// Elsewhere maximise stays maximise: Windows and Linux have no equivalent mode, and full screen
+    /// there is a different gesture with a different meaning (F11, chrome gone entirely).
+    /// </para>
+    /// </summary>
+    private static WindowState ExpandedState =>
+        OperatingSystem.IsMacOS() ? WindowState.FullScreen : WindowState.Maximized;
+
+    /// <summary>
+    /// Full screen from the keyboard (KON-361). Always full screen, on every platform — unlike the
+    /// caption button, which means "as big as this platform's convention says" and so stops at maximise
+    /// off macOS. The gesture is the registry's, so it is rebindable like the rest.
+    /// </summary>
+    private ICommand ToggleFullScreenCommand => _toggleFullScreen ??= new RelayCommand(() =>
+        WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen);
+
+    private ICommand? _toggleFullScreen;
+
     private void OnMaximiseClick(object? sender, RoutedEventArgs e) =>
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        WindowState = WindowState == ExpandedState ? WindowState.Normal : ExpandedState;
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
 
     /// <summary>Keeps the maximise button saying what it will do rather than what the window is.</summary>
     private void SyncMaximiseButton()
     {
-        var maximised = WindowState == WindowState.Maximized;
+        var expanded = WindowState == ExpandedState;
 
         MaximiseGlyph.Data = (Geometry?)this.FindResource(
-            maximised ? "IconWindowRestore" : "IconWindowMaximize");
-        ToolTip.SetTip(MaximiseButton, maximised ? "Restore" : "Maximise");
+            expanded ? "IconWindowRestore" : "IconWindowMaximize");
+
+        // The tooltip names the mode, not the glyph: a button that says "Maximise" and goes full screen
+        // is worse than no tooltip. macOS's own wording, so it reads as the thing the user knows.
+        ToolTip.SetTip(MaximiseButton, OperatingSystem.IsMacOS()
+            ? expanded ? "Exit Full Screen" : "Enter Full Screen"
+            : expanded ? "Restore" : "Maximise");
     }
 
     // Picking a backend (or the "add…" row) should dismiss the switcher flyout — a Button click
@@ -220,6 +267,50 @@ public partial class MainWindow : Window
             return;
 
         Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
+    }
+
+    // ── Namespace picker (KON-373) ───────────────────────────────────────────
+    //
+    // An AutoCompleteBox filters, which is why it is here, but it is a text box underneath: its text
+    // is whatever you have typed so far, and it drops its own SelectedItem on every keystroke. Two-way
+    // binding it would set SelectedNamespace to null halfway through a word — one cluster reload per
+    // key. So the binding runs out of the view model only, and these three handlers are the way back
+    // in: nothing but a real pick reaches SelectedNamespace, and half-typed text never outlives focus.
+
+    /// <summary>
+    /// Open on the whole list, the way the ComboBox before it did — clicking a picker should show what
+    /// there is to pick, not the one entry that happens to match the name already in the box.
+    /// <para>
+    /// Hung on the press rather than on focus, and this is not a preference: opening from GotFocus
+    /// crashed the window. Clicking an entry hands focus back to the field while the drop-down is
+    /// closing on that same click, so the handler reopened a popup that was halfway torn down and
+    /// Avalonia walked off the end of a child list it was detaching. A press lands on the field only
+    /// when the field is what was pressed — an entry in the popup is not — so the commit is left
+    /// alone. Tunnelled because the text box inside marks the press handled on its way up.
+    /// </para>
+    /// </summary>
+    private void OnNamespacePickerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (NamespacePicker.IsDropDownOpen)
+            return;
+
+        NamespacePicker.Text = string.Empty;
+        NamespacePicker.IsDropDownOpen = true;
+    }
+
+    /// <summary>A pick — and only a pick, never the null the control writes while you type.</summary>
+    private void OnNamespacePicked(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is AutoCompleteBox { SelectedItem: string ns } && DataContext is MainWindowViewModel vm)
+            vm.SelectedNamespace = ns;
+    }
+
+    /// <summary>Leaving with "kube-sys" typed in shows a filter that is not running. Put the selection
+    /// back; setting it is what restores the text.</summary>
+    private void OnNamespacePickerLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is AutoCompleteBox picker && DataContext is MainWindowViewModel vm)
+            picker.SelectedItem = vm.SelectedNamespace;
     }
 
     // The drawer grows leftwards, so a drag towards the left — a negative X — widens it (KON-307).

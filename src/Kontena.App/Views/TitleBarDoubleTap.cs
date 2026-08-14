@@ -32,9 +32,13 @@ internal static class TitleBarDoubleTap
         {
             WindowState.Maximized => WindowState.Normal,
 
-            // Minimised cannot be double-clicked — there is no title bar on screen to hit — and
-            // full screen is a mode the window never enters. Both are listed rather than folded into
-            // the default so that adding a full-screen mode has to come past this.
+            // Minimised cannot be double-clicked: there is no title bar on screen to hit.
+            //
+            // Full screen can be, since KON-361 gave macOS's caption button that mode and our title bar
+            // stays drawn inside it. It still does nothing, deliberately: on macOS a double-click on the
+            // title bar zooms, it does not leave full screen. Leaving is the green button, ⌃⌘F or Escape
+            // — here, the same caption button that entered. A double-click that dropped out of full
+            // screen would be this app inventing a gesture the platform does not have.
             WindowState.Minimized or WindowState.FullScreen => null,
 
             _ => WindowState.Maximized,

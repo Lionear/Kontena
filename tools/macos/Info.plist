@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    The macOS bundle's Info.plist (KON-360).
+
+    vpk can generate one, and did until now, but it derives CFBundleShortVersionString from the pack
+    version and pads it to four components: 0.4.0-nightly.65 arrived as 0.4.0.0, where Apple allows at
+    most three integers. There is no flag for that, so the bundle takes its plist from here instead.
+
+    The workflow fills in three values before packing — CFBundleExecutable from the build matrix, and
+    the two version keys — so nothing here has to be kept in step with a release by hand. The
+    placeholders below are never shipped; the step fails the build if the version it derives is not
+    one to three integers.
+
+    CFBundleIconFile must match the file name passed to `vpk --icon`, which vpk copies into
+    Contents/Resources under its own name. It is icon.icns because that is what the icon step builds;
+    change one and the other stops finding it, and a bundle with a missing icon still packages fine.
+
+    The bundle id lives here rather than on the command line because --plist and --bundleId are
+    mutually exclusive. The reasoning behind the value is unchanged from KON-348: app.kontena.Kontena
+    is the domain this product actually has, and it is already what MacKeychainStore stores secrets
+    under and what Autostart names its LaunchAgent.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>Kontena.App</string>
+  <key>CFBundleIconFile</key>
+  <string>icon.icns</string>
+  <key>CFBundleIdentifier</key>
+  <string>app.kontena.Kontena</string>
+  <key>CFBundleName</key>
+  <string>Kontena</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleSignature</key>
+  <string>????</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>0.0.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+</dict>
+</plist>

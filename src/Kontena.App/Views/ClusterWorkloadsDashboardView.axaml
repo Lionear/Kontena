@@ -15,6 +15,19 @@
                 <TextBlock Text="Pick a kind, or start with what needs you" FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
             </StackPanel>
 
+            <!-- An unfinished read draws as "nothing needs you", which is the one wrong answer on this
+                 page that looks exactly like the right one (KON-375). -->
+            <Border Height="2" Margin="0,-10,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
+
+            <!-- Never silent about not being live (KON-250, KON-340). Most of all on the page whose
+                 whole job is to say what needs you: a frozen "nothing needs attention" is the one
+                 wrong answer that looks exactly like the right one. -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+
             <!-- Shown only when something is wrong. There is deliberately no green counterpart: a bar
                  that says "all good" is a line you learn to skip, and once you skip it you skip this
                  one too. The headline counts; the table below names. -->

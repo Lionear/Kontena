@@ -64,6 +64,17 @@ public sealed record ContainerInspect
 
     /// <summary>Entry point and command joined into a single line.</summary>
     public string Command { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The entry point as separate arguments. <see cref="Command"/> joins entry point and command
+    /// into one line for display, and that line cannot be split back apart once an argument contains
+    /// a space or a quote — so anything that has to *re-run* this container reads these two lists.
+    /// </summary>
+    public IReadOnlyList<string> Entrypoint { get; init; } = [];
+
+    /// <summary>The command as separate arguments. See <see cref="Entrypoint"/>.</summary>
+    public IReadOnlyList<string> Cmd { get; init; } = [];
+
     public string WorkingDirectory { get; init; } = string.Empty;
     public string User { get; init; } = string.Empty;
 
@@ -74,4 +85,15 @@ public sealed record ContainerInspect
 
     public IReadOnlyList<InspectMount> Mounts { get; init; } = [];
     public IReadOnlyList<InspectNetwork> Networks { get; init; } = [];
+
+    /// <summary>
+    /// The ports this container was created to publish, read from its configuration.
+    /// <para>
+    /// <see cref="ContainerSummary.Ports"/> answers the same question about a <b>running</b>
+    /// container — Docker's list reports no ports at all for one that is stopped. So anything that
+    /// has to re-create this container reads them here, where they survive the container stopping
+    /// (KON-369).
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PortBinding> Ports { get; init; } = [];
 }

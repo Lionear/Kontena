@@ -49,6 +49,12 @@ public static class ClusterVisibility
     /// Only for an installation that has been used. A fresh one has nothing to preserve, and its user
     /// should be the one choosing.
     /// </para>
+    /// <para>
+    /// And only for one that predates the question (KON-351). "Onboarded with no answers" used to mean
+    /// exactly that, until skipping the wizard began leaving the same state behind — at which point the
+    /// next launch answered "yes, all of them" to a question the user had just declined to answer.
+    /// <see cref="KontenaSettings.ClusterChoiceOffered"/> is what tells the two apart.
+    /// </para>
     /// </summary>
     public static KontenaSettings AdoptExistingClusters(
         this KontenaSettings settings, IEnumerable<string> discovered)
@@ -56,7 +62,7 @@ public static class ClusterVisibility
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(discovered);
 
-        if (!settings.Onboarded || settings.KnownClusters.Count > 0)
+        if (!settings.Onboarded || settings.ClusterChoiceOffered || settings.KnownClusters.Count > 0)
             return settings;
 
         var adopted = discovered.Distinct(StringComparer.Ordinal)

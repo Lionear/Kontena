@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Kontena.App.Views"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -19,9 +20,28 @@
                     </Border>
                     <TextBlock Text="{Binding Version}" FontSize="12.5" FontFamily="{StaticResource Mono}"
                                Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                    <!-- This release is one its publisher has dropped (KON-371). Same icon as the node
+                         rows below, deliberately: both say "this version needs looking at". What is
+                         wrong differs, and that is what the two tooltips are for. -->
+                    <Path Classes="icon" Width="13" Height="13" VerticalAlignment="Center"
+                          IsVisible="{Binding HasSupportWarning}" Stroke="{DynamicResource Warn}"
+                          Data="{StaticResource IconWarning}" ToolTip.Tip="{Binding SupportDetail}"/>
                 </StackPanel>
                 <TextBlock Text="Cluster overview" FontSize="13" Foreground="{DynamicResource TextDim}"/>
             </StackPanel>
+
+            <!-- Until the six reads land, every count below is zero and the node table is empty, which
+                 is what a cluster with nothing on it looks like too (KON-375). -->
+            <Border Height="2" Margin="0,-12,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
+
+            <!-- Never silent about not being live (KON-250, KON-340). This page summarises five kinds
+                 in five numbers, and a stale number looks exactly like a current one — there is no
+                 empty table here to hint that something stopped. -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
 
             <!-- Stat cards -->
             <Grid ColumnDefinitions="*,*,*,*,*" >
@@ -66,6 +86,14 @@
                     </StackPanel>
                 </Border>
             </Grid>
+
+            <!-- Cluster usage over time (KON-347). Above the node table because "is it busy" comes
+                 before "which node", and summed over pods so it agrees with the namespace and
+                 workload charts rather than being a fourth number to reconcile. -->
+            <StackPanel IsVisible="{Binding ShowUsageGraphs}" Spacing="12">
+                <TextBlock Text="Usage" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                <views:UsagePanel DataContext="{Binding Usage}"/>
+            </StackPanel>
 
             <!-- Nodes table -->
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">

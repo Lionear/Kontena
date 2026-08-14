@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using Kontena.Core.Versioning;
 
 namespace Kontena.App.ViewModels;
 
@@ -33,4 +34,24 @@ public sealed class EngineOption
     /// (KON-328). Null only for the backend already open.
     /// </summary>
     public ICommand? SwitchCommand { get; init; }
+
+    /// <summary>
+    /// What the publisher's own calendar says about the version this backend reports, or null when
+    /// there is nothing to say — no published calendar, no readable version, or no answer yet
+    /// (KON-370). Arrives after the row is drawn, so the row is rebuilt when it lands.
+    /// </summary>
+    public VersionSupport? Support { get; init; }
+
+    /// <summary>Whether to show the warning pill. Only a release its publisher has dropped earns one.</summary>
+    public bool IsUnsupported => Support?.IsProblem == true;
+
+    /// <summary>
+    /// A newer release on a line that is still maintained (KON-371). Quieter than
+    /// <see cref="IsUnsupported"/> and never both: a dropped release is the news, and "there is also a
+    /// patch" beside it would be advice about the wrong problem.
+    /// </summary>
+    public bool HasNewerPatch => Support is { IsProblem: false, NewerPatch: not null };
+
+    /// <summary>The sentence behind the row, worded once in <see cref="VersionSupport.Detail"/>.</summary>
+    public string SupportSummary => Support?.Detail ?? string.Empty;
 }

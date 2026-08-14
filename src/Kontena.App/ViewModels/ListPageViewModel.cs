@@ -54,7 +54,7 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 
         try
         {
-            var rows = await LoadRowsAsync();
+            var rows = await Services.Diag.TimeAsync($"{GetType().Name} fetch", LoadRowsAsync());
 
             _all.Clear();
             _all.AddRange(rows);
@@ -62,7 +62,7 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 
             // Re-applied on every load, so a refresh under an active search does not quietly show
             // everything again.
-            ApplyFilter();
+            Services.Diag.Time($"{GetType().Name} rows onto the page", ApplyFilter);
         }
         finally
         {
@@ -131,8 +131,9 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     /// <summary>
     /// Reconcile the bound list towards the matches, rather than clearing and refilling it.
     /// <para>
-    /// Both sequences keep the order of <see cref="All"/>, so after the removals the bound list is a
-    /// subsequence of the matches and each missing row belongs exactly at its own index.
+    /// A sort reorders the matches without adding or removing any, so the bound list is not a
+    /// subsequence of them — <see cref="ListSync.Apply"/> has to handle a move, not only an insert
+    /// at the right index (KON-374).
     /// </para>
     /// </summary>
     protected void ApplyFilter()
@@ -179,11 +180,29 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 /// </summary>
 public static class ListSync
 {
+    /// <summary>
+    /// Drops the rows that are gone, then walks the wanted sequence and puts the right row at each
+    /// index: one already sitting further down is moved up, and only a row that is not there at all is
+    /// inserted. Whatever is left past the end goes too.
+    /// <para>
+    /// The move is what makes a reorder work. Inserting instead left the later copy in place, so one
+    /// click on a sortable column header turned three rows into five and then seven, and no amount of
+    /// reloading brought them back down (KON-374). The final truncate is the other half: those copies
+    /// were all still wanted rows, so the removals at the top left every one of them standing.
+    /// </para>
+    /// <para>
+    /// Quadratic in the worst case (a full reversal scans forward for every row), which lists of a few
+    /// hundred rows do not feel. An index would only pay off well past that, and it would have to hold
+    /// duplicates, since equal rows are equal by value here.
+    /// </para>
+    /// </summary>
     public static void Apply<T>(ObservableCollection<T> target, IReadOnlyList<T> desired)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(desired);
 
+        // Drop what is gone first, so narrowing a search stays what it was: removals and nothing else.
+        // The loop below would reach the same list by moving rows over the doomed ones instead.
         var keep = new HashSet<T>(desired);
         for (var i = target.Count - 1; i >= 0; i--)
         {
@@ -196,10 +215,28 @@ public static class ListSync
             if (i < target.Count && EqualityComparer<T>.Default.Equals(target[i], desired[i]))
                 continue;
 
-            if (i >= target.Count)
-                target.Add(desired[i]);
+            var found = IndexFrom(target, desired[i], i);
+            if (found >= 0)
+                target.Move(found, i);
             else
                 target.Insert(i, desired[i]);
         }
+
+        for (var i = target.Count - 1; i >= desired.Count; i--)
+            target.RemoveAt(i);
+    }
+
+    /// <summary>First index at or after <paramref name="from"/> holding <paramref name="value"/>, or
+    /// -1. Searching from <paramref name="from"/> rather than 0 is what keeps the rows already placed
+    /// where they are.</summary>
+    private static int IndexFrom<T>(ObservableCollection<T> target, T value, int from)
+    {
+        for (var i = from; i < target.Count; i++)
+        {
+            if (EqualityComparer<T>.Default.Equals(target[i], value))
+                return i;
+        }
+
+        return -1;
     }
 }
