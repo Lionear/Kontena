@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Kontena.App.Controls;
 using Kontena.Sdk.Orchestration;
@@ -192,6 +193,12 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     [ObservableProperty] private int _podCount;
     [ObservableProperty] private int _serviceCount;
 
+    /// <summary>Allocatable CPU across the Ready nodes, in whole cores (KON-378).</summary>
+    [ObservableProperty] private string _maxCpus = "0";
+
+    /// <summary>Allocatable memory across the Ready nodes (KON-378).</summary>
+    [ObservableProperty] private string _maxMemory = "0";
+
     public ObservableCollection<NodeRow> Nodes { get; } = [];
 
     /// <summary>
@@ -274,6 +281,7 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 
         var nodes = nodesTask.Result;
         NodeCount = nodes.Count;
+        (MaxCpus, MaxMemory) = MaxCapacity(nodes);
         NamespaceCount = namespacesTask.Result.Count;
         WorkloadCount = workloadsTask.Result.Count;
         PodCount = podsTask.Result.Count;
@@ -290,13 +298,42 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
                 n.Status,
                 n.KubeletVersion,
                 n.Usage is null ? "—" : $"{n.Usage.CpuMillicores}m / {n.Capacity.CpuMillicores}m",
+                n.Usage is null
+                    ? "—"
+                    : $"{Format.Size(n.Usage.MemoryBytes)} / {Format.Size(n.Capacity.MemoryBytes)}",
                 VersionSkewPolicy.Evaluate(info.Version, n.KubeletVersion))),
         ]);
+    }
+
+    /// <summary>
+    /// The cluster's ceiling, for the two capacity tiles (KON-378): allocatable capacity summed over
+    /// the <b>Ready</b> nodes. A NotReady node still reports the capacity it had, and counting it would
+    /// promise cores and bytes that nothing can currently be scheduled onto — the tiles would then be
+    /// at their most reassuring exactly when the cluster is losing nodes.
+    /// <para>
+    /// Same source as the table's CPU column, <see cref="Node.Capacity"/> from
+    /// <c>status.allocatable</c>, so the tiles and the rows can never disagree.
+    /// </para>
+    /// </summary>
+    internal static (string Cpus, string Memory) MaxCapacity(IEnumerable<Node> nodes)
+    {
+        var ready = nodes.Where(n => n.Status == "Ready").ToList();
+        var millicores = ready.Sum(n => n.Capacity.CpuMillicores);
+
+        // Cores, not millicores: the tile is headed "Max CPUs" and 12 is the answer to that, not
+        // 12000m. Allocatable is rarely a round core (a GKE 4-core node allocates 3920m), so a
+        // decimal stays where there is one rather than rounding the fleet down.
+        var cpus = (millicores / 1000d).ToString(
+            millicores % 1000 == 0 ? "0" : "0.0", CultureInfo.InvariantCulture);
+
+        return (cpus, Format.Size(ready.Sum(n => n.Capacity.MemoryBytes)));
     }
 }
 
 /// <summary>A row in the overview's node table.</summary>
-public sealed record NodeRow(string Name, string Roles, string Status, string Version, string Cpu, NodeVersionSkew? Skew = null)
+public sealed record NodeRow(
+    string Name, string Roles, string Status, string Version, string Cpu, string Memory,
+    NodeVersionSkew? Skew = null)
 {
     /// <summary>A kubelet outside the supported skew window (KON-95) — the version alone doesn't show it.</summary>
     public bool HasVersionWarning => Skew?.IsProblem == true;

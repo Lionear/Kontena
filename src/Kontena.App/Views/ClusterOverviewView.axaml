@@ -43,9 +43,12 @@
                 <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
             </Border>
 
-            <!-- Stat cards -->
-            <Grid ColumnDefinitions="*,*,*,*,*" >
-                <Grid.Styles>
+            <!-- Stat cards. Two rows rather than one of seven: at the window's 900px minimum a seventh
+                 column leaves each tile about 42px of content, which is narrower than the word
+                 "Namespaces". The split is also the honest grouping — five counts of what is on the
+                 cluster, then what the cluster can hold (KON-378). -->
+            <StackPanel Spacing="10">
+                <StackPanel.Styles>
                     <Style Selector="Border.stat">
                         <Setter Property="Background" Value="{DynamicResource Surface}"/>
                         <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
@@ -54,38 +57,58 @@
                         <Setter Property="Padding" Value="16,14"/>
                         <Setter Property="Margin" Value="0,0,10,0"/>
                     </Style>
-                </Grid.Styles>
-                <Border Grid.Column="0" Classes="stat">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Nodes" FontSize="12" Foreground="{DynamicResource TextDim}"/>
-                        <TextBlock Text="{Binding NodeCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="1" Classes="stat">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Namespaces" FontSize="12" Foreground="{DynamicResource TextDim}"/>
-                        <TextBlock Text="{Binding NamespaceCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="2" Classes="stat">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Workloads" FontSize="12" Foreground="{DynamicResource TextDim}"/>
-                        <TextBlock Text="{Binding WorkloadCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="3" Classes="stat">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Pods" FontSize="12" Foreground="{DynamicResource TextDim}"/>
-                        <TextBlock Text="{Binding PodCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="4" Classes="stat" Margin="0">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Services" FontSize="12" Foreground="{DynamicResource TextDim}"/>
-                        <TextBlock Text="{Binding ServiceCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
+                </StackPanel.Styles>
+                <Grid ColumnDefinitions="*,*,*,*,*">
+                    <Border Grid.Column="0" Classes="stat">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Nodes" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding NodeCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Classes="stat">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Namespaces" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding NamespaceCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Classes="stat">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Workloads" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding WorkloadCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="3" Classes="stat">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Pods" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding PodCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="4" Classes="stat" Margin="0">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Services" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding ServiceCount}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- The ceiling, not the load: allocatable capacity summed over the Ready nodes, from
+                     the same status.allocatable the CPU and MEMORY columns below read (KON-378). The
+                     Usage panel underneath answers "how busy", these two answer "out of what". -->
+                <Grid ColumnDefinitions="*,*">
+                    <Border Grid.Column="0" Classes="stat">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Max CPUs" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding MaxCpus}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Classes="stat" Margin="0">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Max Memory" FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding MaxMemory}" FontSize="26" FontWeight="SemiBold" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
 
             <!-- Cluster usage over time (KON-347). Above the node table because "is it busy" comes
                  before "which node", and summed over pods so it agrees with the namespace and
@@ -99,19 +122,22 @@
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="2*,1.4*,1*,1.2*,1.2*">
+                        <Grid ColumnDefinitions="1.8*,1.2*,1*,1.2*,1.2*,1.6*">
                             <TextBlock Grid.Column="0" Text="NODE" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="1" Text="ROLES" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="2" Text="STATUS" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="3" Text="VERSION" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="4" Text="CPU" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <!-- Widest column: "6.44 GB / 17.2 GB" is a longer string than anything
+                                 else on this row (KON-378). -->
+                            <TextBlock Grid.Column="5" Text="MEMORY" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Nodes}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:NodeRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
-                                    <Grid ColumnDefinitions="2*,1.4*,1*,1.2*,1.2*">
+                                    <Grid ColumnDefinitions="1.8*,1.2*,1*,1.2*,1.2*,1.6*">
                                         <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Roles}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -126,6 +152,7 @@
                                                   Data="{StaticResource IconWarning}" ToolTip.Tip="{Binding VersionWarningDetail}"/>
                                         </StackPanel>
                                         <TextBlock Grid.Column="4" Text="{Binding Cpu}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding Memory}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
