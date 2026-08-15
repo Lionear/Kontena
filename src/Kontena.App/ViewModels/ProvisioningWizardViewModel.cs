@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Orchestration.Preflight;
+using Kontena.Core.Orchestration.Provisioning;
 using Kontena.Sdk.Orchestration.Provisioning;
 
 namespace Kontena.App.ViewModels;
@@ -20,6 +21,9 @@ public enum ProvisioningStep
 
     /// <summary>Whether the machines can actually take it.</summary>
     Preflight,
+
+    /// <summary>Installing, and whatever is left on screen if it stops (KON-239).</summary>
+    Rollout,
 }
 
 /// <summary>
@@ -41,19 +45,23 @@ public enum ProvisioningStep
 public sealed partial class ProvisioningWizardViewModel : ViewModelBase
 {
     private readonly Func<RemoteClusterHost, SshCredentials, IPreflightProbe> _probeFor;
+    private readonly RolloutRecordStore _records;
 
     /// <param name="provisioners">The distributions to offer, already checked for their tooling.</param>
     /// <param name="probeFor">
     /// How to reach a machine for the preflight. Injected so a demo can hand over a fake and the
     /// screen works with no machines at all — which is what KON-236's fakes were built for.
     /// </param>
+    /// <param name="records">Where an interrupted rollout is remembered. Injected for the same reason.</param>
     public ProvisioningWizardViewModel(
         IReadOnlyList<RemoteProvisionerChoiceViewModel> provisioners,
-        Func<RemoteClusterHost, SshCredentials, IPreflightProbe>? probeFor = null)
+        Func<RemoteClusterHost, SshCredentials, IPreflightProbe>? probeFor = null,
+        RolloutRecordStore? records = null)
     {
         ArgumentNullException.ThrowIfNull(provisioners);
 
         _probeFor = probeFor ?? ((host, credentials) => new SshPreflightProbe(host, credentials));
+        _records = records ?? new RolloutRecordStore();
 
         Provisioners = [.. provisioners];
         Preflight = new PreflightStepViewModel(host => _probeFor(host, CredentialsForProbe()));
@@ -78,6 +86,12 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
 
     /// <summary>The preflight from KON-235, behind a step.</summary>
     public PreflightStepViewModel Preflight { get; }
+
+    /// <summary>
+    /// The rollout from KON-239, or null while no distribution is chosen. Rebuilt with the
+    /// distribution, since it is that provisioner that does the installing.
+    /// </summary>
+    [ObservableProperty] private RolloutViewModel? _rollout;
 
     [ObservableProperty] private ProvisioningStep _step = ProvisioningStep.Distribution;
 
@@ -104,11 +118,19 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
     public bool IsHosts => Step == ProvisioningStep.Hosts;
     public bool IsCredentials => Step == ProvisioningStep.Credentials;
     public bool IsPreflight => Step == ProvisioningStep.Preflight;
+    public bool IsRollout => Step == ProvisioningStep.Rollout;
 
     public bool IsFirst => Step == ProvisioningStep.Distribution;
 
-    /// <summary>The last step this ticket builds. The rollout itself is KON-239.</summary>
-    public bool IsLast => Step == ProvisioningStep.Preflight;
+    /// <summary>The rollout is the end: there is nowhere forward from installing.</summary>
+    public bool IsLast => Step == ProvisioningStep.Rollout;
+
+    /// <summary>
+    /// No going back out of a rollout. Once machines have been written to, the earlier steps describe
+    /// a cluster that is already partly real, and editing them would be editing a plan that has been
+    /// acted on.
+    /// </summary>
+    public bool CanGoBack => !IsFirst && !IsRollout;
 
     /// <summary>The heading, so the shell does not carry a switch of its own.</summary>
     public string Title => Step switch
@@ -116,7 +138,8 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
         ProvisioningStep.Distribution => "What builds this cluster?",
         ProvisioningStep.Hosts => "Which machines take part?",
         ProvisioningStep.Credentials => "How does the rollout get in?",
-        _ => "Can these machines take it?",
+        ProvisioningStep.Preflight => "Can these machines take it?",
+        _ => "Rolling out",
     };
 
     /// <summary>What the forward button says. "Check machines" on the step before the check.</summary>
@@ -140,7 +163,10 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
         ProvisioningStep.Credentials => Credentials.IsUsable,
 
         // KON-235's single value, and deliberately not "no blockers" recomputed here.
-        _ => Preflight.CanContinue,
+        ProvisioningStep.Preflight => Preflight.CanContinue && Build() is not null,
+
+        // Nowhere forward from a rollout.
+        _ => false,
     };
 
     /// <summary>
@@ -157,14 +183,12 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
         ProvisioningStep.Hosts when Hosts.IsEmpty => HostInventoryViewModel.Empty,
         ProvisioningStep.Hosts => Hosts.Problem,
         ProvisioningStep.Credentials => Credentials.Problem,
+        ProvisioningStep.Rollout => null,
         _ when !Preflight.HasRun => "Run the checks first.",
         _ => Preflight.Report?.Summary,
     };
 
     public bool IsBlocked => Blocked is not null;
-
-    /// <summary>The rollout is KON-239; until it exists, the last step's forward button says so.</summary>
-    public bool CanRollOut => false;
 
     // ── Moving ───────────────────────────────────────────────────────────────
 
@@ -180,12 +204,27 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
         // press a second button to ask it is the dead-button mistake in a hat.
         if (IsPreflight && !Preflight.HasRun)
             await RunPreflightAsync();
+
+        // Arriving at the rollout starts it. Unlike the preflight this writes to machines, so the
+        // press that got here is the consent — which is why "Roll out" is what that button says.
+        if (IsRollout)
+            await StartRolloutAsync();
+    }
+
+    /// <summary>Installs what the wizard has described. Public so a resumed rollout can re-enter it.</summary>
+    public async Task StartRolloutAsync(CancellationToken ct = default)
+    {
+        if (Rollout is not { } rollout || Build() is not { } spec || Credentials.Build() is not { } credentials)
+            return;
+
+        await rollout.RunAsync(spec, credentials, ct);
+        OnStepStateChanged();
     }
 
     [RelayCommand]
     private void Back()
     {
-        if (!IsFirst)
+        if (CanGoBack)
             Step = Step - 1;
     }
 
@@ -260,6 +299,9 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
         // What was checked was checked with the old distribution's ports and CNI in mind.
         Preflight.Clear();
 
+        // It is the provisioner that installs, so the rollout belongs to whichever one is chosen.
+        Rollout = value is null ? null : new RolloutViewModel(value.Provisioner, _records);
+
         OnPropertyChanged(nameof(ShowCni));
         OnStepStateChanged();
     }
@@ -283,7 +325,8 @@ public sealed partial class ProvisioningWizardViewModel : ViewModelBase
         foreach (var name in new[]
                  {
                      nameof(IsDistribution), nameof(IsHosts), nameof(IsCredentials), nameof(IsPreflight),
-                     nameof(IsFirst), nameof(IsLast), nameof(Title), nameof(NextLabel),
+                     nameof(IsRollout), nameof(IsFirst), nameof(IsLast), nameof(CanGoBack), nameof(Title),
+                     nameof(NextLabel),
                  })
         {
             OnPropertyChanged(name);

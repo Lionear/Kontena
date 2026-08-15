@@ -181,20 +181,22 @@
                 </StackPanel>
             </Border>
 
-            <!-- The rollout is KON-239. Said out loud rather than shipped as a button that does
-                 nothing, which is the dead-button mistake this codebase already has a name for. -->
+            <!-- The next press writes to machines, which is why that button says "Roll out". -->
             <Border Background="{DynamicResource InfoSoft}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" MaxWidth="620"
                     HorizontalAlignment="Left">
                 <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"
-                           Text="Running the rollout is not built yet. Everything up to here is real: these checks ran against the machines you listed, and the k0sctl config this describes is what will be applied."/>
+                           Text="Continuing installs Kubernetes on these machines. It runs from here, so leaving Kontena open until it finishes is the difference between a cluster and a half-built one."/>
             </Border>
         </StackPanel>
+
+        <!-- ── 5 · Rollout (KON-239) ── -->
+        <ContentControl Content="{Binding Rollout}" IsVisible="{Binding IsRollout}"/>
 
         <!-- ── Moving ── -->
         <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,20,0,0">
             <Button Grid.Column="0" Classes="ghost" Content="Back" Command="{Binding BackCommand}"
-                    IsVisible="{Binding !IsFirst}"/>
+                    IsVisible="{Binding CanGoBack}"/>
 
             <TextBlock Grid.Column="1" Text="{Binding Blocked}" FontSize="12" TextWrapping="Wrap"
                        Margin="14,0" VerticalAlignment="Center" MaxWidth="440"
@@ -203,9 +205,6 @@
             <Button Grid.Column="2" Classes="primary" Content="{Binding NextLabel}"
                     Command="{Binding NextCommand}" IsEnabled="{Binding CanContinue}"
                     IsVisible="{Binding !IsLast}"/>
-
-            <Button Grid.Column="2" Classes="primary" Content="{Binding NextLabel}"
-                    IsEnabled="{Binding CanRollOut}" IsVisible="{Binding IsLast}"/>
         </Grid>
     </StackPanel>
 </UserControl>

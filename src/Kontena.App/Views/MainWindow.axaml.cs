@@ -377,5 +377,11 @@ public partial class MainWindow : Window
             WindowY = _normalY,
             WindowMaximized = WindowState == WindowState.Maximized,
         });
+
+        // A rollout runs from here — there is no cluster yet to hand it to — so closing stops k0sctl
+        // where it is (KON-239). Write down what was standing, so the next launch can say "four of five
+        // were installed" instead of a blank screen and a memory test.
+        if (DataContext is MainWindowViewModel { SettingsPage.RemoteClusters.Rollout: { IsRunning: true } rollout })
+            rollout.Remember();
     }
 }
