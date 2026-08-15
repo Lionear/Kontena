@@ -338,15 +338,34 @@ public class ProvisioningWizardViewModelTests
     }
 
     [Fact]
-    public async Task The_last_step_does_not_offer_a_rollout_that_is_not_built()
+    public async Task Continuing_from_the_preflight_starts_the_rollout()
     {
         var wizard = await WizardAsync();
         FillIn(wizard);
 
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < 4; i++)
             await wizard.NextCommand.ExecuteAsync(null);
 
+        Assert.True(wizard.IsRollout);
         Assert.True(wizard.IsLast);
-        Assert.False(wizard.CanRollOut);
+        Assert.NotNull(wizard.Rollout);
+        Assert.True(wizard.Rollout.IsDone);
+    }
+
+    [Fact]
+    public async Task There_is_no_way_back_out_of_a_rollout()
+    {
+        var wizard = await WizardAsync();
+        FillIn(wizard);
+
+        for (var i = 0; i < 4; i++)
+            await wizard.NextCommand.ExecuteAsync(null);
+
+        // The earlier steps describe a cluster that is now partly real; editing them would be editing
+        // a plan that has already been acted on.
+        Assert.False(wizard.CanGoBack);
+
+        wizard.BackCommand.Execute(null);
+        Assert.True(wizard.IsRollout);
     }
 }

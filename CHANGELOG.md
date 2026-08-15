@@ -9,6 +9,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Roll out a Kubernetes cluster on machines you already own.** Settings › Roll out a cluster walks
+  from a distribution to a running cluster: list the machines and give each one a role, say how the
+  rollout gets in, let Kontena check every machine, then install. It drives `k0sctl`, so one config
+  describes the whole cluster and what comes out ships Autopilot — it can upgrade itself later.
+  Already have a `k0sctl.yaml`? Import it instead of typing the hosts again. (KON-231)
+- **The machines are checked before anything is installed.** Reachable, sudo without a password
+  prompt, the ports Kubernetes needs, swap off, clocks in step, and no two machines claiming the same
+  hostname, MAC or `product_uuid` — the classic result of cloning a VM. Every answer says *why*, and
+  "could not be checked" is its own answer rather than being counted as a pass. What goes wrong here
+  would otherwise go wrong halfway through the install, and then there is a half-built cluster on
+  your machines. Swap can be turned off from the report; the clock cannot, because choosing a time
+  source is yours to make. (KON-235)
+- **A rollout that stops tells you where it stopped and what to do next.** Progress per machine,
+  `k0sctl`'s own output as it arrives, and three ways on: try that machine again, continue without
+  it, or read what the tool said about it. **Nothing is rolled back** — undoing a half-finished
+  install would also take out the machines that worked — and the screen says so, along with what
+  state the stopped machine is left in. A rollout runs from your computer, so closing Kontena stops
+  it; you are told that before it happens, and the next launch offers to carry on from the machines
+  that were already up. (KON-239)
+- **Your SSH key is never stored, only the path to it.** The same arrangement as a remote engine over
+  SSH. There is no password field anywhere in the flow: a password Kontena would have to hold in
+  order to reach five machines is exactly the thing not worth holding. (KON-234)
+
 ### Changed
 
 - **The first-run wizard no longer advertises a runtime your machine can never run.** The "Apple
