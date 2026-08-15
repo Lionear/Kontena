@@ -43,11 +43,15 @@
                 <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
             </Border>
 
-            <!-- Stat cards. Seven of them since KON-378, so the value size dropped from 26 to 22:
-                 "125.8 GB" is a good deal wider than "90" and the row still has to fit the window it
-                 fitted before. The repeated per-tile attributes moved into the styles at the same
-                 time — seven copies of the same four setters is where they stop agreeing. -->
-            <Grid ColumnDefinitions="*,*,*,*,*,*,*" >
+            <!-- Stat cards. Seven of them since KON-378, laid out four across and wrapping rather than
+                 stretched over one row: seven columns leave a tile about 83px of content at the
+                 window's default 1180px, and "65.1 GB" at 26px is about 94px — so a fleet's memory
+                 would be clipped at the size the app usually opens in, never mind the 900px minimum.
+                 Four gives a tile roughly 177px there and still ~104px at the minimum, which is the
+                 widest string this row has to hold, so the values keep their 26px.
+                 The repeated per-tile attributes live in the styles below — seven copies of the same
+                 four setters is where they stop agreeing. -->
+            <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
                 <Grid.Styles>
                     <Style Selector="Border.stat">
                         <Setter Property="Background" Value="{DynamicResource Surface}"/>
@@ -55,18 +59,17 @@
                         <Setter Property="BorderThickness" Value="1"/>
                         <Setter Property="CornerRadius" Value="{StaticResource Radius}"/>
                         <Setter Property="Padding" Value="16,14"/>
-                        <Setter Property="Margin" Value="0,0,10,0"/>
                     </Style>
-                    <!-- Trimmed rather than cut: seven stretched tiles get tight towards the window's
-                         900px minimum, and a hard clip turns "51.5 GB" into "51.5 G" — a number that
-                         is not wrong-looking, just wrong. An ellipsis says the tile ran out of room. -->
+                    <!-- Trimmed rather than cut: a tile still gets tight towards the window's 900px
+                         minimum, and a hard clip turns "51.5 GB" into "51.5 G" — a number that is not
+                         wrong-looking, just wrong. An ellipsis says the tile ran out of room. -->
                     <Style Selector="Border.stat TextBlock.label">
                         <Setter Property="FontSize" Value="12"/>
                         <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
                         <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                     </Style>
                     <Style Selector="Border.stat TextBlock.value">
-                        <Setter Property="FontSize" Value="22"/>
+                        <Setter Property="FontSize" Value="26"/>
                         <Setter Property="FontWeight" Value="SemiBold"/>
                         <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
                         <Setter Property="Foreground" Value="{DynamicResource Text}"/>
@@ -75,47 +78,49 @@
                         <Setter Property="ToolTip.Tip" Value="{Binding $self.Text}"/>
                     </Style>
                 </Grid.Styles>
-                <Border Grid.Column="0" Classes="stat">
+                <Border Grid.Row="0" Grid.Column="0" Classes="stat">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="label" Text="Nodes"/>
                         <TextBlock Classes="value" Text="{Binding NodeCount}"/>
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Classes="stat">
+                <Border Grid.Row="0" Grid.Column="1" Classes="stat">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="label" Text="Namespaces"/>
                         <TextBlock Classes="value" Text="{Binding NamespaceCount}"/>
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="2" Classes="stat">
+                <Border Grid.Row="0" Grid.Column="2" Classes="stat">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="label" Text="Workloads"/>
                         <TextBlock Classes="value" Text="{Binding WorkloadCount}"/>
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="3" Classes="stat">
+                <Border Grid.Row="0" Grid.Column="3" Classes="stat">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="label" Text="Pods"/>
                         <TextBlock Classes="value" Text="{Binding PodCount}"/>
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="4" Classes="stat">
+                <Border Grid.Row="1" Grid.Column="0" Classes="stat">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="label" Text="Services"/>
                         <TextBlock Classes="value" Text="{Binding ServiceCount}"/>
                     </StackPanel>
                 </Border>
                 <!-- The ceiling the cluster has, not what it is using — the charts below answer that
-                     (KON-378). Ready nodes only; the tooltip says so, since a node going NotReady
+                     (KON-378). They flow on with the counts rather than claiming a row of their own:
+                     "Max" says which kind of number this is, and a row held open for two tiles is two
+                     empty slots. Ready nodes only; the tooltip says so, since a node going NotReady
                      drops the total and there is nothing else on the page to explain the change. -->
-                <Border Grid.Column="5" Classes="stat"
+                <Border Grid.Row="1" Grid.Column="1" Classes="stat"
                         ToolTip.Tip="Allocatable CPU across the Ready nodes">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="label" Text="Max CPUs"/>
                         <TextBlock Classes="value" Text="{Binding MaxCpu}"/>
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="6" Classes="stat" Margin="0"
+                <Border Grid.Row="1" Grid.Column="2" Classes="stat"
                         ToolTip.Tip="Allocatable memory across the Ready nodes">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="label" Text="Max Memory"/>
@@ -142,6 +147,8 @@
                             <TextBlock Grid.Column="2" Text="STATUS" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="3" Text="VERSION" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                             <TextBlock Grid.Column="4" Text="CPU" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                            <!-- Widest column: "6.44 GB / 17.2 GB" is a longer string than anything
+                                 else on this row (KON-378). -->
                             <TextBlock Grid.Column="5" Text="MEMORY" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
                         </Grid>
                     </Border>
