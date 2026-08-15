@@ -33,6 +33,28 @@ public static class KnownTools
         MinimumVersion = "0.20",
     };
 
+    public static readonly ExternalTool K0sctl = new(
+        "k0sctl",
+        "k0sctl",
+        ["version"],
+        [
+            new InstallHint(PackageManager.Homebrew, "brew", ["install", "k0sproject/tap/k0sctl"]),
+            new InstallHint(PackageManager.Winget, "winget", ["install", "-e", "--id", "k0sproject.k0sctl"]),
+            new InstallHint(PackageManager.Manual, "", []),
+        ])
+    {
+        DocumentationUrl = "https://docs.k0sproject.io/stable/k0sctl-install/",
+
+        // Its Windows asset carries .exe and the checksums are one file per release, same shape as
+        // minikube's rather than kind's. Scoop has no k0sctl manifest, so it is not offered.
+        Release = new ToolReleaseSpec(
+            "k0sproject/k0sctl", "k0sctl-{os}-{arch}", ".sha256", ExeOnWindows: true),
+
+        // 0.17 is where the apiVersion this writes (v1beta1) settled with the k0s config nesting
+        // Kontena produces; earlier versions parse it differently.
+        MinimumVersion = "0.17",
+    };
+
     public static readonly ExternalTool Minikube = new(
         "minikube",
         "minikube",
