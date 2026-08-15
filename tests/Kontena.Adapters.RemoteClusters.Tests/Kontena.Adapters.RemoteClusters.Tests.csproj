@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kontena.Adapters.RemoteClusters\Kontena.Adapters.RemoteClusters.csproj" />
+
+    <!-- For the round trip against K0sctlImport (KON-233): the reader and this writer are the same
+         file from two ends, and a round trip that loses a host would otherwise only show up in
+         somebody's real config. The adapter itself does not reference this. -->
+    <ProjectReference Include="..\..\src\Kontena.Core.Orchestration\Kontena.Core.Orchestration.csproj" />
+  </ItemGroup>
+
+</Project>
