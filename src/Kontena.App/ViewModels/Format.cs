@@ -13,6 +13,20 @@ internal static class Format
     public static string Size(long? bytes) => bytes is null ? "—" : ByteSize.Format(bytes.Value);
 
     /// <summary>
+    /// Milli-cores as whole cores, for a total big enough that "32000m" reads as noise (KON-378).
+    /// Per-node figures stay in milli-cores, the unit the node itself is stated in; this is only for
+    /// sums across a cluster, where a fraction of a core is rounding rather than information — hence
+    /// one decimal, and none at all when it lands on a whole core.
+    /// </summary>
+    public static string Cores(long millicores)
+    {
+        var cores = millicores / 1000d;
+        return Math.Abs(cores - Math.Round(cores)) < 0.05
+            ? Math.Round(cores).ToString("0", CultureInfo.InvariantCulture)
+            : cores.ToString("0.#", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
     /// A storage quantity the way Kubernetes states it — binary units with the <c>Gi</c> suffix
     /// (KON-247).
     /// <para>

@@ -192,6 +192,17 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     [ObservableProperty] private int _podCount;
     [ObservableProperty] private int _serviceCount;
 
+    /// <summary>
+    /// The ceiling, not the load: allocatable CPU and memory summed over the Ready nodes (KON-378).
+    /// Read off the node objects rather than the metrics source, so both tiles are filled in on a
+    /// cluster that has no metrics-server — and NotReady nodes are left out, because capacity nothing
+    /// can be scheduled onto is not capacity.
+    /// </summary>
+    [ObservableProperty] private string _maxCpu = "—";
+
+    /// <inheritdoc cref="MaxCpu"/>
+    [ObservableProperty] private string _maxMemory = "—";
+
     public ObservableCollection<NodeRow> Nodes { get; } = [];
 
     /// <summary>
@@ -274,6 +285,9 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 
         var nodes = nodesTask.Result;
         NodeCount = nodes.Count;
+
+        (MaxCpu, MaxMemory) = Ceiling(nodes);
+
         NamespaceCount = namespacesTask.Result.Count;
         WorkloadCount = workloadsTask.Result.Count;
         PodCount = podsTask.Result.Count;
@@ -290,13 +304,29 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
                 n.Status,
                 n.KubeletVersion,
                 n.Usage is null ? "—" : $"{n.Usage.CpuMillicores}m / {n.Capacity.CpuMillicores}m",
+                n.Usage is null ? "—" : $"{Format.Size(n.Usage.MemoryBytes)} / {Format.Size(n.Capacity.MemoryBytes)}",
                 VersionSkewPolicy.Evaluate(info.Version, n.KubeletVersion))),
         ]);
+    }
+
+    /// <summary>
+    /// What the two capacity tiles say (KON-378). Its own method so the Ready rule can be tested
+    /// without a cluster: a node that is NotReady still reports its allocatable capacity, and counting
+    /// it would put cores in the total that nothing can be scheduled onto.
+    /// </summary>
+    internal static (string Cpu, string Memory) Ceiling(IEnumerable<Node> nodes)
+    {
+        var ready = nodes.Where(n => n.Status == "Ready").ToList();
+        return (
+            Format.Cores(ready.Sum(n => n.Capacity.CpuMillicores)),
+            Format.Size(ready.Sum(n => n.Capacity.MemoryBytes)));
     }
 }
 
 /// <summary>A row in the overview's node table.</summary>
-public sealed record NodeRow(string Name, string Roles, string Status, string Version, string Cpu, NodeVersionSkew? Skew = null)
+public sealed record NodeRow(
+    string Name, string Roles, string Status, string Version, string Cpu, string Memory,
+    NodeVersionSkew? Skew = null)
 {
     /// <summary>A kubelet outside the supported skew window (KON-95) — the version alone doesn't show it.</summary>
     public bool HasVersionWarning => Skew?.IsProblem == true;
