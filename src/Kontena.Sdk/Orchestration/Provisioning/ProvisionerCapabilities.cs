@@ -45,4 +45,32 @@ public sealed record ProvisionerCapabilities
     /// comes back believing no time passed.
     /// </summary>
     public bool StartStop { get; init; }
+
+    /// <summary>
+    /// It installs on machines the caller names, so it takes a <see cref="RemoteClusterSpec"/> instead
+    /// of a node count (KON-232). The switch between the two create forms: false is a local
+    /// provisioner and stays one, which is why every field added here defaults to the local answer.
+    /// </summary>
+    public bool NeedsHosts { get; init; }
+
+    /// <summary>
+    /// The CNI is a choice rather than a given. kubeadm installs none and the nodes stay NotReady until
+    /// something does; k0s installs one but will take another. kind and minikube wire their own in and
+    /// never ask.
+    /// </summary>
+    public bool ChoosesCni { get; init; }
+
+    /// <summary>
+    /// How it reaches the hosts, and therefore what they need before a rollout can start (KON-233).
+    /// Defaults to <see cref="ProvisionerTransport.Local"/>, which is the honest answer for kind and
+    /// minikube: they reach nothing.
+    /// </summary>
+    public ProvisionerTransport Transport { get; init; } = ProvisionerTransport.Local;
+
+    /// <summary>
+    /// The hosts can be checked before anything is installed — reachable, right kernel, ports free
+    /// (KON-235). Only remote provisioners have something to check: a local tool's one requirement is
+    /// the tool itself, which <see cref="IClusterProvisioner.CheckAsync"/> already answers for.
+    /// </summary>
+    public bool SupportsPreflight { get; init; }
 }

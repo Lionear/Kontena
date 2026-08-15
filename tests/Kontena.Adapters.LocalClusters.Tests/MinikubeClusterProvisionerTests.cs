@@ -120,6 +120,10 @@ public class MinikubeClusterProvisionerTests
 
         // And what it does not do the kind way: ingress is an addon here, not a create-time label.
         Assert.False(capabilities.IngressReady);
+
+        // Nor anything remote (KON-232): it installs here, on what the driver gives it.
+        Assert.False(capabilities.NeedsHosts);
+        Assert.Equal(ProvisionerTransport.Local, capabilities.Transport);
     }
 
     [Fact]
