@@ -59,10 +59,28 @@ public sealed record RemoteClusterSpec(string Name, IReadOnlyList<RemoteClusterH
         if (LocalClusterName.Problem(Name) is { } nameProblem)
             return nameProblem;
 
-        if (Hosts.Count == 0)
+        if (HostsProblem(Hosts) is { } hostProblem)
+            return hostProblem;
+
+        if (CidrProblem(PodCidr, "pod network") is { } podProblem)
+            return podProblem;
+
+        return CidrProblem(ServiceCidr, "service network");
+    }
+
+    /// <summary>
+    /// What is wrong with the machines alone, or null when nothing is. Separate from
+    /// <see cref="Problem"/> because the host list is filled in on its own screen (KON-233), before
+    /// there is a name or a network to judge — and that screen must not invent its own rules.
+    /// </summary>
+    public static string? HostsProblem(IReadOnlyList<RemoteClusterHost> hosts)
+    {
+        ArgumentNullException.ThrowIfNull(hosts);
+
+        if (hosts.Count == 0)
             return "Add at least one machine — a remote cluster is a list of hosts, not a single node.";
 
-        foreach (var host in Hosts)
+        foreach (var host in hosts)
         {
             if (Uri.CheckHostName(host.Address) == UriHostNameType.Unknown)
             {
@@ -72,21 +90,30 @@ public sealed record RemoteClusterSpec(string Name, IReadOnlyList<RemoteClusterH
             }
         }
 
-        var duplicate = Hosts
+        var duplicate = hosts
             .GroupBy(h => h.Address, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(g => g.Count() > 1);
 
         if (duplicate is not null)
             return $"'{duplicate.Key}' is listed twice — one machine can hold one role.";
 
-        if (ControllerCount == 0)
-            return "Mark at least one machine as a controller — without one there is no control plane.";
-
-        if (CidrProblem(PodCidr, "pod network") is { } podProblem)
-            return podProblem;
-
-        return CidrProblem(ServiceCidr, "service network");
+        return hosts.Any(h => h.Role == ClusterHostRole.Controller)
+            ? null
+            : "Mark at least one machine as a controller — without one there is no control plane.";
     }
+
+    /// <summary>
+    /// Why this many controllers is a poor number, or null when it is a sensible one. Static so the
+    /// host screen can say it while the rest of the spec is still empty, and so there is one wording
+    /// of the quorum argument rather than one per screen.
+    /// </summary>
+    public static string? QuorumWarning(int controllers) =>
+        controllers > 0 && controllers % 2 == 0
+            ? $"{controllers} controllers is an even number, so etcd's quorum is " +
+              $"{controllers / 2 + 1} of {controllers} and the cluster survives " +
+              $"{controllers / 2 - 1} of them failing — the same as {controllers - 1} would, on one " +
+              "machine fewer. Use an odd number: 1, or 3 for high availability."
+            : null;
 
     /// <summary>Whether the spec can be rolled out as it stands. Warnings do not count against it.</summary>
     public bool IsValid() => Problem() is null;
@@ -101,14 +128,8 @@ public sealed record RemoteClusterSpec(string Name, IReadOnlyList<RemoteClusterH
         var warnings = new List<string>();
         var controllers = ControllerCount;
 
-        if (controllers > 0 && controllers % 2 == 0)
-        {
-            warnings.Add(
-                $"{controllers} controllers is an even number, so etcd's quorum is " +
-                $"{controllers / 2 + 1} of {controllers} and the cluster survives " +
-                $"{controllers / 2 - 1} of them failing — the same as {controllers - 1} would, on one " +
-                "machine fewer. Use an odd number: 1, or 3 for high availability.");
-        }
+        if (QuorumWarning(controllers) is { } quorum)
+            warnings.Add(quorum);
 
         if (controllers > 1 && string.IsNullOrWhiteSpace(ControlPlaneEndpoint))
         {

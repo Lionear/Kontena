@@ -3,9 +3,10 @@ namespace Kontena.Sdk.Orchestration.Provisioning;
 /// <summary>
 /// One machine a remote cluster is to be installed on.
 /// <para>
-/// How to log in is deliberately not here — see KON-233. Credentials are per host too, but they are
-/// secrets with a lifetime of their own: they are entered once, reused across clusters, and must not
-/// end up in something a spec can be logged or serialised into.
+/// <see cref="User"/> and <see cref="KeyPath"/> are here, but no secret is: a username and a path to a
+/// private key are not themselves the key (KON-233). The key never leaves the agent or the file it
+/// lives in, which is the same line Kontena already draws for a remote engine over SSH — so this
+/// record stays safe to log, diff and write into a config file.
 /// </para>
 /// </summary>
 /// <param name="Address">Where to reach the machine — an IP address or a hostname, no scheme and no
@@ -19,4 +20,13 @@ public sealed record RemoteClusterHost(string Address, ClusterHostRole Role)
     /// <c>kubectl get nodes</c>.
     /// </summary>
     public string? NodeName { get; init; }
+
+    /// <summary>The user to log in as, or null for the tool's own default.</summary>
+    public string? User { get; init; }
+
+    /// <summary>
+    /// Path to the private key to log in with, or null to leave it to the SSH agent. The path, never
+    /// the key — see the note on this type.
+    /// </summary>
+    public string? KeyPath { get; init; }
 }
