@@ -36,13 +36,25 @@ public sealed partial class ProvisionerChoiceViewModel(
     public bool IsUsable => readiness.Usable;
 
     /// <summary>The version, or why it cannot be picked — the same line the summary row shows.</summary>
-    public string State => readiness.State switch
+    public string State => Describe(readiness);
+
+    /// <summary>
+    /// The one wording for a tool's state on a provisioner row. Static because the remote wizard shows
+    /// the same row for <c>k0sctl</c> (KON-379), and two spellings of "not installed" is one more than
+    /// anyone needs.
+    /// </summary>
+    public static string Describe(ToolReadiness readiness)
     {
-        ToolState.Ready or ToolState.Outdated =>
-            ToolReadinessCheck.Number(readiness.Version) is { } number ? $"v{number}" : "installed",
-        ToolState.Unusable => "installed but will not run",
-        _ => "not installed",
-    };
+        ArgumentNullException.ThrowIfNull(readiness);
+
+        return readiness.State switch
+        {
+            ToolState.Ready or ToolState.Outdated =>
+                ToolReadinessCheck.Number(readiness.Version) is { } number ? $"v{number}" : "installed",
+            ToolState.Unusable => "installed but will not run",
+            _ => "not installed",
+        };
+    }
 
     [ObservableProperty] private bool _isSelected;
 }

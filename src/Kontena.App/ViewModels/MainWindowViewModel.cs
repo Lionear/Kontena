@@ -181,6 +181,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// rebuilds that page — see <c>BuildLocalClustersPage</c>.
     /// </summary>
     private LocalClustersViewModel? _localClusters;
+
+    /// <summary>Kept across settings rebuilds, like the local page — a half-filled host table is work.</summary>
+    private ProvisioningWizardViewModel? _remoteClusters;
     [ObservableProperty] private ActivityViewModel? _activity;
 
     /// <summary>The About page (KON-135). Never null — it needs no backend to say what it says.</summary>

@@ -1,0 +1,211 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="900"
+             x:Class="Kontena.App.Views.ProvisioningWizardView"
+             x:DataType="vm:ProvisioningWizardViewModel">
+
+    <StackPanel Spacing="0">
+
+        <TextBlock FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                   Text="Roll out a cluster on your own machines"/>
+        <TextBlock Text="Kontena drives k0sctl to install Kubernetes on machines you already have. Nothing is touched until the preflight, and nothing is installed until you say so."
+                   FontSize="13.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" MaxWidth="620"
+                   HorizontalAlignment="Left" Margin="0,4,0,20"/>
+
+        <!-- ── Where we are. Four steps; the rollout itself is not built yet (KON-239). ── -->
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,20">
+            <Border Classes="step" Classes.on="{Binding IsDistribution}">
+                <TextBlock Text="1 · Distribution"/>
+            </Border>
+            <TextBlock Text="›" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+            <Border Classes="step" Classes.on="{Binding IsHosts}">
+                <TextBlock Text="2 · Machines"/>
+            </Border>
+            <TextBlock Text="›" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+            <Border Classes="step" Classes.on="{Binding IsCredentials}">
+                <TextBlock Text="3 · Access"/>
+            </Border>
+            <TextBlock Text="›" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+            <Border Classes="step" Classes.on="{Binding IsPreflight}">
+                <TextBlock Text="4 · Preflight"/>
+            </Border>
+        </StackPanel>
+
+        <!-- ── 1 · Distribution ── -->
+        <StackPanel Spacing="14" IsVisible="{Binding IsDistribution}">
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="DISTRIBUTION" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+
+                    <ItemsControl ItemsSource="{Binding Provisioners}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RemoteProvisionerChoiceViewModel">
+                                <Button Classes="pick" Classes.on="{Binding IsSelected}"
+                                        IsEnabled="{Binding IsUsable}" Margin="0,0,0,8"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                        Command="{Binding $parent[ItemsControl].((vm:ProvisioningWizardViewModel)DataContext).SelectProvisionerCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="3">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13.5"/>
+                                            <TextBlock Text="{Binding Purpose}" FontSize="12.5" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextDim}"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding State}" FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextFaint}"/>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="NAME" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+                    <TextBox Text="{Binding Name, Mode=TwoWay}" PlaceholderText="prod-eu-west" MaxWidth="320"
+                             HorizontalAlignment="Left"/>
+                    <TextBlock Text="{Binding NameProblem}" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Danger}" IsVisible="{Binding HasNameProblem}"/>
+                    <TextBlock Text="The cluster's name, and the kubeconfig context it will write."
+                               FontSize="12" Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card" IsVisible="{Binding ShowCni}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="NETWORK" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+                    <TextBox Text="{Binding Cni, Mode=TwoWay}" PlaceholderText="kube-router" MaxWidth="320"
+                             HorizontalAlignment="Left"/>
+                    <TextBlock Text="Which CNI to install. Leave it empty for the distribution's own — k0s ships kube-router. Choosing Calico adds BGP on port 179 to what the preflight checks."
+                               FontSize="12" TextWrapping="Wrap" MaxWidth="560"
+                               Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- ── 2 · Machines — KON-233's table, unchanged. ── -->
+        <views:HostInventoryView DataContext="{Binding Hosts}" IsVisible="{Binding $parent[UserControl].((vm:ProvisioningWizardViewModel)DataContext).IsHosts}"/>
+
+        <!-- ── 3 · Access — KON-234's form, rebuilt when the transport changes. ── -->
+        <ContentControl Content="{Binding Credentials}" IsVisible="{Binding IsCredentials}"/>
+
+        <!-- ── 4 · Preflight ── -->
+        <StackPanel Spacing="14" IsVisible="{Binding IsPreflight}">
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="3">
+                            <TextBlock Text="PREFLIGHT" FontSize="11.5" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Text="{Binding Preflight.Summary}" FontSize="12.5" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextDim}"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="ghost" Content="Check again"
+                                Command="{Binding RunPreflightCommand}"
+                                IsEnabled="{Binding !Preflight.IsRunning}"/>
+                    </Grid>
+
+                    <TextBlock Text="Checking the machines…" FontSize="12.5"
+                               Foreground="{DynamicResource TextDim}" IsVisible="{Binding Preflight.IsRunning}"/>
+
+                    <ItemsControl ItemsSource="{Binding Preflight.Groups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PreflightGroupViewModel">
+                                <StackPanel Spacing="6" Margin="0,0,0,16">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
+                                               FontFamily="{StaticResource Mono}"/>
+
+                                    <ItemsControl ItemsSource="{Binding Rows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:PreflightRowViewModel">
+                                                <Border Padding="11,9" Margin="0,0,0,6"
+                                                        CornerRadius="{StaticResource RadiusSm}"
+                                                        Background="{DynamicResource Surface2}">
+                                                    <StackPanel Spacing="4">
+                                                        <Grid ColumnDefinitions="Auto,*">
+                                                            <!-- Four states, four words. "Not checked" is
+                                                                 kept apart from "failed" on purpose. -->
+                                                            <TextBlock Grid.Column="0" Text="OK" FontSize="11" FontWeight="Bold"
+                                                                       Margin="0,0,9,0" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource Success}"
+                                                                       IsVisible="{Binding IsPassed}"/>
+                                                            <TextBlock Grid.Column="0" Text="WARN" FontSize="11" FontWeight="Bold"
+                                                                       Margin="0,0,9,0" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource WarnText}"
+                                                                       IsVisible="{Binding IsWarned}"/>
+                                                            <TextBlock Grid.Column="0" Text="FAIL" FontSize="11" FontWeight="Bold"
+                                                                       Margin="0,0,9,0" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource Danger}"
+                                                                       IsVisible="{Binding IsFailed}"/>
+                                                            <TextBlock Grid.Column="0" Text="NOT CHECKED" FontSize="11" FontWeight="Bold"
+                                                                       Margin="0,0,9,0" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource TextFaint}"
+                                                                       IsVisible="{Binding IsUnknown}"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Title}"
+                                                                       FontSize="13" VerticalAlignment="Center"/>
+                                                        </Grid>
+
+                                                        <TextBlock Text="{Binding Reason}" FontSize="12.5" TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource TextDim}"/>
+
+                                                        <StackPanel Spacing="5" IsVisible="{Binding HasRemedy}" Margin="0,4,0,0">
+                                                            <TextBlock Text="{Binding RemedyDetail}" FontSize="12" TextWrapping="Wrap"
+                                                                       Foreground="{DynamicResource TextDim}"/>
+                                                            <TextBlock Text="{Binding RemedyCommand}" FontSize="11.5" TextWrapping="Wrap"
+                                                                       FontFamily="{StaticResource Mono}"
+                                                                       Foreground="{DynamicResource TextFaint}"/>
+                                                            <Button Classes="ghost" Content="{Binding RemedyTitle}"
+                                                                    HorizontalAlignment="Left"
+                                                                    Command="{Binding ApplyCommand}"
+                                                                    IsEnabled="{Binding !IsApplying}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- The rollout is KON-239. Said out loud rather than shipped as a button that does
+                 nothing, which is the dead-button mistake this codebase already has a name for. -->
+            <Border Background="{DynamicResource InfoSoft}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11" MaxWidth="620"
+                    HorizontalAlignment="Left">
+                <TextBlock FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"
+                           Text="Running the rollout is not built yet. Everything up to here is real: these checks ran against the machines you listed, and the k0sctl config this describes is what will be applied."/>
+            </Border>
+        </StackPanel>
+
+        <!-- ── Moving ── -->
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,20,0,0">
+            <Button Grid.Column="0" Classes="ghost" Content="Back" Command="{Binding BackCommand}"
+                    IsVisible="{Binding !IsFirst}"/>
+
+            <TextBlock Grid.Column="1" Text="{Binding Blocked}" FontSize="12" TextWrapping="Wrap"
+                       Margin="14,0" VerticalAlignment="Center" MaxWidth="440"
+                       Foreground="{DynamicResource TextDim}" IsVisible="{Binding IsBlocked}"/>
+
+            <Button Grid.Column="2" Classes="primary" Content="{Binding NextLabel}"
+                    Command="{Binding NextCommand}" IsEnabled="{Binding CanContinue}"
+                    IsVisible="{Binding !IsLast}"/>
+
+            <Button Grid.Column="2" Classes="primary" Content="{Binding NextLabel}"
+                    IsEnabled="{Binding CanRollOut}" IsVisible="{Binding IsLast}"/>
+        </Grid>
+    </StackPanel>
+</UserControl>

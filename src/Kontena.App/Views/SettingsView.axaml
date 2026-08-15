@@ -133,6 +133,13 @@
                         <TextBlock Grid.Column="1" Text="Local clusters" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
+                <Button Classes="snav" Classes.on="{Binding IsRemoteClusters}" Command="{Binding SelectCategoryCommand}"
+                        CommandParameter="remote-clusters" IsVisible="{Binding RemoteClusters, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconCluster}"/>
+                        <TextBlock Grid.Column="1" Text="Roll out a cluster" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
             </StackPanel>
         </Border>
 
@@ -828,6 +835,10 @@
 
                 <!-- Local clusters (KON-109 + KON-76) — its own view, so this file does not grow a sixth page. -->
                 <views:LocalClustersView DataContext="{Binding LocalClusters}" IsVisible="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).IsClusters}"/>
+
+                <!-- Rolling out onto your own machines (KON-379) — the wizard the host table,
+                     credentials form and preflight were built for. -->
+                <views:ProvisioningWizardView DataContext="{Binding RemoteClusters}" IsVisible="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).IsRemoteClusters}"/>
 
             </StackPanel>
         </ScrollViewer>

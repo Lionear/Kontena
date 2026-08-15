@@ -1,11 +1,17 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Adapters.Podman;
+using Kontena.Adapters.RemoteClusters;
 using Kontena.App.Services;
+using Kontena.Core.Orchestration.Fakes;
+using Kontena.Core.Orchestration.Preflight;
 using Kontena.Sdk;
 using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Provisioning;
+using Kontena.Sdk.Tooling;
 using Kontena.Core.Models;
 using Kontena.Core.Versioning;
 using Kontena.Engines;
@@ -884,6 +890,7 @@ public partial class MainWindowViewModel
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
             LocalClusters = _localClusters ??= BuildLocalClustersPage(),
+            RemoteClusters = _remoteClusters ??= BuildProvisioningWizard(),
 
             // A changed shortcut has to reach the window's binding collection, or it would only take
             // effect on the next launch (KON-180).
@@ -935,6 +942,69 @@ public partial class MainWindowViewModel
 
         ActiveBackendNow = () => _activeBackend,
     };
+
+    /// <summary>
+    /// The provisioning wizard (KON-379), built once and kept across settings rebuilds — for the same
+    /// reason the local page is: a half-filled host table is work, and handing the user a fresh one
+    /// because something unrelated changed throws it away.
+    /// <para>
+    /// The demo backends switch decides which provisioners it offers. With them on it gets KON-236's
+    /// fake, which streams a rollout and touches nothing, and a preflight probe that answers from a
+    /// script — so the whole flow is walkable, and screenshottable, on a machine with no fleet. With
+    /// them off it gets the real k0s provisioner over real SSH.
+    /// </para>
+    /// </summary>
+    private ProvisioningWizardViewModel BuildProvisioningWizard()
+    {
+        var demo = BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends);
+
+        IRemoteClusterProvisioner provisioner = demo
+            ? new FakeRemoteClusterProvisioner { DisplayName = "k0s (demo)" }
+            : new K0sClusterProvisioner(new ToolRunner());
+
+        var choice = new RemoteProvisionerChoiceViewModel(
+            provisioner,
+            "One k0sctl.yaml describes the whole cluster — machines, roles and network in one file — "
+            + "and what comes out ships Autopilot, so it can upgrade itself later.");
+
+        var wizard = new ProvisioningWizardViewModel(
+            [choice],
+            demo ? (host, _) => DemoProbe(host.Address) : null)
+        {
+            RequestConfirm = ShowConfirm,
+        };
+
+        // Not awaited: the page is built synchronously and the rows fill themselves in.
+        _ = wizard.LoadAsync();
+
+        return wizard;
+    }
+
+    /// <summary>
+    /// A machine for the demo: healthy enough to reach the end, with its clock a few minutes out so
+    /// there is a real warning on screen rather than a wall of green.
+    /// <para>
+    /// Deliberately not the swap failure, which is the one with a remedy: the canned answers do not
+    /// change when a command runs, so "turn swap off" would report success and then find swap still
+    /// on. A demo that cannot be completed is worse than one that shows fewer states, and the
+    /// fix-and-check-again loop is covered by tests instead.
+    /// </para>
+    /// </summary>
+    private static IPreflightProbe DemoProbe(string address)
+    {
+        var last = address.Split('.')[^1];
+
+        return new FakePreflightProbe(address)
+            .Answer("echo kontena-preflight", ProbeResult.Success("kontena-preflight"))
+            .Answer("sudo -n true", ProbeResult.Success())
+            .Answer("uname", ProbeResult.Success("Linux x86_64"))
+            .Answer("ss -Hltn", ProbeResult.Success("LISTEN 0 128 0.0.0.0:22 0.0.0.0:*"))
+            .Answer("swapon", ProbeResult.Success())
+            .Answer("date +%s", ProbeResult.Success(
+                DateTimeOffset.UtcNow.AddMinutes(3).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)))
+            .Answer("hostname", ProbeResult.Success(
+                $"node-{last}\n{Guid.NewGuid()}\naa:bb:cc:00:00:{last},"));
+    }
 
     /// <summary>
     /// Rebuild the backend set after the demo toggle changed (KON-96), re-probe, and refresh the
