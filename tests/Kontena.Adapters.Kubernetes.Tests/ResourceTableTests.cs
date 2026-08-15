@@ -161,6 +161,28 @@ public sealed class ResourceTableTests
     }
 
     /// <summary>
+    /// One object by name, which is where the manifest panel reads its YAML from. A custom resource is
+    /// addressed exactly like a built-in one — the plural is discovery's answer either way — and the
+    /// Table projection stays behind, being a listing concern.
+    /// </summary>
+    [Theory]
+    // core, namespaced
+    [InlineData("", "v1", "pods", true, "kube-system", "coredns-abc", "https://10.0.0.2:6443/api/v1/namespaces/kube-system/pods/coredns-abc")]
+    // core, cluster-scoped
+    [InlineData("", "v1", "nodes", false, null, "node-1", "https://10.0.0.2:6443/api/v1/nodes/node-1")]
+    // a CRD, which is what the manifest panel used to answer with a placeholder comment
+    [InlineData("dragonflydb.io", "v1alpha1", "dragonflies", true, "data", "dragonfly-cluster", "https://10.0.0.2:6443/apis/dragonflydb.io/v1alpha1/namespaces/data/dragonflies/dragonfly-cluster")]
+    public void One_object_is_addressed_by_name(
+        string group, string version, string plural, bool namespaced, string? ns, string name, string expected)
+    {
+        var uri = ResourceTables.RequestUri(
+            new Uri("https://10.0.0.2:6443"), new ApiResourceInfo(group, version, plural, namespaced), ns, name);
+
+        Assert.True(uri.IsAbsoluteUri);
+        Assert.Equal(expected, uri.AbsoluteUri);
+    }
+
+    /// <summary>
     /// A base address that already ends in a slash must not gain a second one, and one without must not
     /// have its last segment swallowed by the combine.
     /// </summary>

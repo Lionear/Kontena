@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Kontena.App.Controls;
 using Kontena.Sdk.Orchestration;
@@ -193,11 +192,16 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     [ObservableProperty] private int _podCount;
     [ObservableProperty] private int _serviceCount;
 
-    /// <summary>Allocatable CPU across the Ready nodes, in whole cores (KON-378).</summary>
-    [ObservableProperty] private string _maxCpus = "0";
+    /// <summary>
+    /// The ceiling, not the load: allocatable CPU and memory summed over the Ready nodes (KON-378).
+    /// Read off the node objects rather than the metrics source, so both tiles are filled in on a
+    /// cluster that has no metrics-server — and NotReady nodes are left out, because capacity nothing
+    /// can be scheduled onto is not capacity.
+    /// </summary>
+    [ObservableProperty] private string _maxCpu = "—";
 
-    /// <summary>Allocatable memory across the Ready nodes (KON-378).</summary>
-    [ObservableProperty] private string _maxMemory = "0";
+    /// <inheritdoc cref="MaxCpu"/>
+    [ObservableProperty] private string _maxMemory = "—";
 
     public ObservableCollection<NodeRow> Nodes { get; } = [];
 
@@ -281,7 +285,9 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 
         var nodes = nodesTask.Result;
         NodeCount = nodes.Count;
-        (MaxCpus, MaxMemory) = MaxCapacity(nodes);
+
+        (MaxCpu, MaxMemory) = Ceiling(nodes);
+
         NamespaceCount = namespacesTask.Result.Count;
         WorkloadCount = workloadsTask.Result.Count;
         PodCount = podsTask.Result.Count;
@@ -298,35 +304,22 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
                 n.Status,
                 n.KubeletVersion,
                 n.Usage is null ? "—" : $"{n.Usage.CpuMillicores}m / {n.Capacity.CpuMillicores}m",
-                n.Usage is null
-                    ? "—"
-                    : $"{Format.Size(n.Usage.MemoryBytes)} / {Format.Size(n.Capacity.MemoryBytes)}",
+                n.Usage is null ? "—" : $"{Format.Size(n.Usage.MemoryBytes)} / {Format.Size(n.Capacity.MemoryBytes)}",
                 VersionSkewPolicy.Evaluate(info.Version, n.KubeletVersion))),
         ]);
     }
 
     /// <summary>
-    /// The cluster's ceiling, for the two capacity tiles (KON-378): allocatable capacity summed over
-    /// the <b>Ready</b> nodes. A NotReady node still reports the capacity it had, and counting it would
-    /// promise cores and bytes that nothing can currently be scheduled onto — the tiles would then be
-    /// at their most reassuring exactly when the cluster is losing nodes.
-    /// <para>
-    /// Same source as the table's CPU column, <see cref="Node.Capacity"/> from
-    /// <c>status.allocatable</c>, so the tiles and the rows can never disagree.
-    /// </para>
+    /// What the two capacity tiles say (KON-378). Its own method so the Ready rule can be tested
+    /// without a cluster: a node that is NotReady still reports its allocatable capacity, and counting
+    /// it would put cores in the total that nothing can be scheduled onto.
     /// </summary>
-    internal static (string Cpus, string Memory) MaxCapacity(IEnumerable<Node> nodes)
+    internal static (string Cpu, string Memory) Ceiling(IEnumerable<Node> nodes)
     {
         var ready = nodes.Where(n => n.Status == "Ready").ToList();
-        var millicores = ready.Sum(n => n.Capacity.CpuMillicores);
-
-        // Cores, not millicores: the tile is headed "Max CPUs" and 12 is the answer to that, not
-        // 12000m. Allocatable is rarely a round core (a GKE 4-core node allocates 3920m), so a
-        // decimal stays where there is one rather than rounding the fleet down.
-        var cpus = (millicores / 1000d).ToString(
-            millicores % 1000 == 0 ? "0" : "0.0", CultureInfo.InvariantCulture);
-
-        return (cpus, Format.Size(ready.Sum(n => n.Capacity.MemoryBytes)));
+        return (
+            Format.Cores(ready.Sum(n => n.Capacity.CpuMillicores)),
+            Format.Size(ready.Sum(n => n.Capacity.MemoryBytes)));
     }
 }
 
