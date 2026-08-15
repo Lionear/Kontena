@@ -226,7 +226,7 @@ public class KubernetesClusterEngineTests
         {
             Assert.Equal("Pod", e.Resource.Kind.Kind);
             Assert.Equal("kube-system", e.Resource.Namespace);
-            Assert.False(string.IsNullOrEmpty(e.Manifest));
+            Assert.False(string.IsNullOrEmpty(e.Resource.Name));
         });
     }
 
