@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Kontena.App.Controls;
+using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
@@ -267,9 +268,19 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
         Support = await _versions.CheckAsync(product, Version, DateTimeOffset.UtcNow);
     }
 
+    /// <summary>
+    /// Who this cluster is, read once (KON-355). Identity does not change under a page that is
+    /// already open — the same claim <see cref="CheckSupportAsync"/> is already made on, three lines
+    /// down — and this page re-read it on every watch event, which on a live cluster is every one to
+    /// five seconds. <see cref="IClusterEngine.GetInfoAsync"/> is two round-trips in the Kubernetes
+    /// adapter, one of them a full node listing, for a name and a version string that were already
+    /// on screen.
+    /// </summary>
+    private BackendInfo? _info;
+
     private async Task ReadAsync()
     {
-        var infoTask = _cluster.GetInfoAsync().AsTask();
+        var infoTask = _info is null ? _cluster.GetInfoAsync().AsTask() : Task.FromResult(_info);
         var nodesTask = _cluster.ListNodesAsync().AsTask();
         var namespacesTask = _cluster.ListNamespacesAsync().AsTask();
         var workloadsTask = _cluster.ListWorkloadsAsync().AsTask();
@@ -278,7 +289,7 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 
         await Task.WhenAll(infoTask, nodesTask, namespacesTask, workloadsTask, podsTask, servicesTask);
 
-        var info = infoTask.Result;
+        var info = _info = infoTask.Result;
         ClusterName = info.DisplayName;
         Version = info.Version;
         Distribution = info is ClusterInfo ci ? ci.Distribution : "cluster";

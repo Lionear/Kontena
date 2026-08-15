@@ -41,16 +41,20 @@ public enum WatchEventType
 }
 
 /// <summary>
-/// One item from a <c>WatchAsync</c> informer stream: what happened, to which resource, and
-/// the resource's live manifest (YAML) at that revision. Generic over kind via
-/// <see cref="ResourceRef"/> + <see cref="GroupVersionKind"/>, so a single stream type serves
-/// every resource — including CRDs.
+/// One item from a <c>WatchAsync</c> informer stream: what happened, and to which resource. Generic
+/// over kind via <see cref="ResourceRef"/> + <see cref="GroupVersionKind"/>, so a single stream type
+/// serves every resource — including CRDs.
+/// <para>
+/// It used to carry the resource's manifest as YAML too, and nothing ever read it (KON-355). The
+/// Kubernetes adapter built one per event, at 0.29 ms and 150 KB of garbage each, for every kind
+/// every live page follows — and the pages that follow them only ever ask <i>whether</i> something
+/// moved, then re-read through the typed listers. A field an adapter must fill and no caller may
+/// rely on is not an extension point, it is a bill. Anything that needs a manifest reads it, where
+/// the answer is fresh at the moment of asking rather than at the moment of an event.
+/// </para>
 /// </summary>
 public sealed record ResourceEvent
 {
     public required WatchEventType Type { get; init; }
     public required ResourceRef Resource { get; init; }
-
-    /// <summary>The resource's manifest (YAML) at this revision, when the adapter supplies it.</summary>
-    public string? Manifest { get; init; }
 }

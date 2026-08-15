@@ -48,6 +48,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private readonly List<Channel<ResourceEvent>> _watchers = [];
 
+    /// <summary>Test hook (KON-355): run on the thread each post-snapshot watch event is produced on,
+    /// so a test can assert whose thread an adapter's per-event work would be costing.</summary>
+    public Action? OnWatchEvent { get; set; }
+
     /// <summary>Test hook (KON-308): push one more event into any watch already following this kind,
     /// after its initial snapshot. Filtered to matching kind/namespace the same way the snapshot is.</summary>
     public void EmitWatchEvent(ResourceEvent evt)
@@ -283,8 +287,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             ? (HistoryIsEmpty ? FakeMetricsHistory.Empty : FakeMetricsHistory.Instance)
             : NoMetricsHistory.Instance;
 
+    // Counted like the listers are: on a real cluster this is two round-trips, one of them a full
+    // node listing, so a page calling it on a loop costs what a page listing nodes on a loop costs
+    // (KON-355).
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<BackendInfo>(new ClusterInfo
+        ValueTask.FromResult(Counted<BackendInfo>(nameof(GetInfoAsync), new ClusterInfo
         {
             Backend = Backend,
             DisplayName = _activeContext,
@@ -295,7 +302,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             Distribution = "GKE",
             NodeCount = _nodes.Count,
             Context = _activeContext,
-        });
+        }));
 
     public ValueTask PingAsync(CancellationToken ct = default) => ValueTask.CompletedTask;
 
@@ -528,10 +535,21 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             // reading whatever a test pushes via EmitWatchEvent. ReadAllAsync throws
             // OperationCanceledException on ct — that is the "stays open until you stop watching"
             // behaviour callers already rely on.
-            await foreach (var evt in mine.Reader.ReadAllAsync(ct))
+            // ConfigureAwait(false) because every real adapter in this repo has it, and a fake that
+            // resumes on the caller's context instead is not a cheaper adapter, it is a different one
+            // (KON-355): it would hold a page's UI thread where the Kubernetes adapter hands it back,
+            // so a test could neither see that bug nor prove it fixed.
+            await foreach (var evt in mine.Reader.ReadAllAsync(ct).ConfigureAwait(false))
             {
-                if (evt.Resource.Kind.Kind == kind.Kind && Match(ns, evt.Resource.Namespace))
-                    yield return evt;
+                if (evt.Resource.Kind.Kind != kind.Kind || !Match(ns, evt.Resource.Namespace))
+                    continue;
+
+                // Stands in for the work a real adapter does per event — decoding one object out of
+                // the stream — so a test can see which thread that lands on (KON-355). Only past the
+                // snapshot: the Task.Yield above hands the snapshot back to whoever asked for it,
+                // which is this fake's doing and not any adapter's.
+                OnWatchEvent?.Invoke();
+                yield return evt;
             }
         }
         finally

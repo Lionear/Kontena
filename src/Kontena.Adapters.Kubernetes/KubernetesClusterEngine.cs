@@ -190,13 +190,23 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     public async ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default)
     {
-        var list = await _client.CoreV1.ListNodeAsync(cancellationToken: ct).ConfigureAwait(false);
-        var usage = await _metrics.GetNodeUsageAsync(ct).ConfigureAwait(false);
-        var diskCapacity = await _metrics.GetNodeDiskCapacityAsync(ct).ConfigureAwait(false);
+        // All four know nothing of each other, so all four are started before any is awaited — and
+        // usage and capacity being in flight together is what lets the kubelet source serve both from
+        // one fan-out instead of two identical ones (KON-355).
+        var listTask = _client.CoreV1.ListNodeAsync(cancellationToken: ct);
+        var usageTask = _metrics.GetNodeUsageAsync(ct).AsTask();
+        var diskCapacityTask = _metrics.GetNodeDiskCapacityAsync(ct).AsTask();
 
         // Pod counts come from the pod list, not the metrics source — they are always available.
-        var pods = await _client.CoreV1.ListPodForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
-        var perNode = (pods.Items ?? [])
+        var podsTask = _client.CoreV1.ListPodForAllNamespacesAsync(cancellationToken: ct);
+
+        await Task.WhenAll(listTask, usageTask, diskCapacityTask, podsTask).ConfigureAwait(false);
+
+        var list = listTask.Result;
+        var usage = usageTask.Result;
+        var diskCapacity = diskCapacityTask.Result;
+
+        var perNode = (podsTask.Result.Items ?? [])
             .Where(p => !string.IsNullOrEmpty(p.Spec?.NodeName))
             .GroupBy(p => p.Spec!.NodeName!)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
@@ -460,7 +470,6 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
                     _ => WatchEvent.Modified,
                 },
                 Resource = new ResourceRef(kind, meta.Metadata?.NamespaceProperty, meta.Metadata?.Name ?? "?"),
-                Manifest = KubernetesYaml.Serialize(obj),
             };
         }
     }
@@ -682,7 +691,6 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
             {
                 Type = type == K8sWatch.Deleted ? WatchEvent.Deleted : WatchEvent.Added,
                 Resource = K8sMap.ToEvent(e).InvolvedObject,
-                Manifest = e.Message,
             };
         }
     }
