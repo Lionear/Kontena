@@ -58,6 +58,16 @@ public static class SecretKeys
     public static string Engine(string endpoint) => $"{Prefix}:engine:{Normalize(endpoint)}";
 
     /// <summary>
+    /// Credential material for a cluster being provisioned, keyed by the cluster's name (KON-234).
+    /// <para>
+    /// Only ever holds what has nowhere else to live: a talosconfig pasted in rather than pointed at.
+    /// An SSH key never comes here — Kontena stores its path and leaves the key where it is, which is
+    /// the same arrangement a remote engine over SSH has always had.
+    /// </para>
+    /// </summary>
+    public static string Cluster(string name) => $"{Prefix}:cluster:{Normalize(name)}";
+
+    /// <summary>
     /// A label for the keychain UI. Deliberately readable rather than the key itself: the point of the
     /// entry appearing in the user's own keychain manager is that they can tell what it is.
     /// </summary>
@@ -70,6 +80,7 @@ public static class SecretKeys
     {
         [_, "registry", var host] => $"Kontena — registry login for {host}",
         [_, "engine", var endpoint] => $"Kontena — engine credentials for {endpoint}",
+        [_, "cluster", var name] => $"Kontena — talosconfig for cluster {name}",
         _ => $"Kontena — {key}",
     };
 
