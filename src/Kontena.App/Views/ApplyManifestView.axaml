@@ -3,6 +3,7 @@
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:rendering="using:Kontena.Core.Orchestration.Rendering"
              xmlns:conv="using:Kontena.App.Converters"
+             xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="720"
@@ -23,19 +24,6 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="Padding" Value="13,9"/>
-        </Style>
-        <!-- The manifest editor: a plain mono text area, no chrome of its own -->
-        <Style Selector="TextBox.editor">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="CornerRadius" Value="0"/>
-            <Setter Property="Padding" Value="14,12"/>
-            <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
-            <Setter Property="FontSize" Value="12.5"/>
-            <Setter Property="AcceptsReturn" Value="True"/>
-            <Setter Property="AcceptsTab" Value="True"/>
-            <Setter Property="TextWrapping" Value="NoWrap"/>
-            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
         </Style>
         <!-- The source switcher: three flat tabs, the active one carried by the accent -->
         <Style Selector="Button.source">
@@ -347,17 +335,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Grid Grid.Row="3" RowDefinitions="Auto,*">
-                        <Border Grid.Row="0" Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="0,0,0,1" Padding="13,6" IsVisible="{Binding IsYamlTruncated}">
-                            <TextBlock Text="{Binding TruncationNote}" FontSize="11.5" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextDim}"/>
-                        </Border>
-                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
-                            <TextBox Classes="editor" Text="{Binding EditorText}"
-                                     IsReadOnly="{Binding IsYamlTruncated}"/>
-                        </ScrollViewer>
-                    </Grid>
+                    <views:ManifestEditor Grid.Row="3" Text="{Binding YamlText}"/>
                 </Grid>
             </Border>
 

@@ -168,6 +168,10 @@
     <Application.Styles>
         <FluentTheme />
 
+        <!-- TextEditor ships no default template; without this the manifest editor renders empty
+             (KON-382). Kontena.Plugins.ManifestStudio merges the same dictionary for its own. -->
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
+
         <!-- The app's only motion (KON-220). On the ContentPresenter because that is the part these
              styles colour, and on Background alone: fading the label as well makes the text look out
              of focus for a fifth of a second, which is the opposite of the point. Deliberately not on
