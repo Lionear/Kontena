@@ -27,7 +27,8 @@ namespace Kontena.Adapters.Kubernetes;
 /// designed around.
 /// </para>
 /// </summary>
-public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IDisposable
+public sealed class KubernetesClusterEngine
+    : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IDisposable
 {
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
@@ -40,6 +41,11 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     private readonly string? _kubeconfigPath;
     private readonly PrometheusSource _history;
+    private readonly AlertingDiscovery _alerting;
+    private readonly ApiProxyHttp _proxy;
+
+    private IAlertSource _alerts = NoAlertSource.Instance;
+    private AlertingProbe _alertingProbe = AlertingProbe.Nothing;
 
     /// <param name="context">The kube-context to connect through.</param>
     /// <param name="kubeconfigPath">The kubeconfig it came from, or null for the default one (KON-118).</param>
@@ -56,11 +62,14 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
         // The raw HttpClient rather than a generated operation: the service proxy has to carry a
         // query string through to Prometheus, and the generated method has nowhere to put one.
-        _history = new PrometheusSource(client.HttpClient, client.BaseUri, client);
+        var proxy = new ApiProxyHttp(client.HttpClient, client.BaseUri);
+        _history = new PrometheusSource(proxy, client);
         _resources = new ApiResourceResolver(_client);
         _apply = new KubernetesApply(_client, _resources);
+        _alerting = new AlertingDiscovery(_client, proxy, _resources);
+        _proxy = proxy;
 
-        // Metrics start off; PingAsync probes for a source and turns the gauges on if one answers.
+        // Metrics and alerting start off; PingAsync probes for sources and turns on what answers.
         _capabilities = BaseCapabilities with { Metrics = false };
     }
 
@@ -90,6 +99,23 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     /// <summary>Where the past comes from, when the cluster keeps one (KON-345).</summary>
     public IMetricsHistory History => _history;
+
+    /// <summary>What answers for alerts, or <see cref="NoAlertSource"/> until something does.</summary>
+    public IAlertSource Alerts => _alerts;
+
+    /// <summary>
+    /// Where the last probe went looking, so the empty state can say it verbatim (KON-206). A
+    /// cluster running an Alertmanager under a name this does not know has to be shown the gap; a
+    /// list the view typed out for itself would stop being true the moment a candidate is added
+    /// here.
+    /// </summary>
+    public IReadOnlyList<string> AlertingLookedFor => _alertingProbe.LookedFor;
+
+    /// <inheritdoc cref="AlertingLookedFor"/>
+    public IReadOnlyList<string> AlertingLookedIn => _alertingProbe.LookedIn;
+
+    /// <summary>Why the search could not finish — a refused listing reads nothing like an absent one.</summary>
+    public string? AlertingRefusal => _alertingProbe.Refusal;
 
     // ── Identity & health ────────────────────────────────────────────────────
 
@@ -156,7 +182,20 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
         // Piggyback the metrics probe: one round-trip decides whether the UI shows usage gauges.
         var hasMetrics = await _metrics.ProbeAsync(ct).ConfigureAwait(false);
-        _capabilities = BaseCapabilities with { Metrics = hasMetrics };
+
+        // And the alerting probe, which is the same shape: look, ask, believe what answered. The two
+        // flags it sets are independent — see AlertingDiscovery.
+        _alertingProbe = await _alerting.ProbeAsync(ct).ConfigureAwait(false);
+        _alerts = _alertingProbe.Alertmanager is null && _alertingProbe.Prometheus is null
+            ? NoAlertSource.Instance
+            : new AlertmanagerSource(_proxy, _alertingProbe.Alertmanager, _alertingProbe.Prometheus);
+
+        _capabilities = BaseCapabilities with
+        {
+            Metrics = hasMetrics,
+            Alerting = _alertingProbe.Alertmanager is not null,
+            AlertRules = _alertingProbe.RuleCrd,
+        };
     }
 
     /// <summary>Node names for the kubelet source's per-node fan-out.</summary>
