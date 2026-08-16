@@ -749,32 +749,103 @@ public sealed class KubernetesClusterEngine
     /// <see cref="ManifestBundle.DryRun"/> the API server runs the full admission chain and returns
     /// what the object would become, without persisting — so the plan comes from the cluster rather
     /// than from a local guess.
+    /// <para>
+    /// Namespaces and CRDs go first (KON-380). They are the only two things the API server will not
+    /// recognise a later document without, and nothing in a bundle needs the reverse order, so this
+    /// is the one ordering rule worth having — helm and kubectl both keep the same one. A chart like
+    /// kube-prometheus-stack ships ten CRDs and fifty resources that use them; without the split the
+    /// second half is rejected as unknown kinds no matter what it contains.
+    /// </para>
     /// </summary>
     public async IAsyncEnumerable<ApplyProgress> ApplyAsync(
         ManifestBundle bundle, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var documents = ManifestDocuments.Split(bundle.Yaml).ToList();
-        var pendingNamespaces = ManifestDocuments.NamespacesCreatedBy(documents);
+        var prerequisites = ManifestDocuments.PrerequisitesIn(documents);
         var fallback = bundle.Namespace is { Length: > 0 } chosen ? chosen : DefaultNamespace;
 
-        foreach (var document in documents)
+        var first = documents.Where(ManifestDocuments.IsPrerequisite).ToList();
+        var rest = documents.Where(d => !ManifestDocuments.IsPrerequisite(d)).ToList();
+
+        foreach (var document in first)
         {
             ct.ThrowIfCancellationRequested();
-
-            if (document.Error is { } error)
-            {
-                yield return new ApplyProgress
-                {
-                    Resource = new ResourceRef(GroupVersionKind.Pod, null, "?"),
-                    Action = ApplyAction.Failed,
-                    Error = error,
-                };
-                continue;
-            }
-
-            yield return await _apply
-                .ApplyOneAsync(document.Content!, bundle.DryRun, fallback, pendingNamespaces, ct)
+            yield return await ApplyDocumentAsync(document, bundle.DryRun, fallback, prerequisites, ct)
                 .ConfigureAwait(false);
+        }
+
+        // A dry-run persisted nothing, so there is nothing to wait for and nothing new to discover.
+        if (!bundle.DryRun && prerequisites.CustomKinds.Count > 0)
+            await WaitForNewKindsAsync(rest, prerequisites, ct).ConfigureAwait(false);
+
+        foreach (var document in rest)
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return await ApplyDocumentAsync(document, bundle.DryRun, fallback, prerequisites, ct)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task<ApplyProgress> ApplyDocumentAsync(
+        ManifestDocument document, bool dryRun, string fallback,
+        BundlePrerequisites prerequisites, CancellationToken ct)
+    {
+        if (document.Error is { } error)
+        {
+            return new ApplyProgress
+            {
+                Resource = new ResourceRef(GroupVersionKind.Pod, null, "?"),
+                Action = ApplyAction.Failed,
+                Error = error,
+            };
+        }
+
+        return await _apply
+            .ApplyOneAsync(document.Content!, dryRun, fallback, prerequisites, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>How long to wait for a just-created CRD before applying the resources that need it.</summary>
+    private static readonly TimeSpan KindTimeout = TimeSpan.FromSeconds(30);
+
+    private static readonly TimeSpan KindPoll = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Wait until the API server serves the kinds the CRDs just applied define, forgetting what
+    /// discovery said while they did not exist.
+    /// <para>
+    /// Creating a CRD and being able to use it are not the same moment: the server accepts the
+    /// definition, then establishes it and starts serving the new endpoint. Applying a custom
+    /// resource in between fails with a plain "no matches for kind", which is why <c>kubectl</c>
+    /// tells people to install CRDs as a separate step. Giving up on the timeout is deliberate —
+    /// the resources that follow then report their own error, which is more use than one thrown here.
+    /// </para>
+    /// </summary>
+    private async Task WaitForNewKindsAsync(
+        IEnumerable<ManifestDocument> rest, BundlePrerequisites prerequisites, CancellationToken ct)
+    {
+        var wanted = rest
+            .Select(d => d.Content is { } content ? ManifestDocuments.KindOf(content) : null)
+            .OfType<GroupVersionKind>()
+            .Where(gvk => prerequisites.CustomKinds.Contains($"{gvk.Group}/{gvk.Kind}"))
+            .Distinct()
+            .ToList();
+
+        var deadline = DateTimeOffset.UtcNow + KindTimeout;
+
+        foreach (var gvk in wanted)
+        {
+            while (true)
+            {
+                _resources.Invalidate(gvk.Group, gvk.Version);
+                if (await _resources.ResolveAsync(gvk, ct).ConfigureAwait(false) is not null)
+                    break;
+
+                if (DateTimeOffset.UtcNow >= deadline)
+                    return;
+
+                await Task.Delay(KindPoll, ct).ConfigureAwait(false);
+            }
         }
     }
 

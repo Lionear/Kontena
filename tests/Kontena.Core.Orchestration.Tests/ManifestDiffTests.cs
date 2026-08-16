@@ -60,4 +60,33 @@ public class ManifestDiffTests
         Assert.DoesNotContain("…", diff, StringComparison.Ordinal);
         Assert.DoesNotContain("line-19", diff, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Creating a resource diffs it against nothing, so the whole object is one run of additions —
+    /// and one of kube-prometheus-stack's CRDs is fourteen thousand lines of schema (KON-380). Every
+    /// line becomes a row and a brush in the plan, so the diff stops and says how much it left out.
+    /// </summary>
+    [Fact]
+    public void A_diff_far_longer_than_anyone_reads_is_cut_off_and_says_by_how_much()
+    {
+        var lines = ManifestDiff
+            .Compute(string.Empty, string.Join('\n', Enumerable.Range(0, 5000).Select(i => $"line-{i}")))
+            .Split('\n');
+
+        // 400 lines of diff, then the tail that accounts for the rest.
+        Assert.Equal(401, lines.Length);
+        Assert.Equal("+line-399", lines[399]);
+        Assert.Equal("… 4600 more lines", lines[400]);
+    }
+
+    [Fact]
+    public void A_diff_that_fits_is_left_whole()
+    {
+        var lines = ManifestDiff
+            .Compute(string.Empty, string.Join('\n', Enumerable.Range(0, 400).Select(i => $"line-{i}")))
+            .Split('\n');
+
+        Assert.Equal(400, lines.Length);
+        Assert.DoesNotContain(lines, l => l.StartsWith("… ", StringComparison.Ordinal));
+    }
 }
