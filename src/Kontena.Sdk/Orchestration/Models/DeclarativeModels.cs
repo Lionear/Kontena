@@ -45,6 +45,13 @@ public enum ApplyAction
     /// <summary>Dry-run: the resource exists and would be updated; nothing was persisted.</summary>
     WouldChange,
 
+    /// <summary>
+    /// Dry-run: the resource could not be previewed because something the same bundle creates does
+    /// not exist yet — the namespace it goes in, or the CRD that defines its kind. A real apply puts
+    /// those first and this resource goes with the rest, so it is an ordering fact, not a rejection.
+    /// </summary>
+    Deferred,
+
     /// <summary>The resource failed to apply.</summary>
     Failed,
 }
@@ -61,7 +68,10 @@ public sealed record ApplyProgress
     /// <summary>Unified diff for a changed resource (dry-run/diff flows); empty when none.</summary>
     public string Diff { get; init; } = string.Empty;
 
-    /// <summary>Error message when <see cref="Action"/> is <see cref="ApplyAction.Failed"/>.</summary>
+    /// <summary>
+    /// Why, when <see cref="Action"/> is <see cref="ApplyAction.Failed"/> or
+    /// <see cref="ApplyAction.Deferred"/>.
+    /// </summary>
     public string? Error { get; init; }
 }
 

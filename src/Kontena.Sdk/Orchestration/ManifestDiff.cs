@@ -15,6 +15,14 @@ public static class ManifestDiff
     private const int MaxLines = 1000;
 
     /// <summary>
+    /// How much of a diff is worth rendering. A CRD is a schema: creating one of
+    /// kube-prometheus-stack's produces a "diff" of fourteen thousand added lines, and every one of
+    /// them becomes a row and a brush in the plan (KON-380). Nobody reads that; the count is the
+    /// information, and the manifest itself is on the page above.
+    /// </summary>
+    private const int MaxRenderedLines = 400;
+
+    /// <summary>
     /// Diff <paramref name="live"/> against <paramref name="desired"/>, keeping
     /// <paramref name="context"/> unchanged lines around each change. Returns an empty string when
     /// the two are identical.
@@ -108,12 +116,26 @@ public static class ManifestDiff
 
         var sb = new StringBuilder();
         var collapsed = false;
+        var written = 0;
         for (var i = 0; i < ops.Count; i++)
         {
             if (!keep[i])
             {
                 collapsed = true;
                 continue;
+            }
+
+            if (written == MaxRenderedLines)
+            {
+                var remaining = 0;
+                for (var j = i; j < ops.Count; j++)
+                {
+                    if (keep[j])
+                        remaining++;
+                }
+
+                sb.Append("… ").Append(remaining).Append(" more lines\n");
+                break;
             }
 
             if (collapsed)
@@ -123,6 +145,7 @@ public static class ManifestDiff
             }
 
             sb.Append(ops[i].Kind).Append(ops[i].Text).Append('\n');
+            written++;
         }
 
         return sb.ToString().TrimEnd('\n');

@@ -1,4 +1,5 @@
 using k8s;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.Adapters.Kubernetes;
 
@@ -6,6 +7,14 @@ namespace Kontena.Adapters.Kubernetes;
 /// <param name="Content">The decoded mapping, or null when <paramref name="Error"/> is set.</param>
 /// <param name="Error">Parse failure, reported as a failed resource rather than aborting the bundle.</param>
 internal sealed record ManifestDocument(Dictionary<string, object?>? Content, string? Error);
+
+/// <summary>
+/// What a bundle has to create before the rest of itself makes sense to the API server.
+/// </summary>
+/// <param name="Namespaces">Namespaces the bundle creates.</param>
+/// <param name="CustomKinds">Kinds the bundle's CRDs define, as <c>group/Kind</c>.</param>
+internal sealed record BundlePrerequisites(
+    IReadOnlySet<string> Namespaces, IReadOnlySet<string> CustomKinds);
 
 /// <summary>
 /// Splits a multi-document YAML bundle and decodes each document into a plain map.
@@ -21,7 +30,7 @@ internal static class ManifestDocuments
     {
         foreach (var chunk in SplitDocuments(yaml))
         {
-            if (string.IsNullOrWhiteSpace(chunk))
+            if (IsEmpty(chunk))
                 continue;
 
             ManifestDocument document;
@@ -42,28 +51,86 @@ internal static class ManifestDocuments
     }
 
     /// <summary>
-    /// The namespaces a bundle creates. Used to explain why a dry-run cannot preview resources that
-    /// target them — nothing is persisted, so the namespace is not there when the next document
-    /// is validated.
+    /// What a bundle brings into existence that the rest of the same bundle needs before it can be
+    /// validated at all: the namespaces it creates, and the custom kinds its CRDs define — each as
+    /// <c>group/Kind</c>.
+    /// <para>
+    /// Both are the same problem seen twice. A dry-run persists nothing, so neither is there when the
+    /// documents depending on them are validated; a real apply has them only if they went first.
+    /// </para>
     /// </summary>
-    public static IReadOnlySet<string> NamespacesCreatedBy(IEnumerable<ManifestDocument> documents)
+    public static BundlePrerequisites PrerequisitesIn(IEnumerable<ManifestDocument> documents)
     {
-        var names = new HashSet<string>(StringComparer.Ordinal);
+        var namespaces = new HashSet<string>(StringComparer.Ordinal);
+        var customKinds = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var document in documents)
         {
             if (document.Content is not { } content)
                 continue;
 
-            if (content.TryGetValue("kind", out var kind) && kind?.ToString() == "Namespace" &&
-                content.TryGetValue("metadata", out var meta) && meta is IDictionary<string, object?> metadata &&
-                metadata.TryGetValue("name", out var name) && name?.ToString() is { Length: > 0 } text)
+            switch (KindOf(content)?.Kind)
             {
-                names.Add(text);
+                case "Namespace" when NameOf(content) is { Length: > 0 } ns:
+                    namespaces.Add(ns);
+                    break;
+
+                case CustomResourceDefinition when DefinedKind(content) is { } defined:
+                    customKinds.Add(defined);
+                    break;
             }
         }
 
-        return names;
+        return new BundlePrerequisites(namespaces, customKinds);
     }
+
+    /// <summary>
+    /// Whether this document has to go before the rest of the bundle. Only namespaces and CRDs do:
+    /// they are the two things the API server refuses to recognise a later document without.
+    /// </summary>
+    public static bool IsPrerequisite(ManifestDocument document) =>
+        document.Content is { } content && KindOf(content)?.Kind is "Namespace" or CustomResourceDefinition;
+
+    /// <summary>The group/version/kind a document declares, or null when it declares neither.</summary>
+    public static GroupVersionKind? KindOf(IDictionary<string, object?> content)
+    {
+        if (Text(content, "kind") is not { Length: > 0 } kind ||
+            Text(content, "apiVersion") is not { Length: > 0 } apiVersion)
+        {
+            return null;
+        }
+
+        var slash = apiVersion.LastIndexOf('/');
+        return slash < 0
+            ? new GroupVersionKind(string.Empty, apiVersion, kind)
+            : new GroupVersionKind(apiVersion[..slash], apiVersion[(slash + 1)..], kind);
+    }
+
+    private const string CustomResourceDefinition = "CustomResourceDefinition";
+
+    /// <summary>The <c>group/Kind</c> a CRD teaches the cluster to serve.</summary>
+    private static string? DefinedKind(IDictionary<string, object?> content)
+    {
+        if (content.TryGetValue("spec", out var value) is false ||
+            value is not IDictionary<string, object?> spec ||
+            Text(spec, "group") is not { Length: > 0 } group ||
+            spec.TryGetValue("names", out var raw) is false ||
+            raw is not IDictionary<string, object?> names ||
+            Text(names, "kind") is not { Length: > 0 } kind)
+        {
+            return null;
+        }
+
+        return $"{group}/{kind}";
+    }
+
+    private static string? NameOf(IDictionary<string, object?> content) =>
+        content.TryGetValue("metadata", out var value) && value is IDictionary<string, object?> metadata
+            ? Text(metadata, "name")
+            : null;
+
+    private static string? Text(IDictionary<string, object?> map, string key) =>
+        map.TryGetValue(key, out var value) ? value?.ToString() : null;
 
     /// <summary>
     /// Re-key the YAML reader's <c>object</c>-keyed maps as strings. Necessary, not cosmetic: the
@@ -79,6 +146,28 @@ internal static class ManifestDocuments
 
     private static Dictionary<string, object?> ToStringKeyed(IDictionary<object, object> map) =>
         (Dictionary<string, object?>)ToStringKeyed((object)map)!;
+
+    /// <summary>
+    /// Whether a chunk holds no resource — blank, or nothing but comments.
+    /// <para>
+    /// The comment case is <c>helm template</c>'s doing: it writes a <c># Source:</c> header for
+    /// every template it renders, and a chart whose CRD files carry their own leading comments ends
+    /// up with those headers stranded between two <c>---</c> markers. kube-prometheus-stack produces
+    /// ten of them, and reading each as a document turned ten rows of the plan red for a manifest
+    /// nobody wrote (KON-380).
+    /// </para>
+    /// </summary>
+    private static bool IsEmpty(string chunk)
+    {
+        foreach (var line in chunk.Split('\n'))
+        {
+            var trimmed = line.AsSpan().Trim();
+            if (trimmed.Length > 0 && trimmed[0] != '#')
+                return false;
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// Split on document markers. Only a line that is exactly <c>---</c> separates documents; the

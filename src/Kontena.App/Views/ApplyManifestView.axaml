@@ -347,9 +347,17 @@
                         </StackPanel>
                     </Border>
 
-                    <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Auto">
-                        <TextBox Classes="editor" Text="{Binding YamlText}"/>
-                    </ScrollViewer>
+                    <Grid Grid.Row="3" RowDefinitions="Auto,*">
+                        <Border Grid.Row="0" Background="{DynamicResource Surface2}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="0,0,0,1" Padding="13,6" IsVisible="{Binding IsYamlTruncated}">
+                            <TextBlock Text="{Binding TruncationNote}" FontSize="11.5" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextDim}"/>
+                        </Border>
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
+                            <TextBox Classes="editor" Text="{Binding EditorText}"
+                                     IsReadOnly="{Binding IsYamlTruncated}"/>
+                        </ScrollViewer>
+                    </Grid>
                 </Grid>
             </Border>
 

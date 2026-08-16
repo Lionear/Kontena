@@ -422,10 +422,11 @@ public class KubernetesClusterEngineTests
         Assert.Equal(ApplyAction.WouldCreate, results[0].Action);
 
         // A server-side dry-run persists nothing, so the namespace document 1 would create does not
-        // exist when document 2 is validated — kubectl behaves the same way. The adapter explains
-        // that rather than passing on a bare "not found".
-        Assert.Equal(ApplyAction.Failed, results[1].Action);
-        Assert.Contains("this bundle creates it", results[1].Error, StringComparison.Ordinal);
+        // exist when document 2 is validated — kubectl behaves the same way. That is an ordering
+        // fact about the preview, not a verdict on the manifest, so it is deferred rather than
+        // failed: a real apply puts the namespace in first and this resource goes with the rest.
+        Assert.Equal(ApplyAction.Deferred, results[1].Action);
+        Assert.Contains("this bundle", results[1].Error, StringComparison.Ordinal);
 
         // The whole point of a dry-run: the cluster is untouched.
         Assert.DoesNotContain(await engine.ListNamespacesAsync(), n => n.Name == ns);
@@ -496,7 +497,46 @@ public class KubernetesClusterEngineTests
             dryRun: true);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal(ApplyAction.Failed, results[0].Action);
-        Assert.Equal(ApplyAction.Unchanged, results[1].Action);
+
+        // The namespace comes back first even though it was written second: namespaces and CRDs are
+        // applied ahead of the rest of the bundle (KON-380), and a document with no kind is neither.
+        Assert.Equal(ApplyAction.Unchanged, results[0].Action);
+        Assert.Equal(ApplyAction.Failed, results[1].Action);
+    }
+
+    /// <summary>
+    /// The kube-prometheus-stack case (KON-380): a chart renders its CRDs and the custom resources
+    /// that use them into one bundle. The dry-run cannot create the CRD, so the kind is genuinely
+    /// unknown to the cluster — but that is a fact about previews, not about the manifest, and
+    /// calling it a failure both misleads and blocks the Apply button.
+    /// <para>
+    /// Dry-run only: a CRD that is never persisted leaves nothing behind.
+    /// </para>
+    /// </summary>
+    [SkippableFact]
+    public async Task A_custom_resource_whose_crd_the_bundle_installs_is_deferred_not_failed()
+    {
+        using var engine = await RequireClusterAsync();
+
+        var results = await ApplyAsync(engine,
+            "apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\n" +
+            "metadata:\n  name: widgets.kontena.test\n" +
+            "spec:\n  group: kontena.test\n  scope: Namespaced\n" +
+            "  names:\n    kind: Widget\n    plural: widgets\n    singular: widget\n" +
+            "  versions:\n    - name: v1\n      served: true\n      storage: true\n" +
+            "      schema:\n        openAPIV3Schema:\n          type: object\n" +
+            "---\n" +
+            "apiVersion: kontena.test/v1\nkind: Widget\nmetadata:\n  name: w\n  namespace: default\n",
+            dryRun: true);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(ApplyAction.WouldCreate, results[0].Action);
+
+        Assert.Equal(ApplyAction.Deferred, results[1].Action);
+        Assert.Contains("CRD for Widget", results[1].Error, StringComparison.Ordinal);
+
+        // Nothing was persisted, so the kind is still unknown afterwards.
+        Assert.DoesNotContain(
+            await engine.DiscoverResourcesAsync(), r => r.Kind.Kind == "Widget");
     }
 }
