@@ -31,7 +31,8 @@ public sealed class KustomizeRenderer : IManifestRenderer<KustomizeRequest>
     public string Name => "Kustomize";
 
     /// <summary>File names kustomize accepts as the root of a kustomization.</summary>
-    private static readonly string[] RootFiles = ["kustomization.yaml", "kustomization.yml", "Kustomization"];
+    internal static readonly string[] KustomizationFiles =
+        ["kustomization.yaml", "kustomization.yml", "Kustomization"];
 
     public string? Locate() => Cli.Locate("kustomize") ?? Cli.Locate("kubectl");
 
@@ -52,7 +53,7 @@ public sealed class KustomizeRenderer : IManifestRenderer<KustomizeRequest>
         if (!Directory.Exists(path))
             return RenderResult.Failed("kustomize build", $"'{path}' is not a directory.");
 
-        if (!RootFiles.Any(f => File.Exists(System.IO.Path.Combine(path, f))))
+        if (!KustomizationFiles.Any(f => File.Exists(System.IO.Path.Combine(path, f))))
         {
             return RenderResult.Failed(
                 "kustomize build",
