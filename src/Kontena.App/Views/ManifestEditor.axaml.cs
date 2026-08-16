@@ -29,6 +29,13 @@ public partial class ManifestEditor : UserControl
             nameof(Text), defaultValue: string.Empty, defaultBindingMode: BindingMode.TwoWay);
 
     /// <summary>
+    /// Whether the manifest can be edited. A backend without an apply capability still shows the
+    /// resource's YAML; it just cannot take a change back (KON-383).
+    /// </summary>
+    public static readonly StyledProperty<bool> IsReadOnlyProperty =
+        AvaloniaProperty.Register<ManifestEditor, bool>(nameof(IsReadOnly));
+
+    /// <summary>
     /// Above this many characters the document is built on a background thread. Parsing is the
     /// expensive half of showing a big bundle, and it is the half that does not have to happen on
     /// the thread that draws — the lesson KON-381 paid for on the apply itself. Below it the thread
@@ -66,12 +73,20 @@ public partial class ManifestEditor : UserControl
         set => SetValue(TextProperty, value);
     }
 
+    public bool IsReadOnly
+    {
+        get => GetValue(IsReadOnlyProperty);
+        set => SetValue(IsReadOnlyProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
 
         if (change.Property == TextProperty && !_syncing)
             Load(Text);
+        else if (change.Property == IsReadOnlyProperty)
+            Editor.IsReadOnly = IsReadOnly;
     }
 
     private void Load(string text)
