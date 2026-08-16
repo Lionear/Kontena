@@ -22,7 +22,7 @@ namespace Kontena.Adapters.Kubernetes;
 /// PromQL client and does not try to be one.
 /// </para>
 /// </summary>
-internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernetes client) : IMetricsHistory
+internal sealed class PrometheusSource(ApiProxyHttp proxy, IKubernetes client) : IMetricsHistory
 {
     /// <summary>Points to aim for in a range query — enough to see shape, few enough to draw fast.</summary>
     private const int TargetPoints = 120;
@@ -256,8 +256,8 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
 
     // ── Discovery ────────────────────────────────────────────────────────────
 
-    /// <summary>A service that might be a Prometheus, and the port to try it on.</summary>
-    internal sealed record ServiceEndpoint(string Namespace, string Service, int Port);
+    /// <summary>The port Prometheus serves its API on when none of the usual names is present.</summary>
+    private const int DefaultPort = 9090;
 
     /// <summary>
     /// Label selectors that find a Prometheus service, most specific first.
@@ -292,12 +292,13 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
                 .ListServiceForAllNamespacesAsync(labelSelector: selector, cancellationToken: ct)
                 .ConfigureAwait(false);
 
-            if (Candidates(services.Items) is { Count: > 0 } found)
+            if (ApiProxyHttp.Rank(services.Items ?? [], DefaultPort) is { Count: > 0 } found)
                 return found;
         }
 
         var all = await client.CoreV1.ListServiceForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
-        return Candidates(all.Items.Where(s => NamedLikePrometheus(s.Metadata?.Name)).ToList());
+        return ApiProxyHttp.Rank(
+            (all.Items ?? []).Where(s => NamedLikePrometheus(s.Metadata?.Name)), DefaultPort);
     }
 
     private static bool NamedLikePrometheus(string? name) =>
@@ -305,65 +306,18 @@ internal sealed class PrometheusSource(HttpClient http, Uri apiServer, IKubernet
         && (name is "prometheus" or "prometheus-operated" or "prometheus-server" or "prometheus-k8s"
             || name.EndsWith("-prometheus", StringComparison.Ordinal));
 
-    /// <summary>
-    /// Ranked candidates. A service with a cluster IP comes before a headless one: both proxy, but
-    /// the headless <c>prometheus-operated</c> exists alongside a normal service on every
-    /// kube-prometheus-stack, and the normal one is the supported way in.
-    /// </summary>
-    internal static IReadOnlyList<ServiceEndpoint> Candidates(IList<V1Service> services) =>
-        [.. services
-            .Where(s => s.Metadata?.Name is not null && s.Metadata.NamespaceProperty is not null)
-            .Select(s => new
-            {
-                Service = s,
-                Port = WebPort(s.Spec?.Ports),
-                Headless = string.Equals(s.Spec?.ClusterIP, "None", StringComparison.Ordinal),
-            })
-            .Where(x => x.Port is not null)
-            .OrderBy(x => x.Headless)
-            .Select(x => new ServiceEndpoint(
-                x.Service.Metadata.NamespaceProperty, x.Service.Metadata.Name, x.Port!.Value))];
-
-    /// <summary>The port Prometheus serves its API on: named for the web UI, else 9090.</summary>
-    private static int? WebPort(IList<V1ServicePort>? ports)
-    {
-        if (ports is null || ports.Count == 0)
-            return null;
-
-        foreach (var name in new[] { "http-web", "web", "http" })
-            if (ports.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.Ordinal)) is { } named)
-                return named.Port;
-
-        return ports.FirstOrDefault(p => p.Port == 9090)?.Port;
-    }
-
     /// <summary>One trivial query — proves the endpoint is a Prometheus and that we may reach it.</summary>
-    private async Task<bool> AnswersAsync(ServiceEndpoint endpoint, CancellationToken ct)
-    {
-        var json = await GetAsync(endpoint, "api/v1/query?query=1", ct).ConfigureAwait(false);
-        return json is { } root
-               && root.TryGetProperty("status", out var status)
-               && status.GetString() == "success";
-    }
+    private async Task<bool> AnswersAsync(ServiceEndpoint endpoint, CancellationToken ct) =>
+        AlertingDiscovery.IsPrometheus(await proxy.GetAsync(endpoint, "api/v1/query?query=1", ct).ConfigureAwait(false));
 
+    /// <summary>
+    /// A read that treats every failure alike, which is right here and not everywhere: to a usage
+    /// chart, "no permission", "no Prometheus" and "no answer" are all just no history. The alerting
+    /// side needs the difference and gets it from <see cref="ProxyResponse"/> directly.
+    /// </summary>
     private async Task<JsonElement?> GetAsync(ServiceEndpoint endpoint, string path, CancellationToken ct)
     {
-        try
-        {
-            var uri = new Uri(apiServer,
-                $"api/v1/namespaces/{endpoint.Namespace}/services/{endpoint.Service}:{endpoint.Port}/proxy/{path}");
-
-            using var response = await http.GetAsync(uri, ct).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-                return null;
-
-            await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            return document.RootElement.Clone();
-        }
-        catch (Exception)
-        {
-            return null;
-        }
+        var response = await proxy.GetAsync(endpoint, path, ct).ConfigureAwait(false);
+        return response.Ok ? response.Json : null;
     }
 }
