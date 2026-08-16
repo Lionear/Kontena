@@ -100,6 +100,13 @@ public partial class ApplyManifestViewModel : ViewModelBase
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _error;
 
+    /// <summary>
+    /// What the run is doing right now, while it is doing it (KON-381). The plan only appears once
+    /// every document has an outcome, and a chart's worth of resources — plus up to thirty seconds
+    /// waiting for its CRDs to be served — is a long time for a page to look like it has hung.
+    /// </summary>
+    [ObservableProperty] private string _status = string.Empty;
+
     /// <summary>Set once a dry-run or apply has produced a plan.</summary>
     [ObservableProperty] private bool _hasPlan;
 
@@ -300,7 +307,11 @@ public partial class ApplyManifestViewModel : ViewModelBase
                 // Rendered bundles rarely name a namespace per document; the page says it once.
                 Namespace = RenderNamespace.Trim(),
             };
-            await foreach (var progress in _cluster.ApplyAsync(bundle))
+            // Progress<T> posts to the context it was made on, so the engine can report from
+            // whatever thread it is running on and Status is still only ever set on this one.
+            var status = new Progress<string>(text => Status = text);
+
+            await foreach (var progress in _cluster.ApplyAsync(bundle, status))
                 Plan.Add(new ApplyPlanRow(progress));
 
             IsPreview = dryRun;
@@ -315,6 +326,7 @@ public partial class ApplyManifestViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            Status = string.Empty;
         }
     }
 

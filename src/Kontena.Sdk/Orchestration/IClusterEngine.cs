@@ -42,7 +42,14 @@ public interface IClusterEngine : IBackend
     /// <see cref="ApplyProgress"/> per resource; with <see cref="ManifestBundle.DryRun"/> it
     /// validates and diffs server-side without persisting.
     /// </summary>
-    IAsyncEnumerable<ApplyProgress> ApplyAsync(ManifestBundle bundle, CancellationToken ct = default);
+    /// <param name="status">
+    /// Where to say what the apply is doing between results — reading the bundle, which resource of
+    /// how many, waiting for a just-created CRD. A bundle can spend half a minute inside a single
+    /// step, and a stream that only reports finished resources says nothing at all while it does
+    /// (KON-381). Null when nobody is watching.
+    /// </param>
+    IAsyncEnumerable<ApplyProgress> ApplyAsync(
+        ManifestBundle bundle, IProgress<string>? status = null, CancellationToken ct = default);
 
     /// <summary>Fetch a resource's live manifest (YAML).</summary>
     ValueTask<string> GetManifestAsync(ResourceRef resource, CancellationToken ct = default);

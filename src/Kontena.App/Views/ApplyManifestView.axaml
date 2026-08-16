@@ -464,6 +464,9 @@
                     </TextBlock>
                     <TextBlock Text="{Binding Error}" FontSize="12" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"
                                IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                    <!-- What the run is doing while it runs: the plan itself only lands at the end (KON-381) -->
+                    <TextBlock Text="{Binding Status}" FontSize="12" FontFamily="{StaticResource Mono}"
+                               Foreground="{DynamicResource Primary}" IsVisible="{Binding IsBusy}"/>
                 </StackPanel>
                 <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding DryRunCommand}"
                         IsEnabled="{Binding !IsBusy}">Dry-run</Button>

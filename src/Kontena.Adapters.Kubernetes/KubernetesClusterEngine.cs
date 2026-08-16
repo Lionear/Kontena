@@ -758,29 +758,43 @@ public sealed class KubernetesClusterEngine
     /// </para>
     /// </summary>
     public async IAsyncEnumerable<ApplyProgress> ApplyAsync(
-        ManifestBundle bundle, [EnumeratorCancellation] CancellationToken ct = default)
+        ManifestBundle bundle, IProgress<string>? status = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var documents = ManifestDocuments.Split(bundle.Yaml).ToList();
+        status?.Report("Reading the bundle…");
+
+        // Off the caller's thread: splitting kube-prometheus-stack's 5 MB render is 1.5 s of parsing,
+        // and it runs before the first request — so the window that started the apply froze solid
+        // before there was anything to report (KON-381).
+        var documents = await Task
+            .Run(() => ManifestDocuments.Split(bundle.Yaml).ToList(), ct)
+            .ConfigureAwait(false);
+
         var prerequisites = ManifestDocuments.PrerequisitesIn(documents);
         var fallback = bundle.Namespace is { Length: > 0 } chosen ? chosen : DefaultNamespace;
 
         var first = documents.Where(ManifestDocuments.IsPrerequisite).ToList();
         var rest = documents.Where(d => !ManifestDocuments.IsPrerequisite(d)).ToList();
 
+        var verb = bundle.DryRun ? "Checking" : "Applying";
+        var done = 0;
+
         foreach (var document in first)
         {
             ct.ThrowIfCancellationRequested();
+            status?.Report($"{verb} {++done} of {documents.Count}");
             yield return await ApplyDocumentAsync(document, bundle.DryRun, fallback, prerequisites, ct)
                 .ConfigureAwait(false);
         }
 
         // A dry-run persisted nothing, so there is nothing to wait for and nothing new to discover.
         if (!bundle.DryRun && prerequisites.CustomKinds.Count > 0)
-            await WaitForNewKindsAsync(rest, prerequisites, ct).ConfigureAwait(false);
+            await WaitForNewKindsAsync(rest, prerequisites, status, ct).ConfigureAwait(false);
 
         foreach (var document in rest)
         {
             ct.ThrowIfCancellationRequested();
+            status?.Report($"{verb} {++done} of {documents.Count}");
             yield return await ApplyDocumentAsync(document, bundle.DryRun, fallback, prerequisites, ct)
                 .ConfigureAwait(false);
         }
@@ -822,7 +836,8 @@ public sealed class KubernetesClusterEngine
     /// </para>
     /// </summary>
     private async Task WaitForNewKindsAsync(
-        IEnumerable<ManifestDocument> rest, BundlePrerequisites prerequisites, CancellationToken ct)
+        IEnumerable<ManifestDocument> rest, BundlePrerequisites prerequisites,
+        IProgress<string>? status, CancellationToken ct)
     {
         var wanted = rest
             .Select(d => d.Content is { } content ? ManifestDocuments.KindOf(content) : null)
@@ -841,8 +856,15 @@ public sealed class KubernetesClusterEngine
                 if (await _resources.ResolveAsync(gvk, ct).ConfigureAwait(false) is not null)
                     break;
 
-                if (DateTimeOffset.UtcNow >= deadline)
+                var now = DateTimeOffset.UtcNow;
+                if (now >= deadline)
                     return;
+
+                // The one step of an apply that is pure waiting, and the one the page used to spend
+                // half a minute on with nothing to show for it.
+                status?.Report(
+                    $"Waiting for the cluster to serve {gvk.Kind} " +
+                    $"({(int)(KindTimeout - (deadline - now)).TotalSeconds}/{(int)KindTimeout.TotalSeconds}s)");
 
                 await Task.Delay(KindPoll, ct).ConfigureAwait(false);
             }

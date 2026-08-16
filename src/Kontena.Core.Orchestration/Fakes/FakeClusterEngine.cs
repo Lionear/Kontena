@@ -349,12 +349,18 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     }
 
     public async IAsyncEnumerable<ApplyProgress> ApplyAsync(
-        ManifestBundle bundle, [EnumeratorCancellation] CancellationToken ct = default)
+        ManifestBundle bundle, IProgress<string>? status = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        foreach (var desired in ManifestParser.ParseBundle(bundle.Yaml))
+        var documents = ManifestParser.ParseBundle(bundle.Yaml).ToList();
+        var verb = bundle.DryRun ? "Checking" : "Applying";
+        var done = 0;
+
+        foreach (var desired in documents)
         {
             ct.ThrowIfCancellationRequested();
             await Task.Yield();
+            status?.Report($"{verb} {++done} of {documents.Count}");
             yield return ApplyOne(desired, bundle.DryRun);
 
             // The install this models is only real once metrics.k8s.io is registered, so that is what
