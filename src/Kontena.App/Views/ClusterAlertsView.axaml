@@ -14,7 +14,7 @@
             <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="{StaticResource Radius}" Margin="0,0,0,8">
                 <StackPanel>
-                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="16,12">
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="16,12">
                         <Path Grid.Column="0" Classes="icon" Width="15" Height="15" VerticalAlignment="Center"
                               Stroke="{Binding SeverityBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"
                               Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
@@ -37,12 +37,24 @@
                             <TextBlock Text="{Binding Receiver}" FontSize="11" FontFamily="{StaticResource Mono}"
                                        Foreground="{DynamicResource TextFaint}"/>
                         </Border>
+
+                        <!-- The Silenced section's own action (KON-208) — un-mute what someone decided
+                             about, next to the sentence that already says who and until when. -->
+                        <Button Grid.Column="5" Command="{Binding ExpireCommand}" IsVisible="{Binding CanExpire}"
+                                Background="{DynamicResource Surface2}" BorderThickness="0"
+                                CornerRadius="{StaticResource Radius}" Padding="9,3" Margin="8,0,0,0"
+                                VerticalAlignment="Center" Cursor="Hand">
+                            <TextBlock Text="Expire" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                        </Button>
                     </Grid>
 
                     <ItemsControl ItemsSource="{Binding Instances}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:AlertInstanceRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,1,0,0" Padding="16,9">
+                                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                        Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}"
+                                        Background="Transparent" BorderBrush="{DynamicResource BorderSoft}"
+                                        BorderThickness="0,1,0,0" Padding="16,9" Cursor="Hand">
                                     <Grid ColumnDefinitions="2*,3*,Auto">
                                         <StackPanel Grid.Column="0" Spacing="2">
                                             <TextBlock Text="{Binding Target}" FontSize="12.5"
@@ -60,7 +72,7 @@
                                                    VerticalAlignment="Center" FontFamily="{StaticResource Mono}"
                                                    Foreground="{DynamicResource TextFaint}"/>
                                     </Grid>
-                                </Border>
+                                </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

@@ -258,7 +258,10 @@ public partial class MainWindowViewModel
             // are handed.
             // The Helm hand-off is the shell's to route, like every other cross-page jump: the page
             // knows a chart should be installed, not where the apply page lives (KON-204).
-            "alerts" => new ClusterAlertsViewModel(_cluster, onInstallWithHelm: ShowMonitoringHelmInstall),
+            // RequestConfirm because the Silenced section's Expire is the page's own delete-shaped
+            // write, the same way nodes/workloads confirm their own (KON-208).
+            "alerts" => new ClusterAlertsViewModel(_cluster, onInstallWithHelm: ShowMonitoringHelmInstall, onOpenDetail: ShowAlertDetail)
+                { RequestConfirm = ShowConfirm },
             "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
             "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing

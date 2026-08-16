@@ -41,13 +41,19 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     private readonly IClusterEngine _cluster;
     private readonly IAlertSource _alerts;
     private readonly Action? _onInstallWithHelm;
+    private readonly Action<Alert, AlertRule?, Silence?>? _onOpenDetail;
 
     /// <param name="onInstallWithHelm">
     /// Hands off to the existing Helm source on the apply page with the chart filled in. Kontena owns
     /// no install path of its own here: metrics-server was one pinned manifest, while owning
     /// kube-prometheus-stack means owning its upgrades forever (KON-204).
     /// </param>
-    public ClusterAlertsViewModel(IClusterEngine cluster, Action? onInstallWithHelm = null)
+    /// <param name="onOpenDetail">Opens the alert-detail drawer for one instance (KON-208), with the
+    /// rule and silence its group already resolved — a second lookup for what this page just read
+    /// would be a second answer to the same question.</param>
+    public ClusterAlertsViewModel(
+        IClusterEngine cluster, Action? onInstallWithHelm = null,
+        Action<Alert, AlertRule?, Silence?>? onOpenDetail = null)
         // No kind to follow: alerts come off Alertmanager over HTTP, not from the apiserver, so there
         // is no watch to open. Said out loud rather than left as a list that silently never moves.
         : base(cluster, kind: null, ns: null,
@@ -55,6 +61,7 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     {
         _cluster = cluster;
         _onInstallWithHelm = onInstallWithHelm;
+        _onOpenDetail = onOpenDetail;
         _alerts = cluster is IAlertingAware aware ? aware.Alerts : NoAlertSource.Instance;
 
         // Where the discovery actually looked, verbatim (KON-206). A cluster running an Alertmanager
@@ -141,7 +148,7 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
         var silences = _alerts.ListSilencesAsync().AsTask();
         await Task.WhenAll(alerts, rules, silences);
 
-        return Group(alerts.Result, rules.Result, silences.Result);
+        return Group(alerts.Result, rules.Result, silences.Result, _onOpenDetail, ExpireSilence);
     }
 
     /// <summary>
@@ -149,33 +156,57 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     /// in two sections when only some of its instances are muted.
     /// </summary>
     internal static IReadOnlyList<AlertGroupRow> Group(
-        IReadOnlyList<Alert> alerts, IReadOnlyList<AlertRule> rules, IReadOnlyList<Silence> silences)
+        IReadOnlyList<Alert> alerts, IReadOnlyList<AlertRule> rules, IReadOnlyList<Silence> silences,
+        Action<Alert, AlertRule?, Silence?>? onOpenDetail = null, Action<AlertGroupRow>? onExpire = null)
     {
-        var forByName = rules
-            .Where(r => r.For is not null)
+        var ruleByName = rules
             .GroupBy(r => r.Name, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().For!.Value, StringComparer.Ordinal);
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
         var silenceById = silences.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        Silence? SilenceOf(Alert a) =>
+            a.SilencedBy.Select(silenceById.GetValueOrDefault).FirstOrDefault(s => s is not null);
 
         return
         [
             .. alerts
                 .GroupBy(a => (Section: SectionOf(a), a.Name))
-                .Select(g => new AlertGroupRow(
-                    g.Key.Section,
-                    g.Key.Name,
-                    [.. g],
-                    forByName.GetValueOrDefault(g.Key.Name),
-                    g.SelectMany(a => a.SilencedBy)
-                        .Select(silenceById.GetValueOrDefault)
-                        .FirstOrDefault(s => s is not null)))
+                .Select(g =>
+                {
+                    var rule = ruleByName.GetValueOrDefault(g.Key.Name);
+                    return new AlertGroupRow(
+                        g.Key.Section, g.Key.Name, [.. g], rule,
+                        g.Select(SilenceOf).FirstOrDefault(s => s is not null),
+                        SilenceOf, onOpenDetail, onExpire);
+                })
                 // Firing before pending before silenced, then longest-running first: the section is
                 // the question, and within one question the oldest is the one that has been ignored
                 // longest.
                 .OrderBy(g => g.Section)
                 .ThenByDescending(g => g.OldestAge),
         ];
+    }
+
+    /// <summary>
+    /// Un-mute a group's silence (KON-208) — the Silenced section's own action, next to Delete on a
+    /// workload and Drain on a node. Confirmed like any other write: an "Expire" that quietly did
+    /// nothing would leave someone believing an alert is still muted when it is not.
+    /// </summary>
+    private void ExpireSilence(AlertGroupRow row)
+    {
+        if (row.Silence is not { } silence)
+            return;
+
+        Confirm(
+            "Expire silence",
+            $"Stop muting \"{row.Name}\" now? Whatever it was hiding starts showing again immediately.",
+            "Expire",
+            onConfirm: async () =>
+            {
+                await _alerts.ExpireSilenceAsync(silence.Id);
+                await LoadAsync();
+            },
+            destructive: false);
     }
 
     private static AlertSection SectionOf(Alert alert) => alert switch
@@ -217,16 +248,28 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
 }
 
 /// <summary>One alertname within one section: the header carries the sentence.</summary>
-public sealed class AlertGroupRow
+public sealed partial class AlertGroupRow
 {
+    private readonly Action<AlertGroupRow>? _onExpire;
+
     internal AlertGroupRow(
-        AlertSection section, string name, IReadOnlyList<Alert> alerts, TimeSpan? ruleFor, Silence? silence)
+        AlertSection section, string name, IReadOnlyList<Alert> alerts, AlertRule? rule, Silence? silence,
+        Func<Alert, Silence?> silenceOf, Action<Alert, AlertRule?, Silence?>? onOpenDetail,
+        Action<AlertGroupRow>? onExpire)
     {
         Section = section;
         Name = name;
         Count = alerts.Count;
         Severity = alerts[0].Severity ?? "none";
-        Instances = [.. alerts.Select(a => new AlertInstanceRow(a)).OrderByDescending(i => i.Age)];
+        Rule = rule;
+        Silence = silence;
+        _onExpire = onExpire;
+        Instances =
+        [
+            .. alerts
+                .Select(a => new AlertInstanceRow(a, opened => onOpenDetail?.Invoke(opened, rule, silenceOf(opened))))
+                .OrderByDescending(i => i.Age),
+        ];
 
         var now = DateTimeOffset.UtcNow;
         OldestAge = alerts.Max(a => now - a.StartsAt);
@@ -236,6 +279,7 @@ public sealed class AlertGroupRow
         var receivers = alerts.SelectMany(a => a.Receivers).Distinct(StringComparer.Ordinal).ToList();
         Receiver = receivers.Count == 1 ? receivers[0] : null;
 
+        var ruleFor = rule?.For;
         Why = section switch
         {
             AlertSection.Pending when ruleFor is { } f =>
@@ -261,6 +305,19 @@ public sealed class AlertGroupRow
     public bool HasReceiver => Receiver is not null;
     public TimeSpan OldestAge { get; }
     public IReadOnlyList<AlertInstanceRow> Instances { get; }
+
+    /// <summary>The rule this alertname is evaluated by, when Prometheus reports one.</summary>
+    public AlertRule? Rule { get; }
+
+    /// <summary>The silence behind this group's Why, when it is still live — what Expire acts on.</summary>
+    public Silence? Silence { get; }
+
+    /// <summary>Only the Silenced section offers it, and only while there is still a live silence to
+    /// end — the "silence behind it is gone" case has nothing left to expire.</summary>
+    public bool CanExpire => Section == AlertSection.Silenced && Silence is not null && _onExpire is not null;
+
+    [RelayCommand]
+    private void Expire() => _onExpire?.Invoke(this);
 
     /// <summary>
     /// Colour is never the only carrier: <see cref="SectionWord"/> says the same thing in words, so
@@ -290,10 +347,16 @@ public sealed class AlertGroupRow
 }
 
 /// <summary>One instance under a group: which pod, which node, since when.</summary>
-public sealed class AlertInstanceRow
+public sealed partial class AlertInstanceRow
 {
-    internal AlertInstanceRow(Alert alert)
+    private readonly Alert _alert;
+    private readonly Action<Alert>? _onOpen;
+
+    internal AlertInstanceRow(Alert alert, Action<Alert>? onOpen)
     {
+        _alert = alert;
+        _onOpen = onOpen;
+
         // The most specific label the alert carries, because that is the object a person goes to
         // look at. Order matters: a pod alert also carries a namespace.
         Target = First(alert, "pod", "node", "instance", "host", "job", "service", "namespace") ?? alert.Name;
@@ -323,4 +386,10 @@ public sealed class AlertInstanceRow
     public TimeSpan Age { get; }
     public string AgeText { get; }
     public bool IsSilenced { get; }
+
+    /// <summary>Whether the shell wired the alert-detail drawer (KON-208).</summary>
+    public bool CanOpen => _onOpen is not null;
+
+    [RelayCommand]
+    private void Open() => _onOpen?.Invoke(_alert);
 }
