@@ -1,0 +1,266 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:conv="using:Kontena.App.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="760"
+             x:Class="Kontena.App.Views.RuleEditorView"
+             x:DataType="vm:RuleEditorViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBox.field">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="Padding" Value="9,6"/>
+        </Style>
+        <Style Selector="TextBox.mono">
+            <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <Style Selector="TextBlock.flabel">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <!-- The severity control: three buttons, and the one that is on carries the accent -->
+        <Style Selector="Button.seg">
+            <Setter Property="Background" Value="{DynamicResource Bg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="Button.seg.on">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Primary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <!-- One namespace in the open typeahead -->
+        <Style Selector="Button.nsopt">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}"/>
+            <Setter Property="Padding" Value="9,6"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.nsopt:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <UserControl.Resources>
+        <!-- A label or annotation row: key, value, and a remove the selector label does not get -->
+        <DataTemplate x:Key="PairTemplate" x:DataType="vm:RuleLabelRow">
+            <Grid ColumnDefinitions="1*,1.6*,Auto" Margin="0,0,0,6">
+                <TextBox Grid.Column="0" Classes="field mono" Text="{Binding Key}" PlaceholderText="key"/>
+                <TextBox Grid.Column="1" Classes="field mono" Margin="7,0,0,0" Text="{Binding Value}"
+                         PlaceholderText="value"/>
+                <Button Grid.Column="2" Classes="ghost" Margin="7,0,0,0" Command="{Binding RemoveCommand}"
+                        IsVisible="{Binding CanRemove}" Content="Remove" FontSize="11"/>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <StackPanel Spacing="4">
+                <TextBlock Text="New alert rule" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}"/>
+                <TextBlock Classes="hint" FontSize="12.5"
+                           Text="One rule, authored once · PrometheusRule · monitoring.coreos.com/v1"/>
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,Auto">
+
+                <!-- ── The rule itself ──────────────────────────────────────────────────────── -->
+                <StackPanel Grid.Column="0" Spacing="16" MaxWidth="560" HorizontalAlignment="Left">
+
+                    <StackPanel Spacing="5">
+                        <TextBlock Classes="flabel" Text="Alert name"/>
+                        <TextBox Classes="field mono" Text="{Binding AlertName}" PlaceholderText="AppHighErrorRate"/>
+                        <TextBlock Classes="hint"
+                                   Text="Becomes the alertname label — what Alertmanager groups by, so it is worth reading well in a group header."/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="5">
+                        <TextBlock Classes="flabel" Text="Expression"/>
+                        <TextBox Classes="field mono" Text="{Binding Expression}" AcceptsReturn="True"
+                                 MinHeight="76" TextWrapping="Wrap"
+                                 PlaceholderText="sum(rate(http_requests_total{status=~&quot;5..&quot;}[5m])) > 0.05"/>
+
+                        <!-- Asked of this cluster's Prometheus, not of a linter (KON-209) -->
+                        <ContentControl Content="{Binding Check}"/>
+
+                        <TextBlock Classes="hint"
+                                   Text="Checked by asking this cluster's Prometheus rather than by a linter — a wrong label name is syntactically fine, and only an empty result reveals it. Zero series matching is the warning worth having."/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="1*,1.4*">
+                        <StackPanel Grid.Column="0" Spacing="5">
+                            <TextBlock Classes="flabel" Text="For"/>
+                            <TextBox Classes="field mono" Text="{Binding ForText}" PlaceholderText="10m"/>
+                            <TextBlock Classes="hint" Text="How long it must stay true before it leaves pending."/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="5" Margin="16,0,0,0">
+                            <TextBlock Classes="flabel" Text="Severity"/>
+                            <ItemsControl ItemsSource="{Binding Severities}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:SeverityOption">
+                                        <Button Classes="seg" Classes.on="{Binding IsOn}"
+                                                Command="{Binding ChooseCommand}" Content="{Binding Name}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="hint"
+                                       Text="A label, not a schema. What it means is decided by the routing config."/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="5">
+                        <TextBlock Classes="flabel" Text="Extra labels"/>
+                        <ItemsControl ItemsSource="{Binding Labels}" ItemTemplate="{StaticResource PairTemplate}"/>
+                        <Button Classes="ghost" HorizontalAlignment="Left" Command="{Binding AddLabelCommand}"
+                                Content="Add label" FontSize="12"/>
+                        <TextBlock Classes="hint"
+                                   Text="These land on the alert, alongside severity — the routing config reads them."/>
+                    </StackPanel>
+
+                    <!-- ── The selector label ────────────────────────────────────────────────
+                         Kept next to the alert's labels because that is where the mockup puts it,
+                         and named apart because it is a different thing: ruleSelector tests the
+                         object's metadata.labels, never the alert's. -->
+                    <StackPanel Spacing="5" IsVisible="{Binding HasObjectLabels}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <TextBlock Classes="flabel" Text="Selector label"/>
+                            <TextBlock Classes="hint" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Warn}" Text="on the object, not the alert"/>
+                        </StackPanel>
+                        <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                                BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="9,9,9,3">
+                            <ItemsControl ItemsSource="{Binding ObjectLabels}" ItemTemplate="{StaticResource PairTemplate}"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Always said, including when the selector could not be read at all -->
+                    <TextBlock Classes="hint" Text="{Binding SelectorNotice}"
+                               Foreground="{Binding SelectorNoticeBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"/>
+
+                    <StackPanel Spacing="5">
+                        <TextBlock Classes="flabel" Text="Annotations"/>
+                        <ItemsControl ItemsSource="{Binding Annotations}" ItemTemplate="{StaticResource PairTemplate}"/>
+                        <Button Classes="ghost" HorizontalAlignment="Left" Command="{Binding AddAnnotationCommand}"
+                                Content="Add annotation" FontSize="12"/>
+                        <TextBlock Classes="hint"
+                                   Text="The alert drawer renders runbook_url as a button, so it is worth filling in."/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- ── Where it lands, and the manifest that says so ────────────────────────── -->
+                <StackPanel Grid.Column="1" Width="420" Margin="24,0,0,0" Spacing="14">
+
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="15,14">
+                        <StackPanel Spacing="12">
+                            <TextBlock Classes="section" Text="WHERE IT LANDS"/>
+
+                            <StackPanel Spacing="5">
+                                <TextBlock Classes="flabel" Text="PrometheusRule object"/>
+                                <TextBox Classes="field mono" Text="{Binding ObjectName}" PlaceholderText="checkout-slo"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="5">
+                                <TextBlock Classes="flabel" Text="Namespace"/>
+                                <TextBox x:Name="NamespaceField" Classes="field mono" Text="{Binding NamespaceName}"
+                                         PlaceholderText="monitoring"/>
+
+                                <!-- Free text stays allowed: a namespace can be created after the rule is
+                                     authored, and refusing it would break authoring for a cluster Kontena
+                                     cannot even reach. The list is how you get to the verdict, not a gate. -->
+                                <Border IsVisible="{Binding IsNamespaceMenuOpen}"
+                                        Background="{DynamicResource SurfaceRaised}"
+                                        BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                        CornerRadius="{StaticResource RadiusSm}" Padding="4" MaxHeight="240">
+                                    <ScrollViewer>
+                                        <ItemsControl ItemsSource="{Binding NamespaceMatches}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:NamespaceOption">
+                                                    <Button Classes="nsopt"
+                                                            Command="{Binding $parent[ItemsControl].((vm:RuleEditorViewModel)DataContext).PickNamespaceCommand}"
+                                                            CommandParameter="{Binding}">
+                                                        <StackPanel Spacing="2">
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                                                           FontFamily="{StaticResource Mono}"
+                                                                           Foreground="{DynamicResource Text}"/>
+                                                                <TextBlock Text="{Binding WatchedText}" FontSize="11"
+                                                                           VerticalAlignment="Center"
+                                                                           IsVisible="{Binding HasVerdict}"
+                                                                           Foreground="{Binding WatchedBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Note}" FontSize="11"
+                                                                       IsVisible="{Binding HasNote}"
+                                                                       Foreground="{DynamicResource TextFaint}"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
+
+                                <TextBlock Classes="hint" Text="{Binding NamespaceVerdict}"
+                                           Foreground="{Binding NamespaceVerdictBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── The manifest panel is not decoration ─────────────────────────────
+                         Same rule as the local-cluster command preview: you see what runs before it
+                         runs. No managed-by, no timestamp, nothing Kontena adds for itself — the file
+                         in a repository and the object in the cluster are the same bytes. -->
+                    <StackPanel Spacing="7">
+                        <TextBlock Classes="section" Text="MANIFEST · WHAT GETS APPLIED, BYTE FOR BYTE"/>
+                        <Border Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="13,11">
+                            <SelectableTextBlock Text="{Binding Manifest}" FontSize="12"
+                                                 FontFamily="{StaticResource Mono}"
+                                                 Foreground="{DynamicResource TextDim}"/>
+                        </Border>
+                        <TextBlock Classes="hint"
+                                   Text="No managed-by, no timestamp, nothing Kontena adds for itself. Otherwise the file would be a story about the cluster rather than its source."/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="hint" Text="{Binding Incomplete}" Foreground="{DynamicResource Warn}"
+                                   IsVisible="{Binding !IsComplete}"/>
+                        <Button Classes="primary" HorizontalAlignment="Left" Command="{Binding ApplyCommand}"
+                                IsEnabled="{Binding CanApply}" Content="Apply to this cluster…"/>
+                        <TextBlock Classes="hint" Text="{Binding ApplyNotice}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

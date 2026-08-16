@@ -117,6 +117,14 @@ public sealed class KubernetesClusterEngine
     /// <summary>Why the search could not finish — a refused listing reads nothing like an absent one.</summary>
     public string? AlertingRefusal => _alertingProbe.Refusal;
 
+    /// <summary>
+    /// What this cluster's Prometheus selects rules by (KON-210) — the read that lets the rule editor
+    /// answer "will this be picked up" before anything is applied. Asked on demand rather than during
+    /// discovery: it costs an extra API call and only one page has the question.
+    /// </summary>
+    public Task<RuleTargeting> ReadRuleTargetingAsync(CancellationToken ct = default) =>
+        PrometheusRuleTargetingReader.ReadAsync(_client, _alertingProbe.Prometheus?.Namespace, ct);
+
     // ── Identity & health ────────────────────────────────────────────────────
 
     public async ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default)

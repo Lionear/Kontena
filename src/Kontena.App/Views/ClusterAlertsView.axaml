@@ -83,7 +83,16 @@
 
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
-            <TextBlock Text="Alerts" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Alerts" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}"/>
+
+                <!-- Offered whatever this cluster runs (KON-210): authoring a rule needs neither an
+                     Alertmanager nor the CRD — only applying it here does, and the editor says so. -->
+                <Button Grid.Column="1" Classes="primary" VerticalAlignment="Center"
+                        Command="{Binding NewRuleCommand}" IsVisible="{Binding CanWriteRules}"
+                        Content="New rule"/>
+            </Grid>
             <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
 
             <!-- Never silent about not being live (KON-250). Here it is not a failure: Alertmanager
