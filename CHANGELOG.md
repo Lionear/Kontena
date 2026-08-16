@@ -18,13 +18,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
-- **Apply manifest says what it is doing while it does it.** A dry-run or an apply showed nothing at
-  all until every document had an outcome, so a chart's worth of resources was a page that looked
-  hung: over a second parsing the bundle, a hundred round trips, and up to thirty seconds waiting for
-  its own CRDs to be served — in silence. It now counts through the bundle ("Applying 47 of 132") and
-  names what it is waiting for ("Waiting for the cluster to serve ServiceMonitor (12/30s)"). The
-  parsing moved off the UI thread as well; that part really was a frozen window, not just an
-  uninformative one. (KON-381)
 - **The first-run wizard shows the clusters in your kubeconfig.** With a kubeconfig and no local
   engine it reported "no engines detected" and offered the Podman install guide — sending you off to
   install software you do not need, past clusters that were ready to use. The contexts in your
