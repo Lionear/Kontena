@@ -468,10 +468,15 @@
                                              IsVisible="{Binding NeedsAttention}"
                                              ToolTip.Tip="{Binding AttentionTip}"/>
                                     <!-- Only where there is something to count: an empty pill on every
-                                         other row is noise that reads as a control (KON-219). -->
-                                    <Border Grid.Column="4" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}"
-                                            Padding="7,1" VerticalAlignment="Center" IsVisible="{Binding HasCount}">
-                                        <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
+                                         other row is noise that reads as a control (KON-219).
+                                         The loud variant is for firing alerts and nothing else — an
+                                         inventory count and a queue of things wrong should not look
+                                         alike (KON-207). -->
+                                    <Border Grid.Column="4" Classes="navcount" Classes.loud="{Binding IsLoud}"
+                                            CornerRadius="{StaticResource Radius}"
+                                            Padding="7,1" VerticalAlignment="Center" IsVisible="{Binding HasCount}"
+                                            ToolTip.Tip="{Binding AttentionTip}">
+                                        <TextBlock Text="{Binding Count}" FontSize="11" FontFamily="{StaticResource Mono}"/>
                                     </Border>
                                 </Grid>
                             </Button>

@@ -10,6 +10,7 @@ using Kontena.App.Services;
 using Kontena.Engines.Plugins;
 using Kontena.Sdk;
 using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Models;
 
@@ -190,6 +191,11 @@ public partial class MainWindowViewModel
         NavGroups.Clear();
         NavGroups.Add(Group("Cluster",
             new NavItem("overview", "Overview", "IconGauge") { IsSelected = true },
+            // Directly under Overview, and present whether or not this cluster has an Alertmanager
+            // (KON-207). "Where are my alerts" is a question that deserves an answer, and hiding the
+            // entry makes the page that answers it unreachable — so the capability decides what the
+            // page says, not whether it exists.
+            new NavItem("alerts", "Alerts", "IconBell"),
             new NavItem("nodes", "Nodes", "IconCpu"),
             new NavItem("namespaces", "Namespaces", "IconBox")));
         NavGroups.Add(Group("Workloads",
@@ -250,6 +256,9 @@ public partial class MainWindowViewModel
             // RequestConfirm because the metrics-server install writes to the cluster and asks first
             // (KON-93); the other cluster pages route their confirms through the shell callbacks they
             // are handed.
+            // The Helm hand-off is the shell's to route, like every other cross-page jump: the page
+            // knows a chart should be installed, not where the apply page lives (KON-204).
+            "alerts" => new ClusterAlertsViewModel(_cluster, onInstallWithHelm: ShowMonitoringHelmInstall),
             "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
             "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing
@@ -459,6 +468,54 @@ public partial class MainWindowViewModel
         SyncNamespacePicker(namespaces.Result);
         SyncWorkloadKindNav(workloads.Result);
         UpdatePortForwardCount();
+        await UpdateAlertCountAsync();
+    }
+
+    /// <summary>
+    /// Badge the sidebar with the number of firing alerts nobody has muted (KON-207).
+    /// <para>
+    /// Pending is left out because it may never fire, and silenced because somebody already decided
+    /// about it — counting either would make the badge mean "alerts" rather than "things to look
+    /// at", and a number you learn to ignore is worse than no number.
+    /// </para>
+    /// <para>
+    /// Across every namespace, not just the picked one: Alertmanager does not know about the
+    /// namespace picker, and an alert firing outside your current namespace is still your problem.
+    /// </para>
+    /// </summary>
+    private async Task UpdateAlertCountAsync()
+    {
+        if (NavItems.FirstOrDefault(i => i.Key == "alerts") is not { } item)
+            return;
+
+        if (_cluster is not IAlertingAware { Alerts: var source } || source is NoAlertSource)
+        {
+            item.Count = string.Empty;
+            item.IsLoud = false;
+            item.AttentionTip = string.Empty;
+            return;
+        }
+
+        try
+        {
+            var firing = ClusterAlertsViewModel.BadgeCount(await source.ListAlertsAsync());
+
+            // No badge at zero rather than a "0": every other entry in this sidebar is silent when
+            // it has nothing to say, and an all-clear is not news (KON-219).
+            item.Count = firing == 0 ? string.Empty : firing.ToString(CultureInfo.InvariantCulture);
+            item.IsLoud = firing > 0;
+            item.AttentionTip = firing == 0
+                ? string.Empty
+                : $"{firing} firing {(firing == 1 ? "alert" : "alerts")}, not silenced";
+        }
+        catch (Exception)
+        {
+            // An Alertmanager that stopped answering is the page's story to tell, not the sidebar's.
+            // A stale number here would be the one thing worse than no number.
+            item.Count = string.Empty;
+            item.IsLoud = false;
+            item.AttentionTip = string.Empty;
+        }
     }
     /// <summary>
     /// Keep the namespace picker in step with the cluster (KON-343).
@@ -483,6 +540,31 @@ public partial class MainWindowViewModel
         // picker with a stale filter still applied would be the worst of the three outcomes.
         if (SelectedNamespace is not null && !Namespaces.Contains(SelectedNamespace))
             SelectedNamespace = AllNamespaces;
+    }
+
+    /// <summary>
+    /// Hand off to the apply page's existing Helm source with the monitoring chart filled in
+    /// (KON-204 decision 3).
+    /// <para>
+    /// Kontena ships no copy of kube-prometheus-stack and installs nothing itself. metrics-server
+    /// was one pinned manifest with two ClusterRoles; this is a chart with CRDs, retention, storage
+    /// and a pile of opinion, and vendoring it means owning its upgrades forever. So the offer is a
+    /// route to a flow that already exists, with the fields the user would have typed.
+    /// </para>
+    /// </summary>
+    private void ShowMonitoringHelmInstall()
+    {
+        NavigateCluster("apply");
+
+        if (CurrentPage is not ApplyManifestViewModel apply)
+            return;
+
+        apply.SourceKind = ManifestSourceKind.Helm;
+        apply.Chart = "prometheus-community/kube-prometheus-stack";
+        apply.ReleaseName = "kube-prometheus-stack";
+
+        // The namespace discovery looks in first, so the install and the search agree by default.
+        apply.RenderNamespace = "monitoring";
     }
 
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
