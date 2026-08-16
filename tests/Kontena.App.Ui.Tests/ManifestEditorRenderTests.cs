@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
 using Kontena.Core.Orchestration.Fakes;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.Ui.Tests;
 
@@ -153,4 +154,83 @@ public sealed class ManifestEditorRenderTests(HeadlessSessionFixture headless)
             editor.Editor.Document.Insert(editor.Editor.Document.TextLength, "metadata:\n  name: a\n");
             Assert.Equal("kind: ConfigMap\nmetadata:\n  name: a\n", vm.YamlText);
         }, CancellationToken.None);
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public Task Read_only_reaches_the_editor(bool readOnly) =>
+        headless.Session.Dispatch(() =>
+        {
+            var editor = Show("kind: ConfigMap\n");
+
+            editor.IsReadOnly = readOnly;
+
+            Assert.Equal(readOnly, editor.Editor.IsReadOnly);
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// A resource's own YAML gets the same editor as a bundle does (KON-383). It used to be a plain
+    /// text box, with the same ceiling: a CRD's manifest is a fourteen-thousand-line document.
+    /// </summary>
+    [Fact]
+    public Task A_resources_yaml_pane_shows_what_the_cluster_holds() =>
+        headless.Session.Dispatch(async () =>
+        {
+            var vm = await LoadedEditorAsync(new FakeClusterEngine());
+            var editor = Editor(new ManifestEditorView { DataContext = vm });
+
+            Assert.Equal(vm.Text, editor.Editor.Document.Text);
+            Assert.False(editor.IsReadOnly);
+
+            editor.Editor.Document.Insert(0, "# touched\n");
+            Assert.StartsWith("# touched\n", vm.Text, StringComparison.Ordinal);
+            Assert.True(vm.IsDirty);
+        }, CancellationToken.None);
+
+    /// <summary>A backend that cannot apply still shows the manifest; it just will not take it back.</summary>
+    [Fact]
+    public Task A_backend_that_cannot_apply_gets_a_read_only_pane() =>
+        headless.Session.Dispatch(async () =>
+        {
+            var vm = await LoadedEditorAsync(new FakeClusterEngine { CanApply = false });
+            var editor = Editor(new ManifestEditorView { DataContext = vm });
+
+            Assert.NotEmpty(editor.Editor.Document.Text);
+            Assert.True(editor.IsReadOnly);
+            Assert.True(editor.Editor.IsReadOnly);
+        }, CancellationToken.None);
+
+    /// <summary>Pod detail keeps its own copy of the YAML tab, so it needs its own guard.</summary>
+    [Fact]
+    public Task Pod_detail_uses_the_same_editor_for_its_yaml_tab() =>
+        headless.Session.Dispatch(() =>
+        {
+            var view = new ClusterPodDetailView();
+            var window = new Window { Content = view, Width = 1400, Height = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Single(view.GetVisualDescendants().OfType<ManifestEditor>());
+        }, CancellationToken.None);
+
+    private static async Task<ManifestEditorViewModel> LoadedEditorAsync(FakeClusterEngine engine)
+    {
+        var vm = new ManifestEditorViewModel(engine, new ResourceRef(GroupVersionKind.Pod, "app", "web-5f2a"));
+
+        for (var i = 0; i < 100 && vm.IsLoading; i++)
+            await Task.Delay(5);
+
+        Assert.False(vm.IsLoading);
+
+        return vm;
+    }
+
+    private static ManifestEditor Editor(ManifestEditorView view)
+    {
+        var window = new Window { Content = view, Width = 1000, Height = 700 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        return view.GetVisualDescendants().OfType<ManifestEditor>().Single();
+    }
 }

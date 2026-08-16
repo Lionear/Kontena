@@ -288,6 +288,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             : NoMetricsHistory.Instance;
 
     /// <summary>
+    /// Whether this fake cluster takes a manifest back. On by default; turn it off for the backend
+    /// that can show a resource's YAML but not write it, where the editor is read-only and its
+    /// buttons are gone (KON-383).
+    /// </summary>
+    public bool CanApply
+    {
+        get => _capabilities.Apply;
+        init => _capabilities = _capabilities with { Apply = value };
+    }
+
+    /// <summary>
     /// Whether this fake cluster has an Alertmanager. On by default so the alerts page has something
     /// to draw; turn it off for the empty state, where the page has to say where it looked instead of
     /// showing an empty list (KON-205).

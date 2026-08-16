@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="500"
@@ -10,10 +11,7 @@
     <Grid RowDefinitions="*,Auto" RowSpacing="12">
         <Border Grid.Row="0" Background="{DynamicResource CodeSurface}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
-            <TextBox Text="{Binding Text}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
-                     IsReadOnly="{Binding !CanWrite}"
-                     Background="Transparent" BorderThickness="0" Padding="16,12"
-                     FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            <views:ManifestEditor Text="{Binding Text}" IsReadOnly="{Binding !CanWrite}"/>
         </Border>
 
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto">
