@@ -42,6 +42,7 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     private readonly IAlertSource _alerts;
     private readonly Action? _onInstallWithHelm;
     private readonly Action<Alert, AlertRule?, Silence?>? _onOpenDetail;
+    private readonly Action? _onNewRule;
 
     /// <param name="onInstallWithHelm">
     /// Hands off to the existing Helm source on the apply page with the chart filled in. Kontena owns
@@ -51,9 +52,12 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     /// <param name="onOpenDetail">Opens the alert-detail drawer for one instance (KON-208), with the
     /// rule and silence its group already resolved — a second lookup for what this page just read
     /// would be a second answer to the same question.</param>
+    /// <param name="onNewRule">
+    /// Opens the rule editor (KON-210). Offered whatever this cluster runs: authoring a rule needs no
+    /// Alertmanager and no CRD — only applying it to this cluster does, and the editor says which.</param>
     public ClusterAlertsViewModel(
         IClusterEngine cluster, Action? onInstallWithHelm = null,
-        Action<Alert, AlertRule?, Silence?>? onOpenDetail = null)
+        Action<Alert, AlertRule?, Silence?>? onOpenDetail = null, Action? onNewRule = null)
         // No kind to follow: alerts come off Alertmanager over HTTP, not from the apiserver, so there
         // is no watch to open. Said out loud rather than left as a list that silently never moves.
         : base(cluster, kind: null, ns: null,
@@ -62,6 +66,7 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
         _cluster = cluster;
         _onInstallWithHelm = onInstallWithHelm;
         _onOpenDetail = onOpenDetail;
+        _onNewRule = onNewRule;
         _alerts = cluster is IAlertingAware aware ? aware.Alerts : NoAlertSource.Instance;
 
         // Where the discovery actually looked, verbatim (KON-206). A cluster running an Alertmanager
@@ -133,8 +138,17 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     /// <summary>Nothing wrong, and the cluster did answer — a different sentence from having no source.</summary>
     public bool IsAllClear => HasLoaded && HasAlerting && All.Count == 0;
 
+    /// <summary>
+    /// Whether the rule editor can be reached. Not gated on <see cref="CanApplyRules"/>: a rule
+    /// authored without the CRD is still a rule, and the editor is where that gets said.
+    /// </summary>
+    public bool CanWriteRules => _onNewRule is not null;
+
     [RelayCommand]
     private void InstallWithHelm() => _onInstallWithHelm?.Invoke();
+
+    [RelayCommand]
+    private void NewRule() => _onNewRule?.Invoke();
 
     protected override async Task<IReadOnlyList<AlertGroupRow>> LoadRowsAsync()
     {

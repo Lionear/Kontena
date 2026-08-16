@@ -145,8 +145,12 @@ internal static class ManifestNormalizer
         _ => value.ToString() ?? string.Empty,
     };
 
-    /// <summary>Quote only where a bare scalar would read as something else.</summary>
-    private static string Quote(string text)
+    /// <summary>
+    /// Quote only where a bare scalar would read as something else. Shared with
+    /// <see cref="PrometheusRuleComposer"/> so authored manifests and normalised ones agree about
+    /// what needs quoting — one rule, not two that drift.
+    /// </summary>
+    internal static string Quote(string text)
     {
         if (text.Length == 0)
             return "\"\"";

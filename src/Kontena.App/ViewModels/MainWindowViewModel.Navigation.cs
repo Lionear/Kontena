@@ -260,8 +260,13 @@ public partial class MainWindowViewModel
             // knows a chart should be installed, not where the apply page lives (KON-204).
             // RequestConfirm because the Silenced section's Expire is the page's own delete-shaped
             // write, the same way nodes/workloads confirm their own (KON-208).
-            "alerts" => new ClusterAlertsViewModel(_cluster, onInstallWithHelm: ShowMonitoringHelmInstall, onOpenDetail: ShowAlertDetail)
+            "alerts" => new ClusterAlertsViewModel(
+                _cluster, onInstallWithHelm: ShowMonitoringHelmInstall, onOpenDetail: ShowAlertDetail,
+                onNewRule: () => NavigateCluster("alert-rule"))
                 { RequestConfirm = ShowConfirm },
+            // Not a nav item: it is an action off the Alerts page, and a permanent sidebar entry
+            // called "New rule" would be a page you can be on without having asked for it (KON-210).
+            "alert-rule" => new RuleEditorViewModel(_cluster, ApplyAuthoredRule),
             "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
             "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing
@@ -568,6 +573,28 @@ public partial class MainWindowViewModel
 
         // The namespace discovery looks in first, so the install and the search agree by default.
         apply.RenderNamespace = "monitoring";
+    }
+
+    /// <summary>
+    /// The rule editor's hand-off (KON-210): the composed manifest goes to the page that already does
+    /// server-side dry-run, diff and apply.
+    /// <para>
+    /// <b>Deliberately not a second apply path.</b> A rule authored in Kontena reaches the cluster the
+    /// same way a pasted manifest does, through the same review step — an editor with its own private
+    /// Apply button would be the one write in the app that nobody sees the diff of first.
+    /// </para>
+    /// </summary>
+    private void ApplyAuthoredRule(ManifestBundle bundle)
+    {
+        NavigateCluster("apply");
+
+        if (CurrentPage is not ApplyManifestViewModel apply)
+            return;
+
+        apply.SourceKind = ManifestSourceKind.Paste;
+        apply.YamlText = bundle.Yaml;
+        apply.Source = bundle.Source;
+        apply.RenderNamespace = bundle.Namespace;
     }
 
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
