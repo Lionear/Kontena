@@ -58,44 +58,6 @@ public partial class ApplyManifestViewModel : ViewModelBase
 
     [ObservableProperty] private string _yamlText;
 
-    /// <summary>
-    /// Past this many characters the editor stops showing the bundle and starts describing it.
-    /// <para>
-    /// A <c>TextBox</c> lays out every line it is given — there is no virtualisation to fall back on —
-    /// and <c>kube-prometheus-stack</c> renders 5.2 MB across 82,000 lines, four fifths of it the CRD
-    /// schemas. Handing that to the editor froze the window for seconds before anything was applied
-    /// (KON-380). This is roughly where the layout stops being instant.
-    /// </para>
-    /// </summary>
-    private const int EditorLimit = 512 * 1024;
-
-    /// <summary>
-    /// What the editor shows: the bundle itself, or its first <see cref="EditorLimit"/> characters
-    /// when it is too big to lay out. <see cref="YamlText"/> stays whole — the truncation is the
-    /// editor's problem, never the apply's.
-    /// </summary>
-    public string EditorText
-    {
-        get => IsYamlTruncated ? YamlText[..EditorLimit] : YamlText;
-        set
-        {
-            // A truncated view is read-only, so anything arriving here would be a partial bundle.
-            if (!IsYamlTruncated)
-                YamlText = value;
-        }
-    }
-
-    public bool IsYamlTruncated => YamlText.Length > EditorLimit;
-
-    /// <summary>"Showing the first 512 KB of 5.1 MB" — so a clipped page never reads as the whole bundle.</summary>
-    public string TruncationNote =>
-        $"Too large to edit here: showing the first {Kb(EditorLimit)} of {Kb(YamlText.Length)}. " +
-        "The whole bundle is what gets applied.";
-
-    private static string Kb(int bytes) =>
-        bytes >= 1024 * 1024
-            ? (bytes / (1024.0 * 1024.0)).ToString("0.#", CultureInfo.InvariantCulture) + " MB"
-            : (bytes / 1024).ToString(CultureInfo.InvariantCulture) + " KB";
     [ObservableProperty] private string _source = "pasted";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _error;
@@ -238,10 +200,6 @@ public partial class ApplyManifestViewModel : ViewModelBase
 
     partial void OnYamlTextChanged(string value)
     {
-        OnPropertyChanged(nameof(EditorText));
-        OnPropertyChanged(nameof(IsYamlTruncated));
-        OnPropertyChanged(nameof(TruncationNote));
-
         // The plan describes the text that produced it; editing invalidates it.
         if (!HasPlan)
             return;

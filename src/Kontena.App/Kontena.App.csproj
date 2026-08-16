@@ -55,6 +55,9 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.3" />
+    <!-- The virtualising editor behind Views/ManifestEditor (KON-382). Already in the tree for
+         Kontena.Plugins.ManifestStudio, so THIRD-PARTY-NOTICES.md is unchanged by this reference. -->
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
