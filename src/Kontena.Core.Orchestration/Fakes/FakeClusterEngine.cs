@@ -13,7 +13,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -249,7 +249,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private ClusterCapabilities _capabilities = new()
     {
         Metrics = true, Exec = true, PortForward = true, Apply = true, Helm = true, Watch = true, Crds = true,
-        NodeMaintenance = true,
+        NodeMaintenance = true, Alerting = true, AlertRules = true,
     };
 
     public ClusterCapabilities Capabilities => _capabilities;
@@ -286,6 +286,35 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         HasHistory && _capabilities.Metrics
             ? (HistoryIsEmpty ? FakeMetricsHistory.Empty : FakeMetricsHistory.Instance)
             : NoMetricsHistory.Instance;
+
+    /// <summary>
+    /// Whether this fake cluster has an Alertmanager. On by default so the alerts page has something
+    /// to draw; turn it off for the empty state, where the page has to say where it looked instead of
+    /// showing an empty list (KON-205).
+    /// </summary>
+    public bool HasAlertmanager
+    {
+        get => _capabilities.Alerting;
+        init => _capabilities = _capabilities with { Alerting = value };
+    }
+
+    /// <summary>
+    /// Whether the <c>PrometheusRule</c> CRD is installed. Independent of
+    /// <see cref="HasAlertmanager"/> on purpose: turning this off alone is the cluster where a rule
+    /// can be written to a file but not applied, which is the half of the feature that has to keep
+    /// working without an Operator.
+    /// </summary>
+    public bool HasPrometheusRuleCrd
+    {
+        get => _capabilities.AlertRules;
+        init => _capabilities = _capabilities with { AlertRules = value };
+    }
+
+    private FakeAlertSource? _alertSource;
+
+    public IAlertSource Alerts => _capabilities.Alerting
+        ? _alertSource ??= new FakeAlertSource()
+        : NoAlertSource.Instance;
 
     // Counted like the listers are: on a real cluster this is two round-trips, one of them a full
     // node listing, so a page calling it on a loop costs what a page listing nodes on a loop costs
