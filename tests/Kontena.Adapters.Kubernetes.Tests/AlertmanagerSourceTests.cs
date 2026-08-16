@@ -49,6 +49,7 @@ public class AlertmanagerSourceTests
       "startsAt": "2026-07-30T06:41:03.000Z",
       "endsAt": "2026-07-30T18:41:03.000Z",
       "fingerprint": "a1b2c3d4e5f60001",
+      "generatorURL": "http://prometheus.monitoring.svc:9090/graph?g0.expr=up&g0.tab=1",
       "receivers": [{"name":"pagerduty"}],
       "status": {"state":"suppressed","silencedBy":["sil-0001"],"inhibitedBy":[]}
     }]
@@ -76,6 +77,9 @@ public class AlertmanagerSourceTests
         Assert.Equal("redis-7d9c4f-x2ktp", alert.Labels["pod"]);
         Assert.Equal("a1b2c3d4e5f60001", alert.Fingerprint);
         Assert.Equal(["pagerduty"], alert.Receivers);
+        // Alertmanager's own answer to "graph in Prometheus" — KON-208 opens this rather than
+        // rebuilding a query from the rule's expression.
+        Assert.Equal("http://prometheus.monitoring.svc:9090/graph?g0.expr=up&g0.tab=1", alert.GeneratorURL);
 
         // Suppressed in Alertmanager's words is still firing underneath — the state does not change,
         // only SilencedBy does.

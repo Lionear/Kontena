@@ -67,6 +67,7 @@ internal sealed class AlertmanagerSource(
                 StartsAt = Time(item, "startsAt") ?? DateTimeOffset.UtcNow,
                 EndsAt = Time(item, "endsAt"),
                 Fingerprint = Text(item, "fingerprint") ?? string.Empty,
+                GeneratorURL = Text(item, "generatorURL"),
                 Receivers = ReceiverNames(item),
                 SilencedBy = TextArray(status, "silencedBy"),
                 InhibitedBy = TextArray(status, "inhibitedBy"),

@@ -69,6 +69,13 @@ public sealed record Alert
     /// <summary>Alertmanager's own identity for the label set — stable across re-sends.</summary>
     public string Fingerprint { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The Prometheus graph Alertmanager recorded when this alert fired — its own answer to "graph
+    /// in Prometheus", so nothing here has to rebuild the query from the rule's expression. Null for
+    /// a pending instance, which came off Prometheus' rule state rather than Alertmanager.
+    /// </summary>
+    public string? GeneratorURL { get; init; }
+
     /// <summary>The <c>alertname</c> label: what the list groups by.</summary>
     public string Name => Labels.GetValueOrDefault("alertname", string.Empty);
 

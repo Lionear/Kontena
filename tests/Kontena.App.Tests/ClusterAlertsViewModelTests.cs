@@ -258,4 +258,55 @@ public class ClusterAlertsViewModelTests
         Assert.DoesNotContain("severity", instance.Detail, StringComparison.Ordinal);
         Assert.DoesNotContain("gke-pool-b-2", instance.Detail, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Opening_an_instance_hands_back_its_own_rule_and_silence_not_the_groups_first()
+    {
+        // Two instances of one alertname, only one of them silenced — exactly the "two of three pods
+        // silenced" case the grouping already has to handle. The one that opens must carry its own
+        // silence, not whichever the group picked to write its Why sentence.
+        var muted = Alert("KubePodCrashLooping", pod: "a", silencedBy: ["sil-1"]);
+        var live = Alert("KubePodCrashLooping", pod: "b");
+        var rule = new AlertRule { Name = "KubePodCrashLooping", Expr = "x" };
+        var silence = new Silence { Id = "sil-1", Matchers = [], EndsAt = DateTimeOffset.UtcNow.AddHours(1) };
+
+        (Alert Alert, AlertRule? Rule, Silence? Silence)? opened = null;
+        var groups = ClusterAlertsViewModel.Group(
+            [muted, live], [rule], [silence], onOpenDetail: (a, r, s) => opened = (a, r, s));
+
+        // Split into two groups — Section is part of the group key, so the muted instance sits in
+        // Silenced and the live one in Firing even though they share an alertname.
+        var mutedInstance = Assert.Single(groups.Single(g => g.Section == AlertSection.Silenced).Instances);
+        var liveInstance = Assert.Single(groups.Single(g => g.Section == AlertSection.Firing).Instances);
+
+        mutedInstance.OpenCommand.Execute(null);
+        Assert.NotNull(opened);
+        Assert.Equal("sil-1", opened!.Value.Silence?.Id);
+        Assert.Equal(rule, opened.Value.Rule);
+
+        opened = null;
+        liveInstance.OpenCommand.Execute(null);
+        Assert.NotNull(opened);
+        Assert.Null(opened!.Value.Silence);
+    }
+
+    [Fact]
+    public void Expire_is_only_offered_on_a_silenced_group_with_a_live_silence_to_end()
+    {
+        var silence = new Silence { Id = "sil-1", Matchers = [], EndsAt = DateTimeOffset.UtcNow.AddHours(1) };
+
+        var withSilence = ClusterAlertsViewModel.Group(
+            [Alert("KubeJobFailed", silencedBy: ["sil-1"])], [], [silence], onExpire: _ => { });
+        Assert.True(Assert.Single(withSilence).CanExpire);
+
+        // "The silence behind it is gone" (KON-207): the id is still on the alert but no longer
+        // resolves to a live Silence, so there is nothing left to expire.
+        var withoutSilence = ClusterAlertsViewModel.Group(
+            [Alert("KubeJobFailed", silencedBy: ["sil-1"])], [], [], onExpire: _ => { });
+        Assert.False(Assert.Single(withoutSilence).CanExpire);
+
+        // Never offered outside the Silenced section, even with an onExpire wired up.
+        var firing = ClusterAlertsViewModel.Group([Alert("A")], [], [], onExpire: _ => { });
+        Assert.False(Assert.Single(firing).CanExpire);
+    }
 }

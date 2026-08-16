@@ -57,7 +57,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     public ClusterPodDetailViewModel(
         IClusterEngine cluster, Pod pod, TerminalFont terminalFont, Action<Pod>? onForward = null,
         PortForwardRegistry? portForwards = null, Func<ResourceRef, Task<bool>>? onOpenController = null,
-        Action? onDelete = null)
+        Action? onDelete = null, string initialTab = "overview")
     {
         _cluster = cluster;
         _pod = pod;
@@ -66,6 +66,7 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         _onOpenController = onOpenController;
         _onDelete = onDelete;
         _ref = new ResourceRef(GroupVersionKind.Pod, pod.Namespace, pod.Name);
+        _selectedTab = initialTab;
 
         SupportsExec = cluster.Capabilities.Exec;
         SupportsMetrics = cluster.Capabilities.Metrics;

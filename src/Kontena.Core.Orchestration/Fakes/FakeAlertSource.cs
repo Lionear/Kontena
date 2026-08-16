@@ -70,6 +70,8 @@ public sealed class FakeAlertSource : IAlertSource
                 },
                 StartsAt = now.AddHours(-6).AddMinutes(-12),
                 Receivers = ["pagerduty"],
+                GeneratorURL = "http://prometheus.monitoring.svc:9090/graph?g0.expr="
+                    + "increase(kube_pod_container_status_restarts_total%7Bpod%3D%22redis-7d9c4f-x2ktp%22%7D%5B10m%5D)&g0.tab=0",
             },
             new Alert
             {
