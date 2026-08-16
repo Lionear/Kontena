@@ -1,0 +1,209 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:conv="using:Kontena.App.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterAlertsView"
+             x:DataType="vm:ClusterAlertsViewModel">
+    <UserControl.Resources>
+        <!-- One group. The header carries the sentence, the rows carry the instances — the same
+             split that made the Workloads dashboard work (KON-174). -->
+        <DataTemplate x:Key="AlertGroupTemplate" x:DataType="vm:AlertGroupRow">
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Margin="0,0,0,8">
+                <StackPanel>
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="16,12">
+                        <Path Grid.Column="0" Classes="icon" Width="15" Height="15" VerticalAlignment="Center"
+                              Stroke="{Binding SeverityBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"
+                              Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
+
+                        <!-- The word beside the colour, always. Status colour is never on its own. -->
+                        <TextBlock Grid.Column="1" Text="{Binding SectionWord}" Margin="9,0,0,0"
+                                   FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextDim}"/>
+
+                        <TextBlock Grid.Column="2" Text="{Binding Name}" Margin="12,0,0,0"
+                                   FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+
+                        <TextBlock Grid.Column="3" Text="{Binding Why}" Margin="12,0,12,0"
+                                   FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextDim}"/>
+
+                        <Border Grid.Column="4" Background="{DynamicResource Surface2}" VerticalAlignment="Center"
+                                CornerRadius="{StaticResource Radius}" Padding="7,1" IsVisible="{Binding HasReceiver}">
+                            <TextBlock Text="{Binding Receiver}" FontSize="11" FontFamily="{StaticResource Mono}"
+                                       Foreground="{DynamicResource TextFaint}"/>
+                        </Border>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Instances}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AlertInstanceRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,1,0,0" Padding="16,9">
+                                    <Grid ColumnDefinitions="2*,3*,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="2">
+                                            <TextBlock Text="{Binding Target}" FontSize="12.5"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource Text}"/>
+                                            <TextBlock Text="{Binding Summary}" FontSize="11.5" MaxLines="1"
+                                                       IsVisible="{Binding HasSummary}" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextFaint}"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding Detail}" Margin="12,0"
+                                                   FontSize="11.5" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource Mono}" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource TextFaint}"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding AgeText}" FontSize="11.5"
+                                                   VerticalAlignment="Center" FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource TextFaint}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Alerts" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
+
+            <!-- Never silent about not being live (KON-250). Here it is not a failure: Alertmanager
+                 has no watch stream, and saying so beats a list that quietly never moves. -->
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- ── No Alertmanager: the empty state has to answer "where are my alerts" ───────── -->
+            <Border IsVisible="{Binding !HasAlerting}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{StaticResource Radius}" Padding="20,17">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Width="28" Height="28" CornerRadius="{StaticResource RadiusSm}"
+                            VerticalAlignment="Top" Background="{DynamicResource Surface2}">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Info}"
+                              Data="{StaticResource IconBell}" HorizontalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="13,0,0,0" Spacing="7">
+                        <TextBlock Text="No Alertmanager answered on this cluster" FontSize="13"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+
+                        <!-- A refused search is a different sentence from an absent Alertmanager,
+                             and the operator can act on only one of them (KON-206). -->
+                        <TextBlock Text="{Binding Refusal}" FontSize="12.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Warn}"
+                                   IsVisible="{Binding Refusal, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+                        <!-- Verbatim, straight out of the discovery code. A cluster running an
+                             Alertmanager under a name Kontena does not know has to be shown the gap
+                             rather than an empty list. -->
+                        <StackPanel Spacing="3" IsVisible="{Binding HasLookedFor}">
+                            <TextBlock Text="Kontena looked for:" FontSize="12.5"
+                                       Foreground="{DynamicResource TextDim}"/>
+                            <ItemsControl ItemsSource="{Binding LookedFor}" Margin="8,0,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Text="{Binding}" FontSize="12" TextWrapping="Wrap"
+                                                   FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource TextFaint}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding LookedInText}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextFaint}"/>
+                        </StackPanel>
+
+                        <!-- Which half is missing, said separately: the two capabilities degrade in
+                             directions that have nothing to do with each other (KON-205). -->
+                        <TextBlock Text="{Binding RulesNotice}" FontSize="12.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFaint}"/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0"
+                                    IsVisible="{Binding CanInstallWithHelm}">
+                            <Button Classes="primary" Command="{Binding InstallWithHelmCommand}"
+                                    Content="Install with Helm"/>
+                            <TextBlock FontSize="12.5" MaxWidth="430" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                                       Text="Opens the apply page with the kube-prometheus-stack chart filled in. Kontena does not ship its own copy — owning that chart would mean owning its upgrades."/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Answered, and nothing is wrong. Worth its own sentence: an empty list under a
+                 working Alertmanager means something quite different from the notice above. -->
+            <Border IsVisible="{Binding IsAllClear}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"
+                           Text="Nothing is firing, pending or silenced. Alertmanager answered — this is an all-clear, not a missing source."/>
+            </Border>
+
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No alerts match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+
+            <!-- ── The three sections ─────────────────────────────────────────────────────────
+                 Not a status column: firing is "go and look", pending is "not yet, and maybe
+                 never", silenced is "someone decided". A column would suggest you weigh them
+                 against each other. -->
+            <StackPanel Spacing="9" IsVisible="{Binding HasFiring}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Firing" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="{Binding FiringCaption}" FontSize="15" VerticalAlignment="Center"
+                               FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Firing}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AlertGroupRow">
+                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlertGroupTemplate}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <StackPanel Spacing="9" IsVisible="{Binding HasPending}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Pending" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="{Binding PendingCaption}" FontSize="15" VerticalAlignment="Center"
+                               FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
+                    <TextBlock Text="waiting out its for:" FontSize="12.5" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFaint}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Pending}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AlertGroupRow">
+                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlertGroupTemplate}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <StackPanel Spacing="9" IsVisible="{Binding HasSilenced}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Silenced" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="{Binding SilencedCaption}" FontSize="15" VerticalAlignment="Center"
+                               FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Silenced}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AlertGroupRow">
+                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AlertGroupTemplate}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>
