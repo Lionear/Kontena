@@ -46,7 +46,13 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 
     public abstract string SearchPlaceholder { get; }
 
-    public async Task LoadAsync()
+    /// <summary>
+    /// Virtual so a page can wrap every one of its own refreshes at once (KON-393). Manual refresh,
+    /// a watch event and a poll all arrive here, and a page that needs to say something about a
+    /// failed read wants to say it however the read was asked for — not only on the path its own
+    /// ticket happened to add.
+    /// </summary>
+    public virtual async Task LoadAsync()
     {
         var isFirstLoad = !HasLoaded;
         if (isFirstLoad)

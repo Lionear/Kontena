@@ -150,7 +150,7 @@
                 <!-- General -->
                 <StackPanel IsVisible="{Binding IsGeneral}" Spacing="0">
                     <TextBlock Text="General" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                    <TextBlock Text="Appearance, terminal and keyboard." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+                    <TextBlock Text="Appearance, alerts, terminal and keyboard." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
 
                     <TextBlock Classes="gh" Text="APPEARANCE"/>
                     <Border Classes="card" Padding="0" Margin="0,0,0,30">
@@ -207,6 +207,28 @@
                                                HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"/>
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Alerts (KON-393). Under General with the other preferences rather than in a
+                         section of its own: it is one choice, and the two cluster sections next door
+                         are provisioning tools, not settings. -->
+                    <TextBlock Classes="gh" Text="ALERTS" Margin="0,30,0,12"/>
+                    <Border Classes="card" Padding="0">
+                        <StackPanel>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Re-read the Alerts page" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Alertmanager has no watch stream, so the Alerts page cannot follow the cluster the way the other pages do."
+                                               FontSize="12" TextWrapping="Wrap" MaxWidth="470"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"/>
+                                    <TextBlock Text="{Binding AlertRefreshHint}" FontSize="12" TextWrapping="Wrap" MaxWidth="470"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextFaint}"/>
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
+                                          ItemsSource="{Binding AlertRefreshOptions}"
+                                          SelectedItem="{Binding AlertRefreshChoice, Mode=TwoWay}"/>
                             </Grid>
                         </StackPanel>
                     </Border>

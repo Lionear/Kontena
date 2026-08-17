@@ -260,9 +260,14 @@ public partial class MainWindowViewModel
             // knows a chart should be installed, not where the apply page lives (KON-204).
             // RequestConfirm because the Silenced section's Expire is the page's own delete-shaped
             // write, the same way nodes/workloads confirm their own (KON-208).
+            // The refresh interval is read off the store rather than the cached settings, for the
+            // reason CurrentTerminalFont gives: a change made in Settings should reach the next page
+            // you open, not the next launch. Cluster pages are rebuilt on every visit, so that is
+            // also the only moment it needs reading (KON-393).
             "alerts" => new ClusterAlertsViewModel(
                 _cluster, onInstallWithHelm: ShowMonitoringHelmInstall, onOpenDetail: ShowAlertDetail,
-                onNewRule: () => NavigateCluster("alert-rule"))
+                onNewRule: () => NavigateCluster("alert-rule"),
+                refreshEvery: AlertRefresh.Interval(_store.Load().AlertRefreshSeconds))
                 { RequestConfirm = ShowConfirm },
             // Not a nav item: it is an action off the Alerts page, and a permanent sidebar entry
             // called "New rule" would be a page you can be on without having asked for it (KON-210).
@@ -340,6 +345,13 @@ public partial class MainWindowViewModel
         // fires, not when the stream opens.
         if (CurrentPage is IClusterLivePage live)
             live.Changed = () => _ = RefreshClusterNavAsync();
+
+        // Except the Alerts page, whose refresh is a timer rather than a watch event (KON-393). What
+        // it can have changed beside itself is one number — the firing badge, off the same read — and
+        // rebuilding the whole sidebar every interval would put the namespace and workload listings
+        // on a loop, which is the cost KON-395 and KON-396 are open about.
+        if (CurrentPage is ClusterAlertsViewModel alerts)
+            alerts.Changed = () => _ = UpdateAlertCountAsync();
 
         // Only the open page's stream drives that callback, so the sidebar stops following the moment
         // you land somewhere that watches nothing — the Workloads dashboard, Config maps, Events. After
