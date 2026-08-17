@@ -235,17 +235,22 @@ public sealed class KubernetesClusterEngine
         return [.. (list.Items ?? []).Select(K8sMap.ToNamespace)];
     }
 
-    public async ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default)
+    public async ValueTask<IReadOnlyList<Node>> ListNodesAsync(
+        bool withPodCounts = true, CancellationToken ct = default)
     {
-        // All four know nothing of each other, so all four are started before any is awaited — and
-        // usage and capacity being in flight together is what lets the kubelet source serve both from
-        // one fan-out instead of two identical ones (KON-355).
+        // All of them know nothing of each other, so all are started before any is awaited — and usage
+        // and capacity being in flight together is what lets the kubelet source serve both from one
+        // fan-out instead of two identical ones (KON-355).
         var listTask = _client.CoreV1.ListNodeAsync(cancellationToken: ct);
         var usageTask = _metrics.GetNodeUsageAsync(ct).AsTask();
         var diskCapacityTask = _metrics.GetNodeDiskCapacityAsync(ct).AsTask();
 
-        // Pod counts come from the pod list, not the metrics source — they are always available.
-        var podsTask = _client.CoreV1.ListPodForAllNamespacesAsync(cancellationToken: ct);
+        // Pod counts come from the pod list, not the metrics source — they are always available. And
+        // they are the most expensive thing on this call by far: every pod on the cluster, for one
+        // integer per node, which only the nodes grid shows (KON-395).
+        var podsTask = withPodCounts
+            ? _client.CoreV1.ListPodForAllNamespacesAsync(cancellationToken: ct)
+            : Task.FromResult(new V1PodList());
 
         await Task.WhenAll(listTask, usageTask, diskCapacityTask, podsTask).ConfigureAwait(false);
 
@@ -425,6 +430,22 @@ public sealed class KubernetesClusterEngine
         return await ResourceTables
             .ListAsync(_client.HttpClient, _client.BaseUri, resource, kind, ns, ct)
             .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<int> CountAsync(
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+    {
+        // Same resolution as ListTableAsync, and for the same reason: the plural is the server's to
+        // name, and a cluster-scoped kind must not be asked for inside a namespace.
+        if (await _resources.ResolveAsync(kind, ct).ConfigureAwait(false) is { } resource &&
+            await ResourceCounts.TryCountAsync(_client.HttpClient, _client.BaseUri, resource, ns, ct)
+                .ConfigureAwait(false) is { } count)
+            return count;
+
+        // A server that will not answer in that shape still has to produce a number, and a rendered
+        // table is the cheapest thing left — cells rather than whole objects.
+        return (await ListTableAsync(kind, ns, ct).ConfigureAwait(false)).Rows.Count;
     }
 
     public async ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default)

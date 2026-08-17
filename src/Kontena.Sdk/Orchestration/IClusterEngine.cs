@@ -96,10 +96,35 @@ public interface IClusterEngine : IBackend
     ValueTask<ResourceTable> ListTableAsync(
         GroupVersionKind kind, string? ns = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// How many objects of <paramref name="kind"/> there are — for a caller that wants the number and
+    /// not the objects (KON-395).
+    /// <para>
+    /// The tiles on a cluster's overview are five integers, and reading them off full listings meant
+    /// pulling every pod, workload, service and namespace over the wire, deserialising all of it, and
+    /// then calling <c>.Count</c>. On a cluster with thousands of pods that is tens of megabytes per
+    /// redraw, and the page redraws on every settled watch burst.
+    /// </para>
+    /// <para>
+    /// The default here is the listing every caller used before this existed, so an adapter that has
+    /// no cheaper answer stays correct without implementing anything. An adapter whose server can
+    /// count without shipping the objects — Kubernetes can — is expected to override it.
+    /// </para>
+    /// </summary>
+    async ValueTask<int> CountAsync(GroupVersionKind kind, string? ns = null, CancellationToken ct = default) =>
+        (await ListTableAsync(kind, ns, ct).ConfigureAwait(false)).Rows.Count;
+
     // ── Typed listers (over the grids) ───────────────────────────────────────
 
     ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default);
-    ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default);
+
+    /// <param name="withPodCounts">
+    /// Whether <see cref="Node.ScheduledPods"/> has to be filled in. Its own parameter because on
+    /// Kubernetes it is a second, cluster-wide read — every pod on the cluster, grouped by node — and
+    /// the overview's node table does not show the number (KON-395). A caller that shows a pods
+    /// column asks for it; one that shows capacity and version does not pay for it.
+    /// </param>
+    ValueTask<IReadOnlyList<Node>> ListNodesAsync(bool withPodCounts = true, CancellationToken ct = default);
 
     /// <summary>List workloads, optionally filtered by kind and/or namespace.</summary>
     ValueTask<IReadOnlyList<Workload>> ListWorkloadsAsync(

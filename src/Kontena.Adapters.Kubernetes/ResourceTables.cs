@@ -59,7 +59,14 @@ internal static class ResourceTables
     /// produce a wrong request — it produces no request at all.
     /// </para>
     /// </summary>
-    internal static Uri RequestUri(Uri baseUri, ApiResourceInfo resource, string? ns, string? name = null)
+    /// <param name="query">
+    /// What to ask of a collection. Defaults to the Table projection's own needs; a caller with a
+    /// different question — <see cref="ResourceCounts"/> asks for one page and a remainder — passes
+    /// its own.
+    /// </param>
+    internal static Uri RequestUri(
+        Uri baseUri, ApiResourceInfo resource, string? ns, string? name = null,
+        string query = "includeObject=Metadata")
     {
         var root = string.IsNullOrEmpty(resource.Group)
             ? $"api/{resource.Version}"
@@ -72,9 +79,9 @@ internal static class ResourceTables
         // A base address without its trailing slash would swallow its last segment when combined.
         var rootUri = baseUri.AbsoluteUri.EndsWith('/') ? baseUri : new Uri(baseUri.AbsoluteUri + "/");
 
-        // The Table projection is a listing concern; asking for one object by name never wants it.
+        // A query is a listing concern; asking for one object by name never wants one.
         return new Uri(rootUri, string.IsNullOrEmpty(name)
-            ? path + "?includeObject=Metadata"
+            ? $"{path}?{query}"
             : $"{path}/{Uri.EscapeDataString(name)}");
     }
 

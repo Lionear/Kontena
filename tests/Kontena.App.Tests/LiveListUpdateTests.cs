@@ -273,6 +273,65 @@ public sealed class LiveListUpdateTests
         return done();
     }
 
+    /// <summary>
+    /// A page never spends more of the clock reloading than not (KON-395).
+    /// <para>
+    /// On a big cluster the events never stop, so the 400 ms settle is always already over by the time
+    /// a reload ends: the next one starts immediately, and the page reads the whole cluster back to
+    /// back for as long as it is open. Waiting out what the last reload cost makes the interval the
+    /// cluster's own size, without anything having to know how big it is.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_reload_that_costs_more_than_the_settle_buys_itself_that_much_quiet()
+    {
+        var cluster = new FakeClusterEngine();
+        var reload = TimeSpan.FromMilliseconds(600);
+        var started = new List<long>();
+        var ended = new List<long>();
+
+        using var stop = ClusterWatch.Follow(
+            cluster, [GroupVersionKind.Pod], null,
+            reload: async () =>
+            {
+                lock (started)
+                    started.Add(Environment.TickCount64);
+
+                await Task.Delay(reload);
+
+                lock (started)
+                    ended.Add(Environment.TickCount64);
+            },
+            onState: (_, _) => { })!;
+
+        // Something moving every 100 ms, which is a quiet day on a cluster of thousands of pods.
+        using var churn = new CancellationTokenSource();
+        var pod = new ResourceRef(GroupVersionKind.Pod, "app", "api-7d9c");
+        var events = Task.Run(async () =>
+        {
+            while (!churn.IsCancellationRequested)
+            {
+                cluster.EmitWatchEvent(new ResourceEvent { Type = WatchEventType.Modified, Resource = pod });
+                await Task.Delay(100, CancellationToken.None);
+            }
+        });
+
+        await Task.Delay(2500);
+        await churn.CancelAsync();
+        await events;
+        stop.Cancel();
+
+        lock (started)
+        {
+            Assert.True(started.Count >= 2, $"only {started.Count} reload(s) ran — the watch is not the thing being measured here");
+
+            // Settle plus the cost of the one before it. Without the pacing this gap is the settle
+            // alone, and the page is reloading 60% of the time it is open.
+            var gap = started[1] - ended[0];
+            Assert.True(gap > 700, $"the next reload started {gap} ms after the last one ended");
+        }
+    }
+
     [Fact]
     public void Leaving_the_page_stops_following()
     {
