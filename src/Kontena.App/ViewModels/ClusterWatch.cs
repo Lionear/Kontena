@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
@@ -147,7 +148,18 @@ internal static class ClusterWatch
                 // than after the reload means an event that lands *during* the reload still gets one.
                 signal.TryRead(out _);
 
+                var started = Stopwatch.GetTimestamp();
                 await reload();
+
+                // Never spend more of the clock reloading than not (KON-395). On a big cluster pod
+                // events never stop, so the settle window is always already over by the time a reload
+                // ends and the next one starts immediately — a page that reads the whole cluster for
+                // three seconds, forever, for a screen nobody is looking at any more. Waiting out what
+                // the last reload cost makes the interval the cluster's own size rather than a number
+                // guessed here, and needs nothing to know how big it is.
+                var cost = Stopwatch.GetElapsedTime(started);
+                if (cost > Settle)
+                    await Task.Delay(cost, ct);
             }
         }
         catch (OperationCanceledException)

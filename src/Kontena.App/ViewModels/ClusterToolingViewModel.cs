@@ -7,8 +7,47 @@ using Kontena.Core.Tooling;
 namespace Kontena.App.ViewModels;
 
 /// <summary>
-/// Settings › Local clusters — whether the tooling for building a cluster on this machine is here,
-/// and how to get it if not (KON-109).
+/// One heading on the tools page: which tools go together, and the reason they do (KON-266).
+/// </summary>
+/// <param name="Title">The heading itself, e.g. "Working with clusters".</param>
+/// <param name="Reason">Why these are grouped — and, for a group of tools you may not need, why
+/// missing is a fine answer.</param>
+/// <param name="Tools">The tools under it, in the order they are shown.</param>
+public sealed record ToolGroup(string Title, string Reason, IReadOnlyList<ExternalTool> Tools)
+{
+    /// <summary>
+    /// What Settings › Tools shows. Grouped by what you need the tool for rather than by who publishes
+    /// it: kubectl and helm are needed for every cluster, including a remote one with nothing local
+    /// about it, which is exactly why they no longer sit under Local clusters (KON-266).
+    /// </summary>
+    public static IReadOnlyList<ToolGroup> Default { get; } =
+    [
+        new("Working with clusters", "Needed for every cluster, local or remote.",
+            [KnownTools.Kubectl, KnownTools.Helm, KnownTools.Kustomize]),
+
+        new("Clusters on this machine", "Only if you build clusters here — missing is fine otherwise.",
+            [KnownTools.Kind, KnownTools.Minikube]),
+
+        // Podman is listed although Settings › Engines also talks about it: that page is about
+        // connecting to an engine, this one is about whether the command is on the machine at all
+        // (KON-255). Leaving it out is how its install hints for five package managers ended up
+        // reaching nobody.
+        new("Container engines", "kind and minikube can run their nodes on podman instead of Docker.",
+            [KnownTools.Podman]),
+    ];
+}
+
+/// <summary>The rows under one heading. Built once and patched in place, like the rows themselves.</summary>
+public sealed class ToolGroupViewModel(string title, string reason)
+{
+    public string Title { get; } = title;
+    public string Reason { get; } = reason;
+    public ObservableCollection<ClusterToolRowViewModel> Tools { get; } = [];
+}
+
+/// <summary>
+/// Settings › Tools — whether the external tools Kontena drives are on this machine, and how to get
+/// them if not (KON-109, moved out of Local clusters by KON-266).
 /// </summary>
 /// <remarks>
 /// Its own view model rather than another section on <see cref="SettingsViewModel"/>, which already
@@ -33,7 +72,7 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
         _store = store ?? new ManagedToolStore();
         _check = new ToolReadinessCheck(toolRunner, _store);
         _installer = new ToolInstaller(toolRunner, releases, _store);
-        _updates = new ToolUpdateCheck(releases ?? new GitHubToolReleaseSource(), _store);
+        _updates = new ToolUpdateCheck(releases ?? new ToolReleaseSources(), _store);
     }
 
     /// <summary>
@@ -45,7 +84,13 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
     /// <summary>Opens a documentation link in the browser; the shell owns that.</summary>
     public Action<string>? RequestOpenUrl { get; set; }
 
-    public ObservableCollection<ClusterToolRowViewModel> Tools { get; } = [];
+    /// <summary>Which tools this page shows, under which headings. A parameter so a test can narrow it.</summary>
+    public IReadOnlyList<ToolGroup> Catalog { get; init; } = ToolGroup.Default;
+
+    public ObservableCollection<ToolGroupViewModel> Groups { get; } = [];
+
+    /// <summary>Every row, headings ignored — what the update sweep walks.</summary>
+    public IEnumerable<ClusterToolRowViewModel> Tools => Groups.SelectMany(g => g.Tools);
 
     /// <summary>Lines from whatever is running now — an install, or a download's progress.</summary>
     public ObservableCollection<string> Output { get; } = [];
@@ -60,9 +105,6 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
 
     /// <summary>Where Kontena keeps copies it fetched itself — shown so it is never a mystery.</summary>
     public string ManagedRoot => _store.Root;
-
-    /// <summary>True once at least one tool can build a cluster.</summary>
-    public bool CanCreateCluster => Tools.Any(t => t.IsReady || t.IsOutdated);
 
     /// <summary>
     /// Re-check, as the button does: this is a fresh attempt, so a failure from the previous one stops
@@ -89,30 +131,31 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
 
         try
         {
-            var purposes = new Dictionary<string, string>(StringComparer.Ordinal)
+            foreach (var group in Catalog)
             {
-                ["kind"] = "Runs each node as a container. Fastest to create and throw away.",
-                ["minikube"] = "Runs a VM or container per cluster. More drivers, more knobs.",
-                ["kubectl"] = "Talks to the cluster once it is up.",
-            };
+                var readiness = await _check.CheckAllAsync(group.Tools);
 
-            var readiness = await _check.CheckAllAsync(
-                [KnownTools.Kind, KnownTools.Minikube, KnownTools.Kubectl]);
+                var rows = Groups.FirstOrDefault(g => g.Title == group.Title);
+                if (rows is null)
+                {
+                    rows = new ToolGroupViewModel(group.Title, group.Reason);
+                    Groups.Add(rows);
+                }
 
-            if (Tools.Count == 0)
-            {
-                foreach (var tool in readiness)
-                    Tools.Add(new ClusterToolRowViewModel(tool, this, purposes[tool.Tool.Executable]));
-            }
-            else
-            {
-                // Patch in place so a row does not blink out and back while it is being read.
-                for (var i = 0; i < readiness.Count && i < Tools.Count; i++)
-                    Tools[i].Update(readiness[i]);
+                if (rows.Tools.Count == 0)
+                {
+                    foreach (var tool in readiness)
+                        rows.Tools.Add(new ClusterToolRowViewModel(tool, this));
+                }
+                else
+                {
+                    // Patch in place so a row does not blink out and back while it is being read.
+                    for (var i = 0; i < readiness.Count && i < rows.Tools.Count; i++)
+                        rows.Tools[i].Update(readiness[i]);
+                }
             }
 
             HasLoaded = true;
-            OnPropertyChanged(nameof(CanCreateCluster));
         }
         finally
         {

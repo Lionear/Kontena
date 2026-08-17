@@ -18,6 +18,7 @@ public sealed class FakeEngine : IContainerEngine
     private readonly Dictionary<string, VolumeSummary> _volumes = [];
     private readonly Dictionary<string, NetworkSummary> _networks = [];
     private readonly List<CreateContainerRequest> _createdRequests = [];
+    private readonly List<string> _pushedReferences = [];
     private readonly Dictionary<string, IReadOnlyList<MountSpec>> _createdMounts = [];
     private int _idSeed = 1000;
     private readonly string _backend;
@@ -87,6 +88,12 @@ public sealed class FakeEngine : IContainerEngine
 
     /// <summary>Every request this fake was asked to create, in order. Read by migration tests.</summary>
     public IReadOnlyList<CreateContainerRequest> CreatedRequests => _createdRequests;
+
+    /// <summary>
+    /// Every reference this fake was asked to push, in order. The name a push goes out under is the one
+    /// thing about it that nothing downstream would notice was wrong (KON-387).
+    /// </summary>
+    public IReadOnlyList<string> PushedReferences => _pushedReferences;
 
     /// <summary>
     /// Name of a method that should throw instead of doing its work, e.g.
@@ -265,6 +272,29 @@ public sealed class FakeEngine : IContainerEngine
         yield return new PullProgress(reference, "Pull complete", total, total);
     }
 
+    /// <summary>
+    /// Narrates a push of an image that has to exist first: pushing a name nothing here answers to is the
+    /// mistake the demo backend should show, not paper over.
+    /// </summary>
+    public async IAsyncEnumerable<PushProgress> PushImageAsync(
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        FailIfAsked();
+        var image = RequireReference(reference);
+        _pushedReferences.Add(reference);
+
+        for (var step = 1; step <= 4; step++)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(5, ct).ConfigureAwait(false);
+            yield return new PushProgress(reference, $"Pushing layer {step}/4",
+                image.SizeBytes / 4 * step, image.SizeBytes);
+        }
+
+        yield return new PushProgress(reference, "Push complete", image.SizeBytes, image.SizeBytes);
+    }
+
     public async IAsyncEnumerable<BuildProgress> BuildImageAsync(
         BuildRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -310,10 +340,28 @@ public sealed class FakeEngine : IContainerEngine
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Adds a name, as the contract says, rather than renaming: a demo that made the old reference vanish
+    /// would teach the wrong thing about the one operation the user came here to try. <c>newTag</c> is a
+    /// full reference, so the registry part lands in <c>Repository</c> and only the tag in <c>Tag</c> —
+    /// the whole string in <c>Tag</c> is what made this look like it worked while showing nonsense.
+    /// <para>
+    /// The second name gets its own id, where a real engine would show both names against one. Two rows
+    /// with one id needs a store keyed by reference, and nothing in the app reads an image by digest.
+    /// </para>
+    /// </summary>
     public ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default)
     {
         var image = RequireImage(id);
-        _images[id] = image with { Tag = newTag };
+        var (repo, tag) = SplitReference(newTag);
+
+        // Tagging over a name that is already taken moves that name, exactly as the engines do.
+        var target = _images
+            .Where(kv => kv.Value.Repository == repo && kv.Value.Tag == tag)
+            .Select(kv => kv.Key)
+            .FirstOrDefault() ?? NextId();
+
+        _images[target] = image with { Id = target, Repository = repo, Tag = tag, InUse = false };
         return ValueTask.CompletedTask;
     }
 
@@ -656,6 +704,14 @@ public sealed class FakeEngine : IContainerEngine
         _images.TryGetValue(id, out var i)
             ? i
             : throw new ResourceNotFoundException($"image {id} not found.");
+
+    /// <summary>The image carrying <paramref name="reference"/> as one of its names.</summary>
+    private ImageSummary RequireReference(string reference)
+    {
+        var (repo, tag) = SplitReference(reference);
+        return _images.Values.FirstOrDefault(i => i.Repository == repo && i.Tag == tag)
+            ?? throw new ResourceNotFoundException($"image {reference} not found.");
+    }
 
     private NetworkSummary RequireNetwork(string id) =>
         _networks.TryGetValue(id, out var n)

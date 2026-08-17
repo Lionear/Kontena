@@ -108,6 +108,8 @@ public partial class ComposeUpViewModel : ViewModelBase, IDisposable
         _cts = new CancellationTokenSource();
         try
         {
+            Services.Diag.Action("compose up", request.ProjectName ?? file);
+
             await foreach (var progress in _engine.ComposeUpAsync(request, _cts.Token))
             {
                 Append(progress.Text);

@@ -313,6 +313,7 @@ public partial class SettingsViewModel : ViewModelBase
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
         _autoDetect = settings.AutoDetectEngines;
+        _diagnosticLogging = settings.DiagnosticLogging;
 
         // Read from the system, not from the file. Someone can delete the autostart entry by hand or
         // switch it off in their desktop's own settings, and then our record is stale — showing it
@@ -324,6 +325,15 @@ public partial class SettingsViewModel : ViewModelBase
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
+
+        // A stored value the picker does not offer joins the list rather than being snapped to the
+        // nearest option: the file can be edited by hand, and showing 45 seconds as 30 would be this
+        // page lying about what the Alerts page is actually doing.
+        _alertRefreshSeconds = settings.AlertRefreshSeconds;
+        _alertRefreshChoices = [.. AlertRefresh.Choices.Append(_alertRefreshSeconds).Distinct().Order()];
+        AlertRefreshOptions = [.. _alertRefreshChoices.Select(AlertRefresh.Label)];
+        _alertRefreshChoice = AlertRefresh.Label(_alertRefreshSeconds);
+
         RefreshShortcuts();
 
         // One control, not two: "which backend" and "how is it chosen" were separate settings that
@@ -370,12 +380,16 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsUpdates));
         OnPropertyChanged(nameof(IsRegistries));
         OnPropertyChanged(nameof(IsClusters));
+        OnPropertyChanged(nameof(IsTools));
 
         // Re-check on entry rather than on build: tooling can be installed in a terminal while the
         // page is open, and a stale "not installed" is the kind of wrong that makes people click
         // Install twice.
         if (Category == "clusters" && LocalClusters is { } clusters)
             _ = clusters.LoadAsync();
+
+        if (Category == "tools" && Tools is { } tools)
+            _ = tools.LoadAsync();
 
         // Read fresh on entry: a login can have been added by docker login, or revoked in the keychain,
         // since the page was built.
@@ -385,6 +399,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool IsRegistries => Category == "registries";
     public bool IsClusters => Category == "clusters";
+    public bool IsTools => Category == "tools";
     public bool IsRemoteClusters => Category == "remote-clusters";
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
@@ -394,7 +409,28 @@ public partial class SettingsViewModel : ViewModelBase
     /// Local clusters (KON-109, KON-76). An init property rather than a thirteenth constructor
     /// parameter — this page owns its own state and needs nothing from settings.
     /// </summary>
-    public LocalClustersViewModel? LocalClusters { get; init; }
+    public LocalClustersViewModel? LocalClusters
+    {
+        get => _localClusters;
+        init
+        {
+            _localClusters = value;
+
+            // Its pointer at Tools is a category switch, and the category lives here. Wired at
+            // assignment rather than by the shell: the shell would have to know this page's own
+            // vocabulary to do it.
+            if (value is not null)
+                value.RequestShowTools = () => Category = "tools";
+        }
+    }
+
+    private readonly LocalClustersViewModel? _localClusters;
+
+    /// <summary>
+    /// The external tools Kontena drives (KON-266). Its own section rather than a fold on Local
+    /// clusters: kubectl and helm are needed for every cluster, including remote ones.
+    /// </summary>
+    public ClusterToolingViewModel? Tools { get; init; }
 
     /// <summary>
     /// Rolling a cluster out onto your own machines (KON-379). Its own section rather than a tab on
@@ -428,6 +464,28 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnCompactDensityChanged(bool value)
     {
         DensityApplier.Apply(value);
+        Save();
+    }
+
+    // ── Diagnostics (KON-389) ───────────────────────────────────────────────
+
+    [ObservableProperty] private bool _diagnosticLogging;
+
+    /// <summary>Where the log is written, so the answer to "which file do I send you" is on screen.</summary>
+    public string DiagnosticLogPath { get; } = DiagLog.DefaultPath;
+
+    /// <summary>
+    /// Takes effect at once rather than at the next launch. Switching it on is nearly always the
+    /// answer to something happening now, and a diagnostic that starts recording tomorrow would miss
+    /// the session it was switched on for.
+    /// </summary>
+    partial void OnDiagnosticLoggingChanged(bool value)
+    {
+        if (value)
+            DiagLog.Open();
+        else
+            DiagLog.Close();
+
         Save();
     }
 
@@ -526,6 +584,37 @@ public partial class SettingsViewModel : ViewModelBase
         Save();
     }
 
+    // ── Alerts (KON-393) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The seconds behind each option, in the order they are offered. Held beside the labels rather
+    /// than parsed back out of them: "Every 5 minutes" is text for a person to read, and reading it
+    /// back would make the wording load-bearing.
+    /// </summary>
+    private readonly List<int> _alertRefreshChoices;
+
+    public ObservableCollection<string> AlertRefreshOptions { get; }
+
+    [ObservableProperty] private string _alertRefreshChoice;
+
+    private int _alertRefreshSeconds;
+
+    partial void OnAlertRefreshChoiceChanged(string value)
+    {
+        var index = AlertRefreshOptions.IndexOf(value);
+        if (index < 0)
+            return;
+
+        _alertRefreshSeconds = _alertRefreshChoices[index];
+        OnPropertyChanged(nameof(AlertRefreshHint));
+        Save();
+    }
+
+    /// <summary>What the choice costs, spelled out under the picker the way StartupHint is.</summary>
+    public string AlertRefreshHint => _alertRefreshSeconds <= 0
+        ? "The Alerts page is read when you open it and when you refresh it, and says how old what you see is."
+        : "Only while the Alerts page is open. Kontena never polls a cluster you are not looking at.";
+
     // ── Terminal ────────────────────────────────────────────────────────────
 
     public string[] FontFamilies { get; } =
@@ -583,6 +672,8 @@ public partial class SettingsViewModel : ViewModelBase
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,
             TerminalLigatures = TerminalLigatures,
+            AlertRefreshSeconds = _alertRefreshSeconds,
+            DiagnosticLogging = DiagnosticLogging,
             Shortcuts = _shortcutOverrides,
         });
     }

@@ -30,6 +30,26 @@ public class ProvisioningWizardViewModelTests
         return wizard;
     }
 
+    /// <summary>
+    /// A key file to point the credentials at, so they are usable without an SSH agent.
+    /// <para>
+    /// Naming no key leaves <see cref="ClusterCredentialsViewModel.AgentKeys"/> to answer, and that
+    /// reads <c>SSH_AUTH_SOCK</c> from the environment: no agent means "nothing to authenticate with",
+    /// the credentials step never passes, and every test that walks past it fails on the machine rather
+    /// than on the code. Which is what happened — green on macOS, red on the Linux and Windows runners
+    /// (KON-384). The contents do not matter; only that the path exists and is not a .pub half.
+    /// </para>
+    /// </summary>
+    private static readonly string KeyFile = WriteKeyFile();
+
+    private static string WriteKeyFile()
+    {
+        // Build output, so it is cleaned with everything else and never lands in a shared temp dir.
+        var path = Path.Combine(AppContext.BaseDirectory, "provisioning-wizard-tests.key");
+        File.WriteAllText(path, "");
+        return path;
+    }
+
     /// <summary>Fills in everything up to and including the credentials step.</summary>
     private static void FillIn(ProvisioningWizardViewModel wizard)
     {
@@ -40,6 +60,7 @@ public class ProvisioningWizardViewModelTests
         wizard.Hosts.Hosts[0].Role = ClusterHostRole.Controller;
 
         wizard.Credentials.User = "rick";
+        wizard.Credentials.KeyPath = KeyFile;
     }
 
     // ── The steps ────────────────────────────────────────────────────────────
@@ -255,6 +276,7 @@ public class ProvisioningWizardViewModelTests
 
         wizard.Name = "prod-eu-west";
         wizard.Credentials.User = "rick";
+        wizard.Credentials.KeyPath = KeyFile;
 
         foreach (var address in new[] { "10.0.0.1", "10.0.0.2" })
         {

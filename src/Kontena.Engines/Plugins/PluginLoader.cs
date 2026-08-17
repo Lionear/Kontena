@@ -128,7 +128,7 @@ public static class PluginLoader
 
     private static DiscoveredPlugin Load(string directory, PluginManifest manifest, string assemblyPath)
     {
-        var assembly = new PluginLoadContext(assemblyPath).LoadFromAssemblyPath(assemblyPath);
+        var assembly = new PluginLoadContext(assemblyPath).LoadWithoutLocking(assemblyPath);
 
         var types = assembly.GetExportedTypes()
             .Where(t => t is { IsAbstract: false, IsInterface: false })

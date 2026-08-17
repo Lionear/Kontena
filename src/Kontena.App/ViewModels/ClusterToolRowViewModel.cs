@@ -6,22 +6,21 @@ using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
-/// <summary>One tool on the Local clusters page: what state it is in and what can be done about it.</summary>
+/// <summary>One tool on the Tools page: what state it is in and what can be done about it.</summary>
 public sealed partial class ClusterToolRowViewModel : ObservableObject
 {
     private readonly ClusterToolingViewModel _parent;
     private ToolReadiness _readiness;
     private ToolUpdate? _update;
 
-    public ClusterToolRowViewModel(ToolReadiness readiness, ClusterToolingViewModel parent, string purpose)
+    public ClusterToolRowViewModel(ToolReadiness readiness, ClusterToolingViewModel parent)
     {
         _readiness = readiness;
         _parent = parent;
-        Purpose = purpose;
     }
 
-    /// <summary>What this tool is for, in the user's terms rather than the project's own blurb.</summary>
-    public string Purpose { get; }
+    /// <summary>What this tool is for. Carried by the tool itself, so a longer list cannot outrun it.</summary>
+    public string Purpose => _readiness.Tool.Purpose;
 
     public ExternalTool Tool => _readiness.Tool;
     public string Name => _readiness.Tool.Name;
@@ -131,11 +130,16 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
     public bool HasDocumentation => _readiness.Tool.DocumentationUrl is not null;
     public string DocumentationUrl => _readiness.Tool.DocumentationUrl ?? string.Empty;
 
-    /// <summary>What is lost by carrying on with a version that is too old.</summary>
+    /// <summary>
+    /// What is lost by carrying on with a version that is too old. The tool's own wording where it has
+    /// one — "the cluster settings it writes" is true of kind and minikube and nonsense for kubectl,
+    /// which Kontena never builds a cluster with.
+    /// </summary>
     public string OutdatedConsequence =>
-        $"Kontena needs {_readiness.Tool.MinimumVersion} or newer for the cluster settings it writes. " +
-        "On an older one those are ignored and the cluster comes up on the tool's own defaults; " +
-        "everything else works.";
+        _readiness.Tool.OutdatedConsequence
+        ?? $"Kontena needs {_readiness.Tool.MinimumVersion} or newer for the cluster settings it writes. " +
+           "On an older one those are ignored and the cluster comes up on the tool's own defaults; " +
+           "everything else works.";
 
     [RelayCommand]
     private Task Install() => _parent.InstallAsync(this, _readiness.Hint!);

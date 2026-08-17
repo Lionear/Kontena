@@ -176,7 +176,7 @@ public sealed partial class LocalClustersViewModel
         {
             Stage = LocalClustersStage.Failed;
             Error = ex.Message;
-            FailureHint = "The tool is gone since this page was opened. Re-check under Manage tooling.";
+            FailureHint = "The tool is gone since this page was opened. Re-check under Settings › Tools.";
         }
         finally
         {

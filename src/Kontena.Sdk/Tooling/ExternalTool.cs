@@ -25,6 +25,13 @@ public sealed record ExternalTool(
     public string? DocumentationUrl { get; init; }
 
     /// <summary>
+    /// What this tool is for, in the user's terms rather than the project's own blurb. Belongs to the
+    /// tool rather than to the page showing it: a tools page that looked its purpose up in a dictionary
+    /// of its own threw <see cref="KeyNotFoundException"/> the moment the list grew (KON-266).
+    /// </summary>
+    public string Purpose { get; init; } = string.Empty;
+
+    /// <summary>
     /// Where Kontena can fetch this tool itself, on a machine with no package manager. Null for tools
     /// Kontena will not download — which is most of them: this is only for the ones it drives to build
     /// something, and only where the publisher ships a checksum to verify against.
@@ -36,4 +43,11 @@ public sealed record ExternalTool(
     /// warning rather than a refusal — see <see cref="ToolReadiness"/>.
     /// </summary>
     public string? MinimumVersion { get; init; }
+
+    /// <summary>
+    /// What is actually lost by carrying on with a version older than <see cref="MinimumVersion"/>.
+    /// Per tool, because the answer is: kind and minikube ignore the cluster settings Kontena writes,
+    /// kubectl renders overlays by older rules. Null falls back to the general wording.
+    /// </summary>
+    public string? OutdatedConsequence { get; init; }
 }

@@ -131,6 +131,17 @@ public sealed record KontenaSettings
     /// <summary>Start Kontena at login (stored preference; wiring is platform-specific).</summary>
     public bool LaunchAtLogin { get; init; }
 
+    /// <summary>
+    /// Whether Kontena writes a diagnostic log — what was done and how much memory was held — to a
+    /// file, so a crash can be looked at after the fact (KON-389).
+    /// <para>
+    /// Off by default, and asked as a setting rather than left to <c>KONTENA_TRACE=1</c>: the run that
+    /// needs the log is the one nobody expected, and an environment variable can only be set by
+    /// someone who already knows a crash is coming.
+    /// </para>
+    /// </summary>
+    public bool DiagnosticLogging { get; init; }
+
     // ── Updates (KON-110) ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -319,6 +330,12 @@ public sealed record KontenaSettings
     /// <summary>Enable programming-font ligatures in the terminal.</summary>
     public bool TerminalLigatures { get; init; } = true;
 
+    /// <summary>
+    /// How often the Alerts page re-reads Alertmanager, in seconds, or 0 for not at all (KON-393).
+    /// See <see cref="AlertRefresh"/> for why off is a value in the same field rather than a second
+    /// flag beside it.
+    /// </summary>
+    public int AlertRefreshSeconds { get; init; } = AlertRefresh.DefaultSeconds;
 
     /// <summary>
     /// How wide the detail drawer is, in layout pixels (KON-307). Dragged rather than chosen in
@@ -349,6 +366,46 @@ public sealed record KontenaSettings
 
 /// <summary>Terminal font settings resolved for a session (family carries a mono fallback).</summary>
 public sealed record TerminalFont(string Family, double Size, bool Ligatures);
+
+/// <summary>
+/// How often the Alerts page re-reads itself (KON-393). Alertmanager has no watch stream, unlike
+/// every other cluster page's source, so the choice between "old but cheap" and "current but chatty"
+/// is the user's rather than ours.
+/// <para>
+/// One field, with off as the value 0, rather than a bool beside an interval. A toggle and a number
+/// can disagree — off at 30s, on at 0 — and both of those are states the page would have to have an
+/// answer for. Off is simply the first entry in the same picker.
+/// </para>
+/// </summary>
+public static class AlertRefresh
+{
+    /// <summary>What the picker offers, in seconds, off first.</summary>
+    public static readonly IReadOnlyList<int> Choices = [0, 15, 30, 60, 300];
+
+    /// <summary>On, at half a minute: this is a "what is wrong" screen, and three reads per cycle
+    /// against Alertmanager is not the cluster-wide list the OAL pages worry about (KON-395).</summary>
+    public const int DefaultSeconds = 30;
+
+    /// <summary>
+    /// The interval to actually poll at, or null for no polling. Clamped rather than trusted: this
+    /// value reaches us from a JSON file a person can edit, and a one-second poll against a shared
+    /// Alertmanager is a load nobody chose from the picker.
+    /// </summary>
+    public static TimeSpan? Interval(int seconds) =>
+        seconds <= 0 ? null : TimeSpan.FromSeconds(Math.Clamp(seconds, 5, 3600));
+
+    /// <summary>How a choice reads in the picker. Handles values outside <see cref="Choices"/>,
+    /// because a hand-edited file has to be shown as what it says rather than snapped to a nearby
+    /// option the user never picked.</summary>
+    public static string Label(int seconds) => seconds switch
+    {
+        <= 0 => "Off",
+        < 60 => $"Every {seconds} seconds",
+        60 => "Every minute",
+        _ when seconds % 60 == 0 => $"Every {seconds / 60} minutes",
+        _ => $"Every {seconds} seconds",
+    };
+}
 
 /// <summary>
 /// What the pod-detail usage charts can and cannot reach (KON-345).

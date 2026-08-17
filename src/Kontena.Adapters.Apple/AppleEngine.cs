@@ -525,6 +525,35 @@ internal sealed class AppleEngine(AppleCli cli, string backend, string displayNa
     }
 
     /// <summary>
+    /// Streams <c>container image push</c>, the counterpart to <see cref="PullImageAsync"/> — same
+    /// free-form lines on stderr, same reason <see cref="PushProgress.Current"/> and
+    /// <see cref="PushProgress.Total"/> stay <c>null</c>.
+    /// <para>
+    /// No <c>--progress plain</c> here, unlike the pull. That flag has been verified on
+    /// <c>image pull</c> and not on <c>image push</c>, and this CLI rejects a flag it does not know
+    /// rather than ignoring it — which would turn every push into an argument error. Without a terminal
+    /// the plain shape is what it prints anyway.
+    /// </para>
+    /// <para>
+    /// A <paramref name="credential"/> is refused for the same reason a pull's is
+    /// (<see cref="RegistryCredentialUnsupported"/>), which leaves push to a registry that accepts
+    /// anonymous writes.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<PushProgress> PushImageAsync(
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (credential is not null)
+            throw new NotSupportedException(RegistryCredentialUnsupported);
+
+        var lines = cli.StreamAsync(ct, "image", "push", reference);
+
+        await foreach (var line in lines.ConfigureAwait(false))
+            yield return new PushProgress(reference, line.Text, null, null);
+    }
+
+    /// <summary>
     /// Not available — see <see cref="RegistryCredentialUnsupported"/>. The CLI can log in, but only by
     /// keeping the credential, and this method exists precisely to check one without keeping it.
     /// </summary>

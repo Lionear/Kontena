@@ -169,6 +169,44 @@
                         </Grid>
                     </Border>
 
+                    <!-- What the pod runs, on the tab you land on (KON-390). The image was only in the
+                         table below, which for a one-container pod means reading a table for one fact.
+                         The labels sit beside it because they are what every Service selector in the
+                         namespace matches against. -->
+                    <StackPanel Spacing="10" IsVisible="{Binding HasImages}">
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding ImagesLabel}" Classes="colhead"/>
+                            <ItemsControl ItemsSource="{Binding Images}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                   Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip.Tip="{Binding}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding HasLabels}">
+                            <TextBlock Text="LABELS" Classes="colhead"/>
+                            <ItemsControl ItemsSource="{Binding Labels}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel ItemSpacing="6" LineSpacing="6"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="7,2">
+                                            <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                                       Foreground="{DynamicResource TextDim}"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+
                     <TextBlock Text="Containers" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
                     <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
                         <StackPanel>
@@ -215,6 +253,111 @@
                             </ItemsControl>
                         </StackPanel>
                     </Border>
+
+                    <!-- Config & secrets (KON-390) — which ConfigMaps and Secrets this pod reads, and
+                         how. Read off the pod's own spec, so the section costs no extra call; the keys
+                         behind each row do, which is why they are asked for rather than shown. -->
+                    <StackPanel Spacing="10" IsVisible="{Binding HasConfigRows}">
+                        <TextBlock Text="Config &amp; secrets" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <ItemsControl ItemsSource="{Binding ConfigRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PodConfigRow">
+                                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                            CornerRadius="{StaticResource Radius}" Padding="14,12" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                                                <Button Grid.Column="0" Classes="qa bare" Command="{Binding ToggleCommand}"
+                                                        Width="22" Height="22" Margin="-2,0,6,0" IsEnabled="{Binding !IsBusy}"
+                                                        VerticalAlignment="Center" IsVisible="{Binding !IsExpanded}"
+                                                        ToolTip.Tip="Show this object's keys">
+                                                    <Path Classes="icon" Width="13" Height="13" Data="{StaticResource IconChevronRight}"/>
+                                                </Button>
+                                                <Button Grid.Column="0" Classes="qa bare" Command="{Binding ToggleCommand}"
+                                                        Width="22" Height="22" Margin="-2,0,6,0" IsEnabled="{Binding !IsBusy}"
+                                                        VerticalAlignment="Center" IsVisible="{Binding IsExpanded}"
+                                                        ToolTip.Tip="Hide this object's keys">
+                                                    <Path Classes="icon" Width="13" Height="13" Data="{StaticResource IconChevronDown}"/>
+                                                </Button>
+
+                                                <Border Grid.Column="1" Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}"
+                                                        Padding="7,2" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                    <TextBlock Text="{Binding KindLabel}" FontSize="10.5" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextDim}"/>
+                                                </Border>
+
+                                                <TextBlock Grid.Column="2" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                           Foreground="{DynamicResource Text}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding Name}"/>
+
+                                                <!-- The how, not just the what: a mounted object stops the next pod
+                                                     from starting, a single environment key may only surface far
+                                                     later and deep inside the app. -->
+                                                <TextBlock Grid.Column="3" Text="{Binding UsageText}" FontSize="12"
+                                                           Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                            </Grid>
+
+                                            <ItemsControl ItemsSource="{Binding Keys}" IsVisible="{Binding HasKeys}" Margin="0,10,0,0">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:ConfigKeyRow">
+                                                        <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource BorderSoft}"
+                                                                BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="10,8" Margin="0,0,0,6">
+                                                            <StackPanel>
+                                                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"
+                                                                               TextTrimming="CharacterEllipsis" Margin="0,0,14,0"/>
+                                                                    <TextBlock Grid.Column="1" Text="{Binding Size}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                                    <!-- An eye rather than the "Show"/"Hide" pill the config
+                                                                         page uses: this row is inside a card inside a tab, and
+                                                                         the glyph carries the state in the width a word cannot.
+                                                                         Its tooltip is its accessible name, so it says which of
+                                                                         the two pressing it does (KON-56). -->
+                                                                    <Button Grid.Column="2" Classes="qa" Classes.on="{Binding IsRevealed}"
+                                                                            Command="{Binding ToggleCommand}" IsEnabled="{Binding !IsBusy}"
+                                                                            IsVisible="{Binding IsSecret}" Width="26" Height="26"
+                                                                            ToolTip.Tip="{Binding RevealTip}">
+                                                                        <Panel>
+                                                                            <Path Classes="icon" Width="14" Height="14" IsVisible="{Binding !IsRevealed}"
+                                                                                  Data="{StaticResource IconEye}"/>
+                                                                            <Path Classes="icon" Width="14" Height="14" IsVisible="{Binding IsRevealed}"
+                                                                                  Data="{StaticResource IconEyeOff}"/>
+                                                                        </Panel>
+                                                                    </Button>
+                                                                </Grid>
+
+                                                                <!-- On screen only while revealed: hiding drops the value
+                                                                     rather than folding it away. -->
+                                                                <StackPanel IsVisible="{Binding IsRevealed}" Margin="0,8,0,0">
+                                                                    <SelectableTextBlock Text="{Binding Value}" IsVisible="{Binding !IsBinary}"
+                                                                                         FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                                         Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                                                    <!-- Bytes are never drawn as characters: half a TLS key
+                                                                         rendered as text is noise, and it is not what the
+                                                                         value is. -->
+                                                                    <TextBlock Text="{Binding BinaryNotice}" IsVisible="{Binding IsBinary}"
+                                                                               FontSize="12.5" FontStyle="Italic" Foreground="{DynamicResource TextDim}"/>
+                                                                </StackPanel>
+                                                                <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}" Margin="0,8,0,0"
+                                                                           FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- Open and holding nothing is valid, and worth saying rather than
+                                                 unfolding onto a blank row. -->
+                                            <TextBlock Text="This object holds no keys." IsVisible="{Binding IsEmpty}" Margin="0,10,0,0"
+                                                       FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+                                            <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}" Margin="0,10,0,0"
+                                                       FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
 

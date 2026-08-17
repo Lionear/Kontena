@@ -123,6 +123,7 @@ public partial class ClusterNodesViewModel : ClusterListPageViewModel<NodeCardRo
     {
         try
         {
+            Services.Diag.Action(cordoned ? "cordon node" : "uncordon node", node);
             await _cluster.CordonNodeAsync(node, cordoned);
             await LoadAsync();
         }
@@ -190,6 +191,8 @@ public partial class ClusterNodesViewModel : ClusterListPageViewModel<NodeCardRo
                 Source = $"metrics-server {MetricsServerInstall.Version}",
                 Namespace = "kube-system",
             };
+
+            Services.Diag.Action("install metrics-server", MetricsServerInstall.Version);
 
             await foreach (var step in _cluster.ApplyAsync(bundle))
             {

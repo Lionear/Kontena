@@ -10,11 +10,8 @@ namespace Kontena.App.ViewModels;
 /// </summary>
 public static class WorkloadNavGroups
 {
-    /// <summary>One sub-entry: a kind and how many of it exist.</summary>
-    public readonly record struct Group(WorkloadKind Kind, int Count);
-
     /// <summary>
-    /// The sub-entries for this set of workloads.
+    /// Which kinds this set of workloads has a sub-entry for.
     /// <para>
     /// Only kinds that exist get one. A cluster running three Deployments and nothing else would
     /// otherwise carry four permanently-empty rows, and an empty nav item is a place the user learns
@@ -22,28 +19,30 @@ public static class WorkloadNavGroups
     /// </para>
     /// <para>
     /// Ordered by the enum rather than by count, so the sidebar does not reshuffle itself under the
-    /// pointer when a Job finishes.
+    /// pointer when a Job finishes. The same order <c>IClusterEngine.ListWorkloadKindsAsync</c>
+    /// promises, which is where the sidebar gets its answer from now (KON-396); this overload is for
+    /// the callers that are holding the objects anyway.
+    /// </para>
+    /// <para>
+    /// Kinds rather than kinds-and-counts. The counts went off the sidebar with every other badge
+    /// (KON-354), and once nothing drew them, carrying them here was the reason the cheap question
+    /// could only be answered by the expensive read.
     /// </para>
     /// </summary>
-    public static IReadOnlyList<Group> For(IEnumerable<Workload> workloads)
+    public static IReadOnlyList<WorkloadKind> KindsIn(IEnumerable<Workload> workloads)
     {
-        var byKind = workloads
-            .GroupBy(w => w.Kind)
-            .ToDictionary(g => g.Key, g => g.Count());
+        ArgumentNullException.ThrowIfNull(workloads);
 
-        return
-        [
-            .. Enum.GetValues<WorkloadKind>()
-                .Where(byKind.ContainsKey)
-                .Select(kind => new Group(kind, byKind[kind])),
-        ];
+        var present = workloads.Select(w => w.Kind).ToHashSet();
+
+        return [.. Enum.GetValues<WorkloadKind>().Where(present.Contains)];
     }
 
     /// <summary>
     /// Whether the group is worth drawing at all. One kind needs no submenu: the parent already lists
     /// exactly those objects, so a single child under it is a row that says the same thing twice.
     /// </summary>
-    public static bool ShouldGroup(IReadOnlyList<Group> groups) => groups.Count > 1;
+    public static bool ShouldGroup(IReadOnlyList<WorkloadKind> kinds) => kinds.Count > 1;
 
     /// <summary>The nav key for a kind — "workloads:Deployment".</summary>
     public static string KeyFor(WorkloadKind kind) => "workloads:" + kind;
@@ -58,11 +57,11 @@ public static class WorkloadNavGroups
     /// empty list under a sidebar entry that is about to be removed. Falling back to Workloads is the
     /// nearest page that is still about something.
     /// </summary>
-    public static string ResolveKey(string key, IReadOnlyList<Group> groups)
+    public static string ResolveKey(string key, IReadOnlyList<WorkloadKind> kinds)
     {
-        ArgumentNullException.ThrowIfNull(groups);
+        ArgumentNullException.ThrowIfNull(kinds);
 
-        return KindOf(key) is { } kind && !groups.Any(g => g.Kind == kind) ? "workloads" : key;
+        return KindOf(key) is { } kind && !kinds.Contains(kind) ? "workloads" : key;
     }
 
     /// <summary>The kind a nav key addresses, or null when the key is not a per-kind workloads page.</summary>

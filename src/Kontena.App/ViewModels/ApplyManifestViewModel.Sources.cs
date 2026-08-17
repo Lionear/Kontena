@@ -139,8 +139,13 @@ public partial class ApplyManifestViewModel
     [RelayCommand]
     private async Task LoadReposAsync()
     {
+        // Read first, replace after: two loads can be in flight at once — picking the Helm source
+        // starts one and the hand-off's repo add finishes with another (KON-397) — and clearing
+        // before the await lets the slower one append to a list the faster one already filled.
+        var repos = await HelmRepos.ListAsync();
+
         Repos.Clear();
-        foreach (var repo in await HelmRepos.ListAsync())
+        foreach (var repo in repos)
             Repos.Add(repo);
 
         OnPropertyChanged(nameof(HasRepos));
@@ -165,8 +170,12 @@ public partial class ApplyManifestViewModel
         IsBrowsingCharts = true;
         try
         {
+            // Same reason LoadReposAsync reads before it clears: concurrent searches would
+            // otherwise show every hit twice.
+            var charts = await HelmRepos.SearchAsync(ChartSearch);
+
             Charts.Clear();
-            foreach (var chart in await HelmRepos.SearchAsync(ChartSearch))
+            foreach (var chart in charts)
                 Charts.Add(chart);
 
             RepoStatus = Charts.Count == 0 && Repos.Count > 0
@@ -198,13 +207,33 @@ public partial class ApplyManifestViewModel
     [RelayCommand]
     private async Task AddRepoAsync()
     {
-        RepoStatus = await HelmRepos.AddAsync(NewRepoName, NewRepoUrl);
-        if (RepoStatus is not null)
+        if (!await UseRepoAsync(NewRepoName, NewRepoUrl))
             return;
 
         NewRepoName = string.Empty;
         NewRepoUrl = string.Empty;
+    }
+
+    /// <summary>
+    /// Add a repository and reload the list. Returns whether helm accepted it; the complaint, if
+    /// any, is left in <see cref="RepoStatus"/>.
+    /// <para>
+    /// Public because a hand-off that fills in a <c>repo/chart</c> reference has to add the repo it
+    /// names, or the chart resolves to nothing (KON-397). It is safe to call for a repository the
+    /// user already has: <c>helm repo add --force-update</c> takes a known name as success, whatever
+    /// URL it was configured with.
+    /// </para>
+    /// </summary>
+    public async Task<bool> UseRepoAsync(string name, string url)
+    {
+        RepoStatus = await HelmRepos.AddAsync(name, url);
+        if (RepoStatus is not null)
+            return false;
+
+        // The verdict is the return value rather than RepoStatus: reloading searches the
+        // repositories, and a search that matches nothing writes its own note over that line.
         await LoadReposAsync();
+        return true;
     }
 
     [RelayCommand]

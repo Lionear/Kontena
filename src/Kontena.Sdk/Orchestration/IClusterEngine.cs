@@ -96,14 +96,56 @@ public interface IClusterEngine : IBackend
     ValueTask<ResourceTable> ListTableAsync(
         GroupVersionKind kind, string? ns = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// How many objects of <paramref name="kind"/> there are — for a caller that wants the number and
+    /// not the objects (KON-395).
+    /// <para>
+    /// The tiles on a cluster's overview are five integers, and reading them off full listings meant
+    /// pulling every pod, workload, service and namespace over the wire, deserialising all of it, and
+    /// then calling <c>.Count</c>. On a cluster with thousands of pods that is tens of megabytes per
+    /// redraw, and the page redraws on every settled watch burst.
+    /// </para>
+    /// <para>
+    /// The default here is the listing every caller used before this existed, so an adapter that has
+    /// no cheaper answer stays correct without implementing anything. An adapter whose server can
+    /// count without shipping the objects — Kubernetes can — is expected to override it.
+    /// </para>
+    /// </summary>
+    async ValueTask<int> CountAsync(GroupVersionKind kind, string? ns = null, CancellationToken ct = default) =>
+        (await ListTableAsync(kind, ns, ct).ConfigureAwait(false)).Rows.Count;
+
     // ── Typed listers (over the grids) ───────────────────────────────────────
 
     ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default);
-    ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default);
+
+    /// <param name="withPodCounts">
+    /// Whether <see cref="Node.ScheduledPods"/> has to be filled in. Its own parameter because on
+    /// Kubernetes it is a second, cluster-wide read — every pod on the cluster, grouped by node — and
+    /// the overview's node table does not show the number (KON-395). A caller that shows a pods
+    /// column asks for it; one that shows capacity and version does not pay for it.
+    /// </param>
+    ValueTask<IReadOnlyList<Node>> ListNodesAsync(bool withPodCounts = true, CancellationToken ct = default);
 
     /// <summary>List workloads, optionally filtered by kind and/or namespace.</summary>
     ValueTask<IReadOnlyList<Workload>> ListWorkloadsAsync(
         WorkloadKind? kind = null, string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Which workload kinds exist here, in <see cref="WorkloadKind"/> order (KON-396).
+    /// <para>
+    /// Separate from <see cref="ListWorkloadsAsync"/> because it is a different question, and asking
+    /// the expensive one to answer the cheap one is what made every cluster navigation cost the
+    /// largest read in the app. The sidebar's per-kind submenu wants to know <i>whether</i> a kind is
+    /// there, never which objects — and on a cluster that runs CronJobs, the finished Jobs it was
+    /// downloading to find that out are the biggest list anywhere in the product.
+    /// </para>
+    /// <para>
+    /// An implementation is expected to answer without fetching the objects: one object per kind is
+    /// already one more than the question needs.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<WorkloadKind>> ListWorkloadKindsAsync(
+        string? ns = null, CancellationToken ct = default);
 
     ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);

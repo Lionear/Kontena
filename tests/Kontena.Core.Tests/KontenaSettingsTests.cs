@@ -326,4 +326,33 @@ public class KontenaSettingsTests
         var json = JsonSerializer.Serialize(new KontenaSettings { Theme = ThemePreference.Light }, Options);
         Assert.Contains("\"Light\"", json);
     }
+
+    [Fact]
+    public void Off_is_a_value_of_the_alert_refresh_interval_not_a_flag_beside_it()
+    {
+        // A bool and an interval can contradict each other; one field cannot (KON-393).
+        Assert.Null(AlertRefresh.Interval(0));
+        Assert.Null(AlertRefresh.Interval(-1));
+        Assert.Equal(TimeSpan.FromSeconds(30), AlertRefresh.Interval(30));
+        Assert.Equal("Off", AlertRefresh.Label(0));
+
+        Assert.Equal(AlertRefresh.DefaultSeconds, new KontenaSettings().AlertRefreshSeconds);
+        Assert.Contains(AlertRefresh.DefaultSeconds, AlertRefresh.Choices);
+        Assert.Equal(0, AlertRefresh.Choices[0]);
+    }
+
+    [Fact]
+    public void A_hand_edited_interval_is_clamped_rather_than_trusted()
+    {
+        // The file is JSON a person can open, and this value becomes a poll against somebody's
+        // Alertmanager. One second is not on the picker, so it is not an answer we honour.
+        Assert.Equal(TimeSpan.FromSeconds(5), AlertRefresh.Interval(1));
+        Assert.Equal(TimeSpan.FromHours(1), AlertRefresh.Interval(86_400));
+
+        // Shown as what it says, though — snapping 45 to 30 in the picker would have Settings claim
+        // something the Alerts page is not doing.
+        Assert.Equal("Every 45 seconds", AlertRefresh.Label(45));
+        Assert.Equal("Every minute", AlertRefresh.Label(60));
+        Assert.Equal("Every 5 minutes", AlertRefresh.Label(300));
+    }
 }

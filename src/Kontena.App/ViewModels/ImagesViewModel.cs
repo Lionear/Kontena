@@ -23,6 +23,9 @@ public sealed partial class ImagesViewModel : ListPageViewModel<ImageRowViewMode
     /// <summary>Raised when the Build image button is clicked; the shell shows the Build modal.</summary>
     public Action? RequestBuildImage { get; set; }
 
+    /// <summary>Raised by a row's Tag and push action; the shell shows the modal for that image (KON-387).</summary>
+    public Action<ImageRowViewModel>? RequestTagPushImage { get; set; }
+
     [RelayCommand]
     private void BuildImage() => RequestBuildImage?.Invoke();
 

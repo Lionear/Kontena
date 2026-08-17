@@ -95,12 +95,16 @@
             </Grid>
             <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
 
-            <!-- Never silent about not being live (KON-250). Here it is not a failure: Alertmanager
-                 has no watch stream, and saying so beats a list that quietly never moves. -->
+            <!-- Never silent about not being live (KON-250). Usually not a failure: Alertmanager has
+                 no watch stream, and saying how often Kontena re-reads beats a list that quietly
+                 never moves. A refresh that failed goes in the same sentence and turns it amber, so
+                 there is one place to look for "is what I am reading current" (KON-393). -->
             <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
-                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    Background="{DynamicResource Surface}"
+                    BorderBrush="{Binding NoticeBorderBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"
                     BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
-                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" TextWrapping="Wrap"
+                           Foreground="{Binding NoticeBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"/>
             </Border>
 
             <!-- ── No Alertmanager: the empty state has to answer "where are my alerts" ───────── -->

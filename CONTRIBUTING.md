@@ -46,6 +46,12 @@ it keeps a one-person project alive.
    `KONTENA_TRACE=1` prints a timestamped trace of startup, connecting and navigation to stderr, and
    reports every stall longer than 100 ms on the thread that draws the window — which is what "feels
    slow" usually turns out to be. Quote the before and after in the PR.
+   *Settings › Diagnostics › Write a diagnostic log* is the same trace written to a file instead, plus
+   the actions taken and a memory reading every half minute. It is the user-facing half of one
+   mechanism: a mark added with `Diag.Mark` or `Diag.Action` reaches both. Nothing secret may be
+   passed to either — not a credential, a kubeconfig, a manifest, an environment variable, a command
+   line or an exception message. `DiagLog` strips what looks credential-shaped anyway, but that is a
+   backstop and not a licence.
 4. **Respect the backend boundary.** A new backend is **not** a change to the host — the UI and
    business logic only ever talk to an abstraction layer: `IContainerEngine` for container engines
    (the CEAL) or `IClusterEngine` for orchestrators (the OAL). Both live in `Kontena.Sdk`, along with

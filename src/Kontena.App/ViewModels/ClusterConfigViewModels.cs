@@ -237,6 +237,14 @@ public sealed partial class ConfigKeyRow : ObservableObject
     [ObservableProperty] private bool _isRevealed;
     [ObservableProperty] private bool _isBusy;
 
+    partial void OnIsRevealedChanged(bool value) => OnPropertyChanged(nameof(RevealTip));
+
+    /// <summary>
+    /// The tooltip of an icon-only reveal button, which is also its accessible name (KON-56) — so it
+    /// has to say which of the two pressing it does, not what the row is showing (KON-390).
+    /// </summary>
+    public string RevealTip => IsRevealed ? "Hide the value" : "Show the value";
+
     /// <summary>Set when the value is bytes rather than text — a certificate, a keystore, an archive.</summary>
     [ObservableProperty] private bool _isBinary;
 

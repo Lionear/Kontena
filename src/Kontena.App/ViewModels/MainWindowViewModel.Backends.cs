@@ -587,6 +587,7 @@ public partial class MainWindowViewModel
         Containers?.StopWatching();
         _activityLog.Detach();
         await StopPortForwardsAsync();
+        StopFollowingNamespaces();
         (_engine as IDisposable)?.Dispose();
         (_cluster as IDisposable)?.Dispose();
         _engine = null;
@@ -597,6 +598,12 @@ public partial class MainWindowViewModel
 
         var backend = provider.CreateBackend();
         _activeBackend = provider.Backend;
+
+        // The id rather than the display name: it is what a log line has to carry to say which
+        // cluster an action landed on, and a name is the user's to change (KON-389).
+        Diag.Context = provider.Backend;
+        Diag.Action("open backend", provider.Backend);
+
         EngineName = NameOf(provider);
         EngineChip = BackendChipInfo.For(provider);
 
@@ -683,6 +690,7 @@ public partial class MainWindowViewModel
         {
             RequestPullImage = ShowPullDialog,
             RequestBuildImage = ShowBuildDialog,
+            RequestTagPushImage = ShowTagPushDialog,
             RequestConfirm = ShowConfirm,
         };
         Volumes = new VolumesViewModel(_engine)
@@ -790,7 +798,12 @@ public partial class MainWindowViewModel
         // and there is no page yet. Announced below, once the picker behind it holds real names.
         _selectedNamespace = AllNamespaces;
 
-        // Fills both the picker and the Workloads submenu, in one round.
+        // The picker's one read. From here it is kept in step by its own watch rather than by being
+        // re-read in front of every navigation (KON-396) — so this is the read, not the first of many.
+        await ReadNamespacesAsync();
+        FollowNamespaces();
+
+        // Fills the Workloads submenu.
         await UpdateClusterNavAsync();
         OnPropertyChanged(nameof(SelectedNamespace));
 
@@ -890,6 +903,14 @@ public partial class MainWindowViewModel
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
             LocalClusters = _localClusters ??= BuildLocalClustersPage(),
+
+            // Tools (KON-266), kept for the same reason: a download in flight must not be thrown away
+            // because something unrelated rebuilt settings.
+            Tools = _tools ??= new ClusterToolingViewModel
+            {
+                RequestOpenUrl = Browser.OpenUrl,
+                RequestConfirm = ShowConfirm,
+            },
             RemoteClusters = _remoteClusters ??= BuildProvisioningWizard(),
 
             // A changed shortcut has to reach the window's binding collection, or it would only take
@@ -914,12 +935,7 @@ public partial class MainWindowViewModel
     /// they are reading and leave the running create writing into a view model nobody can see.
     /// </para>
     /// </summary>
-    private LocalClustersViewModel BuildLocalClustersPage() => new(
-        tooling: new ClusterToolingViewModel
-        {
-            RequestOpenUrl = Browser.OpenUrl,
-            RequestConfirm = ShowConfirm,
-        })
+    private LocalClustersViewModel BuildLocalClustersPage() => new()
     {
         RequestConfirm = ShowConfirm,
 

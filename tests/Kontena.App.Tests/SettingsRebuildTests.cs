@@ -87,4 +87,33 @@ public sealed class SettingsRebuildTests : IDisposable
         Assert.NotNull(page);
         Assert.Same(page, vm.SettingsPage!.LocalClusters);
     }
+
+    /// <summary>An install must survive a rebuild for the same reason a create does (KON-266).</summary>
+    [Fact]
+    public async Task The_tools_page_is_the_same_one_after_a_rebuild()
+    {
+        var vm = await ShellAsync();
+        var page = vm.SettingsPage!.Tools;
+
+        await RebuildAsync(vm);
+
+        Assert.NotNull(page);
+        Assert.Same(page, vm.SettingsPage!.Tools);
+    }
+
+    /// <summary>
+    /// Local clusters points at Tools rather than housing a second copy of it (KON-266). The pointer
+    /// is a category switch owned by the settings page, so this is what says it is wired at all.
+    /// </summary>
+    [Fact]
+    public async Task Local_clusters_can_open_the_tools_page()
+    {
+        var vm = await ShellAsync();
+        vm.SettingsPage!.SelectCategoryCommand.Execute("clusters");
+
+        vm.SettingsPage.LocalClusters!.ShowToolsCommand.Execute(null);
+
+        Assert.Equal("tools", vm.SettingsPage.Category);
+        Assert.True(vm.SettingsPage.IsTools);
+    }
 }

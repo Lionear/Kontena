@@ -198,14 +198,37 @@ public sealed class FakeAlertSource : IAlertSource
 
     public string Name => "alertmanager";
 
-    public ValueTask<IReadOnlyList<Alert>> ListAlertsAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Alert>>([.. _alerts]);
+    /// <summary>
+    /// Why the three reads should fail, or null for a source that answers (KON-393). A real
+    /// Alertmanager is reached over HTTP and can simply stop answering — which is the one degradation
+    /// the alerts page cannot show off a capability flag, because the flag was true when it was
+    /// probed. Set it mid-test to fail a refresh over rows that are already on screen.
+    /// </summary>
+    public string? FailReadsWith { get; set; }
+
+    /// <summary>
+    /// How many times the alert list has been read. What a poll is visible in: a page that re-reads
+    /// on a timer has no other observable effect on a seed that does not change.
+    /// </summary>
+    public int AlertReads { get; private set; }
+
+    public ValueTask<IReadOnlyList<Alert>> ListAlertsAsync(CancellationToken ct = default)
+    {
+        AlertReads++;
+        return FailReadsWith is { } why
+            ? ValueTask.FromException<IReadOnlyList<Alert>>(new InvalidOperationException(why))
+            : ValueTask.FromResult<IReadOnlyList<Alert>>([.. _alerts]);
+    }
 
     public ValueTask<IReadOnlyList<AlertRule>> ListRulesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<AlertRule>>([.. _rules]);
+        FailReadsWith is { } why
+            ? ValueTask.FromException<IReadOnlyList<AlertRule>>(new InvalidOperationException(why))
+            : ValueTask.FromResult<IReadOnlyList<AlertRule>>([.. _rules]);
 
     public ValueTask<IReadOnlyList<Silence>> ListSilencesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Silence>>([.. _silences]);
+        FailReadsWith is { } why
+            ? ValueTask.FromException<IReadOnlyList<Silence>>(new InvalidOperationException(why))
+            : ValueTask.FromResult<IReadOnlyList<Silence>>([.. _silences]);
 
     public ValueTask<string> CreateSilenceAsync(SilenceRequest request, CancellationToken ct = default)
     {

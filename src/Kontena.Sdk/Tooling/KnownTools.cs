@@ -24,10 +24,11 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://kind.sigs.k8s.io/docs/user/quick-start/#installation",
+        Purpose = "Runs each node as a container. Fastest to create and throw away.",
 
         // kind's Windows asset has no .exe suffix, and its checksum files end in .sha256sum. Both
         // differ from minikube below; guessing either produces a 404 rather than a wrong file.
-        Release = new ToolReleaseSpec("kubernetes-sigs/kind", "kind-{os}-{arch}", ".sha256sum"),
+        Release = new GitHubReleaseSpec("kubernetes-sigs/kind", "kind-{os}-{arch}", ".sha256sum"),
 
         // 0.20 is where `kind create cluster --config` gained the node-image handling Kontena writes.
         MinimumVersion = "0.20",
@@ -44,10 +45,11 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://docs.k0sproject.io/stable/k0sctl-install/",
+        Purpose = "Installs k0s on machines you already have — the rollout under Settings › Roll out a cluster.",
 
         // Its Windows asset carries .exe and the checksums are one file per release, same shape as
         // minikube's rather than kind's. Scoop has no k0sctl manifest, so it is not offered.
-        Release = new ToolReleaseSpec(
+        Release = new GitHubReleaseSpec(
             "k0sproject/k0sctl", "k0sctl-{os}-{arch}", ".sha256", ExeOnWindows: true),
 
         // 0.17 is where the apiVersion this writes (v1beta1) settled with the k0s config nesting
@@ -67,7 +69,8 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://minikube.sigs.k8s.io/docs/start/",
-        Release = new ToolReleaseSpec(
+        Purpose = "Runs a VM or container per cluster. More drivers, more knobs.",
+        Release = new GitHubReleaseSpec(
             "kubernetes/minikube", "minikube-{os}-{arch}", ".sha256", ExeOnWindows: true),
         MinimumVersion = "1.30",
     };
@@ -89,6 +92,21 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://kubernetes.io/docs/tasks/tools/",
+        Purpose = "Talks to the cluster once it is up.",
+
+        // Not a GitHub release: the Kubernetes project publishes its binaries on dl.k8s.io, with the
+        // version in a channel file and the digest beside each binary (KON-256).
+        Release = new KubernetesReleaseSpec(),
+
+        // 1.27 is where `kubectl kustomize` carries kustomize v5, which the manifest renderer falls
+        // back to when kustomize itself is missing. v5 dropped the legacy `patches`-as-strategic-merge
+        // form, so an older kubectl renders some overlays differently rather than failing outright.
+        MinimumVersion = "1.27",
+
+        OutdatedConsequence =
+            "Kontena needs kubectl 1.27 or newer for `kubectl kustomize`, which it uses to render " +
+            "overlays when kustomize is not installed. On an older one those render against kustomize " +
+            "v4 rules and can come out different; everything else works.",
     };
 
     public static readonly ExternalTool Helm = new(
@@ -104,6 +122,7 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://helm.sh/docs/intro/install/",
+        Purpose = "Installs and upgrades charts. Kontena's Helm screens need it.",
     };
 
     public static readonly ExternalTool Kustomize = new(
@@ -121,6 +140,7 @@ public static class KnownTools
         // Not having it is fine: the renderer falls back to `kubectl kustomize`, which every kubectl
         // carries. This entry exists so the fallback can be explained rather than silently taken.
         DocumentationUrl = "https://kubectl.docs.kubernetes.io/installation/kustomize/",
+        Purpose = "Renders kustomizations.",
     };
 
     public static readonly ExternalTool Podman = new(
@@ -137,6 +157,7 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://podman.io/docs/installation",
+        Purpose = "A container engine. Kontena talks to it over its Docker-compatible socket.",
     };
 
     /// <summary>Everything above, for a settings page that wants to show what is present.</summary>

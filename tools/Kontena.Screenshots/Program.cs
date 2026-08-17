@@ -48,10 +48,14 @@ namespace Kontena.Screenshots;
 //         state machine against a fake update source), settings-updates and
 //         settings-updates-unmanaged (the Updates category, managed and not),
 //         cluster / cluster-{nodes,namespaces,workloads,pods,services} (the cluster browsers),
+//         alerts (KON-393 — the Alerts page, with the notice that says how it keeps up),
 //         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
 //         reached by really switching backend and back, so it exercises the save/restore path),
 //         cluster-node-drawer / cluster-namespace-drawer (the detail drawer over its list, KON-307),
 //         pod / pod-logs / pod-yaml (pod detail),
+//         pod-config (KON-390 — the Overview tab as a full page, with a Secret row of
+//         Config & secrets open and one of its values revealed),
+//         tag-push-image (KON-387 — the Tag-and-push modal over the Images page),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
 //         onboarding (the first-run wizard) and onboarding-again (the same wizard reached back from
@@ -63,6 +67,8 @@ namespace Kontena.Screenshots;
 //         settings-clusters (KON-109/KON-76 — the local-cluster page; reads this machine, so the
 //         shot differs per box by design), settings-clusters-new (the create form, reached by running
 //         the page's own command),
+//         settings-tools (KON-266 — the external tools, grouped by what you need them for; reads this
+//         machine for the same reason settings-clusters does),
 //         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
 //         confirmation and the deliberately non-destructive one, both reached by running the
 //         row's own command so the shot cannot show a dialog the button does not raise).
@@ -421,6 +427,7 @@ internal static class Program
             case "settings-engines-clusters":
             case "settings-clusters":
             case "settings-clusters-new":
+            case "settings-tools":
             case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
@@ -431,8 +438,17 @@ internal static class Program
                         "settings-registries" => "registries",
                         "settings" or "settings-keyboard" => "general",
                         "settings-clusters" or "settings-clusters-new" => "clusters",
+                        "settings-tools" => "tools",
                         _ => "engines",
                     });
+
+                    // Reads this machine, exactly like the local-cluster page: a posed "kubectl
+                    // detected" would render the same whether or not the detection works (KON-266).
+                    if (scene == "settings-tools" && s.Tools is { } tools)
+                    {
+                        SettleUntil(() => tools.HasLoaded, maxRounds: 200);
+                        Settle(rounds: 20);
+                    }
 
                     // The states of the keyboard section that only exist after someone has used it
                     // (KON-180): a changed row with its reset button, Restore defaults, a row still
@@ -626,6 +642,15 @@ internal static class Program
                 Settle(rounds: 10);
                 break;
 
+            // Raised from the row's own command, so a button wired to nothing shows up here as a shot of
+            // the plain images page (KON-387).
+            case "tag-push-image":
+                vm.NavigateCommand.Execute("images");
+                SettleUntil(() => vm.Images is { HasLoaded: true }, maxRounds: 80);
+                vm.Images!.Items[0].TagAndPushCommand.Execute(null);
+                Settle(rounds: 10);
+                break;
+
             case "new-volume":
                 vm.NavigateCommand.Execute("volumes");
                 Settle(rounds: 20);
@@ -689,6 +714,7 @@ internal static class Program
                 }
                 break;
 
+            case "alerts":
             case "cluster":
             case "cluster-nodes":
             case "cluster-namespaces":
@@ -703,6 +729,12 @@ internal static class Program
                     vm.NavigateCommand.Execute(scene["cluster-".Length..]);
                     Settle(rounds: 30);
                 }
+                else if (scene == "alerts")
+                {
+                    vm.NavigateCommand.Execute("alerts");
+                    Settle(rounds: 40);
+                }
+
                 break;
 
             case "cluster-node-drawer":
@@ -757,6 +789,7 @@ internal static class Program
             case "pod-logs":
             case "pod-logs-tail":
             case "pod-yaml":
+            case "pod-config":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("pods");
@@ -766,7 +799,18 @@ internal static class Program
                     pods.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                     Settle(rounds: 30);
                 }
-                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
+
+                // Config & secrets sits below the container table, which the drawer cannot show at
+                // once — so this one scene takes the detail's own "open as a page" command (KON-307)
+                // rather than a wider drawer the app has no button for.
+                if (scene == "pod-config")
+                {
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+
+                // The detail lives in the drawer (KON-307) unless it was just opened as a page.
+                if ((vm.Detail ?? vm.CurrentPage) is Kontena.App.ViewModels.ClusterPodDetailViewModel detailVm)
                 {
                     if (scene is "pod-logs" or "pod-logs-tail")
                     {
@@ -795,6 +839,24 @@ internal static class Program
                         SettleUntil(() => detailVm.YamlText.Length > 0, maxRounds: 60);
                         // Show the editor mid-edit, so Revert/Apply are live.
                         detailVm.YamlText = detailVm.YamlText.Replace("qosClass: Burstable", "qosClass: Guaranteed", StringComparison.Ordinal);
+                        Settle(rounds: 20);
+                    }
+                    else if (scene == "pod-config")
+                    {
+                        // Opened through the row's own command, so the shot cannot show keys the
+                        // collapsed row does not really fetch (KON-390). A Secret, because the
+                        // masking and the eye are the half worth documenting; one key is then
+                        // revealed so both states stand in the same frame. Named rather than
+                        // "the first Secret", which is the pull secret here — and a pull secret
+                        // holds no keys, so that row unfolds onto nothing.
+                        var config = detailVm.ConfigRows.First(
+                            r => r.Reference.Name == "postgres-credentials");
+                        config.ToggleCommand.Execute(null);
+                        SettleUntil(() => config is { IsExpanded: true, IsBusy: false }, maxRounds: 120);
+
+                        var key = config.Keys.FirstOrDefault();
+                        key?.ToggleCommand.Execute(null);
+                        SettleUntil(() => key is null or { IsRevealed: true, IsBusy: false }, maxRounds: 120);
                         Settle(rounds: 20);
                     }
                 }

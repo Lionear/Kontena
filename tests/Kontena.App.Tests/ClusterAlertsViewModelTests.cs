@@ -210,6 +210,167 @@ public class ClusterAlertsViewModelTests
         // cluster where nothing is happening (KON-250).
         Assert.NotNull(page.LiveNotice);
         Assert.False(page.IsLive);
+
+        // With no interval given, the notice still says the list only moves when asked (KON-393).
+        Assert.Contains("when you open or refresh it", page.LiveNotice, StringComparison.Ordinal);
+        Assert.False(page.HasRefreshProblem);
+    }
+
+    // ── Auto-refresh (KON-393) ──────────────────────────────────────────────
+
+    /// <summary>The fake behind a page, for the tests that make reads fail or count them.</summary>
+    private static FakeAlertSource SourceOf(FakeClusterEngine cluster) => (FakeAlertSource)cluster.Alerts;
+
+    /// <summary>
+    /// Waits for a condition the poll brings about. A fixed sleep would either be flaky on a loaded
+    /// machine or slow on an idle one.
+    /// </summary>
+    private static async Task<bool> WithinASecondAsync(Func<bool> done)
+    {
+        for (var i = 0; i < 100 && !done(); i++)
+            await Task.Delay(10);
+
+        return done();
+    }
+
+    [Fact]
+    public async Task The_notice_says_how_often_the_page_re_reads_when_it_does()
+    {
+        var page = new ClusterAlertsViewModel(
+            new FakeClusterEngine(), refreshEvery: TimeSpan.FromSeconds(30));
+        await page.LoadAsync();
+
+        // The sentence has to carry the cadence, not only the absence of a watch: "no watch stream"
+        // on its own reads as "this will never move", which with a poll running is not true.
+        Assert.Contains("every 30s", page.LiveNotice, StringComparison.Ordinal);
+        Assert.Contains("Last read at", page.LiveNotice, StringComparison.Ordinal);
+
+        page.Dispose();
+    }
+
+    [Fact]
+    public async Task The_page_re_reads_on_the_interval_it_was_given()
+    {
+        var cluster = new FakeClusterEngine();
+        var page = new ClusterAlertsViewModel(cluster, refreshEvery: TimeSpan.FromMilliseconds(20));
+        var source = SourceOf(cluster);
+
+        var afterFirstLoad = source.AlertReads;
+        Assert.True(await WithinASecondAsync(() => source.AlertReads > afterFirstLoad));
+
+        page.Dispose();
+    }
+
+    [Fact]
+    public async Task A_poll_tells_the_shell_so_the_badge_beside_the_list_keeps_up()
+    {
+        // Both come off the same read. A new alert appearing in the list next to a badge still
+        // holding the old number is two figures over one cluster, disagreeing (KON-339).
+        var told = 0;
+        var page = new ClusterAlertsViewModel(
+            new FakeClusterEngine(), refreshEvery: TimeSpan.FromMilliseconds(20))
+        {
+            Changed = () => told++,
+        };
+
+        Assert.True(await WithinASecondAsync(() => told > 0));
+        page.Dispose();
+    }
+
+    [Fact]
+    public async Task Disposing_the_page_stops_the_poll()
+    {
+        // The whole of "no background polling of clusters nobody is looking at": the shell disposes a
+        // cluster page as you navigate off it, so the poll must not outlive that.
+        var cluster = new FakeClusterEngine();
+        var page = new ClusterAlertsViewModel(cluster, refreshEvery: TimeSpan.FromMilliseconds(20));
+        var source = SourceOf(cluster);
+
+        Assert.True(await WithinASecondAsync(() => source.AlertReads > 1));
+        page.Dispose();
+
+        // Let any read already in flight land, then hold the count still.
+        await Task.Delay(60);
+        var afterDispose = source.AlertReads;
+        await Task.Delay(200);
+
+        Assert.Equal(afterDispose, source.AlertReads);
+    }
+
+    [Fact]
+    public async Task No_Alertmanager_means_no_poll_and_no_claim_of_one()
+    {
+        var page = new ClusterAlertsViewModel(
+            new FakeClusterEngine { HasAlertmanager = false }, refreshEvery: TimeSpan.FromMilliseconds(20));
+        await page.LoadAsync();
+
+        // Polling a source that answered nothing is work for nobody, and a page saying it re-reads
+        // every 20ms above an empty state that says no Alertmanager was found is two contradicting
+        // sentences on one screen.
+        Assert.Contains("when you open or refresh it", page.LiveNotice, StringComparison.Ordinal);
+
+        page.Dispose();
+    }
+
+    [Fact]
+    public async Task A_failed_refresh_says_so_instead_of_passing_off_the_last_stand_as_current()
+    {
+        var cluster = new FakeClusterEngine();
+        var page = await PageAsync(cluster);
+
+        var firing = page.Firing.Count;
+        Assert.True(firing > 0);
+
+        SourceOf(cluster).FailReadsWith = "alertmanager: 503 Service Unavailable";
+        await page.LoadAsync();
+
+        // The rows stay: they are the only picture of the cluster anybody has, and dropping them
+        // would make a failed read look like an all-clear.
+        Assert.Equal(firing, page.Firing.Count);
+
+        // And they are labelled as what they are.
+        Assert.True(page.HasRefreshProblem);
+        Assert.Equal("Warn", page.NoticeBrushKey);
+        Assert.Contains("503 Service Unavailable", page.LiveNotice, StringComparison.Ordinal);
+        Assert.Contains("may be out of date", page.LiveNotice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_first_read_that_never_landed_is_not_an_all_clear()
+    {
+        var cluster = new FakeClusterEngine();
+        SourceOf(cluster).FailReadsWith = "alertmanager: connection refused";
+
+        var page = new ClusterAlertsViewModel(cluster);
+        await page.LoadAsync();
+
+        // Alerting is still a capability — the probe said so before the reads started failing — so
+        // the "no Alertmanager" empty state does not apply and this is the only thing on screen
+        // between an empty list and the reader.
+        Assert.True(page.HasAlerting);
+        Assert.False(page.IsAllClear);
+        Assert.True(page.HasRefreshProblem);
+        Assert.Contains("Nothing has been read yet", page.LiveNotice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_refresh_that_works_again_takes_the_warning_back_off()
+    {
+        var cluster = new FakeClusterEngine();
+        var page = await PageAsync(cluster);
+        var source = SourceOf(cluster);
+
+        source.FailReadsWith = "alertmanager: 503 Service Unavailable";
+        await page.LoadAsync();
+        Assert.True(page.HasRefreshProblem);
+
+        // A stale warning that outlives the staleness is the same lie in the other direction.
+        source.FailReadsWith = null;
+        await page.LoadAsync();
+
+        Assert.False(page.HasRefreshProblem);
+        Assert.Equal("TextDim", page.NoticeBrushKey);
+        Assert.Contains("Last read at", page.LiveNotice, StringComparison.Ordinal);
     }
 
     [Fact]

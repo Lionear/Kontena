@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Services;
 
@@ -20,6 +21,7 @@ public sealed partial class AboutViewModel : ViewModelBase
     public AboutViewModel(ISecretStore? secrets = null, Action? showActivity = null)
     {
         _showActivity = showActivity;
+        HasActivity = showActivity is not null;
 
         // Says whether the guarantee in CONTRIBUTING actually holds on this session (KON-52).
         KeychainStatus = (secrets ?? SecretStore.Create()).IsAvailable
@@ -43,9 +45,10 @@ public sealed partial class AboutViewModel : ViewModelBase
 
     /// <summary>
     /// Whether the Activity quick action is shown. Only the shell can navigate, so without it the
-    /// row would do nothing — and a dead button is worse than a missing one (KON-117).
+    /// row would do nothing — and a dead button is worse than a missing one (KON-117). The shell
+    /// lowers it again in cluster mode, where Activity itself has nothing to show (KON-386).
     /// </summary>
-    public bool HasActivity => _showActivity is not null;
+    [ObservableProperty] private bool _hasActivity;
 
     [RelayCommand]
     private static void OpenRepository() => Browser.OpenUrl(RepositoryUrl);

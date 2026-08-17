@@ -18,7 +18,7 @@ public sealed class ToolInstaller(
     ManagedToolStore? store = null,
     HttpClient? http = null)
 {
-    private readonly IToolReleaseSource _releases = releases ?? new GitHubToolReleaseSource();
+    private readonly IToolReleaseSource _releases = releases ?? new ToolReleaseSources();
     private readonly ManagedToolStore _store = store ?? new ManagedToolStore();
     private readonly HttpClient _http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
 
