@@ -313,6 +313,7 @@ public partial class SettingsViewModel : ViewModelBase
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
         _autoDetect = settings.AutoDetectEngines;
+        _diagnosticLogging = settings.DiagnosticLogging;
 
         // Read from the system, not from the file. Someone can delete the autostart entry by hand or
         // switch it off in their desktop's own settings, and then our record is stale — showing it
@@ -437,6 +438,28 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnCompactDensityChanged(bool value)
     {
         DensityApplier.Apply(value);
+        Save();
+    }
+
+    // ── Diagnostics (KON-389) ───────────────────────────────────────────────
+
+    [ObservableProperty] private bool _diagnosticLogging;
+
+    /// <summary>Where the log is written, so the answer to "which file do I send you" is on screen.</summary>
+    public string DiagnosticLogPath { get; } = DiagLog.DefaultPath;
+
+    /// <summary>
+    /// Takes effect at once rather than at the next launch. Switching it on is nearly always the
+    /// answer to something happening now, and a diagnostic that starts recording tomorrow would miss
+    /// the session it was switched on for.
+    /// </summary>
+    partial void OnDiagnosticLoggingChanged(bool value)
+    {
+        if (value)
+            DiagLog.Open();
+        else
+            DiagLog.Close();
+
         Save();
     }
 
@@ -624,6 +647,7 @@ public partial class SettingsViewModel : ViewModelBase
             TerminalFontSize = TerminalFontSize,
             TerminalLigatures = TerminalLigatures,
             AlertRefreshSeconds = _alertRefreshSeconds,
+            DiagnosticLogging = DiagnosticLogging,
             Shortcuts = _shortcutOverrides,
         });
     }

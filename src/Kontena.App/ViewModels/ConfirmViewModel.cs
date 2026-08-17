@@ -41,6 +41,17 @@ public partial class ConfirmViewModel : ViewModelBase, IPrimaryAction
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _error;
 
+    /// <remarks>
+    /// Where every destructive action in the app is recorded for the diagnostic log (KON-389). One
+    /// place, because every one of them is asked for here first: instrumenting the twenty-odd callers
+    /// instead would cover exactly the ones somebody remembered, and the next delete added to the app
+    /// would quietly not be among them.
+    /// <para>
+    /// The type of a failure is written, never its message. An engine's error text is the one string
+    /// in this path that Kontena did not author, and a rule that keeps credentials out of the file
+    /// cannot be built on hoping none ever appears in one.
+    /// </para>
+    /// </remarks>
     [RelayCommand]
     private async Task ConfirmAsync()
     {
@@ -49,12 +60,15 @@ public partial class ConfirmViewModel : ViewModelBase, IPrimaryAction
 
         IsBusy = true;
         Error = null;
+        Services.Diag.Action(Title, Message);
         try
         {
             await _onConfirm();
+            Services.Diag.Action($"{Title} — done");
         }
         catch (Exception ex)
         {
+            Services.Diag.Action($"{Title} — failed", ex.GetType().Name);
             Error = ex.Message;
             IsBusy = false;
         }

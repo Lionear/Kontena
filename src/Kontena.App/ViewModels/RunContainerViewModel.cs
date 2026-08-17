@@ -163,6 +163,9 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
                 ? null
                 : await _credentials.ForAsync(reference).ConfigureAwait(true);
 
+            // The reference, never the credential the line above just fetched.
+            Diag.Action("pull image", reference);
+
             await foreach (var progress in _engine.PullImageAsync(reference, credential))
                 PullStatus = FormatPull(progress);
 
@@ -504,6 +507,10 @@ public partial class RunContainerViewModel : ViewModelBase, IDisposable
                 RestartPolicy = ParseRestart(SelectedRestartPolicy),
                 Start = true,
             };
+
+            // Image and name only. The request also carries the environment the container is started
+            // with, and that is the field people put an API key in.
+            Diag.Action("run container", $"{request.Image} as {request.Name ?? "(unnamed)"}");
 
             await _engine.CreateContainerAsync(request);
             await _onCreated();

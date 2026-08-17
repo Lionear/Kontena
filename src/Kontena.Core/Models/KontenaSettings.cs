@@ -131,6 +131,17 @@ public sealed record KontenaSettings
     /// <summary>Start Kontena at login (stored preference; wiring is platform-specific).</summary>
     public bool LaunchAtLogin { get; init; }
 
+    /// <summary>
+    /// Whether Kontena writes a diagnostic log — what was done and how much memory was held — to a
+    /// file, so a crash can be looked at after the fact (KON-389).
+    /// <para>
+    /// Off by default, and asked as a setting rather than left to <c>KONTENA_TRACE=1</c>: the run that
+    /// needs the log is the one nobody expected, and an environment variable can only be set by
+    /// someone who already knows a crash is coming.
+    /// </para>
+    /// </summary>
+    public bool DiagnosticLogging { get; init; }
+
     // ── Updates (KON-110) ─────────────────────────────────────────────────────
 
     /// <summary>

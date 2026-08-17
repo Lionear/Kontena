@@ -233,6 +233,29 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Diagnostics (KON-389). Off by default: it is for the session after something
+                         went wrong, and the file says what Kontena did, not what is in your cluster. -->
+                    <TextBlock Classes="gh" Text="DIAGNOSTICS" Margin="0,30,0,12"/>
+                    <Border Classes="card" Padding="0">
+                        <StackPanel>
+                            <Grid Margin="18,15" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Write a diagnostic log" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                                    <TextBlock Text="Records what you did in Kontena and how much memory it was using, so a crash can be looked at afterwards. Credentials, kubeconfig and manifest content are never written."
+                                               FontSize="12" TextWrapping="Wrap" MaxWidth="470"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextDim}"/>
+                                    <TextBlock Text="{Binding DiagnosticLogPath}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                               TextWrapping="Wrap" MaxWidth="470" HorizontalAlignment="Left"
+                                               Foreground="{DynamicResource TextFaint}"/>
+                                    <TextBlock Text="The previous session's log is kept beside it as .prev; the one before that is replaced."
+                                               FontSize="12" TextWrapping="Wrap" MaxWidth="470"
+                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextFaint}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" Classes="pill" IsChecked="{Binding DiagnosticLogging, Mode=TwoWay}" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <TextBlock Classes="gh" Text="TERMINAL" Margin="0,30,0,12"/>
                     <Border Classes="card" Padding="0">
                         <StackPanel>

@@ -505,6 +505,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     private async Task PruneAsync()
     {
         PruneArmed = false;
+        Services.Diag.Action("prune containers", $"{_prunableIds.Count} stopped");
 
         // Remove only the containers we own; externally-managed ones are left untouched.
         // (A plain engine prune would delete every stopped container, including those.)
@@ -519,18 +520,21 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
 
     public async Task StartAsync(string id)
     {
+        Services.Diag.Action("start container", id);
         await _engine.StartContainerAsync(id);
         await LoadAsync();
     }
 
     public async Task StopAsync(string id)
     {
+        Services.Diag.Action("stop container", id);
         await _engine.StopContainerAsync(id);
         await LoadAsync();
     }
 
     public async Task RestartAsync(string id)
     {
+        Services.Diag.Action("restart container", id);
         await _engine.RestartContainerAsync(id);
         await LoadAsync();
     }
@@ -570,6 +574,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     public async Task StartProjectAsync(IReadOnlyList<string> ids)
     {
         ArgumentNullException.ThrowIfNull(ids);
+        Services.Diag.Action("start compose project", $"{ids.Count} container(s)");
 
         foreach (var id in ids)
             try { await _engine.StartContainerAsync(id); } catch { /* keep going */ }
@@ -580,6 +585,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     public async Task StopProjectAsync(IReadOnlyList<string> ids)
     {
         ArgumentNullException.ThrowIfNull(ids);
+        Services.Diag.Action("stop compose project", $"{ids.Count} container(s)");
 
         foreach (var id in ids)
             try { await _engine.StopContainerAsync(id); } catch { /* keep going */ }
@@ -590,6 +596,7 @@ public partial class ContainersViewModel : ViewModelBase, IListPage, IDisposable
     public async Task RestartProjectAsync(IReadOnlyList<string> ids)
     {
         ArgumentNullException.ThrowIfNull(ids);
+        Services.Diag.Action("restart compose project", $"{ids.Count} container(s)");
 
         foreach (var id in ids)
             try { await _engine.RestartContainerAsync(id); } catch { /* keep going */ }

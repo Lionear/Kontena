@@ -598,6 +598,12 @@ public partial class MainWindowViewModel
 
         var backend = provider.CreateBackend();
         _activeBackend = provider.Backend;
+
+        // The id rather than the display name: it is what a log line has to carry to say which
+        // cluster an action landed on, and a name is the user's to change (KON-389).
+        Diag.Context = provider.Backend;
+        Diag.Action("open backend", provider.Backend);
+
         EngineName = NameOf(provider);
         EngineChip = BackendChipInfo.For(provider);
 

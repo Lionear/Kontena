@@ -187,6 +187,9 @@ public partial class BuildImageViewModel : ViewModelBase, IDisposable
         _cts = new CancellationTokenSource();
         try
         {
+            // The tag, never the build args — those are where a token gets passed to a build.
+            Services.Diag.Action("build image", request.Tag);
+
             await foreach (var progress in _engine.BuildImageAsync(request, _cts.Token))
                 Handle(progress);
 

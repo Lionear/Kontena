@@ -519,6 +519,8 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         try
         {
             var results = new List<ApplyProgress>();
+            Services.Diag.Action("apply manifest", "pod editor");
+
             await foreach (var progress in _cluster.ApplyAsync(new ManifestBundle { Yaml = YamlText, Source = "editor" }))
                 results.Add(progress);
 

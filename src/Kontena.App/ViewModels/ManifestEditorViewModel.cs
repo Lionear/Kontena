@@ -127,6 +127,8 @@ public partial class ManifestEditorViewModel : ViewModelBase
         try
         {
             var results = new List<ApplyProgress>();
+            Services.Diag.Action(dryRun ? "preview manifest" : "apply manifest", "editor");
+
             await foreach (var step in _cluster.ApplyAsync(
                 new ManifestBundle { Yaml = Text, Source = "editor", DryRun = dryRun }))
             {

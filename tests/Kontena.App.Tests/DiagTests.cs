@@ -7,6 +7,9 @@ namespace Kontena.App.Tests;
 /// what the app does, or wrote to a console nobody asked to read, would be worse than no diagnostic:
 /// it sits on the startup path, so anything it gets wrong is wrong for every run.
 /// </summary>
+// Same collection as DiagLogTests, so the two never run at once: Diag.Enabled is a process-wide
+// answer, and a test that opens the log would make this one's "it is off" briefly untrue (KON-389).
+[Collection("Diag")]
 public sealed class DiagTests
 {
     [Fact]

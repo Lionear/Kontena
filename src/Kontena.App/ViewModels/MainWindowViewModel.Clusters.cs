@@ -150,7 +150,11 @@ public partial class MainWindowViewModel
         ShowDetail(new ClusterNodeDetailViewModel(
             _cluster, node, apiServer,
             onOpenPod: ShowPodDetail,
-            onCordon: (name, cordoned) => _cluster.CordonNodeAsync(name, cordoned).AsTask(),
+            onCordon: (name, cordoned) =>
+            {
+                Services.Diag.Action(cordoned ? "cordon node" : "uncordon node", name);
+                return _cluster.CordonNodeAsync(name, cordoned).AsTask();
+            },
             onDrain: ShowDrainNode),
             $"node {node.Name}", node);
     }
