@@ -324,6 +324,15 @@ public partial class SettingsViewModel : ViewModelBase
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
+
+        // A stored value the picker does not offer joins the list rather than being snapped to the
+        // nearest option: the file can be edited by hand, and showing 45 seconds as 30 would be this
+        // page lying about what the Alerts page is actually doing.
+        _alertRefreshSeconds = settings.AlertRefreshSeconds;
+        _alertRefreshChoices = [.. AlertRefresh.Choices.Append(_alertRefreshSeconds).Distinct().Order()];
+        AlertRefreshOptions = [.. _alertRefreshChoices.Select(AlertRefresh.Label)];
+        _alertRefreshChoice = AlertRefresh.Label(_alertRefreshSeconds);
+
         RefreshShortcuts();
 
         // One control, not two: "which backend" and "how is it chosen" were separate settings that
@@ -526,6 +535,37 @@ public partial class SettingsViewModel : ViewModelBase
         Save();
     }
 
+    // ── Alerts (KON-393) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The seconds behind each option, in the order they are offered. Held beside the labels rather
+    /// than parsed back out of them: "Every 5 minutes" is text for a person to read, and reading it
+    /// back would make the wording load-bearing.
+    /// </summary>
+    private readonly List<int> _alertRefreshChoices;
+
+    public ObservableCollection<string> AlertRefreshOptions { get; }
+
+    [ObservableProperty] private string _alertRefreshChoice;
+
+    private int _alertRefreshSeconds;
+
+    partial void OnAlertRefreshChoiceChanged(string value)
+    {
+        var index = AlertRefreshOptions.IndexOf(value);
+        if (index < 0)
+            return;
+
+        _alertRefreshSeconds = _alertRefreshChoices[index];
+        OnPropertyChanged(nameof(AlertRefreshHint));
+        Save();
+    }
+
+    /// <summary>What the choice costs, spelled out under the picker the way StartupHint is.</summary>
+    public string AlertRefreshHint => _alertRefreshSeconds <= 0
+        ? "The Alerts page is read when you open it and when you refresh it, and says how old what you see is."
+        : "Only while the Alerts page is open. Kontena never polls a cluster you are not looking at.";
+
     // ── Terminal ────────────────────────────────────────────────────────────
 
     public string[] FontFamilies { get; } =
@@ -583,6 +623,7 @@ public partial class SettingsViewModel : ViewModelBase
             TerminalFontFamily = TerminalFontFamily,
             TerminalFontSize = TerminalFontSize,
             TerminalLigatures = TerminalLigatures,
+            AlertRefreshSeconds = _alertRefreshSeconds,
             Shortcuts = _shortcutOverrides,
         });
     }

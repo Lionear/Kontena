@@ -43,6 +43,15 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     private readonly Action? _onInstallWithHelm;
     private readonly Action<Alert, AlertRule?, Silence?>? _onOpenDetail;
     private readonly Action? _onNewRule;
+    private readonly TimeSpan? _refreshEvery;
+    private CancellationTokenSource? _poll;
+
+    /// <summary>When the alerts on screen were read, or null while nothing has been read yet.</summary>
+    private DateTimeOffset? _readAt;
+
+    /// <summary>The last read's failure and when it happened, or null when the last read worked.</summary>
+    private string? _failure;
+    private DateTimeOffset? _failedAt;
 
     /// <param name="onInstallWithHelm">
     /// Hands off to the existing Helm source on the apply page with the chart filled in. Kontena owns
@@ -55,19 +64,36 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     /// <param name="onNewRule">
     /// Opens the rule editor (KON-210). Offered whatever this cluster runs: authoring a rule needs no
     /// Alertmanager and no CRD — only applying it to this cluster does, and the editor says which.</param>
+    /// <param name="refreshEvery">
+    /// How often to re-read, or null to only read on open and on refresh (KON-393). The interval is
+    /// handed in rather than read from settings here, for the reason the shell hands in everything
+    /// else: this page knows what it shows, and nothing about where preferences are kept.
+    /// <para>
+    /// Nothing switches the poll off while the page is open, and nothing needs to: cluster pages are
+    /// built on arrival and disposed on the way out, so the poll's life <i>is</i> the page being on
+    /// screen — which is the whole of "no background polling of clusters nobody is looking at".
+    /// </para>
+    /// </param>
     public ClusterAlertsViewModel(
         IClusterEngine cluster, Action? onInstallWithHelm = null,
-        Action<Alert, AlertRule?, Silence?>? onOpenDetail = null, Action? onNewRule = null)
+        Action<Alert, AlertRule?, Silence?>? onOpenDetail = null, Action? onNewRule = null,
+        TimeSpan? refreshEvery = null)
         // No kind to follow: alerts come off Alertmanager over HTTP, not from the apiserver, so there
-        // is no watch to open. Said out loud rather than left as a list that silently never moves.
-        : base(cluster, kind: null, ns: null,
-            unwatchable: "Alertmanager has no watch stream, so this list is read when you open or refresh it.")
+        // is no watch to open. Said out loud rather than left as a list that silently never moves —
+        // but by SayHowFresh rather than by the base's `unwatchable`, because since KON-393 the same
+        // sentence also has to say whether a timer is re-reading and how old what you see is.
+        : base(cluster, kind: null, ns: null)
     {
         _cluster = cluster;
         _onInstallWithHelm = onInstallWithHelm;
         _onOpenDetail = onOpenDetail;
         _onNewRule = onNewRule;
         _alerts = cluster is IAlertingAware aware ? aware.Alerts : NoAlertSource.Instance;
+
+        // Nothing to re-read where nothing answered, and a page claiming to poll every 30 seconds
+        // above an empty state that says no Alertmanager was found would be two contradicting
+        // sentences on one screen.
+        _refreshEvery = _alerts is NoAlertSource ? null : refreshEvery;
 
         // Where the discovery actually looked, verbatim (KON-206). A cluster running an Alertmanager
         // under a name Kontena does not know has to be shown the gap, and a list typed out here would
@@ -79,8 +105,135 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
             Refusal = k.AlertingRefusal;
         }
 
-        _ = LoadAsync();
         StartWatching();
+
+        // Before the first read, so the page says what it is doing while it does it rather than
+        // going blank until an answer comes back. LoadAsync says it again when one does.
+        SayHowFresh();
+        _ = LoadAsync();
+
+        if (_refreshEvery is { } every)
+        {
+            _poll = new CancellationTokenSource();
+            _ = PollAsync(every, _poll.Token);
+        }
+    }
+
+    /// <summary>
+    /// Re-read on a timer, because there is no stream to be told by (KON-393). Shaped after the
+    /// overview's usage poll (KON-347): sleep after the read rather than before it, so a read that
+    /// takes ten seconds does not stack up behind the next tick.
+    /// </summary>
+    private async Task PollAsync(TimeSpan every, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(every, ct).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            // LoadAsync is the override below, so a poll that fails says so on the page rather than
+            // dying quietly in a task nobody awaits.
+            await LoadAsync().ConfigureAwait(true);
+
+            // The sidebar badge counts the same alerts this list just re-read (KON-339). Without
+            // this, a poll that brought in a new alert would show it in the list beside a badge
+            // still holding the old number — two figures over one cluster, disagreeing.
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Every read this page does, whichever asked for it — the constructor, the refresh command, the
+    /// poll, an expired silence. A failure leaves the rows that are on screen alone and says how old
+    /// they are: replacing them with nothing would throw away the only picture of the cluster anyone
+    /// has, and leaving them unannotated would pass a stale one off as current (KON-204).
+    /// </summary>
+    public override async Task LoadAsync()
+    {
+        try
+        {
+            await base.LoadAsync();
+            _readAt = DateTimeOffset.Now;
+            _failure = null;
+            _failedAt = null;
+        }
+        catch (Exception ex)
+        {
+            _failure = ex.Message;
+            _failedAt = DateTimeOffset.Now;
+        }
+
+        SayHowFresh();
+    }
+
+    /// <summary>
+    /// The one sentence under the header, covering all four states: polling, not polling, a failed
+    /// refresh over rows that are still worth reading, and a first read that never landed.
+    /// <para>
+    /// Written into <see cref="IClusterLivePage.LiveNotice"/> rather than into a second banner of its
+    /// own. This is the same claim that notice already makes everywhere else — whether the page is
+    /// keeping up with the cluster — and a page with two places to look for that answer has one place
+    /// too many.
+    /// </para>
+    /// </summary>
+    private void SayHowFresh()
+    {
+        LiveNotice = (_failure, _readAt) switch
+        {
+            (null, null) => Cadence(),
+            (null, { } read) => $"{Cadence()} Last read at {read:HH:mm:ss}.",
+
+            // Rows on screen, and they are older than the clock says.
+            ({ } why, { } read) =>
+                $"The refresh at {_failedAt:HH:mm:ss} failed: {why} These alerts were read at "
+                + $"{read:HH:mm:ss} and may be out of date.",
+
+            // Never read at all: the page is empty because it could not look, which is not the
+            // all-clear the empty list would otherwise read as.
+            ({ } why, null) => $"Reading the alerts failed: {why} Nothing has been read yet.",
+        };
+
+        OnPropertyChanged(nameof(HasRefreshProblem));
+        OnPropertyChanged(nameof(NoticeBrushKey));
+        OnPropertyChanged(nameof(NoticeBorderBrushKey));
+    }
+
+    private string Cadence() => _refreshEvery is { } every
+        ? $"Alertmanager has no watch stream, so Kontena re-reads this list every {Format.Duration(every)}."
+        : "Alertmanager has no watch stream, so this list is read when you open or refresh it.";
+
+    /// <summary>Whether the notice is reporting a failure rather than describing the cadence.</summary>
+    public bool HasRefreshProblem => _failure is not null;
+
+    /// <summary>
+    /// Colour for the notice, and the second signal rather than the signal: the sentence itself says
+    /// the read failed, so this only makes it findable at a glance.
+    /// </summary>
+    public string NoticeBrushKey => HasRefreshProblem ? "Warn" : "TextDim";
+
+    /// <inheritdoc cref="NoticeBrushKey"/>
+    public string NoticeBorderBrushKey => HasRefreshProblem ? "Warn" : "Border";
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Stopping the poll is the whole of "no background polling of clusters nobody is looking at":
+    /// the shell disposes a cluster page the moment you navigate off it.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Usage", "CA1816:Dispose methods should call SuppressFinalize",
+        Justification = "The base Dispose does it, and it is called below.")]
+    public override void Dispose()
+    {
+        _poll?.Cancel();
+        _poll?.Dispose();
+        _poll = null;
+        base.Dispose();
     }
 
     public override string SearchPlaceholder => "Search alerts…";

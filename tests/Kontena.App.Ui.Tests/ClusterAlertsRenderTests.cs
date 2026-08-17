@@ -122,6 +122,41 @@ public sealed class ClusterAlertsRenderTests(HeadlessSessionFixture headless)
             },
             CancellationToken.None);
 
+    /// <summary>
+    /// A failed refresh turns the live notice amber (KON-393). Worth a rendered test for the reason
+    /// the loud badge is: the colour comes off a resource key resolved through a converter, so a
+    /// misspelled key resolves to null and the sentence draws in the default brush — still readable,
+    /// and silent about the fact that it is a warning.
+    /// </summary>
+    [Fact]
+    public Task A_failed_refresh_shows_up_amber_rather_than_as_one_more_grey_line() =>
+        headless.Session.Dispatch(
+            async () =>
+            {
+                var cluster = new FakeClusterEngine();
+                var (page, view, _) = Render(cluster);
+
+                var notice = Assert.Single(
+                    view.GetVisualDescendants().OfType<TextBlock>(),
+                    t => t.Text?.StartsWith("Alertmanager has no watch stream", StringComparison.Ordinal) == true);
+
+                Assert.False(page.HasRefreshProblem);
+                var quiet = notice.Foreground;
+
+                ((FakeAlertSource)cluster.Alerts).FailReadsWith = "alertmanager: 503 Service Unavailable";
+                await page.LoadAsync();
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.True(page.HasRefreshProblem);
+
+                // The same TextBlock, now carrying the failure and a different brush — resolved
+                // rather than null, which is what a misspelled key would give.
+                Assert.Contains("503 Service Unavailable", notice.Text ?? string.Empty, StringComparison.Ordinal);
+                Assert.NotNull(notice.Foreground);
+                Assert.NotEqual(quiet, notice.Foreground);
+            },
+            CancellationToken.None);
+
     [Fact]
     public Task The_empty_state_offers_the_Helm_hand_off_rather_than_an_install_of_our_own() =>
         headless.Session.Dispatch(

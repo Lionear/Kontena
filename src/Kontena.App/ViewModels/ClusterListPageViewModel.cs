@@ -131,7 +131,7 @@ public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel
     /// Stop following. Cluster pages are rebuilt on every visit, so a watch that outlived its page
     /// would be a stream nobody reads holding a connection open for the life of the app.
     /// </summary>
-    public void Dispose()
+    public virtual void Dispose()
     {
         _watch?.Cancel();
         _watch?.Dispose();
