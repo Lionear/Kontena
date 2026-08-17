@@ -29,6 +29,16 @@
                     <SolidColorBrush x:Key="Surface" Color="#1A1A1F"/>
                     <SolidColorBrush x:Key="Surface2" Color="#202226"/>
                     <SolidColorBrush x:Key="SidebarBg" Color="#131318"/>
+                    <!-- The sidebar's scroll edge (KON-386): SidebarBg fading up into nothing, laid over
+                         the foot of the nav so entries dissolve into the pinned block instead of being
+                         cut off by it. Same colour as the ground it sits on, so it is invisible while
+                         there is nothing under it — no binding needed to know whether it should show.
+                         Alpha-on-the-same-RGB rather than a bare Transparent stop, which interpolates
+                         through grey. -->
+                    <LinearGradientBrush x:Key="SidebarFade" StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Color="#00131318" Offset="0"/>
+                        <GradientStop Color="#FF131318" Offset="1"/>
+                    </LinearGradientBrush>
                     <!-- Deliberately lighter than the old #272E39: a hairline at that luminance
                          disappears against this Bg. WCAG sets no bar for purely decorative dividers, so
                          this is a legibility call rather than a contrast one — and it survives KON-245
@@ -91,6 +101,11 @@
                     <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="Surface2" Color="#F0F3F6"/>
                     <SolidColorBrush x:Key="SidebarBg" Color="#FBFCFD"/>
+                    <!-- Light's half of the scroll edge — see the dark one. -->
+                    <LinearGradientBrush x:Key="SidebarFade" StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Color="#00FBFCFD" Offset="0"/>
+                        <GradientStop Color="#FFFBFCFD" Offset="1"/>
+                    </LinearGradientBrush>
                     <SolidColorBrush x:Key="Border" Color="#DCE1E8"/>
                     <!-- The light ladder did not move under KON-130, so this is the mockup's own
                          soft divider unchanged. -->

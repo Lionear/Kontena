@@ -277,7 +277,26 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     public bool HasClusters => Clusters.Count > 0;
 
     /// <summary>True when a cluster (OAL) is active — swaps the nav and shows the namespace picker.</summary>
-    [ObservableProperty] private bool _isClusterMode;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActivity))]
+    private bool _isClusterMode;
+
+    /// <summary>
+    /// Whether Activity is offered at all (KON-386). It replays the container engine's event stream,
+    /// and a cluster has none to give it: nothing attaches the log in cluster mode, so the entry
+    /// opened an empty page that never filled — the dead button of KON-117 with a page behind it.
+    /// <para>
+    /// Hidden rather than explained, unlike Alerts (KON-207): a cluster already answers "what just
+    /// happened here" on its own System → Events page, so there is no question left unanswered by
+    /// taking this one away. Nothing here rules out an Activity that speaks OAL later; it would be a
+    /// second source in <see cref="Services.ActivityLog"/> and a feed of its own, not a binding.
+    /// </para>
+    /// </summary>
+    public bool HasActivity => !IsClusterMode;
+
+    // About offers Activity as a quick action, so it goes the same way (the shell always hands it a
+    // navigation, so HasActivity there is this and nothing else once we are running).
+    partial void OnIsClusterModeChanged(bool value) => About.HasActivity = !value;
 
     /// <summary>Namespaces for the cluster-mode picker; the first entry is "All namespaces".</summary>
     public ObservableCollection<string> Namespaces { get; } = [];
