@@ -282,7 +282,7 @@ public partial class MainWindowViewModel
             // The dashboard only where there is something to summarise. With one kind the sidebar has
             // no submenu either, and a dashboard of a single card is a page that says less than the
             // list it replaces — so there it stays the list (KON-174).
-            "workloads" when WorkloadNavGroups.ShouldGroup(_workloadGroups) =>
+            "workloads" when WorkloadNavGroups.ShouldGroup(_workloadKinds) =>
                 new ClusterWorkloadsDashboardViewModel(
                     _cluster, ActiveNamespace,
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
@@ -438,7 +438,7 @@ public partial class MainWindowViewModel
         }
 
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshNav: false, keepSearch);
+            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadKinds), refreshNav: false, keepSearch);
     }
 
     /// <summary>
@@ -465,9 +465,15 @@ public partial class MainWindowViewModel
     /// — pods, secrets, configmaps, events and the rest — every time it ran, which is before every
     /// cluster navigation and again on every watch event of the open page. Measured on a 72-pod
     /// cluster (KON-352): 20 MB allocated per round, 250–450 ms, and the UI thread stalled for
-    /// 150–330 ms of it. Twelve numbers are not worth that, so they are gone (KON-354). What is left
-    /// is the two calls the sidebar cannot be drawn without: the namespaces the picker is built from,
-    /// and the workloads that say which kinds the submenu has entries for.
+    /// 150–330 ms of it. Twelve numbers are not worth that, so they are gone (KON-354).
+    /// </para>
+    /// <para>
+    /// What was left after that was still two cluster-wide reads per navigation, and the workload one
+    /// was the most expensive read in the app: five apiserver lists, in full, to decide which of five
+    /// submenu entries to draw — two of them Jobs and CronJobs, whose objects never reach the screen
+    /// at all. So the submenu asks the question it actually has (<c>ListWorkloadKindsAsync</c>,
+    /// KON-396), and the picker follows a watch instead of being re-read behind every click. What is
+    /// left here is one cheap read.
     /// </para>
     /// </summary>
     private async Task UpdateClusterNavAsync()
@@ -477,19 +483,68 @@ public partial class MainWindowViewModel
 
         var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
 
-        var namespaces = _cluster.ListNamespacesAsync().AsTask();
+        // Only where the cluster cannot watch, in which case a re-read per navigation is the only way
+        // the picker hears about a namespace that was created (KON-343).
+        if (_namespaceWatch is null)
+            await ReadNamespacesAsync();
 
-        // One call, grouped here, rather than one per kind: five round-trips to fill five submenu
-        // entries is five chances for them to disagree with each other and with the list they label
-        // (KON-169).
-        var workloads = _cluster.ListWorkloadsAsync(null, ns).AsTask();
+        // One call, grouped there, rather than one per kind: five answers arriving separately is five
+        // chances for the submenu to disagree with itself and with the list it labels (KON-169).
+        SyncWorkloadKindNav(await _cluster.ListWorkloadKindsAsync(ns));
 
-        await Task.WhenAll(namespaces, workloads);
-
-        SyncNamespacePicker(namespaces.Result);
-        SyncWorkloadKindNav(workloads.Result);
         UpdatePortForwardCount();
         await UpdateAlertCountAsync();
+    }
+
+    /// <summary>
+    /// The namespaces the picker is built from, read once and then followed (KON-396).
+    /// <para>
+    /// It used to be re-read in front of every cluster navigation, for a list that changes about as
+    /// often as the cluster gains a team. A watch says the same thing for one stream instead of one
+    /// round-trip per click, and says it sooner: the picker now hears about a new namespace while you
+    /// are standing still, which is the half of KON-343 that polling on navigation never covered.
+    /// </para>
+    /// </summary>
+    private async Task ReadNamespacesAsync()
+    {
+        if (_cluster is not null)
+            SyncNamespacePicker(await _cluster.ListNamespacesAsync());
+    }
+
+    /// <summary>Live while the picker follows the cluster; null when this cluster cannot watch.</summary>
+    private CancellationTokenSource? _namespaceWatch;
+
+    /// <summary>
+    /// Start following namespaces for the picker, replacing any stream from a cluster before this one.
+    /// <see cref="ClusterWatch"/> reloads on the thread that calls this — the UI thread, which is the
+    /// only one allowed to touch the collection the picker is bound to.
+    /// </summary>
+    private void FollowNamespaces()
+    {
+        StopFollowingNamespaces();
+
+        if (_cluster is null)
+            return;
+
+        // A stream that ends puts the reads back rather than saying anything: an apiserver closes a
+        // watch on its own schedule, and a picker that stopped following looks exactly like a cluster
+        // whose namespaces stopped changing — there is no honest way to draw that on a ComboBox. So
+        // dropping the stream is what re-arms the per-navigation read in UpdateClusterNavAsync, and
+        // the saving is given up before the freshness is.
+        _namespaceWatch = ClusterWatch.Follow(
+            _cluster, [GroupVersionKind.Namespace], null, ReadNamespacesAsync,
+            (live, _) =>
+            {
+                if (!live)
+                    StopFollowingNamespaces();
+            });
+    }
+
+    private void StopFollowingNamespaces()
+    {
+        _namespaceWatch?.Cancel();
+        _namespaceWatch?.Dispose();
+        _namespaceWatch = null;
     }
 
     /// <summary>
@@ -613,15 +668,15 @@ public partial class MainWindowViewModel
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
     private string _clusterPageKey = "overview";
 
-    /// <summary>The workload kinds the last count found, which is what decides the Workloads page.</summary>
-    private IReadOnlyList<WorkloadNavGroups.Group> _workloadGroups = [];
+    /// <summary>The workload kinds the last read found, which is what decides the Workloads page.</summary>
+    private IReadOnlyList<WorkloadKind> _workloadKinds = [];
 
 
     /// <summary>
     /// Rebuild the per-kind sub-entries under Workloads (KON-169). Which entries and in what order is
-    /// <see cref="WorkloadNavGroups"/>; this only reconciles the nav collection with that answer.
+    /// the cluster's answer; this only reconciles the nav collection with it.
     /// </summary>
-    private void SyncWorkloadKindNav(IReadOnlyList<Workload> workloads)
+    private void SyncWorkloadKindNav(IReadOnlyList<WorkloadKind> kinds)
     {
         // Within the group that holds Workloads, not the whole sidebar: the children belong to their
         // parent, and inserting by an index into a flat list was only ever a way of saying that.
@@ -638,26 +693,25 @@ public partial class MainWindowViewModel
                 items.RemoveAt(i);
         }
 
-        var groups = WorkloadNavGroups.For(workloads);
-        _workloadGroups = groups;
+        _workloadKinds = kinds;
 
         // Always listed, never folded (KON-219). The kinds used to hide behind a chevron on the entry
         // above them, which repeated the word the group heading already carries and gave every kind
         // page two routes: this submenu and the dashboard, which does the same job with counts and
         // rollout state. One kind is not a set worth listing — the entry above it already is the page.
-        if (!WorkloadNavGroups.ShouldGroup(groups))
+        if (!WorkloadNavGroups.ShouldGroup(kinds))
             return;
 
         var at = parentIndex + 1;
-        foreach (var group in groups)
+        foreach (var kind in kinds)
         {
-            var key = WorkloadNavGroups.KeyFor(group.Kind);
+            var key = WorkloadNavGroups.KeyFor(kind);
 
             // No count, like every other entry in this sidebar (KON-354). This one was free — the
             // number comes out of a list that had to be fetched anyway — but "free" is not the reason
             // a number belongs on screen, and five kinds wearing one while nothing around them does
             // reads as the others having lost theirs rather than as a deliberate list.
-            items.Insert(at++, new NavItem(key, WorkloadNavGroups.LabelFor(group.Kind), "IconLayers", isChild: true)
+            items.Insert(at++, new NavItem(key, WorkloadNavGroups.LabelFor(kind), "IconLayers", isChild: true)
             {
                 Command = NavigateCommand,
                 IsSelected = _clusterPageKey == key,

@@ -22,35 +22,36 @@ public sealed class WorkloadNavGroupsTests
     {
         // A cluster with three Deployments and one Job should not carry four empty rows for the kinds
         // it happens not to run — an empty nav item is a place the user learns not to click (KON-117).
-        var groups = WorkloadNavGroups.For(
+        var kinds = WorkloadNavGroups.KindsIn(
         [
             Workload(WorkloadKind.Deployment, "a"),
             Workload(WorkloadKind.Deployment, "b"),
             Workload(WorkloadKind.Job, "c"),
         ]);
 
-        Assert.Equal([WorkloadKind.Deployment, WorkloadKind.Job], groups.Select(g => g.Kind));
+        Assert.Equal([WorkloadKind.Deployment, WorkloadKind.Job], kinds);
     }
 
     [Fact]
-    public void Each_entry_carries_its_own_count()
+    public void A_kind_appears_once_however_many_of_it_there_are()
     {
-        var groups = WorkloadNavGroups.For(
+        // Kinds, not kinds-and-counts (KON-396). The counts left the sidebar with the other badges
+        // (KON-354), and carrying them here is what kept the submenu asking for every object.
+        var kinds = WorkloadNavGroups.KindsIn(
         [
             Workload(WorkloadKind.Deployment, "a"),
             Workload(WorkloadKind.Deployment, "b"),
             Workload(WorkloadKind.CronJob, "c"),
         ]);
 
-        Assert.Equal(2, groups.Single(g => g.Kind == WorkloadKind.Deployment).Count);
-        Assert.Equal(1, groups.Single(g => g.Kind == WorkloadKind.CronJob).Count);
+        Assert.Equal([WorkloadKind.Deployment, WorkloadKind.CronJob], kinds);
     }
 
     [Fact]
     public void The_order_is_fixed_rather_than_by_count()
     {
         // Ordering by count would reshuffle the sidebar under the pointer the moment a Job finishes.
-        var groups = WorkloadNavGroups.For(
+        var kinds = WorkloadNavGroups.KindsIn(
         [
             Workload(WorkloadKind.CronJob, "a"),
             Workload(WorkloadKind.Job, "b"),
@@ -58,7 +59,7 @@ public sealed class WorkloadNavGroupsTests
             Workload(WorkloadKind.Deployment, "d"),
         ]);
 
-        Assert.Equal([WorkloadKind.Deployment, WorkloadKind.Job, WorkloadKind.CronJob], groups.Select(g => g.Kind));
+        Assert.Equal([WorkloadKind.Deployment, WorkloadKind.Job, WorkloadKind.CronJob], kinds);
     }
 
     [Fact]
@@ -66,25 +67,25 @@ public sealed class WorkloadNavGroupsTests
     {
         // The parent already lists exactly those objects; a single child under it says the same thing
         // twice and adds a row for nothing.
-        var groups = WorkloadNavGroups.For([Workload(WorkloadKind.Deployment, "a"), Workload(WorkloadKind.Deployment, "b")]);
+        var kinds = WorkloadNavGroups.KindsIn([Workload(WorkloadKind.Deployment, "a"), Workload(WorkloadKind.Deployment, "b")]);
 
-        Assert.Single(groups);
-        Assert.False(WorkloadNavGroups.ShouldGroup(groups));
+        Assert.Single(kinds);
+        Assert.False(WorkloadNavGroups.ShouldGroup(kinds));
     }
 
     [Fact]
     public void Two_kinds_are()
     {
-        var groups = WorkloadNavGroups.For([Workload(WorkloadKind.Deployment), Workload(WorkloadKind.StatefulSet)]);
+        var kinds = WorkloadNavGroups.KindsIn([Workload(WorkloadKind.Deployment), Workload(WorkloadKind.StatefulSet)]);
 
-        Assert.True(WorkloadNavGroups.ShouldGroup(groups));
+        Assert.True(WorkloadNavGroups.ShouldGroup(kinds));
     }
 
     [Fact]
     public void An_empty_cluster_has_no_group()
     {
-        Assert.Empty(WorkloadNavGroups.For([]));
-        Assert.False(WorkloadNavGroups.ShouldGroup(WorkloadNavGroups.For([])));
+        Assert.Empty(WorkloadNavGroups.KindsIn([]));
+        Assert.False(WorkloadNavGroups.ShouldGroup(WorkloadNavGroups.KindsIn([])));
     }
 
     [Theory]
@@ -111,23 +112,23 @@ public sealed class WorkloadNavGroupsTests
     }
 
     [Fact]
-    public void A_kind_page_the_new_groups_do_not_have_resolves_to_workloads()
+    public void A_kind_page_the_new_kinds_do_not_have_resolves_to_workloads()
     {
         // Switching namespace keeps the page key, and a namespace without Jobs has no Jobs page
         // (KON-200).
-        var groups = WorkloadNavGroups.For([Workload(WorkloadKind.DaemonSet)]);
+        var kinds = WorkloadNavGroups.KindsIn([Workload(WorkloadKind.DaemonSet)]);
 
-        Assert.Equal("workloads", WorkloadNavGroups.ResolveKey("workloads:Job", groups));
+        Assert.Equal("workloads", WorkloadNavGroups.ResolveKey("workloads:Job", kinds));
     }
 
     [Fact]
     public void A_kind_page_that_still_exists_is_left_alone()
     {
-        var groups = WorkloadNavGroups.For([Workload(WorkloadKind.Job), Workload(WorkloadKind.DaemonSet)]);
+        var kinds = WorkloadNavGroups.KindsIn([Workload(WorkloadKind.Job), Workload(WorkloadKind.DaemonSet)]);
 
-        Assert.Equal("workloads:Job", WorkloadNavGroups.ResolveKey("workloads:Job", groups));
+        Assert.Equal("workloads:Job", WorkloadNavGroups.ResolveKey("workloads:Job", kinds));
 
         // And a key that was never about a kind is nobody's business here.
-        Assert.Equal("pods", WorkloadNavGroups.ResolveKey("pods", groups));
+        Assert.Equal("pods", WorkloadNavGroups.ResolveKey("pods", kinds));
     }
 }

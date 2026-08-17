@@ -173,13 +173,13 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
         // scroll position and no selection to lose is a different proposition from a fifty-row table
         // — worth revisiting only if a reload turns out to be visible.
         Kinds.Clear();
-        foreach (var group in WorkloadNavGroups.For(workloads))
+        foreach (var kind in WorkloadNavGroups.KindsIn(workloads))
         {
-            Kinds.Add(new KindCard(group.Kind, workloads.Where(w => w.Kind == group.Kind).ToList(), _onOpenKind));
+            Kinds.Add(new KindCard(kind, workloads.Where(w => w.Kind == kind).ToList(), _onOpenKind));
 
             // Pods directly after Deployments, the same rule the sidebar follows (KON-342), so the two
             // views tell one story about where Pods belongs.
-            if (group.Kind == WorkloadKind.Deployment)
+            if (kind == WorkloadKind.Deployment)
                 Kinds.Add(new KindCard(pods, _onOpenPods));
         }
 

@@ -306,6 +306,58 @@ public sealed class KubernetesClusterEngine
         return [.. results.SelectMany(r => r).OrderBy(w => w.Namespace, StringComparer.Ordinal).ThenBy(w => w.Name, StringComparer.Ordinal)];
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<IReadOnlyList<WorkloadKind>> ListWorkloadKindsAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        // Same five kinds as ListWorkloadsAsync, and the same fan-out — but each asks for one object
+        // instead of all of them, because "is there a CronJob here" is answered by the first one
+        // (KON-396). The round-trips are unchanged; what changes is what comes back over them, which
+        // is the axis a big cluster is expensive on.
+        //
+        // limit and nothing else. resourceVersion=0 would serve these from the apiserver's watch
+        // cache and be cheaper still, except that the cache cannot paginate: it ignores the limit and
+        // returns the whole list, which is the read this is here to stop making.
+        var probes = new[]
+        {
+            AnyAsync<V1DeploymentList, V1Deployment>(WorkloadKind.Deployment, ns,
+                (n, c) => _client.AppsV1.ListNamespacedDeploymentAsync(n, limit: 1, cancellationToken: c),
+                c => _client.AppsV1.ListDeploymentForAllNamespacesAsync(limit: 1, cancellationToken: c), ct),
+            AnyAsync<V1StatefulSetList, V1StatefulSet>(WorkloadKind.StatefulSet, ns,
+                (n, c) => _client.AppsV1.ListNamespacedStatefulSetAsync(n, limit: 1, cancellationToken: c),
+                c => _client.AppsV1.ListStatefulSetForAllNamespacesAsync(limit: 1, cancellationToken: c), ct),
+            AnyAsync<V1DaemonSetList, V1DaemonSet>(WorkloadKind.DaemonSet, ns,
+                (n, c) => _client.AppsV1.ListNamespacedDaemonSetAsync(n, limit: 1, cancellationToken: c),
+                c => _client.AppsV1.ListDaemonSetForAllNamespacesAsync(limit: 1, cancellationToken: c), ct),
+            AnyAsync<V1JobList, V1Job>(WorkloadKind.Job, ns,
+                (n, c) => _client.BatchV1.ListNamespacedJobAsync(n, limit: 1, cancellationToken: c),
+                c => _client.BatchV1.ListJobForAllNamespacesAsync(limit: 1, cancellationToken: c), ct),
+            AnyAsync<V1CronJobList, V1CronJob>(WorkloadKind.CronJob, ns,
+                (n, c) => _client.BatchV1.ListNamespacedCronJobAsync(n, limit: 1, cancellationToken: c),
+                c => _client.BatchV1.ListCronJobForAllNamespacesAsync(limit: 1, cancellationToken: c), ct),
+        };
+
+        // Built in enum order above, so the answer arrives in it — the order the submenu is drawn in.
+        var found = await Task.WhenAll(probes).ConfigureAwait(false);
+        return [.. found.Where(k => k is not null).Select(k => k!.Value)];
+    }
+
+    /// <summary>The kind, if this cluster holds one of it — <see cref="ListAsync{TList,TItem}"/> without the objects.</summary>
+    private static async Task<WorkloadKind?> AnyAsync<TList, TItem>(
+        WorkloadKind kind,
+        string? ns,
+        Func<string, CancellationToken, Task<TList>> byNamespace,
+        Func<CancellationToken, Task<TList>> allNamespaces,
+        CancellationToken ct)
+        where TList : IItems<TItem>
+    {
+        var list = ns is null
+            ? await allNamespaces(ct).ConfigureAwait(false)
+            : await byNamespace(ns, ct).ConfigureAwait(false);
+
+        return list.Items is { Count: > 0 } ? kind : null;
+    }
+
     /// <summary>Namespaced-or-all listing, mapped — the shape every lister here repeats.</summary>
     private static async Task<IReadOnlyList<Workload>> ListAsync<TList, TItem>(
         string? ns,
