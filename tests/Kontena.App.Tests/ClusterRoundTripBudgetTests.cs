@@ -57,23 +57,75 @@ public sealed class ClusterRoundTripBudgetTests
         nameof(FakeClusterEngine.CountAsync),
     ];
 
-    /// <summary>Open a cluster, forget what that cost, and count what <paramref name="action"/> costs.</summary>
-    private static async Task<int> ReadsForAsync(Action<MainWindowViewModel> action)
+    /// <summary>
+    /// How long the cluster has to be left alone before the open counts as over.
+    /// <para>
+    /// Longer than <c>ClusterWatch</c>'s 400 ms settle, and that is the whole point (KON-406). Opening
+    /// a cluster starts the namespace watch and the landing page's seven, and a watch opens with a
+    /// snapshot of what is already there — a burst, which settles into exactly one reload a moment
+    /// after the open returned. Clearing the counter the instant it returned therefore did not clear
+    /// the open: whether its leftovers landed before or after the clear was a race with nothing but
+    /// runner speed on the other side, and on macOS the picker's re-read landed inside the window and
+    /// was billed to a click that did not make it.
+    /// </para>
+    /// <para>
+    /// Same bug as KON-402 one file over, where the count said how long a page had been alive rather
+    /// than what a load cost. There the answer was to stop the watch before that window was up; here
+    /// the shell owns one of the two watches and keeps it for as long as the cluster is open, so this
+    /// waits the window out instead. Reproduced on Linux with nothing but a 350 ms stall between the
+    /// open and the clear.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan Settled = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// How long the counted action gets before its reads are called complete. The page's own load and
+    /// the sidebar refresh are both started rather than awaited, so the count is only whole once the
+    /// loop they were posted to has run them — but they land in about a millisecond against a fake, so
+    /// this is the quiet that proves it rather than a wait that hopes.
+    /// </summary>
+    private static readonly TimeSpan Landed = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>Wait until nothing has read <paramref name="cluster"/> for <paramref name="quiet"/>.</summary>
+    private static async Task QuietAsync(FakeClusterEngine cluster, TimeSpan quiet)
+    {
+        // Bounded: a fake that never stopped being read should fail the budget below, not hang the
+        // suite waiting for a standstill that is not coming.
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var before = cluster.Calls.Values.Sum();
+            await Task.Delay(quiet);
+
+            if (cluster.Calls.Values.Sum() == before)
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Open a cluster, forget what that cost, and hand back the engine holding what
+    /// <paramref name="action"/> alone asked of it.
+    /// </summary>
+    private static async Task<FakeClusterEngine> ReadsFromAsync(Action<MainWindowViewModel> action)
     {
         var cluster = new FakeClusterEngine();
         var shell = new MainWindowViewModel();
         Assert.True(await shell.EnterClusterModeAsync(cluster));
 
+        // Count from a standstill, so the number is the action's and only the action's.
+        await QuietAsync(cluster, Settled);
+
         cluster.Calls.Clear();
         action(shell);
 
-        // The page's own load and the sidebar refresh are both started rather than awaited, so the
-        // count is only complete once the loop they were posted to has run them.
         await Task.Yield();
-        await Task.Delay(50);
+        await QuietAsync(cluster, Landed);
 
-        return Counted.Sum(cluster.CallsTo);
+        return cluster;
     }
+
+    /// <summary>What <paramref name="action"/> costs, in the reads counted above.</summary>
+    private static async Task<int> ReadsForAsync(Action<MainWindowViewModel> action) =>
+        Counted.Sum((await ReadsFromAsync(action)).CallsTo);
 
     [Fact]
     public async Task Picking_a_namespace_costs_ten_reads()
@@ -118,14 +170,11 @@ public sealed class ClusterRoundTripBudgetTests
         // The point of KON-396, stated as the thing that must not come back: whatever the numbers
         // above end up being, none of those reads may be the app's most expensive one. A navigation
         // that lists workloads is either the page doing it for itself, or this regressing.
-        var cluster = new FakeClusterEngine();
-        var shell = new MainWindowViewModel();
-        Assert.True(await shell.EnterClusterModeAsync(cluster));
-
-        cluster.Calls.Clear();
-        shell.NavigateCommand.Execute("portforwards");
-        await Task.Yield();
-        await Task.Delay(50);
+        //
+        // Through the same helper as the budgets above, and for the reason KON-406 gave it: the
+        // namespace assertion is the one the open's own watch would have broken, by re-reading the
+        // picker on this side of the clear.
+        var cluster = await ReadsFromAsync(shell => shell.NavigateCommand.Execute("portforwards"));
 
         Assert.Equal(0, cluster.CallsTo(nameof(FakeClusterEngine.ListWorkloadsAsync)));
         Assert.Equal(0, cluster.CallsTo(nameof(FakeClusterEngine.ListNamespacesAsync)));

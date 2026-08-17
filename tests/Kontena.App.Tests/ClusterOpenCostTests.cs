@@ -25,35 +25,45 @@ namespace Kontena.App.Tests;
 /// </summary>
 public sealed class ClusterOpenCostTests
 {
-    private static async Task<(MainWindowViewModel Shell, FakeClusterEngine Cluster)> OpenAsync()
+    /// <summary>
+    /// The open, and what it asked for as that stood the moment it returned.
+    /// <para>
+    /// A snapshot rather than the live counter (KON-406): the open leaves the namespace watch and the
+    /// landing page's seven running, and every watch opens with a burst that <c>ClusterWatch</c>
+    /// settles into a reload 400 ms later. Reading the counter at assertion time therefore counts the
+    /// open plus however long this test took to be resumed — which on a loaded runner is the
+    /// difference between one namespace list and two.
+    /// </para>
+    /// </summary>
+    private static async Task<(MainWindowViewModel Shell, IReadOnlyDictionary<string, int> Reads)> OpenAsync()
     {
         var cluster = new FakeClusterEngine();
         var shell = new MainWindowViewModel();
 
         Assert.True(await shell.EnterClusterModeAsync(cluster));
-        return (shell, cluster);
+        return (shell, new Dictionary<string, int>(cluster.Calls, StringComparer.Ordinal));
     }
 
     [Fact]
     public async Task Opening_a_cluster_lists_its_namespaces_once_and_no_more()
     {
-        var (_, cluster) = await OpenAsync();
+        var (_, reads) = await OpenAsync();
 
         // Once, for the picker and the workload kinds together. The overview's copy was the second,
         // and it is gone: the tile it filled wants the number, which it now asks for as a number
         // (KON-395). The listing that is left is the one whose answer is actually read.
-        Assert.Equal(1, cluster.CallsTo(nameof(FakeClusterEngine.ListNamespacesAsync)));
+        Assert.Equal(1, reads.GetValueOrDefault(nameof(FakeClusterEngine.ListNamespacesAsync)));
     }
 
     [Fact]
     public async Task Opening_a_cluster_builds_its_landing_page_once()
     {
-        var (_, cluster) = await OpenAsync();
+        var (_, reads) = await OpenAsync();
 
         // The overview reads the nodes and nothing else does, so its node count is the page count.
         // Two here is the page being built, disposed and built again — seven watch streams opened and
         // torn down for nothing, on top of six reads nobody ever saw the answer to.
-        Assert.Equal(1, cluster.CallsTo(nameof(FakeClusterEngine.ListNodesAsync)));
+        Assert.Equal(1, reads.GetValueOrDefault(nameof(FakeClusterEngine.ListNodesAsync)));
     }
 
     [Fact]
