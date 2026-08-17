@@ -31,22 +31,51 @@ public sealed class ClusterObjectBudgetTests
         return cluster;
     }
 
-    /// <summary>Every object the fake handed over, whichever call asked for it.</summary>
-    private static int ObjectsFrom(FakeClusterEngine cluster) => cluster.Objects.Values.Sum();
+    /// <summary>
+    /// Every object one overview load hands over, with nothing else of the page's still running.
+    /// <para>
+    /// The engine's running total is the wrong thing to compare between two pages, and KON-402 is why:
+    /// the constructor starts a load <i>and</i> seven watches without awaiting either, so that total
+    /// says how long a page has been alive rather than what a load costs. On a loaded CI runner it read
+    /// 9 against 6 — three loads on the small cluster against two on the big one — for the reason that
+    /// looks backwards until you see it: the small cluster is built first, so it is the one alive long
+    /// enough for its watch to settle at 400 ms and reload once more. The big cluster was not cheaper,
+    /// it was younger.
+    /// </para>
+    /// <para>
+    /// So: stop the watch before that window is up, let the constructor's own load land, and count from
+    /// zero across one load nobody is racing. Same shape as <see cref="ClusterRoundTripBudgetTests"/>,
+    /// which clears the counter for the same reason.
+    /// </para>
+    /// </summary>
+    private static async Task<int> ObjectsForOneLoadAsync(FakeClusterEngine cluster)
+    {
+        var page = new ClusterOverviewViewModel(cluster);
+        page.Dispose();
+
+        await Task.Yield();
+        await Task.Delay(50);
+
+        cluster.Objects.Clear();
+        await page.LoadAsync();
+
+        return cluster.Objects.Values.Sum();
+    }
 
     [Fact]
     public async Task The_overview_costs_the_same_on_a_cluster_of_four_and_one_of_sixteen_thousand()
     {
-        var small = new FakeClusterEngine();
-        var big = Big();
-
-        await new ClusterOverviewViewModel(small).LoadAsync();
-        await new ClusterOverviewViewModel(big).LoadAsync();
+        var small = await ObjectsForOneLoadAsync(new FakeClusterEngine());
+        var big = await ObjectsForOneLoadAsync(Big());
 
         // The node table is the one thing on the page made of objects, and growing the cluster above
         // did not add nodes. Everything else on it is an integer, and an integer costs the same
         // whatever it counts — which is the entire fix.
-        Assert.Equal(ObjectsFrom(small), ObjectsFrom(big));
+        Assert.Equal(small, big);
+
+        // Two zeroes would satisfy that and say nothing. The node table is objects and is drawn on
+        // both, so a load that read none of them is a broken page passing a budget.
+        Assert.NotEqual(0, small);
     }
 
     [Fact]
