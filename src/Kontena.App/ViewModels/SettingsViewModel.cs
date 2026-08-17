@@ -380,12 +380,16 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsUpdates));
         OnPropertyChanged(nameof(IsRegistries));
         OnPropertyChanged(nameof(IsClusters));
+        OnPropertyChanged(nameof(IsTools));
 
         // Re-check on entry rather than on build: tooling can be installed in a terminal while the
         // page is open, and a stale "not installed" is the kind of wrong that makes people click
         // Install twice.
         if (Category == "clusters" && LocalClusters is { } clusters)
             _ = clusters.LoadAsync();
+
+        if (Category == "tools" && Tools is { } tools)
+            _ = tools.LoadAsync();
 
         // Read fresh on entry: a login can have been added by docker login, or revoked in the keychain,
         // since the page was built.
@@ -395,6 +399,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool IsRegistries => Category == "registries";
     public bool IsClusters => Category == "clusters";
+    public bool IsTools => Category == "tools";
     public bool IsRemoteClusters => Category == "remote-clusters";
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
@@ -404,7 +409,28 @@ public partial class SettingsViewModel : ViewModelBase
     /// Local clusters (KON-109, KON-76). An init property rather than a thirteenth constructor
     /// parameter — this page owns its own state and needs nothing from settings.
     /// </summary>
-    public LocalClustersViewModel? LocalClusters { get; init; }
+    public LocalClustersViewModel? LocalClusters
+    {
+        get => _localClusters;
+        init
+        {
+            _localClusters = value;
+
+            // Its pointer at Tools is a category switch, and the category lives here. Wired at
+            // assignment rather than by the shell: the shell would have to know this page's own
+            // vocabulary to do it.
+            if (value is not null)
+                value.RequestShowTools = () => Category = "tools";
+        }
+    }
+
+    private readonly LocalClustersViewModel? _localClusters;
+
+    /// <summary>
+    /// The external tools Kontena drives (KON-266). Its own section rather than a fold on Local
+    /// clusters: kubectl and helm are needed for every cluster, including remote ones.
+    /// </summary>
+    public ClusterToolingViewModel? Tools { get; init; }
 
     /// <summary>
     /// Rolling a cluster out onto your own machines (KON-379). Its own section rather than a tab on

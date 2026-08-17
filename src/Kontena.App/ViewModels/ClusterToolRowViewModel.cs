@@ -6,22 +6,21 @@ using Kontena.Core.Orchestration;
 
 namespace Kontena.App.ViewModels;
 
-/// <summary>One tool on the Local clusters page: what state it is in and what can be done about it.</summary>
+/// <summary>One tool on the Tools page: what state it is in and what can be done about it.</summary>
 public sealed partial class ClusterToolRowViewModel : ObservableObject
 {
     private readonly ClusterToolingViewModel _parent;
     private ToolReadiness _readiness;
     private ToolUpdate? _update;
 
-    public ClusterToolRowViewModel(ToolReadiness readiness, ClusterToolingViewModel parent, string purpose)
+    public ClusterToolRowViewModel(ToolReadiness readiness, ClusterToolingViewModel parent)
     {
         _readiness = readiness;
         _parent = parent;
-        Purpose = purpose;
     }
 
-    /// <summary>What this tool is for, in the user's terms rather than the project's own blurb.</summary>
-    public string Purpose { get; }
+    /// <summary>What this tool is for. Carried by the tool itself, so a longer list cannot outrun it.</summary>
+    public string Purpose => _readiness.Tool.Purpose;
 
     public ExternalTool Tool => _readiness.Tool;
     public string Name => _readiness.Tool.Name;

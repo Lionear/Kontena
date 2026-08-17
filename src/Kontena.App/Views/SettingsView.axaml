@@ -126,6 +126,13 @@
                         <TextBlock Grid.Column="1" Text="Updates" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
+                <Button Classes="snav" Classes.on="{Binding IsTools}" Command="{Binding SelectCategoryCommand}"
+                        CommandParameter="tools" IsVisible="{Binding Tools, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconTerminal}"/>
+                        <TextBlock Grid.Column="1" Text="Tools" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
                 <Button Classes="snav" Classes.on="{Binding IsClusters}" Command="{Binding SelectCategoryCommand}"
                         CommandParameter="clusters" IsVisible="{Binding LocalClusters, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <Grid ColumnDefinitions="Auto,*">
@@ -877,6 +884,9 @@
                         </Border>
                     </StackPanel>
                 </StackPanel>
+
+                <!-- The external tools Kontena drives (KON-109, moved here by KON-266). -->
+                <views:ClusterToolingView DataContext="{Binding Tools}" IsVisible="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).IsTools}"/>
 
                 <!-- Local clusters (KON-109 + KON-76) — its own view, so this file does not grow a sixth page. -->
                 <views:LocalClustersView DataContext="{Binding LocalClusters}" IsVisible="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).IsClusters}"/>
