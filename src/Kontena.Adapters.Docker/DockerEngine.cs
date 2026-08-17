@@ -363,6 +363,58 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         }
     }
 
+    /// <summary>
+    /// Streams the daemon's push the same way <see cref="PullImageAsync"/> streams its pull: the API
+    /// reports both as the same <c>JSONMessage</c> sequence, so the only difference here is the direction
+    /// and which errors turn up.
+    /// <para>
+    /// A push that the registry refuses is reported <i>inside</i> the stream — the daemon answers 200 and
+    /// then narrates the denial — so <see cref="JSONMessage.ErrorMessage"/> is turned into an exception
+    /// rather than yielded as another status line. Without that, "unauthorized" would scroll past as
+    /// progress and the push would end looking like it worked.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<PushProgress> PushImageAsync(
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var channel = Channel.CreateUnbounded<JSONMessage>(new UnboundedChannelOptions { SingleReader = true });
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        var pump = Task.Run(async () =>
+        {
+            try
+            {
+                await PushCoreAsync(reference, credential, new ChannelProgress<JSONMessage>(channel.Writer), linked.Token).ConfigureAwait(false);
+                channel.Writer.TryComplete();
+            }
+            catch (Exception ex)
+            {
+                channel.Writer.TryComplete(ex);
+            }
+        }, linked.Token);
+
+        try
+        {
+            await foreach (var m in channel.Reader.ReadAllAsync(linked.Token).ConfigureAwait(false))
+            {
+                if (!string.IsNullOrEmpty(m.ErrorMessage))
+                    throw new EngineException(m.ErrorMessage);
+
+                yield return new PushProgress(
+                    reference,
+                    string.IsNullOrEmpty(m.Status) ? m.ProgressMessage ?? string.Empty : m.Status,
+                    m.Progress?.Current,
+                    m.Progress?.Total);
+            }
+        }
+        finally
+        {
+            await linked.CancelAsync().ConfigureAwait(false);
+            await SwallowAsync(pump).ConfigureAwait(false);
+        }
+    }
+
     public ValueTask RemoveImageAsync(string id, bool force = false, CancellationToken ct = default) =>
         Exec(async () => { await _client.Images.DeleteImageAsync(id, new ImageDeleteParameters { Force = force }, ct).ConfigureAwait(false); });
 
@@ -1376,7 +1428,21 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
     }
 
     /// <summary>
-    /// The credential in the shape the engine API takes, or null to pull anonymously.
+    /// The repository goes in the path and the tag in the query, split the same way a pull splits it. An
+    /// unsplit <c>repo:tag</c> in the path would ask the daemon to push every tag of a repository named
+    /// <c>repo:tag</c>.
+    /// </summary>
+    private Task PushCoreAsync(
+        string reference, RegistryCredential? credential, IProgress<JSONMessage> progress, CancellationToken ct)
+    {
+        var (repo, tag) = SplitRepoTag(reference);
+        return _client.Images.PushImageAsync(
+            repo, new ImagePushParameters { Tag = tag },
+            ToAuthConfig(credential), progress, ct);
+    }
+
+    /// <summary>
+    /// The credential in the shape the engine API takes, or null for an anonymous pull or push.
     /// <para>
     /// <c>ServerAddress</c> is sent as the host on its own. Docker matches it against the reference being
     /// pulled, and a scheme or a trailing path — which is how Hub logins are written in

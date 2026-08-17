@@ -690,6 +690,7 @@ public partial class MainWindowViewModel
         {
             RequestPullImage = ShowPullDialog,
             RequestBuildImage = ShowBuildDialog,
+            RequestTagPushImage = ShowTagPushDialog,
             RequestConfirm = ShowConfirm,
         };
         Volumes = new VolumesViewModel(_engine)

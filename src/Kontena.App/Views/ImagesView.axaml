@@ -87,6 +87,9 @@
                                         </StackPanel>
                                         <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4"
                                                     HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <Button Classes="qa" Command="{Binding TagAndPushCommand}" ToolTip.Tip="Tag and push">
+                                                <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconPush}"/>
+                                            </Button>
                                             <Button Classes="qa danger" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete">
                                                 <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource Danger}" Data="{StaticResource IconTrash}"/>
                                             </Button>

@@ -836,6 +836,30 @@ public sealed class NerdctlEngine : IContainerEngine
             yield return new PullProgress(reference, line.Text, null, null);
     }
 
+    /// <summary>
+    /// Streams <c>nerdctl push &lt;reference&gt;</c>, the mirror of <see cref="PullImageAsync"/> in every
+    /// respect that matters here: free-form progress lines with no byte counts to total, so
+    /// <see cref="PushProgress.Current"/> and <see cref="PushProgress.Total"/> stay <c>null</c>. Nothing
+    /// in the output is parsed — the lines are passed through as text and the exit code is the verdict —
+    /// so unlike the commands this plugin refuses, there is no format here to get wrong.
+    /// <para>
+    /// A <paramref name="credential"/> is refused rather than ignored, for the reason a pull's is: it
+    /// would take <c>nerdctl login</c> first, which is unobserved. That leaves anonymous push, which in
+    /// practice means a local registry that accepts writes — narrow, but real, and the same ground pull
+    /// already stands on.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<PushProgress> PushImageAsync(
+        string reference, RegistryCredential? credential = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (credential is not null)
+            throw new NotSupportedException(RegistryLoginUnobserved);
+
+        await foreach (var line in StreamOrThrowAsync(Failed, ct, "push", reference).ConfigureAwait(false))
+            yield return new PushProgress(reference, line.Text, null, null);
+    }
+
     /// <summary>Not available here — see <see cref="RegistryLoginUnobserved"/>.</summary>
     public ValueTask VerifyRegistryLoginAsync(RegistryCredential credential, CancellationToken ct = default) =>
         throw new NotSupportedException(RegistryLoginUnobserved);

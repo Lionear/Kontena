@@ -626,6 +626,15 @@ internal static class Program
                 Settle(rounds: 10);
                 break;
 
+            // Raised from the row's own command, so a button wired to nothing shows up here as a shot of
+            // the plain images page (KON-387).
+            case "tag-push-image":
+                vm.NavigateCommand.Execute("images");
+                SettleUntil(() => vm.Images is { HasLoaded: true }, maxRounds: 80);
+                vm.Images!.Items[0].TagAndPushCommand.Execute(null);
+                Settle(rounds: 10);
+                break;
+
             case "new-volume":
                 vm.NavigateCommand.Execute("volumes");
                 Settle(rounds: 20);
