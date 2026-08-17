@@ -98,6 +98,27 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         foreach (var c in all)
             ContainerRows.Add(new PodContainerRow(c));
 
+        // The image, on the tab you land on (KON-390). It was only in the container table, which for
+        // the one-container pod that most pods are meant scanning a table to read a single fact.
+        // Init images stay out: they are not what the pod runs.
+        Images = pod.Containers.Count == 1
+            ? [pod.Containers[0].Image]
+            : [.. pod.Containers.Select(c => $"{c.Name}: {c.Image}")];
+
+        Labels = [.. pod.Labels.OrderBy(l => l.Key, StringComparer.Ordinal).Select(l => $"{l.Key}={l.Value}")];
+
+        // One row per object, not per use: the same secret read by two containers is one secret
+        // (KON-390). Read off the pod that is already here — ConfigUses came with the listing.
+        ConfigRows =
+        [
+            .. pod.ConfigUses
+                .GroupBy(u => (u.Kind, u.Name))
+                .OrderBy(g => g.Key.Kind.Kind, StringComparer.Ordinal)
+                .ThenBy(g => g.Key.Name, StringComparer.Ordinal)
+                .Select(g => new PodConfigRow(
+                    new ResourceRef(g.Key.Kind, pod.Namespace, g.Key.Name), [.. g], cluster.GetConfigDataAsync)),
+        ];
+
         // The declared ceiling, when every container has one. A partial sum would be a limit the
         // pod does not actually have, so a single unlimited container means no line at all.
         var limits = all.Select(c => c.MemoryLimitBytes).ToList();
@@ -251,6 +272,26 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     public ObservableCollection<string> Containers { get; }
     public ObservableCollection<PodContainerRow> ContainerRows { get; } = [];
+
+    // ── Overview facts (KON-390) ───────────────────────────────────────────────
+
+    /// <summary>The image each app container runs — bare when there is one, prefixed with the
+    /// container name when there are several and the bare image would be ambiguous.</summary>
+    public IReadOnlyList<string> Images { get; }
+
+    public bool HasImages => Images.Count > 0;
+    public string ImagesLabel => Images.Count > 1 ? "IMAGES" : "IMAGE";
+
+    /// <summary>The pod's labels, which are what every Service selector in the namespace matches
+    /// against — the fact that answers "why is (or isn't) this pod behind that service".</summary>
+    public IReadOnlyList<string> Labels { get; }
+
+    public bool HasLabels => Labels.Count > 0;
+
+    /// <summary>The ConfigMaps and Secrets this pod reads, one row per object (KON-390).</summary>
+    public IReadOnlyList<PodConfigRow> ConfigRows { get; }
+
+    public bool HasConfigRows => ConfigRows.Count > 0;
 
     private readonly Dictionary<string, ContainerStatus> _containerByName;
 
@@ -748,6 +789,119 @@ public sealed class PodContainerRow
     public string KindLabel { get; }
     public bool HasKindLabel { get; }
     public IBrush StatusBrush { get; }
+}
+
+/// <summary>
+/// One ConfigMap or Secret a pod reads, on the pod's Overview tab (KON-390) — the object, how this
+/// pod reaches it, and its keys once asked for.
+/// </summary>
+public sealed partial class PodConfigRow : ObservableObject
+{
+    private readonly Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> _fetch;
+
+    public PodConfigRow(
+        ResourceRef reference, IReadOnlyList<ConfigUse> uses,
+        Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> fetch)
+    {
+        ArgumentNullException.ThrowIfNull(uses);
+
+        Reference = reference;
+        _fetch = fetch;
+
+        Name = reference.Name;
+        IsSecret = reference.Kind == GroupVersionKind.Secret;
+        KindLabel = IsSecret ? "Secret" : "ConfigMap";
+
+        // Deduplicated: "read as environment by api" twice is one sentence, and the same object read
+        // by two containers is two clauses of one.
+        UsageText = string.Join(" · ", uses.Select(Describe).Distinct(StringComparer.Ordinal));
+    }
+
+    private static string Describe(ConfigUse use) => use.How switch
+    {
+        ConfigUseKind.Volume => "mounted as a volume",
+        ConfigUseKind.EnvironmentVariable when use.Container.Length > 0 => $"read as environment by {use.Container}",
+        ConfigUseKind.EnvironmentVariable => "read as environment",
+        ConfigUseKind.EnvironmentFrom when use.Container.Length > 0 => $"read whole as environment by {use.Container}",
+        ConfigUseKind.EnvironmentFrom => "read whole as environment",
+        _ => "used to pull images",
+    };
+
+    public ResourceRef Reference { get; }
+    public string Name { get; }
+    public string KindLabel { get; }
+    public bool IsSecret { get; }
+    public string UsageText { get; }
+
+    [ObservableProperty] private bool _isExpanded;
+    [ObservableProperty] private bool _isBusy;
+
+    /// <summary>What went wrong asking for the keys; usually RBAC saying no.</summary>
+    [ObservableProperty] private string? _error;
+
+    partial void OnErrorChanged(string? value) => OnPropertyChanged(nameof(HasError));
+
+    public bool HasError => !string.IsNullOrEmpty(Error);
+
+    /// <summary>The keys, once the row is open. Empty again the moment it closes — so does any value
+    /// that was on screen.</summary>
+    [ObservableProperty] private IReadOnlyList<ConfigKeyRow> _keys = [];
+
+    partial void OnKeysChanged(IReadOnlyList<ConfigKeyRow> value) => OnPropertyChanged(nameof(HasKeys));
+
+    public bool HasKeys => Keys.Count > 0;
+
+    /// <summary>Set when the object is open and holds nothing — which is valid, and better said than
+    /// shown as a row that unfolds onto nothing.</summary>
+    [ObservableProperty] private bool _isEmpty;
+
+    [RelayCommand]
+    private async Task Toggle()
+    {
+        if (IsExpanded)
+        {
+            // Closing drops the rows, and with them any value that was revealed — same rule the key
+            // rows keep for themselves: hidden means gone, not folded away.
+            Keys = [];
+            IsExpanded = false;
+            IsEmpty = false;
+            Error = null;
+            return;
+        }
+
+        IsBusy = true;
+        Error = null;
+
+        try
+        {
+            // The keys come from the values call because that is the only thing that knows them here:
+            // a pod carries the names of the objects it reads, never their contents. The values it
+            // returns are dropped on the spot — what survives is the name and size of each key, which
+            // is what the listing pages carry too. Asking the namespace-wide listers instead would
+            // pull every secret in the namespace over the wire to learn about this one.
+            var entries = await _fetch(Reference, CancellationToken.None);
+
+            // Reuses the config page's rows whole, reveal behaviour included: a secret's value is
+            // fetched when the eye is pressed and dropped again when it is pressed a second time.
+            Keys = new ConfigObjectRow(
+                Reference, type: null,
+                [.. entries.Select(e => new ConfigKey(e.Key, e.SizeBytes))],
+                TimeSpan.Zero, _fetch, IsSecret).BuildKeyRows();
+
+            IsEmpty = Keys.Count == 0;
+            IsExpanded = true;
+        }
+        catch (Exception failure)
+        {
+            // Reading a secret is its own RBAC verb: a pod page that may name the secret is not
+            // automatically allowed to open it.
+            Error = failure.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }
 
 /// <summary>An event row in the pod-detail Events tab.</summary>
