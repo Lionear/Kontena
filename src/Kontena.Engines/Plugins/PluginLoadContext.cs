@@ -25,6 +25,9 @@ namespace Kontena.Engines.Plugins;
 /// silent failure this file otherwise exists to prevent. The rule stays as it is regardless: it is the
 /// one thing that keeps a mismatched SDK from producing a wrong-type cast instead of a clean rejection.
 /// </para>
+/// <para>
+/// Nothing here is ever loaded by path, only by <see cref="LoadWithoutLocking"/> — see it for why.
+/// </para>
 /// </summary>
 public sealed class PluginLoadContext : AssemblyLoadContext
 {
@@ -33,6 +36,30 @@ public sealed class PluginLoadContext : AssemblyLoadContext
     public PluginLoadContext(string pluginAssemblyPath)
         : base(name: Path.GetFileNameWithoutExtension(pluginAssemblyPath), isCollectible: false)
         => _resolver = new AssemblyDependencyResolver(pluginAssemblyPath);
+
+    /// <summary>
+    /// Read the file and load the bytes, rather than <c>LoadFromAssemblyPath</c>, which keeps the file
+    /// open for as long as the context lives.
+    /// <para>
+    /// These contexts are deliberately not collectible — a loaded plugin's providers outlive the scan
+    /// that found them (see <c>BackendCatalog.PluginProviders</c>) — so "as long as the context lives"
+    /// means until the process exits, and nothing can release the handle sooner. On Windows an open
+    /// file cannot be deleted or replaced, which makes a plugin impossible to uninstall or update
+    /// while Kontena is running, and made every test in <c>PluginLoaderTests</c> fail in its cleanup
+    /// (KON-405). On Linux and macOS the same handle is harmless, because an open file may still be
+    /// unlinked — which is why this only ever showed up on one of the three CI runners.
+    /// </para>
+    /// <para>
+    /// The cost is a copy of the assembly on the heap instead of a memory-mapped file, and an empty
+    /// <c>Assembly.Location</c> for plugin code. Both are a few hundred kilobytes' worth of nothing
+    /// against a file the user cannot delete.
+    /// </para>
+    /// </summary>
+    public Assembly LoadWithoutLocking(string path)
+    {
+        using var file = File.OpenRead(path);
+        return LoadFromStream(file);
+    }
 
     /// <summary>
     /// Resolve a dependency out of the plugin's own directory — unless the default context already has
@@ -44,7 +71,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
             return null;
 
         var path = _resolver.ResolveAssemblyToPath(assemblyName);
-        return path is null ? null : LoadFromAssemblyPath(path);
+        return path is null ? null : LoadWithoutLocking(path);
     }
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
