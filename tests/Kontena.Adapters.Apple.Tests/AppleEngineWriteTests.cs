@@ -226,6 +226,18 @@ public sealed class AppleEngineWriteTests
             .When(_ => true, output: []);
 
     /// <summary>
+    /// A host archive to transfer. The engine resolves whatever it is handed with
+    /// <see cref="Path.GetFullPath(string)"/>, so a literal <c>/tmp/kon350/data.tar</c> would land on
+    /// the current drive on Windows and no longer match a hardcoded Unix expectation (KON-404).
+    /// </summary>
+    private static readonly string Archive =
+        Path.Combine(Path.GetTempPath(), "kon350", "data.tar");
+
+    /// <summary>The mount the engine builds for <see cref="Archive"/>'s directory, on this host.</summary>
+    private static readonly string StageMount =
+        $"{Path.GetDirectoryName(Path.GetFullPath(Archive))}:/kontena-stage";
+
+    /// <summary>
     /// Export runs <c>tar</c> inside a throwaway container with two mounts: the volume and the
     /// directory the archive goes in. Measured against 1.2.2 — a host path and a named volume can
     /// share one <c>run</c>, which is what makes this one command per side.
@@ -235,14 +247,14 @@ public sealed class AppleEngineWriteTests
     {
         var runner = Transferring();
 
-        await Engine(runner).ExportVolumeAsync("data", "/tmp/kon350/data.tar");
+        await Engine(runner).ExportVolumeAsync("data", Archive);
 
         var arguments = runner.Invocations.Single(i => i.Arguments[0] == "run").Arguments;
 
         Assert.Equal("run", arguments[0]);
         Assert.Contains("--rm", arguments);
         Assert.Contains("data:/kontena-volume", arguments);
-        Assert.Contains("/tmp/kon350:/kontena-stage", arguments);
+        Assert.Contains(StageMount, arguments);
 
         // lost+found is an ext4 artefact of this runtime's volumes, not the user's data — copying it
         // into another engine's volume would invent a directory nobody made.
@@ -256,12 +268,12 @@ public sealed class AppleEngineWriteTests
     {
         var runner = Transferring();
 
-        await Engine(runner).ImportVolumeAsync("data", "/tmp/kon350/data.tar");
+        await Engine(runner).ImportVolumeAsync("data", Archive);
 
         var arguments = runner.Invocations.Single(i => i.Arguments[0] == "run").Arguments;
 
         Assert.Contains("data:/kontena-volume", arguments);
-        Assert.Contains("/tmp/kon350:/kontena-stage", arguments);
+        Assert.Contains(StageMount, arguments);
         Assert.Contains(arguments, a => a.Contains("tar -xf /kontena-stage/data.tar", StringComparison.Ordinal));
     }
 
