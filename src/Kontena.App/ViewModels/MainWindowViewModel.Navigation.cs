@@ -641,6 +641,35 @@ public partial class MainWindowViewModel
 
         // The namespace discovery looks in first, so the install and the search agree by default.
         apply.RenderNamespace = "monitoring";
+
+        // The chart is a repo/name reference, and it resolves to nothing until helm knows the repo:
+        // the hand-off used to stop here and leave the user to look the URL up (KON-397). The fields
+        // are filled whether or not the add runs, so the panel says which repo this is and its own
+        // button can retry it.
+        apply.NewRepoName = MonitoringRepoName;
+        apply.NewRepoUrl = "https://prometheus-community.github.io/helm-charts";
+
+        // Nothing to add it with, and the page already says helm is missing — a second complaint
+        // about the same absence is noise.
+        if (apply.IsHelmInstalled)
+            _ = AddMonitoringRepoAsync(apply);
+    }
+
+    private const string MonitoringRepoName = "prometheus-community";
+
+    /// <summary>
+    /// Add the chart's repository behind the hand-off. Failure lands on the page's error line rather
+    /// than only in the repository panel's own status: that panel is hidden while helm has no
+    /// repositories at all — exactly the case where this add is the one that failed — and a silent
+    /// failure would leave the user with a chart that will not resolve and no reason given.
+    /// </summary>
+    private static async Task AddMonitoringRepoAsync(ApplyManifestViewModel apply)
+    {
+        if (await apply.UseRepoAsync(MonitoringRepoName, apply.NewRepoUrl))
+            return;
+
+        apply.Error = $"Could not add the {MonitoringRepoName} chart repository, so "
+            + $"{apply.Chart} will not resolve yet: {apply.RepoStatus}";
     }
 
     /// <summary>
