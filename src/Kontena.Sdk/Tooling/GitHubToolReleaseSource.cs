@@ -15,11 +15,13 @@ namespace Kontena.Sdk.Tooling;
 /// </remarks>
 public sealed class GitHubToolReleaseSource(HttpClient? http = null) : IToolReleaseSource
 {
-    private readonly HttpClient _http = http ?? Default();
+    private readonly HttpClient _http = http ?? ToolReleaseHttp.Default();
 
     public async ValueTask<ToolDownload?> LatestAsync(ExternalTool tool, CancellationToken ct = default)
     {
-        if (tool.Release is not { } spec)
+        ArgumentNullException.ThrowIfNull(tool);
+
+        if (tool.Release is not GitHubReleaseSpec spec)
             return null;
 
         if (spec.AssetFor(ToolPlatform.Os, ToolPlatform.Architecture) is not { } asset)
@@ -29,7 +31,7 @@ public sealed class GitHubToolReleaseSource(HttpClient? http = null) : IToolRele
             return null;
 
         var baseUrl = $"https://github.com/{spec.Repository}/releases/download/{tag}";
-        var digest = await ReadChecksumAsync($"{baseUrl}/{asset}{spec.ChecksumSuffix}", ct);
+        var digest = await ToolReleaseHttp.ChecksumAsync(_http, $"{baseUrl}/{asset}{spec.ChecksumSuffix}", ct);
 
         // No checksum, no download. The offer only exists because the publisher makes verification
         // possible; without it the honest answer is the documentation link.
@@ -67,34 +69,4 @@ public sealed class GitHubToolReleaseSource(HttpClient? http = null) : IToolRele
         }
     }
 
-    /// <summary>
-    /// A checksum file is <c>&lt;hex&gt;  &lt;filename&gt;</c>, or sometimes just the hex. Take the
-    /// first 64-character hex word and ignore the rest.
-    /// </summary>
-    private async ValueTask<string?> ReadChecksumAsync(string url, CancellationToken ct)
-    {
-        try
-        {
-            var text = await _http.GetStringAsync(url, ct);
-
-            foreach (var word in text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
-                if (word.Length == 64 && word.All(Uri.IsHexDigit))
-                    return word.ToLowerInvariant();
-
-            return null;
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-    }
-
-    private static HttpClient Default()
-    {
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-
-        // Saying who we are is the polite half of using someone else's bandwidth, API or not.
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(ProductInfo.Name);
-        return http;
-    }
 }

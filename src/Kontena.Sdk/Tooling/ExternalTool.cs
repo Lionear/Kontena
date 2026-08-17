@@ -43,4 +43,11 @@ public sealed record ExternalTool(
     /// warning rather than a refusal — see <see cref="ToolReadiness"/>.
     /// </summary>
     public string? MinimumVersion { get; init; }
+
+    /// <summary>
+    /// What is actually lost by carrying on with a version older than <see cref="MinimumVersion"/>.
+    /// Per tool, because the answer is: kind and minikube ignore the cluster settings Kontena writes,
+    /// kubectl renders overlays by older rules. Null falls back to the general wording.
+    /// </summary>
+    public string? OutdatedConsequence { get; init; }
 }

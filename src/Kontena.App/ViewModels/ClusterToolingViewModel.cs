@@ -72,7 +72,7 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
         _store = store ?? new ManagedToolStore();
         _check = new ToolReadinessCheck(toolRunner, _store);
         _installer = new ToolInstaller(toolRunner, releases, _store);
-        _updates = new ToolUpdateCheck(releases ?? new GitHubToolReleaseSource(), _store);
+        _updates = new ToolUpdateCheck(releases ?? new ToolReleaseSources(), _store);
     }
 
     /// <summary>

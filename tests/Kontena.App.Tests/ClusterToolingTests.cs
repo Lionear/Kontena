@@ -87,6 +87,47 @@ public sealed class ClusterToolingTests : IDisposable
     }
 
     [Fact]
+    public async Task A_missing_kubectl_can_be_fetched_like_kind_and_minikube()
+    {
+        // kubectl is published on dl.k8s.io rather than GitHub, which is the only reason its row used
+        // to be the one without buttons (KON-256).
+        var page = Subject(new FakeToolRunner());
+        await page.LoadAsync();
+
+        var kubectl = page.Tools.First(t => t.Name == "kubectl");
+
+        Assert.True(kubectl.IsMissing);
+        Assert.Equal(ToolPlatform.CanDownload, kubectl.CanDownload);
+    }
+
+    [Fact]
+    public async Task A_kubectl_that_is_already_installed_is_not_offered_as_a_download()
+    {
+        // A system install wins; what is on offer is handing it over, not fetching a second copy.
+        var page = Subject(new FakeToolRunner().Install(KnownTools.Kubectl, "Client Version: v1.34.9"));
+        await page.LoadAsync();
+
+        var kubectl = page.Tools.First(t => t.Name == "kubectl");
+
+        Assert.True(kubectl.IsReady);
+        Assert.False(kubectl.CanDownload);
+        Assert.Equal(ToolPlatform.CanDownload, kubectl.CanHandOver);
+    }
+
+    [Fact]
+    public async Task An_outdated_kubectl_says_what_that_costs_in_its_own_terms()
+    {
+        // Not "the cluster settings it writes" — Kontena never builds a cluster with kubectl.
+        var page = Subject(new FakeToolRunner().Install(KnownTools.Kubectl, "Client Version: v1.26.0"));
+        await page.LoadAsync();
+
+        var kubectl = page.Tools.First(t => t.Name == "kubectl");
+
+        Assert.True(kubectl.IsOutdated);
+        Assert.Contains("kustomize", kubectl.OutdatedConsequence, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Nothing_installed_shows_every_tool_as_missing()
     {
         var page = Subject(new FakeToolRunner());

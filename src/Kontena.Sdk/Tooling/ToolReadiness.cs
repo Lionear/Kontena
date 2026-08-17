@@ -44,12 +44,6 @@ public sealed record ToolReadiness(
     public bool CanBeDownloaded => Tool.Release is not null && ToolPlatform.CanDownload;
 
     /// <summary>
-    /// What is lost by carrying on with a version that is too old. Deliberately specific: "too old"
-    /// tells nobody whether to act.
-    /// </summary>
-    public string? OutdatedConsequence { get; init; }
-
-    /// <summary>
     /// True when Kontena's copy was chosen to win over a system install (KON-153). Distinct from
     /// <see cref="Managed"/>, which only says which copy is in use: a managed copy is also what you get
     /// when there is no system install at all, and that is not a preference anyone expressed.
