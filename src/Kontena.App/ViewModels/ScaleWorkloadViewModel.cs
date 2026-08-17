@@ -63,6 +63,7 @@ public partial class ScaleWorkloadViewModel : ViewModelBase
         try
         {
             var reference = new ResourceRef(WorkloadKindGvk(_workload.Kind), Namespace, Name);
+            Services.Diag.Action($"scale {_workload.Kind}", $"{Namespace}/{Name} to {Replicas}");
             await _cluster.ScaleAsync(reference, Replicas);
             await _onDone();
         }

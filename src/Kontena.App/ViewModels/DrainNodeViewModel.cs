@@ -87,6 +87,7 @@ public partial class DrainNodeViewModel : ViewModelBase, IDisposable
         try
         {
             var options = new DrainOptions { DeleteEmptyDirData = DeleteEmptyDirData };
+            Services.Diag.Action("drain node", Node);
 
             await foreach (var step in _cluster.DrainNodeAsync(Node, options, _running.Token))
             {

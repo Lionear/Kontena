@@ -38,6 +38,14 @@ public partial class App : Application
         {
             var store = new SettingsStore();
             var settings = store.Load();
+
+            // Before anything else this method does, so that the marks below are the first lines of
+            // the file rather than the ones that happened to come after it was ready. Opening archives
+            // the previous session's log to .prev — which is the session a crash report is about
+            // (KON-389).
+            if (settings.DiagnosticLogging)
+                DiagLog.Open();
+
             ThemeApplier.Apply(settings.Theme);
             DensityApplier.Apply(settings.CompactDensity);
             Diag.Mark("settings read, theme applied");

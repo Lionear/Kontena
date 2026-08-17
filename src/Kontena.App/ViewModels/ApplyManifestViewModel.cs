@@ -269,6 +269,9 @@ public partial class ApplyManifestViewModel : ViewModelBase
             // whatever thread it is running on and Status is still only ever set on this one.
             var status = new Progress<string>(text => Status = text);
 
+            // The source, never the YAML: a manifest is where a Secret's data lives.
+            Services.Diag.Action(dryRun ? "preview manifest" : "apply manifest", Source);
+
             await foreach (var progress in _cluster.ApplyAsync(bundle, status))
                 Plan.Add(new ApplyPlanRow(progress));
 

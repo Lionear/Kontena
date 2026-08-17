@@ -62,6 +62,9 @@ public partial class PullImageViewModel : ViewModelBase
                 ? null
                 : await _credentials.ForAsync(reference).ConfigureAwait(true);
 
+            // The reference, never the credential the line above just fetched.
+            Diag.Action("pull image", reference);
+
             await foreach (var progress in _engine.PullImageAsync(reference, credential))
                 Status = FormatPull(progress);
 
