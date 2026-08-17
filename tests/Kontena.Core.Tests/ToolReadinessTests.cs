@@ -77,11 +77,13 @@ public sealed class ToolReadinessTests : IDisposable
 
         var kind = await check.CheckAsync(KnownTools.Kind);
         var kubectl = await check.CheckAsync(KnownTools.Kubectl);
+        var podman = await check.CheckAsync(KnownTools.Podman);
 
-        // kind ships per-file checksums; kubectl has no release spec here, so there is nothing to
-        // verify against and Kontena does not offer to fetch it.
+        // kind ships per-file checksums on GitHub and kubectl ships them on dl.k8s.io; podman has no
+        // standalone binary to fetch, so there is nothing to verify against and nothing offered.
         Assert.True(kind.CanBeDownloaded == ToolPlatform.CanDownload);
-        Assert.False(kubectl.CanBeDownloaded);
+        Assert.True(kubectl.CanBeDownloaded == ToolPlatform.CanDownload);
+        Assert.False(podman.CanBeDownloaded);
     }
 
     [Theory]
@@ -103,34 +105,38 @@ public sealed class ToolReadinessTests : IDisposable
         Assert.False(ToolReadinessCheck.IsOlder("", "0.20"));
     }
 
+    private static GitHubReleaseSpec GitHubSpec(ExternalTool tool) => (GitHubReleaseSpec)tool.Release!;
+
     [Theory]
     [InlineData("linux", "amd64", "kind-linux-amd64")]
     [InlineData("darwin", "arm64", "kind-darwin-arm64")]
     [InlineData("windows", "amd64", "kind-windows-amd64")]
     public void Asset_names_follow_the_publisher(string os, string arch, string expected)
-        => Assert.Equal(expected, KnownTools.Kind.Release!.AssetFor(os, arch));
+        => Assert.Equal(expected, GitHubSpec(KnownTools.Kind).AssetFor(os, arch));
 
     [Fact]
     public void Minikube_windows_carries_an_exe_suffix_and_kind_does_not()
     {
         // They genuinely disagree, and guessing gives a 404 rather than a wrong file.
-        Assert.Equal("minikube-windows-amd64.exe", KnownTools.Minikube.Release!.AssetFor("windows", "amd64"));
-        Assert.Equal("kind-windows-amd64", KnownTools.Kind.Release!.AssetFor("windows", "amd64"));
+        Assert.Equal("minikube-windows-amd64.exe", GitHubSpec(KnownTools.Minikube).AssetFor("windows", "amd64"));
+        Assert.Equal("kind-windows-amd64", GitHubSpec(KnownTools.Kind).AssetFor("windows", "amd64"));
     }
 
     [Fact]
     public void An_architecture_nobody_publishes_for_has_no_asset()
-        => Assert.Null(KnownTools.Kind.Release!.AssetFor("linux", null));
+        => Assert.Null(GitHubSpec(KnownTools.Kind).AssetFor("linux", null));
 
     [Fact]
     public void Only_tools_Kontena_drives_have_a_release_spec()
     {
-        // Downloading executables is not a habit to spread: helm, kustomize and podman come from a
-        // package manager or not at all.
-        Assert.NotNull(KnownTools.Kind.Release);
-        Assert.NotNull(KnownTools.Minikube.Release);
+        // Downloading executables is not a habit to spread: helm and kustomize ship archives nothing
+        // here unpacks yet, and podman has no standalone binary to fetch at all. Each spec names its
+        // publisher — kubectl's binaries are on dl.k8s.io, not on a GitHub release (KON-256).
+        Assert.IsType<GitHubReleaseSpec>(KnownTools.Kind.Release);
+        Assert.IsType<GitHubReleaseSpec>(KnownTools.Minikube.Release);
+        Assert.IsType<KubernetesReleaseSpec>(KnownTools.Kubectl.Release);
         Assert.Null(KnownTools.Helm.Release);
+        Assert.Null(KnownTools.Kustomize.Release);
         Assert.Null(KnownTools.Podman.Release);
-        Assert.Null(KnownTools.Kubectl.Release);
     }
 }

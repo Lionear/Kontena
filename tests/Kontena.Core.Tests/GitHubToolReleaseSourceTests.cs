@@ -13,10 +13,11 @@ public sealed class GitHubToolReleaseSourceTests
 {
     private static readonly ExternalTool Tool = new("widget", "widget", [], [])
     {
-        Release = new ToolReleaseSpec("acme/widget", "widget-{os}-{arch}", ".sha256"),
+        Release = new GitHubReleaseSpec("acme/widget", "widget-{os}-{arch}", ".sha256"),
     };
 
-    private static string ExpectedAsset() => Tool.Release!.AssetFor(ToolPlatform.Os, ToolPlatform.Architecture)!;
+    private static string ExpectedAsset() =>
+        ((GitHubReleaseSpec)Tool.Release!).AssetFor(ToolPlatform.Os, ToolPlatform.Architecture)!;
 
     /// <summary>Fakes the redirect by handing back a response whose <c>RequestMessage</c> already
     /// carries the URI the real request would have landed on — no need to actually redirect.</summary>
@@ -70,7 +71,8 @@ public sealed class GitHubToolReleaseSourceTests
             "https://github.com/acme/empty/releases/latest", HttpStatusCode.NotFound, checksum: null);
         var source = new GitHubToolReleaseSource(new HttpClient(handler));
 
-        var download = await source.LatestAsync(Tool with { Release = Tool.Release! with { Repository = "acme/empty" } });
+        var download = await source.LatestAsync(
+            Tool with { Release = ((GitHubReleaseSpec)Tool.Release!) with { Repository = "acme/empty" } });
 
         Assert.Null(download);
     }

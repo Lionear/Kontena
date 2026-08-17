@@ -27,7 +27,7 @@ public static class KnownTools
 
         // kind's Windows asset has no .exe suffix, and its checksum files end in .sha256sum. Both
         // differ from minikube below; guessing either produces a 404 rather than a wrong file.
-        Release = new ToolReleaseSpec("kubernetes-sigs/kind", "kind-{os}-{arch}", ".sha256sum"),
+        Release = new GitHubReleaseSpec("kubernetes-sigs/kind", "kind-{os}-{arch}", ".sha256sum"),
 
         // 0.20 is where `kind create cluster --config` gained the node-image handling Kontena writes.
         MinimumVersion = "0.20",
@@ -47,7 +47,7 @@ public static class KnownTools
 
         // Its Windows asset carries .exe and the checksums are one file per release, same shape as
         // minikube's rather than kind's. Scoop has no k0sctl manifest, so it is not offered.
-        Release = new ToolReleaseSpec(
+        Release = new GitHubReleaseSpec(
             "k0sproject/k0sctl", "k0sctl-{os}-{arch}", ".sha256", ExeOnWindows: true),
 
         // 0.17 is where the apiVersion this writes (v1beta1) settled with the k0s config nesting
@@ -67,7 +67,7 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://minikube.sigs.k8s.io/docs/start/",
-        Release = new ToolReleaseSpec(
+        Release = new GitHubReleaseSpec(
             "kubernetes/minikube", "minikube-{os}-{arch}", ".sha256", ExeOnWindows: true),
         MinimumVersion = "1.30",
     };
@@ -89,6 +89,20 @@ public static class KnownTools
         ])
     {
         DocumentationUrl = "https://kubernetes.io/docs/tasks/tools/",
+
+        // Not a GitHub release: the Kubernetes project publishes its binaries on dl.k8s.io, with the
+        // version in a channel file and the digest beside each binary (KON-256).
+        Release = new KubernetesReleaseSpec(),
+
+        // 1.27 is where `kubectl kustomize` carries kustomize v5, which the manifest renderer falls
+        // back to when kustomize itself is missing. v5 dropped the legacy `patches`-as-strategic-merge
+        // form, so an older kubectl renders some overlays differently rather than failing outright.
+        MinimumVersion = "1.27",
+
+        OutdatedConsequence =
+            "Kontena needs kubectl 1.27 or newer for `kubectl kustomize`, which it uses to render " +
+            "overlays when kustomize is not installed. On an older one those render against kustomize " +
+            "v4 rules and can come out different; everything else works.",
     };
 
     public static readonly ExternalTool Helm = new(
