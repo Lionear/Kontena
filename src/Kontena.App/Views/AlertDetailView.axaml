@@ -1,0 +1,99 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.AlertDetailView"
+             x:DataType="vm:AlertDetailViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16,24,16">
+            <StackPanel Spacing="14">
+                <WrapPanel ItemSpacing="12" LineSpacing="8">
+                    <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StateWord}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                    </Border>
+                    <TextBlock Text="{Binding Severity}" FontSize="12.5" VerticalAlignment="Center" Foreground="{DynamicResource TextFaint}"/>
+                </WrapPanel>
+
+                <!-- Silence lives here and only here (KON-204 §5): imperative, with the default
+                     expiry already said out loud rather than left blank. -->
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Classes="pill" Command="{Binding SilenceCommand}" IsVisible="{Binding CanCreateSilence}" Content="Silence…"/>
+                        <Button Classes="pill" Command="{Binding ExpireSilenceCommand}" IsVisible="{Binding CanExpireSilence}" Content="Expire"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding SilenceStatusText}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextFaint}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Margin="24,20" Spacing="18">
+
+                <!-- State / started / routed-to / rule -->
+                <StackPanel Spacing="10">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="STARTED" Classes="colhead"/>
+                        <TextBlock Text="{Binding StartedText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="ROUTED TO" Classes="colhead"/>
+                        <TextBlock Text="{Binding RoutedToText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2" IsVisible="{Binding HasRule}">
+                        <TextBlock Text="RULE" Classes="colhead"/>
+                        <TextBlock FontSize="12.5" Foreground="{DynamicResource TextDim}">
+                            <Run Text="{Binding RuleGroup}" FontFamily="{StaticResource Mono}"/>
+                            <Run Text=" · health "/>
+                            <Run Text="{Binding RuleHealth}" FontFamily="{StaticResource Mono}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Labels: the navigation, not decoration (KON-204 §5) -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Labels" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <ItemsControl ItemsSource="{Binding Labels}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel ItemSpacing="6" LineSpacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LabelChip">
+                                <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource Radius}" Padding="7,2">
+                                    <TextBlock Text="{Binding Text}" FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{DynamicResource TextFaint}"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- Expression -->
+                <StackPanel Spacing="8" IsVisible="{Binding HasRule}">
+                    <TextBlock Text="Expression" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="12">
+                        <TextBlock Text="{Binding RuleExpr}" FontFamily="{StaticResource Mono}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Where it takes you: sprongen, not a wall of key-values (KON-204 §5) -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Where it takes you" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <WrapPanel ItemSpacing="10" LineSpacing="8">
+                        <Button Classes="pill" Command="{Binding OpenRunbookCommand}" IsVisible="{Binding CanOpenRunbook}" Content="Runbook"/>
+                        <Button Classes="pill" Command="{Binding OpenPodCommand}" IsVisible="{Binding CanOpenPod}" Content="{Binding PodButtonLabel}"/>
+                        <Button Classes="pill" Command="{Binding OpenLogsCommand}" IsVisible="{Binding CanOpenLogs}" Content="Logs"/>
+                        <Button Classes="pill" Command="{Binding OpenGraphCommand}" IsVisible="{Binding CanOpenGraph}" Content="Graph in Prometheus"/>
+                    </WrapPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

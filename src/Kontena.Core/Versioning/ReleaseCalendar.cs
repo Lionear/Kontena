@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Kontena.Core.Versioning;
 
 /// <summary>
@@ -41,4 +43,24 @@ public sealed record VersionSupport(string Cycle, bool IsMaintained, DateOnly? E
     /// <c>NodeVersionSkew.IsProblem</c> answers for the cluster side, so the two read alike.
     /// </summary>
     public bool IsProblem => !IsMaintained;
+
+    /// <summary>
+    /// The sentence behind the verdict: why the line is a problem, or — for a maintained line that is
+    /// behind on patches — the newer release that exists. Empty when there is nothing to say, which is
+    /// most of the time and is the point.
+    /// <para>
+    /// Here rather than on the switcher row that first needed it (KON-371): three screens ask this
+    /// question now, and three copies of the wording is three chances for them to disagree. Named
+    /// <c>Detail</c> for the same reason <c>NodeVersionSkew.Detail</c> is — both are the sentence
+    /// behind a warning icon, and the tooltip should not care which of the two it is showing.
+    /// </para>
+    /// </summary>
+    public string Detail => this switch
+    {
+        { IsMaintained: false, EolFrom: { } eol } =>
+            $"Release {Cycle} has not been supported since {eol.ToString("d MMMM yyyy", CultureInfo.InvariantCulture)}.",
+        { IsMaintained: false } => $"Release {Cycle} is no longer supported.",
+        { NewerPatch: { } newer } => $"{newer} is available.",
+        _ => string.Empty,
+    };
 }

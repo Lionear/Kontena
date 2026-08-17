@@ -234,6 +234,32 @@ public sealed record KontenaSettings
         $"{id}@{version}#{sha256}";
 
     /// <summary>
+    /// Kubeconfig credential commands the user has agreed to run, as <c>"&lt;context&gt;#&lt;command&gt;"</c>
+    /// (KON-365). A context's user may carry an <c>exec:</c> plugin, and connecting to it starts that
+    /// program on this machine — normal for EKS and GKE, and not something a file picker should do
+    /// unannounced when the kubeconfig was forwarded, pasted or pulled from a repo.
+    /// <para>
+    /// The command is part of the key, the way the digest is for a plugin: this records agreement to run
+    /// <em>this</em> program, not to trust the context name. A kubeconfig that later names another
+    /// command is asked about again.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> AllowedExecCredentials { get; init; } = [];
+
+    /// <summary>Whether this exact command, under this context, has been agreed to.</summary>
+    public bool AllowsExecCredential(string context, string command) =>
+        command.Length > 0
+        && AllowedExecCredentials.Contains(ExecKey(context, command), StringComparer.Ordinal);
+
+    /// <summary>Record agreement to run this command for this context.</summary>
+    public KontenaSettings WithAllowedExecCredential(string context, string command) =>
+        AllowsExecCredential(context, command)
+            ? this
+            : this with { AllowedExecCredentials = [.. AllowedExecCredentials, ExecKey(context, command)] };
+
+    private static string ExecKey(string context, string command) => $"{context}#{command}";
+
+    /// <summary>
     /// Names the user gave a backend, keyed by backend id (KON-119). Empty means "use what the source
     /// calls itself".
     /// <para>

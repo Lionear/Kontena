@@ -42,6 +42,12 @@
          Icons.axaml — nothing loads it at runtime, so keep it out of the resource blob. -->
     <AvaloniaResource Remove="Assets\icon.svg" />
     <None Include="Assets\icon.svg" />
+    <!-- The release signing key is read by a service, not drawn, so it goes in the assembly manifest
+         rather than the Avalonia resource blob. Same file the Build workflow verifies its signatures
+         against (KON-363) — one copy, so a rotation cannot land on only one side. The logical name is
+         spelled out because the derived one depends on how MSBuild treats the dots in the filename. -->
+    <AvaloniaResource Remove="Assets\release-signing.pub.pem" />
+    <EmbeddedResource Include="Assets\release-signing.pub.pem" LogicalName="Kontena.App.ReleaseSigningKey.pem" />
   </ItemGroup>
 
   <ItemGroup>
@@ -49,6 +55,9 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.3" />
+    <!-- The virtualising editor behind Views/ManifestEditor (KON-382). Already in the tree for
+         Kontena.Plugins.ManifestStudio, so THIRD-PARTY-NOTICES.md is unchanged by this reference. -->
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
@@ -67,5 +76,6 @@
     <ProjectReference Include="..\Kontena.Adapters.Podman\Kontena.Adapters.Podman.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.Kubernetes\Kontena.Adapters.Kubernetes.csproj" />
     <ProjectReference Include="..\Kontena.Adapters.LocalClusters\Kontena.Adapters.LocalClusters.csproj" />
+    <ProjectReference Include="..\Kontena.Adapters.RemoteClusters\Kontena.Adapters.RemoteClusters.csproj" />
   </ItemGroup>
 </Project>

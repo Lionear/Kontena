@@ -15,7 +15,7 @@
                 <StackPanel Grid.Column="0" Spacing="7">
                     <TextBlock FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
                                IsVisible="{Binding !IsUpToDate}"
-                               Text="{Binding Version, StringFormat='Kontena {0} is available'}"/>
+                               Text="{Binding Headline}"/>
                     <TextBlock Text="Kontena is up to date" FontSize="16" FontWeight="SemiBold"
                                Foreground="{DynamicResource Text}" IsVisible="{Binding IsUpToDate}"/>
 

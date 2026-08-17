@@ -136,11 +136,11 @@ public sealed class PrometheusSourceTests
     {
         // Every kube-prometheus-stack has both: prometheus-operated is headless and exists for the
         // StatefulSet, while the release-named service is the supported way in.
-        var candidates = PrometheusSource.Candidates(
+        var candidates = ApiProxyHttp.Rank(
         [
             Service("monitoring", "prometheus-operated", "None", ("web", 9090)),
             Service("monitoring", "kps-kube-prometheus-prometheus", "10.1.2.3", ("http-web", 9090)),
-        ]);
+        ], 9090);
 
         Assert.Equal(2, candidates.Count);
         Assert.Equal("kps-kube-prometheus-prometheus", candidates[0].Service);
@@ -151,10 +151,10 @@ public sealed class PrometheusSourceTests
     [Fact]
     public void A_service_with_no_web_port_is_not_a_candidate()
     {
-        var candidates = PrometheusSource.Candidates(
+        var candidates = ApiProxyHttp.Rank(
         [
             Service("monitoring", "prometheus-grpc", "10.1.2.4", ("grpc", 10901)),
-        ]);
+        ], 9090);
 
         Assert.Empty(candidates);
     }
@@ -176,8 +176,8 @@ public sealed class PrometheusSourceTests
     [Fact]
     public void The_port_is_found_by_name_or_by_9090()
     {
-        Assert.Equal(9090, PrometheusSource.Candidates([Service("m", "p", "10.0.0.1", ("web", 9090))])[0].Port);
-        Assert.Equal(80, PrometheusSource.Candidates([Service("m", "p", "10.0.0.1", ("http", 80))])[0].Port);
-        Assert.Equal(9090, PrometheusSource.Candidates([Service("m", "p", "10.0.0.1", ("unnamed", 9090))])[0].Port);
+        Assert.Equal(9090, ApiProxyHttp.Rank([Service("m", "p", "10.0.0.1", ("web", 9090))], 9090)[0].Port);
+        Assert.Equal(80, ApiProxyHttp.Rank([Service("m", "p", "10.0.0.1", ("http", 80))], 9090)[0].Port);
+        Assert.Equal(9090, ApiProxyHttp.Rank([Service("m", "p", "10.0.0.1", ("unnamed", 9090))], 9090)[0].Port);
     }
 }

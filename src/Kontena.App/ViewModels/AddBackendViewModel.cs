@@ -86,6 +86,12 @@ public partial class KubeContextChoice : ViewModelBase
     public string Name { get; }
     public string Detail { get; }
 
+    /// <summary>
+    /// The command this context runs to get a token, or null where it has none (KON-365). Shown before
+    /// the context is contacted, because contacting it is what starts the program.
+    /// </summary>
+    public string? ExecCommand { get; init; }
+
     [ObservableProperty] private bool _isSelected;
 
     /// <summary>Null until the reachability probe answers — "unknown" is not the same as "unreachable".</summary>
@@ -94,7 +100,16 @@ public partial class KubeContextChoice : ViewModelBase
     /// <summary>True once this context is already a backend, so it cannot be added twice.</summary>
     [ObservableProperty] private bool _alreadyAdded;
 
-    public bool IsProbing => Reachable is null && !AlreadyAdded;
+    /// <summary>
+    /// True while <see cref="ExecCommand"/> is one the user has not answered for. Nothing reaches this
+    /// context until it is false — not the reachability probe, not the test.
+    /// </summary>
+    [ObservableProperty] private bool _needsExecConsent;
+
+    /// <summary>Whether a probe has been started for this context — including one still out.</summary>
+    internal bool Probed { get; set; }
+
+    public bool IsProbing => Reachable is null && !AlreadyAdded && !NeedsExecConsent;
 
     partial void OnReachableChanged(bool? value)
     {
@@ -108,7 +123,14 @@ public partial class KubeContextChoice : ViewModelBase
         OnPropertyChanged(nameof(StatusLabel));
     }
 
+    partial void OnNeedsExecConsentChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsProbing));
+        OnPropertyChanged(nameof(StatusLabel));
+    }
+
     public string StatusLabel => AlreadyAdded ? "already added"
+        : NeedsExecConsent ? "needs your answer"
         : Reachable switch { true => "reachable", false => "not reachable", _ => "checking…" };
 }
 
@@ -423,6 +445,9 @@ public partial class AddBackendViewModel : ViewModelBase
     [ObservableProperty] private string _kubeconfigPath = string.Empty;
     [ObservableProperty] private string? _kubeconfigProblem;
 
+    /// <summary>The file the contexts came from, or null for the default one — what a probe is given.</summary>
+    private string? _probePath;
+
     public ObservableCollection<KubeContextChoice> Contexts { get; } = [];
 
     public bool HasContexts => Contexts.Count > 0;
@@ -439,6 +464,7 @@ public partial class AddBackendViewModel : ViewModelBase
     private void LoadContexts()
     {
         Contexts.Clear();
+        RefreshPendingExec();
         KubeconfigProblem = null;
 
         var path = KubeconfigPath.Trim();
@@ -468,6 +494,9 @@ public partial class AddBackendViewModel : ViewModelBase
             return;
         }
 
+        _probePath = isDefault ? null : path;
+        var execCommands = Kubeconfig.LoadExecCommands(_probePath);
+
         foreach (var context in contexts)
         {
             var backend = new KubernetesClusterProvider(context.Name, isDefault ? null : path).Backend;
@@ -485,7 +514,14 @@ public partial class AddBackendViewModel : ViewModelBase
             var choice = new KubeContextChoice(context.Name, detail, selected: isNew)
             {
                 AlreadyAdded = shown,
+                ExecCommand = execCommands.GetValueOrDefault(context.Name),
             };
+
+            // An already-added context is not contacted from here, so there is nothing to ask about: it
+            // was answered when it was added.
+            choice.NeedsExecConsent = !shown
+                && choice.ExecCommand is { } command
+                && !stored.AllowsExecCredential(context.Name, command);
 
             choice.PropertyChanged += (_, e) =>
             {
@@ -496,8 +532,51 @@ public partial class AddBackendViewModel : ViewModelBase
             Contexts.Add(choice);
         }
 
+        RefreshPendingExec();
         AfterContextsChanged();
-        _ = ProbeContextsAsync(isDefault ? null : path);
+        _ = ProbeContextsAsync(_probePath);
+    }
+
+    /// <summary>
+    /// The contexts that would start a program on this machine and have not been answered for (KON-365).
+    /// Its own list because it is its own question: the contexts card says what is on offer, this says
+    /// what connecting costs.
+    /// </summary>
+    public ObservableCollection<KubeContextChoice> PendingExec { get; } = [];
+
+    public bool HasPendingExec => PendingExec.Count > 0;
+
+    private void RefreshPendingExec()
+    {
+        PendingExec.Clear();
+        foreach (var choice in Contexts.Where(c => c.NeedsExecConsent))
+            PendingExec.Add(choice);
+
+        OnPropertyChanged(nameof(HasPendingExec));
+    }
+
+    /// <summary>
+    /// The answer to the exec-plugin warning: run these commands, now and next time (KON-365). Recorded
+    /// against the command, so the same context naming a different one asks again — the same shape
+    /// plugin consent uses for a changed assembly.
+    /// </summary>
+    [RelayCommand]
+    private void AllowExecCommands()
+    {
+        foreach (var choice in PendingExec)
+        {
+            if (choice.ExecCommand is not { } command)
+                continue;
+
+            _store.Update(s => s.WithAllowedExecCredential(choice.Name, command));
+            choice.NeedsExecConsent = false;
+        }
+
+        RefreshPendingExec();
+        AfterContextsChanged();
+
+        // The probe skipped these while they were pending; this is where they get their turn.
+        _ = ProbeContextsAsync(_probePath);
     }
 
     private void AfterContextsChanged()
@@ -512,9 +591,13 @@ public partial class AddBackendViewModel : ViewModelBase
     {
         foreach (var choice in Contexts.ToList())
         {
-            if (choice.AlreadyAdded)
+            // Nothing pending an answer is contacted, and nothing already probed is probed twice: this
+            // runs again once the exec warning is answered, for the contexts it had to skip — while the
+            // first run may still be working through the rest of the file.
+            if (choice.AlreadyAdded || choice.NeedsExecConsent || choice.Probed)
                 continue;
 
+            choice.Probed = true;
             var name = choice.Name;
             var reachable = await Task.Run(async () =>
             {
@@ -543,7 +626,11 @@ public partial class AddBackendViewModel : ViewModelBase
     {
         AddBackendStep.What => true,
         AddBackendStep.RemoteEngine => Draft.Problem is null,
-        AddBackendStep.Kubernetes => SelectedContextCount > 0,
+        // A context whose exec plugin is unanswered cannot be tested, because testing it is what runs the
+        // command. Untick it and the rest of the file still goes ahead — the warning is a question, not
+        // a wall (KON-365).
+        AddBackendStep.Kubernetes =>
+            SelectedContextCount > 0 && !Contexts.Any(c => c.IsSelected && c.NeedsExecConsent),
         _ => true,
     };
 
@@ -828,7 +915,12 @@ public partial class AddBackendViewModel : ViewModelBase
         var isDefault = string.Equals(
             Kubeconfig.Expand(path), Kubeconfig.Expand(Kubeconfig.DefaultPath), StringComparison.Ordinal);
 
-        var wanted = Contexts.Where(c => c.IsSelected && !c.AlreadyAdded).Select(c => c.Name).ToList();
+        // The last gate before the connection, which is the thing that runs an exec plugin (KON-365).
+        // CanContinue keeps the button off; this keeps the command from starting whatever else calls in.
+        var wanted = Contexts
+            .Where(c => c.IsSelected && !c.AlreadyAdded && !c.NeedsExecConsent)
+            .Select(c => c.Name)
+            .ToList();
         if (wanted.Count == 0)
             return;
 

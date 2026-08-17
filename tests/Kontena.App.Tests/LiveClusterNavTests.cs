@@ -26,21 +26,66 @@ namespace Kontena.App.Tests;
 /// </summary>
 public sealed class LiveClusterNavTests
 {
+    /// <summary>
+    /// The rule is that no entry counts <i>the resources it lists</i> (KON-354) — including the
+    /// per-kind Workloads entries, which kept theirs at first because the number was already in hand
+    /// and then stood out as the only badges left.
+    /// <para>
+    /// Two entries carry a number that is not an inventory, and both are listed here rather than
+    /// skipped silently. <c>portforwards</c> says how many tunnels <i>you</i> have running.
+    /// <c>alerts</c> says how many things are wrong and unmuted (KON-207) — a queue rather than a
+    /// count of what the page holds, which is also why it is the one badge allowed to be loud.
+    /// </para>
+    /// </summary>
     [Fact]
-    public async Task No_entry_in_the_cluster_sidebar_carries_a_count()
+    public async Task No_entry_in_the_cluster_sidebar_counts_the_resources_it_lists()
     {
-        // Including the per-kind Workloads entries, which kept theirs at first because the number was
-        // already in hand — and then stood out as the only badges left (KON-354). Port forwards are the
-        // one exception and not a resource count: it says how many tunnels *you* have running.
+        var notAnInventory = new[] { "portforwards", "alerts" };
+
         var shell = new MainWindowViewModel();
         Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
 
         var badged = shell.NavGroups
             .SelectMany(g => g.Items)
-            .Where(i => i.Count.Length > 0 && i.Key != "portforwards")
+            .Where(i => i.Count.Length > 0 && !notAnInventory.Contains(i.Key, StringComparer.Ordinal))
             .Select(i => i.Key);
 
         Assert.Empty(badged);
+    }
+
+    /// <summary>
+    /// And that the alerts badge counts what it claims to: firing and unmuted, which on the seeded
+    /// fake is four of its six alerts. A badge that counted pending or silenced ones would be a
+    /// number people learn to ignore.
+    /// </summary>
+    [Fact]
+    public async Task The_alerts_badge_counts_firing_and_unmuted_and_shouts_about_it()
+    {
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
+
+        var alerts = Assert.Single(shell.NavGroups.SelectMany(g => g.Items), i => i.Key == "alerts");
+
+        Assert.Equal("4", alerts.Count);
+        Assert.True(alerts.IsLoud);
+        Assert.Contains("firing", alerts.AttentionTip, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// With no Alertmanager the entry stays — the empty state is the answer to "where are my alerts"
+    /// and hiding the entry makes it unreachable — but it says nothing, because an all-clear is not
+    /// news and neither is an absent source.
+    /// </summary>
+    [Fact]
+    public async Task Without_an_Alertmanager_the_entry_is_still_reachable_and_carries_no_badge()
+    {
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine { HasAlertmanager = false }));
+
+        var alerts = Assert.Single(shell.NavGroups.SelectMany(g => g.Items), i => i.Key == "alerts");
+
+        Assert.Empty(alerts.Count);
+        Assert.False(alerts.IsLoud);
     }
 
     [Fact]

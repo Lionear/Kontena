@@ -10,6 +10,7 @@ using Kontena.App.Services;
 using Kontena.Engines.Plugins;
 using Kontena.Sdk;
 using Kontena.Sdk.Models;
+using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Models;
 
@@ -36,10 +37,21 @@ public partial class MainWindowViewModel
     }
 
     [RelayCommand]
-    private void Navigate(string key)
+    private void Navigate(string key) => NavigateTo(key);
+
+    /// <param name="refreshNav">
+    /// False only where the caller has just read the cluster, the same reason
+    /// <see cref="NavigateCluster"/> takes it (KON-375). Opening a cluster reads the picker and the
+    /// workload kinds before it builds the first page, because it has to — and then landing on that
+    /// page fired a refresh of what had just been read, two cluster-wide lists behind an open shell.
+    /// </param>
+    private void NavigateTo(string key, bool refreshNav = true)
     {
         Diag.Mark($"navigate to {key}");
-        Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => Navigate(key));
+
+        // The history step replays as an ordinary visit, refresh and all: coming back to a page later
+        // is exactly the moment its sidebar is most likely to be out of date.
+        Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => NavigateTo(key));
 
         // Before the mode switch: a plugin page belongs to neither nav, and both of the switches below
         // fall through to a page of their own on an unknown key.
@@ -51,7 +63,7 @@ public partial class MainWindowViewModel
 
         if (IsClusterMode)
         {
-            NavigateCluster(key);
+            NavigateCluster(key, refreshNav);
             return;
         }
 
@@ -179,6 +191,11 @@ public partial class MainWindowViewModel
         NavGroups.Clear();
         NavGroups.Add(Group("Cluster",
             new NavItem("overview", "Overview", "IconGauge") { IsSelected = true },
+            // Directly under Overview, and present whether or not this cluster has an Alertmanager
+            // (KON-207). "Where are my alerts" is a question that deserves an answer, and hiding the
+            // entry makes the page that answers it unreachable — so the capability decides what the
+            // page says, not whether it exists.
+            new NavItem("alerts", "Alerts", "IconBell"),
             new NavItem("nodes", "Nodes", "IconCpu"),
             new NavItem("namespaces", "Namespaces", "IconBox")));
         NavGroups.Add(Group("Workloads",
@@ -207,7 +224,11 @@ public partial class MainWindowViewModel
     /// False only where the caller has just read the cluster, so the sidebar is not refetched twice
     /// for one navigation.
     /// </param>
-    private void NavigateCluster(string key, bool refreshNav = true)
+    /// <param name="keepSearch">
+    /// The term to put back on the rebuilt page — set only by a reload in place, never by a real
+    /// navigation (KON-377).
+    /// </param>
+    private void NavigateCluster(string key, bool refreshNav = true, string? keepSearch = null)
     {
         if (_cluster is null)
             return;
@@ -231,10 +252,21 @@ public partial class MainWindowViewModel
         // Nodes/Namespaces are cluster-wide; the rest honour the namespace picker.
         CurrentPage = key switch
         {
-            "overview" => new ClusterOverviewViewModel(_cluster),
+            "overview" => new ClusterOverviewViewModel(_cluster, Versions),
             // RequestConfirm because the metrics-server install writes to the cluster and asks first
             // (KON-93); the other cluster pages route their confirms through the shell callbacks they
             // are handed.
+            // The Helm hand-off is the shell's to route, like every other cross-page jump: the page
+            // knows a chart should be installed, not where the apply page lives (KON-204).
+            // RequestConfirm because the Silenced section's Expire is the page's own delete-shaped
+            // write, the same way nodes/workloads confirm their own (KON-208).
+            "alerts" => new ClusterAlertsViewModel(
+                _cluster, onInstallWithHelm: ShowMonitoringHelmInstall, onOpenDetail: ShowAlertDetail,
+                onNewRule: () => NavigateCluster("alert-rule"))
+                { RequestConfirm = ShowConfirm },
+            // Not a nav item: it is an action off the Alerts page, and a permanent sidebar entry
+            // called "New rule" would be a page you can be on without having asked for it (KON-210).
+            "alert-rule" => new RuleEditorViewModel(_cluster, ApplyAuthoredRule),
             "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
             "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing
@@ -297,7 +329,7 @@ public partial class MainWindowViewModel
                 _ = UpdateClusterNavAsync();
                 return Task.CompletedTask;
             }, ActiveNamespace),
-            _ => new ClusterOverviewViewModel(_cluster),
+            _ => new ClusterOverviewViewModel(_cluster, Versions),
         };
 
         Diag.Mark($"{key} page built in {built.Elapsed.TotalMilliseconds:F1} ms");
@@ -320,7 +352,16 @@ public partial class MainWindowViewModel
         // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
         // pages keep theirs because they are long-lived fields. Restoring a term onto a fresh page
         // would show a filtered list with no way to tell it had been filtered (KON-164).
-        SearchText = string.Empty;
+        //
+        // A reload in place is the exception, and the one case where clearing is the dishonest answer
+        // (KON-377): the user never left. They clicked Restart or Scale on the one row their search
+        // had left standing, and the list they were working in came back showing everything. Put on
+        // the page rather than left to the shell's own SearchText, which still holds the term and so
+        // raises nothing to push down — a filled box over an unfiltered list.
+        if (keepSearch is { Length: > 0 } && CurrentPage is IListPage { SupportsSearch: true } page)
+            page.SearchText = keepSearch;
+
+        SearchText = keepSearch ?? string.Empty;
     }
     /// <summary>
     /// Follow the cluster after the open page saw it change (KON-339). Failure is silent on purpose:
@@ -339,13 +380,16 @@ public partial class MainWindowViewModel
         }
     }
 
-    /// <summary>Rebuild the currently-selected cluster page (e.g. after an action mutates it).</summary>
+    /// <summary>
+    /// Rebuild the currently-selected cluster page (e.g. after an action mutates it), keeping the
+    /// search term the user is looking through (KON-377).
+    /// </summary>
     private void ReloadCurrentClusterPage()
     {
         if (!IsClusterMode)
             return;
 
-        _ = NavigateClusterAfterKindsAsync(_clusterPageKey);
+        _ = NavigateClusterAfterKindsAsync(_clusterPageKey, SearchText);
     }
 
     /// <summary>
@@ -362,8 +406,10 @@ public partial class MainWindowViewModel
     /// better than no page at all — so the await is guarded and the key resolved either way.
     /// </para>
     /// </summary>
-    private async Task NavigateClusterAfterKindsAsync(string key)
+    /// <param name="keepSearch"><inheritdoc cref="NavigateCluster" path="/param[@name='keepSearch']"/></param>
+    private async Task NavigateClusterAfterKindsAsync(string key, string? keepSearch = null)
     {
+        IsReadingCluster = true;
         try
         {
             await Diag.TimeAsync("read the workload kinds", UpdateClusterNavAsync());
@@ -373,10 +419,31 @@ public partial class MainWindowViewModel
             // Unreachable cluster, a call that timed out: the page itself reports that far better
             // than a nav that never happens.
         }
+        finally
+        {
+            IsReadingCluster = false;
+        }
 
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshNav: false);
+            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadGroups), refreshNav: false, keepSearch);
     }
+
+    /// <summary>
+    /// Set while the shell is reading the cluster before it can build a page (KON-375).
+    /// <para>
+    /// The one wait in cluster mode that nothing on screen could show. Picking a namespace, or an
+    /// action that rebuilds the page, goes through <see cref="NavigateClusterAfterKindsAsync"/>, and
+    /// that has to know the workload kinds before it can decide which page Workloads even is
+    /// (KON-200) — two cluster-wide reads, in front of a page that has not been replaced yet. So the
+    /// old page sat there, fully drawn and already wrong, for as long as the cluster took to answer:
+    /// the click looked ignored rather than slow, which is the worse of the two.
+    /// </para>
+    /// <para>
+    /// A page's own spinner cannot cover this. The page that would carry it is the one being replaced,
+    /// and it is not the one loading.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isReadingCluster;
     /// <summary>
     /// Bring the sidebar in step with the cluster: the namespace picker and the per-kind Workloads
     /// submenu.
@@ -409,6 +476,54 @@ public partial class MainWindowViewModel
         SyncNamespacePicker(namespaces.Result);
         SyncWorkloadKindNav(workloads.Result);
         UpdatePortForwardCount();
+        await UpdateAlertCountAsync();
+    }
+
+    /// <summary>
+    /// Badge the sidebar with the number of firing alerts nobody has muted (KON-207).
+    /// <para>
+    /// Pending is left out because it may never fire, and silenced because somebody already decided
+    /// about it — counting either would make the badge mean "alerts" rather than "things to look
+    /// at", and a number you learn to ignore is worse than no number.
+    /// </para>
+    /// <para>
+    /// Across every namespace, not just the picked one: Alertmanager does not know about the
+    /// namespace picker, and an alert firing outside your current namespace is still your problem.
+    /// </para>
+    /// </summary>
+    private async Task UpdateAlertCountAsync()
+    {
+        if (NavItems.FirstOrDefault(i => i.Key == "alerts") is not { } item)
+            return;
+
+        if (_cluster is not IAlertingAware { Alerts: var source } || source is NoAlertSource)
+        {
+            item.Count = string.Empty;
+            item.IsLoud = false;
+            item.AttentionTip = string.Empty;
+            return;
+        }
+
+        try
+        {
+            var firing = ClusterAlertsViewModel.BadgeCount(await source.ListAlertsAsync());
+
+            // No badge at zero rather than a "0": every other entry in this sidebar is silent when
+            // it has nothing to say, and an all-clear is not news (KON-219).
+            item.Count = firing == 0 ? string.Empty : firing.ToString(CultureInfo.InvariantCulture);
+            item.IsLoud = firing > 0;
+            item.AttentionTip = firing == 0
+                ? string.Empty
+                : $"{firing} firing {(firing == 1 ? "alert" : "alerts")}, not silenced";
+        }
+        catch (Exception)
+        {
+            // An Alertmanager that stopped answering is the page's story to tell, not the sidebar's.
+            // A stale number here would be the one thing worse than no number.
+            item.Count = string.Empty;
+            item.IsLoud = false;
+            item.AttentionTip = string.Empty;
+        }
     }
     /// <summary>
     /// Keep the namespace picker in step with the cluster (KON-343).
@@ -433,6 +548,53 @@ public partial class MainWindowViewModel
         // picker with a stale filter still applied would be the worst of the three outcomes.
         if (SelectedNamespace is not null && !Namespaces.Contains(SelectedNamespace))
             SelectedNamespace = AllNamespaces;
+    }
+
+    /// <summary>
+    /// Hand off to the apply page's existing Helm source with the monitoring chart filled in
+    /// (KON-204 decision 3).
+    /// <para>
+    /// Kontena ships no copy of kube-prometheus-stack and installs nothing itself. metrics-server
+    /// was one pinned manifest with two ClusterRoles; this is a chart with CRDs, retention, storage
+    /// and a pile of opinion, and vendoring it means owning its upgrades forever. So the offer is a
+    /// route to a flow that already exists, with the fields the user would have typed.
+    /// </para>
+    /// </summary>
+    private void ShowMonitoringHelmInstall()
+    {
+        NavigateCluster("apply");
+
+        if (CurrentPage is not ApplyManifestViewModel apply)
+            return;
+
+        apply.SourceKind = ManifestSourceKind.Helm;
+        apply.Chart = "prometheus-community/kube-prometheus-stack";
+        apply.ReleaseName = "kube-prometheus-stack";
+
+        // The namespace discovery looks in first, so the install and the search agree by default.
+        apply.RenderNamespace = "monitoring";
+    }
+
+    /// <summary>
+    /// The rule editor's hand-off (KON-210): the composed manifest goes to the page that already does
+    /// server-side dry-run, diff and apply.
+    /// <para>
+    /// <b>Deliberately not a second apply path.</b> A rule authored in Kontena reaches the cluster the
+    /// same way a pasted manifest does, through the same review step — an editor with its own private
+    /// Apply button would be the one write in the app that nobody sees the diff of first.
+    /// </para>
+    /// </summary>
+    private void ApplyAuthoredRule(ManifestBundle bundle)
+    {
+        NavigateCluster("apply");
+
+        if (CurrentPage is not ApplyManifestViewModel apply)
+            return;
+
+        apply.SourceKind = ManifestSourceKind.Paste;
+        apply.YamlText = bundle.Yaml;
+        apply.Source = bundle.Source;
+        apply.RenderNamespace = bundle.Namespace;
     }
 
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>

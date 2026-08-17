@@ -30,13 +30,14 @@ internal sealed class KubernetesApply(IKubernetes client, ApiResourceResolver re
     private const string FieldManager = "kontena";
 
     /// <summary>Apply (or preview) one decoded document.</summary>
-    /// <param name="pendingNamespaces">
-    /// Namespaces this same bundle creates. During a dry-run they do not exist yet, so resources
-    /// targeting them are rejected; knowing which they are turns a baffling error into an explanation.
+    /// <param name="prerequisites">
+    /// What this same bundle creates that other documents in it depend on. During a dry-run none of
+    /// it exists, so those documents cannot be validated; knowing which they are turns a baffling
+    /// error into an explanation, and keeps them out of the failure count.
     /// </param>
     public async Task<ApplyProgress> ApplyOneAsync(
         Dictionary<string, object?> document, bool dryRun, string? defaultNamespace,
-        IReadOnlySet<string> pendingNamespaces, CancellationToken ct)
+        BundlePrerequisites prerequisites, CancellationToken ct)
     {
         if (!TryReadIdentity(document, out var gvk, out var name, out var ns, out var error))
             return Failed(new ResourceRef(gvk, ns, name), error!);
@@ -47,6 +48,16 @@ internal sealed class KubernetesApply(IKubernetes client, ApiResourceResolver re
         var resource = await resolver.ResolveAsync(gvk, ct).ConfigureAwait(false);
         if (resource is null)
         {
+            // The kube-prometheus-stack case (KON-380): a chart ships its CRDs and the custom
+            // resources that use them in one render. A dry-run creates neither, so the cluster has
+            // never heard of the kind — which says nothing about whether the manifest is any good.
+            if (dryRun && prerequisites.CustomKinds.Contains($"{gvk.Group}/{gvk.Kind}"))
+            {
+                return Deferred(reference,
+                    $"Cannot preview this resource: the CRD for {gvk.Kind} ({gvk.Group}) is installed by this " +
+                    "bundle and a dry-run persists nothing. Applying puts the CRDs in first.");
+            }
+
             return Failed(reference,
                 $"The cluster does not serve {gvk.Kind} ({(gvk.IsCoreGroup ? gvk.Version : $"{gvk.Group}/{gvk.Version}")}). " +
                 "A missing CRD is the usual cause.");
@@ -97,12 +108,12 @@ internal sealed class KubernetesApply(IKubernetes client, ApiResourceResolver re
             // One rejection is an artefact rather than a problem with the manifest: a dry-run cannot
             // place a resource in a namespace the same bundle would create, because nothing was
             // persisted. kubectl behaves identically; say so instead of echoing "not found".
-            if (dryRun && ns is not null && pendingNamespaces.Contains(ns) &&
+            if (dryRun && ns is not null && prerequisites.Namespaces.Contains(ns) &&
                 message.Contains("not found", StringComparison.OrdinalIgnoreCase))
             {
-                message =
+                return Deferred(reference,
                     $"Cannot preview this resource: namespace \"{ns}\" does not exist yet — this bundle " +
-                    "creates it. Apply the namespace first, or apply the bundle for real to validate it.";
+                    "creates it. Applying puts the namespace in first.");
             }
 
             return Failed(reference, message);
@@ -296,4 +307,7 @@ internal sealed class KubernetesApply(IKubernetes client, ApiResourceResolver re
 
     private static ApplyProgress Failed(ResourceRef reference, string error) =>
         new() { Resource = reference, Action = ApplyAction.Failed, Error = error };
+
+    private static ApplyProgress Deferred(ResourceRef reference, string why) =>
+        new() { Resource = reference, Action = ApplyAction.Deferred, Error = why };
 }

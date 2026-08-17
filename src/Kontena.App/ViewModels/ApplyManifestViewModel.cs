@@ -57,9 +57,17 @@ public partial class ApplyManifestViewModel : ViewModelBase
     public string ContextName { get; }
 
     [ObservableProperty] private string _yamlText;
+
     [ObservableProperty] private string _source = "pasted";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _error;
+
+    /// <summary>
+    /// What the run is doing right now, while it is doing it (KON-381). The plan only appears once
+    /// every document has an outcome, and a chart's worth of resources — plus up to thirty seconds
+    /// waiting for its CRDs to be served — is a long time for a page to look like it has hung.
+    /// </summary>
+    [ObservableProperty] private string _status = string.Empty;
 
     /// <summary>Set once a dry-run or apply has produced a plan.</summary>
     [ObservableProperty] private bool _hasPlan;
@@ -134,21 +142,30 @@ public partial class ApplyManifestViewModel : ViewModelBase
         PlanOutcome.Failed => 0,
         PlanOutcome.Configure => 1,
         PlanOutcome.Create => 2,
-        _ => 3,
+        PlanOutcome.Deferred => 3,
+        _ => 4,
     };
+
+    /// <summary>Outcomes that are the plan's background noise: a long plan starts with them folded away.</summary>
+    private static bool IsQuiet(PlanOutcome outcome) =>
+        outcome is PlanOutcome.Unchanged or PlanOutcome.Deferred;
 
     /// <summary>Rebuild the chips from a fresh plan, hiding the no-ops when the plan is long.</summary>
     private void BuildBuckets()
     {
         Buckets.Clear();
 
-        foreach (var kind in new[] { PlanOutcome.Create, PlanOutcome.Configure, PlanOutcome.Failed, PlanOutcome.Unchanged })
+        foreach (var kind in new[]
+                 {
+                     PlanOutcome.Create, PlanOutcome.Configure, PlanOutcome.Failed,
+                     PlanOutcome.Deferred, PlanOutcome.Unchanged,
+                 })
         {
             var count = Plan.Count(r => r.Outcome == kind);
             if (count == 0)
                 continue;
 
-            Buckets.Add(new PlanBucket(kind, count, on: kind != PlanOutcome.Unchanged || Plan.Count <= BigPlan));
+            Buckets.Add(new PlanBucket(kind, count, on: !IsQuiet(kind) || Plan.Count <= BigPlan));
         }
 
         OnPropertyChanged(nameof(HasBuckets));
@@ -248,7 +265,11 @@ public partial class ApplyManifestViewModel : ViewModelBase
                 // Rendered bundles rarely name a namespace per document; the page says it once.
                 Namespace = RenderNamespace.Trim(),
             };
-            await foreach (var progress in _cluster.ApplyAsync(bundle))
+            // Progress<T> posts to the context it was made on, so the engine can report from
+            // whatever thread it is running on and Status is still only ever set on this one.
+            var status = new Progress<string>(text => Status = text);
+
+            await foreach (var progress in _cluster.ApplyAsync(bundle, status))
                 Plan.Add(new ApplyPlanRow(progress));
 
             IsPreview = dryRun;
@@ -263,6 +284,7 @@ public partial class ApplyManifestViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            Status = string.Empty;
         }
     }
 
@@ -286,6 +308,10 @@ public enum PlanOutcome
     Create,
     Configure,
     Unchanged,
+
+    /// <summary>Could not be previewed until the bundle's own namespaces and CRDs exist (KON-380).</summary>
+    Deferred,
+
     Failed,
 }
 
@@ -301,6 +327,7 @@ public sealed partial class PlanBucket : ObservableObject
         {
             PlanOutcome.Create => ("create", "#34D399"),
             PlanOutcome.Configure => ("change", "#F5B14C"),
+            PlanOutcome.Deferred => ("not previewed", "#8A94A2"),
             PlanOutcome.Failed => ("failed", "#F87171"),
             _ => ("unchanged", "#8A94A2"),
         };
@@ -328,6 +355,7 @@ public sealed partial class ApplyPlanRow : ObservableObject
         {
             ApplyAction.Created or ApplyAction.WouldCreate => PlanOutcome.Create,
             ApplyAction.Configured or ApplyAction.WouldChange => PlanOutcome.Configure,
+            ApplyAction.Deferred => PlanOutcome.Deferred,
             ApplyAction.Failed => PlanOutcome.Failed,
             _ => PlanOutcome.Unchanged,
         };
@@ -338,6 +366,7 @@ public sealed partial class ApplyPlanRow : ObservableObject
             ApplyAction.Created => ("+", "created", Success),
             ApplyAction.WouldChange => ("~", "configure", Warn),
             ApplyAction.Configured => ("~", "configured", Warn),
+            ApplyAction.Deferred => ("?", "not previewed", Faint),
             ApplyAction.Failed => ("!", "failed", Danger),
             _ => ("=", "no change", Faint),
         };
@@ -351,6 +380,7 @@ public sealed partial class ApplyPlanRow : ObservableObject
             ApplyAction.Created => $"{ns} · created",
             ApplyAction.WouldChange => $"{ns} · will be configured",
             ApplyAction.Configured => $"{ns} · configured",
+            ApplyAction.Deferred => progress.Error ?? $"{ns} · not previewed",
             ApplyAction.Failed => progress.Error ?? $"{ns} · failed",
             _ => $"{ns} · unchanged",
         };

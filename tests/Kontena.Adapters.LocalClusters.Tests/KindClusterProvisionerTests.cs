@@ -202,4 +202,17 @@ public class KindClusterProvisionerTests
         Assert.True(capabilities.MultiNode);
         Assert.True(capabilities.PortMappings);
     }
+
+    [Fact]
+    public void Nothing_the_remote_provisioners_need_is_claimed_by_kind()
+    {
+        var capabilities = Provisioner(new FakeToolRunner()).Capabilities;
+
+        // The create form reads these to decide which spec it is filling in (KON-232). kind never
+        // declared them, so the defaults have to be the local answer or its form changes underneath it.
+        Assert.False(capabilities.NeedsHosts);
+        Assert.False(capabilities.ChoosesCni);
+        Assert.False(capabilities.SupportsPreflight);
+        Assert.Equal(ProvisionerTransport.Local, capabilities.Transport);
+    }
 }

@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Kontena.App.Controls;
+using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Core.Versioning;
 
 namespace Kontena.App.ViewModels;
 
@@ -17,13 +19,15 @@ namespace Kontena.App.ViewModels;
 public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 {
     private readonly IClusterEngine _cluster;
+    private readonly VersionSupportCheck? _versions;
     private CancellationTokenSource? _watch;
     private CancellationTokenSource? _usage;
     private bool _started;
 
-    public ClusterOverviewViewModel(IClusterEngine cluster)
+    public ClusterOverviewViewModel(IClusterEngine cluster, VersionSupportCheck? versions = null)
     {
         _cluster = cluster;
+        _versions = versions;
 
         // The page you land on, and until now the only one that could not answer "is the cluster
         // busy" (KON-347). Summed over pods rather than over nodes, so it agrees with the namespace
@@ -165,22 +169,118 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     [ObservableProperty] private string _distribution = string.Empty;
     [ObservableProperty] private string _version = string.Empty;
 
+    /// <summary>
+    /// What the distribution's own calendar says about the version in the header (KON-371). Kept apart
+    /// from <see cref="NodeRow.Skew"/> on purpose, even though the two draw the same icon: skew asks
+    /// whether the parts of this cluster agree with each other, and is a comparison that is always
+    /// right; support asks whether anybody still repairs this release, and is somebody else's
+    /// published date. Merging them would make one warning that can only half explain itself.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSupportWarning))]
+    [NotifyPropertyChangedFor(nameof(SupportDetail))]
+    private VersionSupport? _support;
+
+    /// <summary>Whether this release is one its publisher has dropped.</summary>
+    public bool HasSupportWarning => Support?.IsProblem == true;
+
+    /// <summary>The sentence behind that icon — which line, and since when.</summary>
+    public string SupportDetail => Support?.Detail ?? string.Empty;
+
     [ObservableProperty] private int _nodeCount;
     [ObservableProperty] private int _namespaceCount;
     [ObservableProperty] private int _workloadCount;
     [ObservableProperty] private int _podCount;
     [ObservableProperty] private int _serviceCount;
 
+    /// <summary>
+    /// The ceiling, not the load: allocatable CPU and memory summed over the Ready nodes (KON-378).
+    /// Read off the node objects rather than the metrics source, so both tiles are filled in on a
+    /// cluster that has no metrics-server — and NotReady nodes are left out, because capacity nothing
+    /// can be scheduled onto is not capacity.
+    /// </summary>
+    [ObservableProperty] private string _maxCpu = "—";
+
+    /// <inheritdoc cref="MaxCpu"/>
+    [ObservableProperty] private string _maxMemory = "—";
+
     public ObservableCollection<NodeRow> Nodes { get; } = [];
+
+    /// <summary>
+    /// Set for the duration of the first read, the same rule the list pages follow (KON-319,
+    /// KON-375). This is the page a cluster opens on, and until its six reads land every count on it
+    /// is zero and the node table is empty — which is indistinguishable from a cluster that really
+    /// has nothing on it. The one page with no rows to be conspicuously absent was the one page with
+    /// no sign that anything was happening.
+    /// <para>
+    /// Only the first read: this page reloads on every settled watch event, and a spinner on each of
+    /// those is noise rather than news.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isLoading;
+
+    private bool _hasLoaded;
 
     /// <summary>
     /// Six reads that know nothing of each other, so all six are started before any is awaited
     /// (KON-338). Sequentially they were six round-trips deep, and this page is the first thing a
     /// cluster shows — on a remote one that wait is the whole first impression.
+    /// <para>
+    /// Internal rather than private so a test can reload it the way a watch event does — the
+    /// first-fetch-only rule above is a claim about the second load, and there is no other way in.
+    /// </para>
     /// </summary>
-    private async Task LoadAsync()
+    internal async Task LoadAsync()
     {
-        var infoTask = _cluster.GetInfoAsync().AsTask();
+        var isFirstLoad = !_hasLoaded;
+        if (isFirstLoad)
+            IsLoading = true;
+
+        try
+        {
+            await ReadAsync();
+            _hasLoaded = true;
+        }
+        finally
+        {
+            if (isFirstLoad)
+                IsLoading = false;
+        }
+
+        // Once, not on every watch event: the answer is cached for a day anyway, and this page reloads
+        // whenever anything on the cluster moves (KON-375). A cluster does not change version under a
+        // page that is already open, and if it does, the page is rebuilt on the next visit.
+        if (isFirstLoad)
+            await CheckSupportAsync();
+    }
+
+    /// <summary>
+    /// Ask the distribution's publisher whether this release is still maintained (KON-371). Measured
+    /// against the distribution's own calendar rather than upstream's, which is the whole reason KON-95
+    /// was split: an AKS cluster read against upstream is called unsupported about a month early.
+    /// </summary>
+    private async Task CheckSupportAsync()
+    {
+        if (_versions is null)
+            return;
+
+        var product = BackendProducts.For(_cluster.Backend, Distribution);
+        Support = await _versions.CheckAsync(product, Version, DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// Who this cluster is, read once (KON-355). Identity does not change under a page that is
+    /// already open — the same claim <see cref="CheckSupportAsync"/> is already made on, three lines
+    /// down — and this page re-read it on every watch event, which on a live cluster is every one to
+    /// five seconds. <see cref="IClusterEngine.GetInfoAsync"/> is two round-trips in the Kubernetes
+    /// adapter, one of them a full node listing, for a name and a version string that were already
+    /// on screen.
+    /// </summary>
+    private BackendInfo? _info;
+
+    private async Task ReadAsync()
+    {
+        var infoTask = _info is null ? _cluster.GetInfoAsync().AsTask() : Task.FromResult(_info);
         var nodesTask = _cluster.ListNodesAsync().AsTask();
         var namespacesTask = _cluster.ListNamespacesAsync().AsTask();
         var workloadsTask = _cluster.ListWorkloadsAsync().AsTask();
@@ -189,13 +289,16 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 
         await Task.WhenAll(infoTask, nodesTask, namespacesTask, workloadsTask, podsTask, servicesTask);
 
-        var info = infoTask.Result;
+        var info = _info = infoTask.Result;
         ClusterName = info.DisplayName;
         Version = info.Version;
         Distribution = info is ClusterInfo ci ? ci.Distribution : "cluster";
 
         var nodes = nodesTask.Result;
         NodeCount = nodes.Count;
+
+        (MaxCpu, MaxMemory) = Ceiling(nodes);
+
         NamespaceCount = namespacesTask.Result.Count;
         WorkloadCount = workloadsTask.Result.Count;
         PodCount = podsTask.Result.Count;
@@ -212,13 +315,29 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
                 n.Status,
                 n.KubeletVersion,
                 n.Usage is null ? "—" : $"{n.Usage.CpuMillicores}m / {n.Capacity.CpuMillicores}m",
+                n.Usage is null ? "—" : $"{Format.Size(n.Usage.MemoryBytes)} / {Format.Size(n.Capacity.MemoryBytes)}",
                 VersionSkewPolicy.Evaluate(info.Version, n.KubeletVersion))),
         ]);
+    }
+
+    /// <summary>
+    /// What the two capacity tiles say (KON-378). Its own method so the Ready rule can be tested
+    /// without a cluster: a node that is NotReady still reports its allocatable capacity, and counting
+    /// it would put cores in the total that nothing can be scheduled onto.
+    /// </summary>
+    internal static (string Cpu, string Memory) Ceiling(IEnumerable<Node> nodes)
+    {
+        var ready = nodes.Where(n => n.Status == "Ready").ToList();
+        return (
+            Format.Cores(ready.Sum(n => n.Capacity.CpuMillicores)),
+            Format.Size(ready.Sum(n => n.Capacity.MemoryBytes)));
     }
 }
 
 /// <summary>A row in the overview's node table.</summary>
-public sealed record NodeRow(string Name, string Roles, string Status, string Version, string Cpu, NodeVersionSkew? Skew = null)
+public sealed record NodeRow(
+    string Name, string Roles, string Status, string Version, string Cpu, string Memory,
+    NodeVersionSkew? Skew = null)
 {
     /// <summary>A kubelet outside the supported skew window (KON-95) — the version alone doesn't show it.</summary>
     public bool HasVersionWarning => Skew?.IsProblem == true;

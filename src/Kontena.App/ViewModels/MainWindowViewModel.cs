@@ -181,6 +181,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// rebuilds that page — see <c>BuildLocalClustersPage</c>.
     /// </summary>
     private LocalClustersViewModel? _localClusters;
+
+    /// <summary>Kept across settings rebuilds, like the local page — a half-filled host table is work.</summary>
+    private ProvisioningWizardViewModel? _remoteClusters;
     [ObservableProperty] private ActivityViewModel? _activity;
 
     /// <summary>The About page (KON-135). Never null — it needs no backend to say what it says.</summary>
@@ -306,6 +309,23 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// <summary>Third line of the sidebar pill — the active backend's endpoint (socket/URL).</summary>
     [ObservableProperty] private string _engineEndpoint = string.Empty;
 
+    /// <summary>
+    /// What the publisher's calendar says about the backend that is open, as opposed to the ones in the
+    /// dropdown (KON-371). The switcher is where you choose between backends, not where you work: a
+    /// user with one engine who never opens it never learned that their daemon was out of support.
+    /// The sidebar pill is where that version number already is, so that is where the verdict goes.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEngineUnsupported))]
+    [NotifyPropertyChangedFor(nameof(EngineSupportSummary))]
+    private VersionSupport? _engineSupport;
+
+    /// <summary>Whether the open backend runs a release its publisher has dropped.</summary>
+    public bool IsEngineUnsupported => EngineSupport?.IsProblem == true;
+
+    /// <summary>The sentence behind that icon — which line, and since when.</summary>
+    public string EngineSupportSummary => EngineSupport?.Detail ?? string.Empty;
+
     /// <summary>False until the first page is on screen (drives the connecting state).</summary>
     [ObservableProperty] private bool _isReady;
 
@@ -331,6 +351,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// page that does not need the connection it is waiting for (KON-137).
     /// </summary>
     public bool IsConnecting => !IsReady && !IsBackendDown && !IsOnboarding && !IsBackendIndependentPage;
+
+    /// <summary>
+    /// What the connecting state says it is waiting for. Named rather than fixed (KON-375): opening a
+    /// Kubernetes context spends this whole wait on the apiserver — the ping, the namespaces, the
+    /// first page's reads — under a line that said "Connecting to your container engine…", which is
+    /// not what the user clicked and not where the time is going. Startup keeps the generic wording,
+    /// because at that point nothing has been picked yet.
+    /// </summary>
+    [ObservableProperty] private string _connectingMessage = "Connecting to your container engine…";
 
     partial void OnIsReadyChanged(bool value) => RefreshContentVisibility();
     partial void OnIsBackendDownChanged(bool value) => RefreshContentVisibility();

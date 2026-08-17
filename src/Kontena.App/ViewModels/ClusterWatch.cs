@@ -39,9 +39,12 @@ internal static class ClusterWatch
     /// burst. Returns the source to cancel when the page goes away, or null when this cluster cannot
     /// watch at all — in which case <paramref name="onState"/> has already been told why.
     /// <para>
-    /// Nothing here is <c>ConfigureAwait(false)</c>, and that is deliberate: every continuation lands
-    /// back on the thread that called this, which is the UI thread, which is the only thread allowed
-    /// to touch the collections <paramref name="reload"/> rebuilds.
+    /// <paramref name="reload"/> and <paramref name="onState"/> run on the thread that called this —
+    /// the UI thread, the only one allowed to touch what they rebuild. <b>Reading the streams does
+    /// not</b> (KON-355): the settle loop keeps the caller's context because it ends in
+    /// <paramref name="reload"/>, but the per-event loop hands its context back, because it only
+    /// writes a byte to a channel and everything else it makes the adapter do is the adapter's work,
+    /// not the window's.
     /// </para>
     /// </summary>
     /// <param name="onState">Told (isLive, notice) — a notice of null only alongside true. A page that
@@ -76,22 +79,40 @@ internal static class ClusterWatch
         var signal = Channel.CreateBounded<byte>(
             new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
-        foreach (var kind in kinds)
-            _ = PumpAsync(cluster, kind, ns, signal.Writer, onState, stop.Token);
+        // The pump leaves the UI thread, so anything it has to say about the stream has to be carried
+        // back to it by hand. Null where there is no context to return to — the view-model tests —
+        // and there the call is simply made where it stands, which is what they already assert on.
+        var caller = SynchronizationContext.Current;
+        var report = caller is null
+            ? onState
+            : (live, notice) => caller.Post(_ => onState(live, notice), null);
 
-        _ = DrainAsync(signal.Reader, reload, onState, stop.Token);
+        foreach (var kind in kinds)
+            _ = PumpAsync(cluster, kind, ns, signal.Writer, report, stop.Token);
+
+        _ = DrainAsync(signal.Reader, reload, report, stop.Token);
 
         return stop;
     }
 
-    /// <summary>One kind's stream, reduced to "something moved".</summary>
+    /// <summary>
+    /// One kind's stream, reduced to "something moved".
+    /// <para>
+    /// <c>ConfigureAwait(false)</c> is the whole point of this method (KON-355). An adapter does real
+    /// work per event — decoding one, for the Kubernetes adapter, is a JSON object turned into a typed
+    /// model — and the events arrive in whatever the connection buffered, so a run of them is decoded
+    /// back to back with no wait in between. Keeping the caller's context here put every one of those
+    /// on the dispatcher: measured at 150–220 ms of frozen window per burst, several times a minute,
+    /// for a loop whose entire output is one byte in a channel.
+    /// </para>
+    /// </summary>
     private static async Task PumpAsync(
         IClusterEngine cluster, GroupVersionKind kind, string? ns,
         ChannelWriter<byte> signal, Action<bool, string?> onState, CancellationToken ct)
     {
         try
         {
-            await foreach (var _ in cluster.WatchAsync(kind, ns, ct))
+            await foreach (var _ in cluster.WatchAsync(kind, ns, ct).ConfigureAwait(false))
                 signal.TryWrite(0);
 
             // The stream ended without being cancelled. An apiserver closes a watch on its own

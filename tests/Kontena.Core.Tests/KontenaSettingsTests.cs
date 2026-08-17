@@ -104,6 +104,11 @@ public class KontenaSettingsTests
             ],
             KubeconfigPaths = ["/srv/kubeconfigs/acme.yaml", "~/Downloads/kubeconfig"],
             AllowedPlugins = ["com.acme.nerdctl@1.0.0", "com.acme.nerdctl@1.1.0"],
+            AllowedExecCredentials =
+            [
+                "gke-prod#gke-gcloud-auth-plugin",
+                "eks-staging#aws eks get-token --cluster-name staging",
+            ],
             BackendNames = new Dictionary<string, string>
             {
                 ["kubernetes:gke_myproject-prod_europe-west4_cluster-1"] = "Production EU",
@@ -155,6 +160,12 @@ public class KontenaSettingsTests
 
         // Consent is recorded per id and version independently, so both entries must survive.
         Assert.Equal(original.AllowedPlugins, restored.AllowedPlugins);
+
+        // The same for a kubeconfig credential command (KON-365): the command is part of the entry, and
+        // one carrying spaces has to come back as the one string it went in as.
+        Assert.Equal(original.AllowedExecCredentials, restored.AllowedExecCredentials);
+        Assert.True(restored.AllowsExecCredential("eks-staging", "aws eks get-token --cluster-name staging"));
+
         Assert.Equal(original.BackendNames, restored.BackendNames);
 
         // Declined clusters survive as false, which is what stops them being offered again.
@@ -177,6 +188,7 @@ public class KontenaSettingsTests
                 RemoteEngines = restored.RemoteEngines,
                 KubeconfigPaths = restored.KubeconfigPaths,
                 AllowedPlugins = restored.AllowedPlugins,
+                AllowedExecCredentials = restored.AllowedExecCredentials,
                 BackendNames = restored.BackendNames,
                 KnownClusters = restored.KnownClusters,
                 ContainerGrouping = restored.ContainerGrouping,

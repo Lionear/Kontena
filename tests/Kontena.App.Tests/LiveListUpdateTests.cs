@@ -71,6 +71,52 @@ public sealed class LiveListUpdateTests
         Assert.Equal(3, shown.Count);
     }
 
+    [Fact]
+    public void Sorting_moves_the_rows_instead_of_duplicating_them()
+    {
+        // A sort changes the order and nothing else. The reconcile used to answer that by inserting
+        // the row at its new index and leaving the copy further down in place: three rows became five,
+        // then seven, and reloading never brought them back (KON-374).
+        ObservableCollection<PodRow> shown = [Pod("a"), Pod("b"), Pod("c")];
+        var before = shown.ToList();
+
+        ListSync.Apply(shown, [Pod("c"), Pod("b"), Pod("a")]);
+
+        Assert.Equal(["c", "b", "a"], shown.Select(r => r.Name));
+        // Moved, not rebuilt — keeping the row instances is the whole reason this is not a Clear().
+        Assert.Same(before[2], shown[0]);
+        Assert.Same(before[1], shown[1]);
+        Assert.Same(before[0], shown[2]);
+    }
+
+    [Fact]
+    public void Applying_the_same_order_twice_is_a_no_op_the_second_time()
+    {
+        // The property that was missing: a second identical round used to add another copy of every
+        // row that had moved, so the list could only ever grow.
+        ObservableCollection<PodRow> shown = [Pod("a"), Pod("b"), Pod("c")];
+        List<PodRow> sorted = [Pod("c"), Pod("b"), Pod("a")];
+
+        ListSync.Apply(shown, sorted);
+        var afterFirst = shown.ToList();
+        ListSync.Apply(shown, sorted);
+
+        Assert.Equal(afterFirst, shown.ToList());
+        Assert.Same(afterFirst[0], shown[0]);
+    }
+
+    [Fact]
+    public void A_row_that_is_no_longer_wanted_leaves_the_list()
+    {
+        // Removal now happens by truncating what is left past the wanted count, so it needs its own
+        // assertion — including the case where the row that goes is not the last one.
+        ObservableCollection<PodRow> shown = [Pod("a"), Pod("b"), Pod("c")];
+
+        ListSync.Apply(shown, [Pod("a"), Pod("c")]);
+
+        Assert.Equal(["a", "c"], shown.Select(r => r.Name));
+    }
+
     // ── Following, and saying when it is not ────────────────────────────────
 
     [Fact]

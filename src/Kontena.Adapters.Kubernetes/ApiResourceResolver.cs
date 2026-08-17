@@ -42,6 +42,13 @@ internal sealed class ApiResourceResolver(IKubernetes client)
     }
 
     /// <summary>
+    /// Forget what one group/version serves. Caching for the session is right until an apply installs
+    /// a CRD: from then on the cached answer is not stale by chance, it is a "no such kind" recorded
+    /// before the kind existed, and every custom resource in the same bundle would trip over it.
+    /// </summary>
+    public void Invalidate(string group, string version) => _cache.TryRemove($"{group}/{version}", out _);
+
+    /// <summary>
     /// Everything the cluster serves: the core group plus every API group at its preferred version.
     /// <para>
     /// Subresources ("pods/log") and anything that cannot be listed are left out — the first is not a

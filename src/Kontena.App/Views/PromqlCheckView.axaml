@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:conv="using:Kontena.App.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="160"
+             x:Class="Kontena.App.Views.PromqlCheckView"
+             x:DataType="vm:PromqlCheckViewModel">
+
+    <!-- The "prev" block from the rule-editor mockup (KON-209): a chip, one summary line, and the
+         matching series. Hidden until there is a result, so a fresh field shows nothing rather than
+         a false "parses". -->
+    <Border IsVisible="{Binding HasResult}" Background="{DynamicResource Surface2}"
+            BorderBrush="{DynamicResource BorderSoft}" BorderThickness="1"
+            CornerRadius="{StaticResource RadiusSm}" Padding="12,11">
+        <StackPanel Spacing="9">
+            <StackPanel Orientation="Horizontal" Spacing="9">
+                <Border Background="{Binding ChipSoftBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"
+                        CornerRadius="999" Padding="7,2">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Path Classes="icon" Width="10" Height="10" VerticalAlignment="Center"
+                              Stroke="{Binding ChipBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"
+                              Data="{Binding ChipIconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"/>
+                        <TextBlock Text="{Binding ChipText}" FontSize="11.5" FontWeight="SemiBold"
+                                   Foreground="{Binding ChipBrushKey, Converter={x:Static conv:ResourceKeyToBrushConverter.Instance}}"/>
+                    </StackPanel>
+                </Border>
+                <TextBlock Text="{Binding Summary}" FontSize="12" VerticalAlignment="Center"
+                           TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
+            </StackPanel>
+
+            <ItemsControl ItemsSource="{Binding Samples}" IsVisible="{Binding HasSamples}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ExprSampleRow">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="{Binding LabelText}" FontSize="11.5"
+                                       FontFamily="{StaticResource Mono}" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextFaint}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ValueText}" FontSize="11.5" Margin="12,0,0,0"
+                                       FontFamily="{StaticResource Mono}" Foreground="{DynamicResource Text}"/>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
+
+</UserControl>

@@ -123,8 +123,38 @@ internal sealed class KubeletSummarySource(IKubernetes client, Func<Cancellation
         return pods;
     }
 
-    /// <summary>Every node's summary, gathered concurrently; nodes that fail are simply absent.</summary>
-    private async Task<IReadOnlyList<SummaryPayload>> ReadAllAsync(CancellationToken ct)
+    private readonly Lock _roundLock = new();
+    private Task<IReadOnlyList<SummaryPayload>>? _round;
+
+    /// <summary>
+    /// Every node's summary, gathered concurrently; nodes that fail are simply absent.
+    /// <para>
+    /// A round already under way is joined rather than started again (KON-355). A node listing asks
+    /// for usage and then for filesystem capacity, and both answers come out of this one payload — so
+    /// the fan-out ran twice, back to back, for identical data: on a three-node cluster that is six
+    /// per-node requests and two node listings where three and one will do, on every watch event the
+    /// open page reloads for. Only an <i>unfinished</i> round is shared, so nothing here can hand back
+    /// a summary from before the event that triggered the read; a caller arriving after one completes
+    /// starts a fresh one, exactly as before.
+    /// </para>
+    /// <para>
+    /// A joiner inherits the round's cancellation token rather than its own. That is survivable
+    /// because <see cref="ReadSummaryAsync"/> already turns any failure into "no numbers from this
+    /// node" — a caller whose round is cancelled under it gets a gauge-less refresh, never a throw.
+    /// </para>
+    /// </summary>
+    private Task<IReadOnlyList<SummaryPayload>> ReadAllAsync(CancellationToken ct)
+    {
+        lock (_roundLock)
+        {
+            if (_round is { IsCompleted: false } running)
+                return running;
+
+            return _round = ReadRoundAsync(ct);
+        }
+    }
+
+    private async Task<IReadOnlyList<SummaryPayload>> ReadRoundAsync(CancellationToken ct)
     {
         IReadOnlyList<string> names;
         try

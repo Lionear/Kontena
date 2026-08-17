@@ -3,6 +3,7 @@ using Kontena.App.ViewModels;
 using Kontena.Core.Models;
 using Kontena.Core.Versioning;
 using Kontena.Engines;
+using Kontena.Engines.Fakes;
 using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration.Models;
@@ -178,6 +179,69 @@ public sealed class SwitcherSupportPillTests : IDisposable
         var row = await SettledRowAsync(await ShellAsync("29.7.2"));
 
         Assert.False(row.IsUnsupported);
+    }
+
+    /// <summary>
+    /// The dropdown rows above are happy with a bare <see cref="IBackend"/>, which the shell can probe
+    /// but never open. The sidebar pill only exists once a backend is genuinely active, so these need a
+    /// real <c>IContainerEngine</c> — <see cref="FakeEngine"/>, which reports 0.1.0 and cannot be told
+    /// otherwise. Hence a calendar about the 0 line rather than Docker's.
+    /// </summary>
+    private sealed class ZeroLineCalendar(bool maintained) : IReleaseCalendar
+    {
+        public ValueTask<IReadOnlyList<ReleaseCycle>?> CyclesAsync(
+            string product, CancellationToken ct = default) =>
+            ValueTask.FromResult<IReadOnlyList<ReleaseCycle>?>(
+                [new("0", maintained, new DateOnly(2026, 5, 13), Latest: "0.1.0")]);
+    }
+
+    private async Task<MainWindowViewModel> OpenedShellAsync(bool maintained)
+    {
+        var store = new SettingsStore(_path);
+        var settings = new KontenaSettings { Onboarded = true };
+        store.Save(settings);
+
+        var vm = new MainWindowViewModel(
+            new BackendRegistry([new FakeEngineProvider("docker", "Docker", "D")]),
+            store,
+            settings,
+            new FakeUpdateService(),
+            versions: new VersionSupportCheck(new ZeroLineCalendar(maintained), _cache));
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!vm.IsReady && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.True(vm.IsReady, "the shell never opened the engine");
+
+        // The lookup is fired before the engine is opened and is not awaited by startup, so which of
+        // the two lands last is not fixed — the pill has to end up right either way.
+        while (vm.EngineSupport is null && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        return vm;
+    }
+
+    /// <summary>
+    /// The whole of KON-371 in one assertion: the verdict has to reach the sidebar pill, because that
+    /// is the only place a user who never opens the switcher ever sees their engine's version.
+    /// </summary>
+    [Fact]
+    public async Task The_sidebar_pill_carries_the_open_backend_verdict()
+    {
+        var vm = await OpenedShellAsync(maintained: false);
+
+        Assert.True(vm.IsEngineUnsupported);
+        Assert.Equal("Release 0 has not been supported since 13 May 2026.", vm.EngineSupportSummary);
+    }
+
+    [Fact]
+    public async Task The_sidebar_pill_stays_quiet_on_a_maintained_release()
+    {
+        var vm = await OpenedShellAsync(maintained: true);
+
+        Assert.False(vm.IsEngineUnsupported);
+        Assert.Equal(string.Empty, vm.EngineSupportSummary);
     }
 
     [Fact]

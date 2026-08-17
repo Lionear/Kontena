@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Kontena.Sdk.Models;
@@ -12,7 +13,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -46,6 +47,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </para>
     /// </summary>
     private readonly List<Channel<ResourceEvent>> _watchers = [];
+
+    /// <summary>Test hook (KON-355): run on the thread each post-snapshot watch event is produced on,
+    /// so a test can assert whose thread an adapter's per-event work would be costing.</summary>
+    public Action? OnWatchEvent { get; set; }
 
     /// <summary>Test hook (KON-308): push one more event into any watch already following this kind,
     /// after its initial snapshot. Filtered to matching kind/namespace the same way the snapshot is.</summary>
@@ -244,7 +249,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private ClusterCapabilities _capabilities = new()
     {
         Metrics = true, Exec = true, PortForward = true, Apply = true, Helm = true, Watch = true, Crds = true,
-        NodeMaintenance = true,
+        NodeMaintenance = true, Alerting = true, AlertRules = true,
     };
 
     public ClusterCapabilities Capabilities => _capabilities;
@@ -282,8 +287,51 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             ? (HistoryIsEmpty ? FakeMetricsHistory.Empty : FakeMetricsHistory.Instance)
             : NoMetricsHistory.Instance;
 
+    /// <summary>
+    /// Whether this fake cluster takes a manifest back. On by default; turn it off for the backend
+    /// that can show a resource's YAML but not write it, where the editor is read-only and its
+    /// buttons are gone (KON-383).
+    /// </summary>
+    public bool CanApply
+    {
+        get => _capabilities.Apply;
+        init => _capabilities = _capabilities with { Apply = value };
+    }
+
+    /// <summary>
+    /// Whether this fake cluster has an Alertmanager. On by default so the alerts page has something
+    /// to draw; turn it off for the empty state, where the page has to say where it looked instead of
+    /// showing an empty list (KON-205).
+    /// </summary>
+    public bool HasAlertmanager
+    {
+        get => _capabilities.Alerting;
+        init => _capabilities = _capabilities with { Alerting = value };
+    }
+
+    /// <summary>
+    /// Whether the <c>PrometheusRule</c> CRD is installed. Independent of
+    /// <see cref="HasAlertmanager"/> on purpose: turning this off alone is the cluster where a rule
+    /// can be written to a file but not applied, which is the half of the feature that has to keep
+    /// working without an Operator.
+    /// </summary>
+    public bool HasPrometheusRuleCrd
+    {
+        get => _capabilities.AlertRules;
+        init => _capabilities = _capabilities with { AlertRules = value };
+    }
+
+    private FakeAlertSource? _alertSource;
+
+    public IAlertSource Alerts => _capabilities.Alerting
+        ? _alertSource ??= new FakeAlertSource()
+        : NoAlertSource.Instance;
+
+    // Counted like the listers are: on a real cluster this is two round-trips, one of them a full
+    // node listing, so a page calling it on a loop costs what a page listing nodes on a loop costs
+    // (KON-355).
     public ValueTask<BackendInfo> GetInfoAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<BackendInfo>(new ClusterInfo
+        ValueTask.FromResult(Counted<BackendInfo>(nameof(GetInfoAsync), new ClusterInfo
         {
             Backend = Backend,
             DisplayName = _activeContext,
@@ -294,7 +342,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             Distribution = "GKE",
             NodeCount = _nodes.Count,
             Context = _activeContext,
-        });
+        }));
 
     public ValueTask PingAsync(CancellationToken ct = default) => ValueTask.CompletedTask;
 
@@ -312,12 +360,18 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     }
 
     public async IAsyncEnumerable<ApplyProgress> ApplyAsync(
-        ManifestBundle bundle, [EnumeratorCancellation] CancellationToken ct = default)
+        ManifestBundle bundle, IProgress<string>? status = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        foreach (var desired in ManifestParser.ParseBundle(bundle.Yaml))
+        var documents = ManifestParser.ParseBundle(bundle.Yaml).ToList();
+        var verb = bundle.DryRun ? "Checking" : "Applying";
+        var done = 0;
+
+        foreach (var desired in documents)
         {
             ct.ThrowIfCancellationRequested();
             await Task.Yield();
+            status?.Report($"{verb} {++done} of {documents.Count}");
             yield return ApplyOne(desired, bundle.DryRun);
 
             // The install this models is only real once metrics.k8s.io is registered, so that is what
@@ -527,10 +581,21 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             // reading whatever a test pushes via EmitWatchEvent. ReadAllAsync throws
             // OperationCanceledException on ct — that is the "stays open until you stop watching"
             // behaviour callers already rely on.
-            await foreach (var evt in mine.Reader.ReadAllAsync(ct))
+            // ConfigureAwait(false) because every real adapter in this repo has it, and a fake that
+            // resumes on the caller's context instead is not a cheaper adapter, it is a different one
+            // (KON-355): it would hold a page's UI thread where the Kubernetes adapter hands it back,
+            // so a test could neither see that bug nor prove it fixed.
+            await foreach (var evt in mine.Reader.ReadAllAsync(ct).ConfigureAwait(false))
             {
-                if (evt.Resource.Kind.Kind == kind.Kind && Match(ns, evt.Resource.Namespace))
-                    yield return evt;
+                if (evt.Resource.Kind.Kind != kind.Kind || !Match(ns, evt.Resource.Namespace))
+                    continue;
+
+                // Stands in for the work a real adapter does per event — decoding one object out of
+                // the stream — so a test can see which thread that lands on (KON-355). Only past the
+                // snapshot: the Task.Yield above hands the snapshot back to whoever asked for it,
+                // which is this fake's doing and not any adapter's.
+                OnWatchEvent?.Invoke();
+                yield return evt;
             }
         }
         finally
@@ -540,19 +605,44 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         }
     }
 
+    /// <summary>
+    /// How many times each list has been asked for (KON-375).
+    /// <para>
+    /// A fake that answers instantly makes wasted work invisible: every test in the suite passed while
+    /// opening a cluster listed its namespaces five times and built the overview page twice. A count is
+    /// the only thing that shows it, and it is the only thing a test can assert about it — a real
+    /// cluster's cost is latency, which this fake by design does not have.
+    /// </para>
+    /// <para>
+    /// Concurrent because watch-driven reloads run off their own tasks, and a count that races is worse
+    /// than no count: it fails a test occasionally rather than saying something true.
+    /// </para>
+    /// </summary>
+    public ConcurrentDictionary<string, int> Calls { get; } = new(StringComparer.Ordinal);
+
+    public int CallsTo(string call) => Calls.GetValueOrDefault(call);
+
+    private T Counted<T>(string call, T result)
+    {
+        Calls.AddOrUpdate(call, 1, (_, n) => n + 1);
+        return result;
+    }
+
     public ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<KubeNamespace>>(_namespaces);
+        ValueTask.FromResult(Counted<IReadOnlyList<KubeNamespace>>(nameof(ListNamespacesAsync), _namespaces));
 
     public ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Node>>(_nodes);
+        ValueTask.FromResult(Counted<IReadOnlyList<Node>>(nameof(ListNodesAsync), _nodes));
 
     public ValueTask<IReadOnlyList<Workload>> ListWorkloadsAsync(
         WorkloadKind? kind = null, string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Workload>>(
-            _workloads.Where(w => (kind is null || w.Kind == kind) && Match(ns, w.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Workload>>(
+            nameof(ListWorkloadsAsync),
+            _workloads.Where(w => (kind is null || w.Kind == kind) && Match(ns, w.Namespace)).ToList()));
 
     public ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Pod>>(_pods.Where(p => Match(ns, p.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Pod>>(
+            nameof(ListPodsAsync), _pods.Where(p => Match(ns, p.Namespace)).ToList()));
 
     // ── Generic resources (KON-75) ───────────────────────────────────────────
 
@@ -639,7 +729,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     }
 
     public ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<Service>>(_services.Where(s => Match(ns, s.Namespace)).ToList());
+        ValueTask.FromResult(Counted<IReadOnlyList<Service>>(
+            nameof(ListServicesAsync), _services.Where(s => Match(ns, s.Namespace)).ToList()));
 
     public ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Ingress>>(_ingresses.Where(i => Match(ns, i.Namespace)).ToList());

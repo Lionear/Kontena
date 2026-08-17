@@ -1,4 +1,5 @@
 using Kontena.Sdk.Errors;
+using Kontena.Sdk.Tooling;
 using Kontena.Sdk.Tooling.Fakes;
 
 namespace Kontena.Adapters.Apple.Tests;
@@ -42,6 +43,70 @@ public sealed class AppleCliTests
         await Assert.ThrowsAsync<EngineUnreachableException>(
             async () => await Cli(runner).RunAsync(default, "list"));
     }
+
+    /// <summary>
+    /// Both shapes a stopped service takes, verbatim from 1.2.2: the XPC error every command gives, and
+    /// the plain sentence <c>system status</c> prints on stdout. The second is why the check is not on
+    /// "XPC" alone — <c>system status</c> is the ping, so it is the first command to hit a stopped
+    /// service and the one whose failure a user sees first.
+    /// </summary>
+    public static TheoryData<string> ServiceDownComplaints =>
+    [
+        "Error: internalError: \"failed to list containers\" (cause: \"interrupted: \"XPC connection error: Connection invalid\"\")",
+        "apiserver is not running and not registered with launchd",
+    ];
+
+    /// <summary>
+    /// A stopped service is Kontena's job, not the user's: starting it takes a couple of seconds in the
+    /// user's own launchd domain, with no password to type. So the command that tripped over it is
+    /// simply run again, and the user never learns anything happened.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ServiceDownComplaints))]
+    public async Task A_stopped_service_is_started_and_the_command_tried_again(string complaint)
+    {
+        var runner = new FakeToolRunner().Install(AppleTool.Definition);
+        runner.When(
+            // Everything fails until the service has been started — including the start itself, whose
+            // own invocation is already recorded by the time this runs, so it is not caught by its own
+            // script.
+            invocation => !runner.Invocations.Any(IsStart),
+            exitCode: 1,
+            errorOutput: [complaint]);
+        runner.When(IsList, output: ["[]"]);
+
+        var stdout = await Cli(runner).RunAsync(default, "list", "--format", "json");
+
+        Assert.Equal("[]", stdout);
+        Assert.Equal(
+            ["container list --format json", "container system start --disable-kernel-install", "container list --format json"],
+            runner.Invocations.Select(i => i.CommandLine));
+    }
+
+    /// <summary>
+    /// When the service cannot be started — no kernel installed, since the prompt to install one is
+    /// declined — the CLI's own complaint has to reach the user, manual command and all. And it is tried
+    /// exactly once: a loop that keeps restarting would turn a service that structurally refuses to run
+    /// into a hang.
+    /// </summary>
+    [Fact]
+    public async Task A_service_that_will_not_start_surfaces_the_original_failure_without_looping()
+    {
+        var runner = Failing("Error: internalError: \"failed to list containers\" (cause: \"interrupted: \"XPC connection error: Connection invalid\"\")");
+
+        await Assert.ThrowsAsync<EngineUnreachableException>(
+            async () => await Cli(runner).RunAsync(default, "list"));
+
+        Assert.Equal(
+            ["container list", "container system start --disable-kernel-install"],
+            runner.Invocations.Select(i => i.CommandLine));
+    }
+
+    private static bool IsStart(ToolInvocation invocation) =>
+        invocation.Arguments is ["system", "start", ..];
+
+    private static bool IsList(ToolInvocation invocation) =>
+        invocation.Arguments is ["list", ..];
 
     /// <summary>Anything else still has to arrive as the SDK's own error type, with the CLI's complaint
     /// carried through — an adapter that swallows the reason makes its own message the bug report.</summary>

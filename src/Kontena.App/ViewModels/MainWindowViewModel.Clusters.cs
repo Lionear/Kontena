@@ -442,7 +442,11 @@ public partial class MainWindowViewModel
     /// replayed by hand, one route at a time (KON-173).
     /// </para>
     /// </summary>
-    private void ShowPodDetail(Pod pod)
+    private void ShowPodDetail(Pod pod) => ShowPodDetail(pod, "overview");
+
+    /// <summary>Lands on a tab other than Overview — the alert-detail footer's Logs jump (KON-208), which
+    /// is the same target as its Pod jump and only differs in which tab it opens on.</summary>
+    private void ShowPodDetail(Pod pod, string initialTab)
     {
         if (_cluster is null)
             return;
@@ -450,8 +454,78 @@ public partial class MainWindowViewModel
         ShowDetail(
             new ClusterPodDetailViewModel(
                 _cluster, pod, CurrentTerminalFont(), ShowPodPortForward, _portForwards, OpenEventObjectAsync,
-                onDelete: () => ConfirmDeletePod(pod)),
+                onDelete: () => ConfirmDeletePod(pod), initialTab),
             $"pod {pod.Name}", pod);
+    }
+
+    /// <summary>Open the alert-detail drawer (KON-208), with the rule and silence the alerts page
+    /// already resolved for this alert's group.</summary>
+    private void ShowAlertDetail(Alert alert, AlertRule? rule, Silence? silence) =>
+        ShowDetail(
+            new AlertDetailViewModel(
+                alert, rule, silence, onOpenPod: OpenAlertPodAsync,
+                onSilence: request => ConfirmCreateSilence(alert, request),
+                onExpireSilence: s => ConfirmExpireSilence(s, alert.Name)),
+            $"alert {alert.Name}", alert);
+
+    /// <summary>
+    /// The alert-detail footer's Pod and Logs jumps (KON-208): a namespace/pod label pair is not a
+    /// <see cref="Pod"/>, so this looks it up the same way <see cref="OpenEventObjectAsync"/> does —
+    /// with a tab to land on, since "Pod" and "Logs" are the same target and different reading.
+    /// </summary>
+    private async Task<bool> OpenAlertPodAsync(ResourceRef target, string tab)
+    {
+        if (_cluster is null)
+            return false;
+
+        if ((await _cluster.ListPodsAsync(target.Namespace)).FirstOrDefault(p => p.Name == target.Name) is not { } pod)
+            return false;
+
+        ShowPodDetail(pod, tab);
+        return true;
+    }
+
+    /// <summary>
+    /// Silence is imperative and always expires (KON-204 §5) — the confirm is where that gets said
+    /// out loud: exactly what matches, and until when, before Alertmanager is told.
+    /// </summary>
+    private void ConfirmCreateSilence(Alert alert, SilenceRequest request)
+    {
+        if (_cluster is not IAlertingAware aware)
+            return;
+
+        Confirm(
+            "Silence this alert",
+            $"Mute \"{alert.Name}\" until {request.EndsAt.ToLocalTime():HH:mm}. A silence never goes into a"
+            + " repository — it belongs to you, and it expires.",
+            "Silence",
+            onConfirm: async () =>
+            {
+                await aware.Alerts.CreateSilenceAsync(request);
+                PopDetail();
+                ReloadCurrentClusterPage();
+            },
+            destructive: false,
+            details: [.. request.Matchers.Select(m => new ConfirmDetail("IconTag", m.Name, m.Value))]);
+    }
+
+    /// <summary>The alert-detail drawer's own Expire, next to the Silenced section's (KON-208).</summary>
+    private void ConfirmExpireSilence(Silence silence, string alertName)
+    {
+        if (_cluster is not IAlertingAware aware)
+            return;
+
+        Confirm(
+            "Expire silence",
+            $"Stop muting \"{alertName}\" now? Whatever it was hiding starts showing again immediately.",
+            "Expire",
+            onConfirm: async () =>
+            {
+                await aware.Alerts.ExpireSilenceAsync(silence.Id);
+                PopDetail();
+                ReloadCurrentClusterPage();
+            },
+            destructive: false);
     }
 
     /// <summary>

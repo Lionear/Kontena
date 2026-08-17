@@ -168,6 +168,10 @@
     <Application.Styles>
         <FluentTheme />
 
+        <!-- TextEditor ships no default template; without this the manifest editor renders empty
+             (KON-382). Kontena.Plugins.ManifestStudio merges the same dictionary for its own. -->
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
+
         <!-- The app's only motion (KON-220). On the ContentPresenter because that is the part these
              styles colour, and on Background alone: fading the label as well makes the text look out
              of focus for a fifth of a second, which is the opposite of the point. Deliberately not on
@@ -209,6 +213,24 @@
         </Style>
         <Style Selector="Button.nav.selected /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+        </Style>
+
+        <!-- Sidebar count pills. The quiet one is every entry that counts inventory; the loud one is
+             firing alerts and nothing else, because a queue of things wrong is not the same sort of
+             number as "3 nodes" (KON-207). Colour is not the only signal — the pill carries a
+             tooltip saying what the number is. -->
+        <Style Selector="Border.navcount">
+            <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+        </Style>
+        <Style Selector="Border.navcount > TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+        </Style>
+        <Style Selector="Border.navcount.loud">
+            <Setter Property="Background" Value="{DynamicResource DangerSoft}"/>
+        </Style>
+        <Style Selector="Border.navcount.loud > TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Danger}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
 
         <!-- Primary / secondary buttons -->

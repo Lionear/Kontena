@@ -55,6 +55,10 @@ public partial class MainWindow : Window
         // did (KON-173). Tunnelled so a list row cannot swallow it on the way up.
         AddHandler(PointerPressedEvent, OnPointerPressedPreview, RoutingStrategies.Tunnel);
 
+        // Same reason, one control down: the namespace picker's own text box handles the press
+        // (KON-373), so a bubbling handler on the picker would never hear the click that opens it.
+        NamespacePicker.AddHandler(PointerPressedEvent, OnNamespacePickerPressed, RoutingStrategies.Tunnel);
+
         // Focus belongs to the view, so the shell asks rather than reaching into the tree (KON-172).
         DataContextChanged += (_, _) =>
         {
@@ -265,6 +269,50 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
     }
 
+    // ── Namespace picker (KON-373) ───────────────────────────────────────────
+    //
+    // An AutoCompleteBox filters, which is why it is here, but it is a text box underneath: its text
+    // is whatever you have typed so far, and it drops its own SelectedItem on every keystroke. Two-way
+    // binding it would set SelectedNamespace to null halfway through a word — one cluster reload per
+    // key. So the binding runs out of the view model only, and these three handlers are the way back
+    // in: nothing but a real pick reaches SelectedNamespace, and half-typed text never outlives focus.
+
+    /// <summary>
+    /// Open on the whole list, the way the ComboBox before it did — clicking a picker should show what
+    /// there is to pick, not the one entry that happens to match the name already in the box.
+    /// <para>
+    /// Hung on the press rather than on focus, and this is not a preference: opening from GotFocus
+    /// crashed the window. Clicking an entry hands focus back to the field while the drop-down is
+    /// closing on that same click, so the handler reopened a popup that was halfway torn down and
+    /// Avalonia walked off the end of a child list it was detaching. A press lands on the field only
+    /// when the field is what was pressed — an entry in the popup is not — so the commit is left
+    /// alone. Tunnelled because the text box inside marks the press handled on its way up.
+    /// </para>
+    /// </summary>
+    private void OnNamespacePickerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (NamespacePicker.IsDropDownOpen)
+            return;
+
+        NamespacePicker.Text = string.Empty;
+        NamespacePicker.IsDropDownOpen = true;
+    }
+
+    /// <summary>A pick — and only a pick, never the null the control writes while you type.</summary>
+    private void OnNamespacePicked(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is AutoCompleteBox { SelectedItem: string ns } && DataContext is MainWindowViewModel vm)
+            vm.SelectedNamespace = ns;
+    }
+
+    /// <summary>Leaving with "kube-sys" typed in shows a filter that is not running. Put the selection
+    /// back; setting it is what restores the text.</summary>
+    private void OnNamespacePickerLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is AutoCompleteBox picker && DataContext is MainWindowViewModel vm)
+            picker.SelectedItem = vm.SelectedNamespace;
+    }
+
     // The drawer grows leftwards, so a drag towards the left — a negative X — widens it (KON-307).
     // The clamp and the saving live in the view model; this only turns a gesture into a delta.
     private void OnDetailResize(object? sender, VectorEventArgs e)
@@ -329,5 +377,11 @@ public partial class MainWindow : Window
             WindowY = _normalY,
             WindowMaximized = WindowState == WindowState.Maximized,
         });
+
+        // A rollout runs from here — there is no cluster yet to hand it to — so closing stops k0sctl
+        // where it is (KON-239). Write down what was standing, so the next launch can say "four of five
+        // were installed" instead of a blank screen and a memory test.
+        if (DataContext is MainWindowViewModel { SettingsPage.RemoteClusters.Rollout: { IsRunning: true } rollout })
+            rollout.Remember();
     }
 }

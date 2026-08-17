@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Authentication;
+using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.Sdk.Models;
 using Kontena.Core.Models;
@@ -88,5 +89,48 @@ public class UpdateMessageTests
         var message = UpdateViewModel.Describe(new IOException("No space left on device"), UpdateChannel.Nightly);
 
         Assert.Contains("No space left on device", message, StringComparison.Ordinal);
+    }
+}
+
+/// <summary>
+/// What the card and the toast lead with when the offer is a move to another stream (KON-372). A
+/// channel switch can go *down* — preview 0.4.0-preview outranks nightly 0.4.0-nightly — and
+/// "Kontena 0.4.0-nightly.71 is available" reads as an upgrade that is not one.
+/// </summary>
+public class UpdateHeadlineTests
+{
+    private static UpdateViewModel ViewModel(UpdateChannel build, UpdateChannel chosen) =>
+        new(new FakeUpdateService(buildChannel: build),
+            new SettingsStore(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())),
+            () => new KontenaSettings { UpdateChannel = chosen, AutoDownloadUpdates = false },
+            openCard: () => { }, closeCard: () => { });
+
+    [Fact]
+    public async Task Leaving_your_own_channel_reads_as_a_switch()
+    {
+        var update = ViewModel(UpdateChannel.Preview, UpdateChannel.Nightly);
+
+        await update.CheckAsync();
+
+        Assert.True(update.IsChannelSwitch);
+        Assert.Equal("Switching to nightly 0.2.0", update.Headline);
+    }
+
+    [Fact]
+    public async Task A_newer_build_of_your_own_channel_still_reads_as_an_update()
+    {
+        var update = ViewModel(UpdateChannel.Nightly, UpdateChannel.Nightly);
+
+        await update.CheckAsync();
+
+        Assert.False(update.IsChannelSwitch);
+        Assert.Equal("Kontena 0.2.0 is available", update.Headline);
+    }
+
+    [Fact]
+    public void Nothing_found_is_never_a_switch()
+    {
+        // Stage None must not label an empty card, whatever the channels happen to be.
+        Assert.False(ViewModel(UpdateChannel.Preview, UpdateChannel.Nightly).IsChannelSwitch);
     }
 }

@@ -385,6 +385,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool IsRegistries => Category == "registries";
     public bool IsClusters => Category == "clusters";
+    public bool IsRemoteClusters => Category == "remote-clusters";
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
     public bool IsUpdates => Category == "updates";
@@ -394,6 +395,13 @@ public partial class SettingsViewModel : ViewModelBase
     /// parameter — this page owns its own state and needs nothing from settings.
     /// </summary>
     public LocalClustersViewModel? LocalClusters { get; init; }
+
+    /// <summary>
+    /// Rolling a cluster out onto your own machines (KON-379). Its own section rather than a tab on
+    /// the local page: they share a word and nothing else — one makes containers here, the other
+    /// installs on machines somewhere, which is the same split the specs and the contracts already have.
+    /// </summary>
+    public ProvisioningWizardViewModel? RemoteClusters { get; init; }
 
     [RelayCommand]
     private void SelectCategory(string category) => Category = category;

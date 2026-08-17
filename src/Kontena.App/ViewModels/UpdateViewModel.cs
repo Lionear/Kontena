@@ -84,6 +84,8 @@ public partial class UpdateViewModel : ViewModelBase
         OnPropertyChanged(nameof(SecondaryLabel));
         OnPropertyChanged(nameof(ShowSecondary));
         OnPropertyChanged(nameof(CanRunPrimary));
+        OnPropertyChanged(nameof(IsChannelSwitch));
+        OnPropertyChanged(nameof(Headline));
     }
 
     public bool IsAvailable => Stage == UpdateStage.Available;
@@ -170,7 +172,24 @@ public partial class UpdateViewModel : ViewModelBase
     public string SidebarPill => Stage == UpdateStage.Downloading ? $"{Percent}%" : Version;
 
     partial void OnPercentChanged(int value) => OnPropertyChanged(nameof(SidebarPill));
-    partial void OnVersionChanged(string value) => OnPropertyChanged(nameof(SidebarPill));
+
+    partial void OnVersionChanged(string value)
+    {
+        OnPropertyChanged(nameof(SidebarPill));
+        OnPropertyChanged(nameof(Headline));
+    }
+
+    /// <summary>
+    /// Whether what is on offer is a move to another stream rather than a newer build of this one.
+    /// Since KON-372 that can be a *lower* version — preview 0.4.0-preview is semver-above nightly
+    /// 0.4.0-nightly — and calling that "an update is available" reads as a wrong label on the card.
+    /// </summary>
+    public bool IsChannelSwitch => Stage != UpdateStage.None && _channel != _service.BuildChannel;
+
+    /// <summary>What the card and the toast lead with.</summary>
+    public string Headline => IsChannelSwitch
+        ? $"Switching to {Name(_channel)} {Version}"
+        : $"Kontena {Version} is available";
 
     // ── Card buttons ────────────────────────────────────────────────────────
 

@@ -1,0 +1,186 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="800"
+             x:Class="Kontena.App.Views.RolloutView"
+             x:DataType="vm:RolloutViewModel">
+
+    <StackPanel Spacing="14">
+
+        <!-- ── Per machine: the row of steps. ── -->
+        <Border Classes="card">
+            <StackPanel Spacing="14">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Progress}" FontWeight="SemiBold" FontSize="13.5"
+                               VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Classes="ghost" Content="Stop" Command="{Binding CancelCommand}"
+                            IsVisible="{Binding IsRunning}"/>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RolloutHostRowViewModel">
+                            <Border Padding="11,9" Margin="0,0,0,7"
+                                    CornerRadius="{StaticResource RadiusSm}"
+                                    Background="{DynamicResource Surface2}">
+                                <StackPanel Spacing="6">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Address}" FontWeight="SemiBold"
+                                                   FontSize="13" FontFamily="{StaticResource Mono}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Role}" FontSize="12" Margin="10,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextFaint}"/>
+
+                                        <TextBlock Grid.Column="2" Text="waiting" FontSize="11.5"
+                                                   Foreground="{DynamicResource TextFaint}"
+                                                   IsVisible="{Binding IsWaiting}"/>
+                                        <TextBlock Grid.Column="2" Text="working" FontSize="11.5"
+                                                   Foreground="{DynamicResource Info}"
+                                                   IsVisible="{Binding IsBusy}"/>
+                                        <TextBlock Grid.Column="2" Text="ready" FontSize="11.5" FontWeight="Bold"
+                                                   Foreground="{DynamicResource Success}"
+                                                   IsVisible="{Binding IsDone}"/>
+                                        <TextBlock Grid.Column="2" Text="stopped" FontSize="11.5" FontWeight="Bold"
+                                                   Foreground="{DynamicResource Danger}"
+                                                   IsVisible="{Binding IsFailed}"/>
+                                        <TextBlock Grid.Column="2" Text="left out" FontSize="11.5"
+                                                   Foreground="{DynamicResource WarnText}"
+                                                   IsVisible="{Binding IsSkipped}"/>
+                                    </Grid>
+
+                                    <!-- connect → binary → join → service → healthy -->
+                                    <ItemsControl ItemsSource="{Binding Steps}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:RolloutStepViewModel">
+                                                <Border Padding="7,3" CornerRadius="{StaticResource RadiusSm}"
+                                                        Background="{DynamicResource Surface}">
+                                                    <TextBlock Text="{Binding Name}" FontSize="11"/>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Text="{Binding Detail}" FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextDim}"
+                                               IsVisible="{Binding Detail, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- ── The tool's own output. Not our summary of it. ── -->
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="K0SCTL" FontSize="11.5" FontWeight="Bold"
+                           Foreground="{DynamicResource TextFaint}"/>
+                <ScrollViewer MaxHeight="260">
+                    <ItemsControl ItemsSource="{Binding Output}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontSize="11.5" TextWrapping="Wrap"
+                                           FontFamily="{StaticResource Mono}"
+                                           Foreground="{DynamicResource TextDim}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Stopped: nothing undone, and three ways on. ── -->
+        <StackPanel Spacing="14" IsVisible="{Binding IsFailed}">
+
+            <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerSoftBorder}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11">
+                <StackPanel Spacing="5">
+                    <TextBlock Text="{Binding Error}" FontSize="12.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text}"
+                               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+                    <!-- Said out loud. Without it, the missing rollback button reads as an omission. -->
+                    <TextBlock Text="{x:Static vm:RolloutViewModel.NoRollback}" FontSize="12.5"
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="WHERE TO GO FROM HERE" FontSize="11.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextFaint}"/>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding RetryHost.Title}" FontWeight="SemiBold" FontSize="13"/>
+                        <TextBlock Text="{Binding RetryHost.Detail}" FontSize="12.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding RetryHost.LeftBehind}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFaint}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding ContinueWithout.Title}" FontWeight="SemiBold" FontSize="13"/>
+                        <TextBlock Text="{Binding ContinueWithout.Detail}" FontSize="12.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding ContinueWithout.LeftBehind}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFaint}"/>
+                        <Button Classes="ghost" Content="Continue without it" HorizontalAlignment="Left"
+                                Command="{Binding SkipStoppedCommand}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding Diagnose.Title}" FontWeight="SemiBold" FontSize="13"/>
+                        <TextBlock Text="{Binding Diagnose.Detail}" FontSize="12.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding Diagnose.LeftBehind}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFaint}"/>
+                        <Button Classes="ghost" Content="Show its output" HorizontalAlignment="Left"
+                                Command="{Binding ToggleDiagnosisCommand}"/>
+
+                        <Border Padding="11,9" CornerRadius="{StaticResource RadiusSm}"
+                                Background="{DynamicResource Surface2}" IsVisible="{Binding IsDiagnosing}">
+                            <ItemsControl ItemsSource="{Binding StoppedLines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Text="{Binding}" FontSize="11.5" TextWrapping="Wrap"
+                                                   FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource TextDim}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- ── Done. ── -->
+        <Border Background="{DynamicResource SuccessSoft}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11"
+                IsVisible="{Binding IsDone}">
+            <StackPanel Spacing="4">
+                <TextBlock FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource Text}">
+                    <Run Text="Cluster"/><Run Text=" "/><Run Text="{Binding ClusterName}"/><Run Text=" is up."/>
+                </TextBlock>
+                <TextBlock Text="Its context has been written to your kubeconfig; your current context was not changed. It will appear in the backend switcher."
+                           FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Closing now would stop it. Said before it happens, not after. ── -->
+        <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="13,11"
+                IsVisible="{Binding IsRunning}">
+            <TextBlock Text="{Binding ClosingWarning}" FontSize="12.5" TextWrapping="Wrap"
+                       Foreground="{DynamicResource WarnText}"/>
+        </Border>
+    </StackPanel>
+</UserControl>

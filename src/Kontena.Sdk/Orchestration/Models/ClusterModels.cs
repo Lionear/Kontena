@@ -49,6 +49,20 @@ public sealed record ClusterCapabilities
 
     /// <summary>Nodes can be cordoned, uncordoned and drained (KON-251).</summary>
     public bool NodeMaintenance { get; init; }
+
+    /// <summary>An Alertmanager answers → the Alerts page and its badge (KON-205).</summary>
+    public bool Alerting { get; init; }
+
+    /// <summary>
+    /// The <c>PrometheusRule</c> CRD exists → a rule can be applied to this cluster (KON-205).
+    /// <para>
+    /// Separate from <see cref="Alerting"/> because the degradation runs in two independent
+    /// directions, and one "monitoring is present" flag would kill both halves. No Alertmanager
+    /// still leaves the rule editor useful for writing files; no CRD still leaves exporting
+    /// possible, only not applying — and that export half is the whole CI/CD side of the feature.
+    /// </para>
+    /// </summary>
+    public bool AlertRules { get; init; }
 }
 
 /// <summary>

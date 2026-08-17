@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using k8s;
 using k8s.Autorest;
@@ -26,7 +27,8 @@ namespace Kontena.Adapters.Kubernetes;
 /// designed around.
 /// </para>
 /// </summary>
-public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IDisposable
+public sealed class KubernetesClusterEngine
+    : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IDisposable
 {
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
@@ -39,6 +41,11 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     private readonly string? _kubeconfigPath;
     private readonly PrometheusSource _history;
+    private readonly AlertingDiscovery _alerting;
+    private readonly ApiProxyHttp _proxy;
+
+    private IAlertSource _alerts = NoAlertSource.Instance;
+    private AlertingProbe _alertingProbe = AlertingProbe.Nothing;
 
     /// <param name="context">The kube-context to connect through.</param>
     /// <param name="kubeconfigPath">The kubeconfig it came from, or null for the default one (KON-118).</param>
@@ -55,11 +62,14 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
         // The raw HttpClient rather than a generated operation: the service proxy has to carry a
         // query string through to Prometheus, and the generated method has nowhere to put one.
-        _history = new PrometheusSource(client.HttpClient, client.BaseUri, client);
+        var proxy = new ApiProxyHttp(client.HttpClient, client.BaseUri);
+        _history = new PrometheusSource(proxy, client);
         _resources = new ApiResourceResolver(_client);
         _apply = new KubernetesApply(_client, _resources);
+        _alerting = new AlertingDiscovery(_client, proxy, _resources);
+        _proxy = proxy;
 
-        // Metrics start off; PingAsync probes for a source and turns the gauges on if one answers.
+        // Metrics and alerting start off; PingAsync probes for sources and turns on what answers.
         _capabilities = BaseCapabilities with { Metrics = false };
     }
 
@@ -89,6 +99,31 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     /// <summary>Where the past comes from, when the cluster keeps one (KON-345).</summary>
     public IMetricsHistory History => _history;
+
+    /// <summary>What answers for alerts, or <see cref="NoAlertSource"/> until something does.</summary>
+    public IAlertSource Alerts => _alerts;
+
+    /// <summary>
+    /// Where the last probe went looking, so the empty state can say it verbatim (KON-206). A
+    /// cluster running an Alertmanager under a name this does not know has to be shown the gap; a
+    /// list the view typed out for itself would stop being true the moment a candidate is added
+    /// here.
+    /// </summary>
+    public IReadOnlyList<string> AlertingLookedFor => _alertingProbe.LookedFor;
+
+    /// <inheritdoc cref="AlertingLookedFor"/>
+    public IReadOnlyList<string> AlertingLookedIn => _alertingProbe.LookedIn;
+
+    /// <summary>Why the search could not finish — a refused listing reads nothing like an absent one.</summary>
+    public string? AlertingRefusal => _alertingProbe.Refusal;
+
+    /// <summary>
+    /// What this cluster's Prometheus selects rules by (KON-210) — the read that lets the rule editor
+    /// answer "will this be picked up" before anything is applied. Asked on demand rather than during
+    /// discovery: it costs an extra API call and only one page has the question.
+    /// </summary>
+    public Task<RuleTargeting> ReadRuleTargetingAsync(CancellationToken ct = default) =>
+        PrometheusRuleTargetingReader.ReadAsync(_client, _alertingProbe.Prometheus?.Namespace, ct);
 
     // ── Identity & health ────────────────────────────────────────────────────
 
@@ -155,7 +190,20 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
         // Piggyback the metrics probe: one round-trip decides whether the UI shows usage gauges.
         var hasMetrics = await _metrics.ProbeAsync(ct).ConfigureAwait(false);
-        _capabilities = BaseCapabilities with { Metrics = hasMetrics };
+
+        // And the alerting probe, which is the same shape: look, ask, believe what answered. The two
+        // flags it sets are independent — see AlertingDiscovery.
+        _alertingProbe = await _alerting.ProbeAsync(ct).ConfigureAwait(false);
+        _alerts = _alertingProbe.Alertmanager is null && _alertingProbe.Prometheus is null
+            ? NoAlertSource.Instance
+            : new AlertmanagerSource(_proxy, _alertingProbe.Alertmanager, _alertingProbe.Prometheus);
+
+        _capabilities = BaseCapabilities with
+        {
+            Metrics = hasMetrics,
+            Alerting = _alertingProbe.Alertmanager is not null,
+            AlertRules = _alertingProbe.RuleCrd,
+        };
     }
 
     /// <summary>Node names for the kubelet source's per-node fan-out.</summary>
@@ -189,13 +237,23 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     public async ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default)
     {
-        var list = await _client.CoreV1.ListNodeAsync(cancellationToken: ct).ConfigureAwait(false);
-        var usage = await _metrics.GetNodeUsageAsync(ct).ConfigureAwait(false);
-        var diskCapacity = await _metrics.GetNodeDiskCapacityAsync(ct).ConfigureAwait(false);
+        // All four know nothing of each other, so all four are started before any is awaited — and
+        // usage and capacity being in flight together is what lets the kubelet source serve both from
+        // one fan-out instead of two identical ones (KON-355).
+        var listTask = _client.CoreV1.ListNodeAsync(cancellationToken: ct);
+        var usageTask = _metrics.GetNodeUsageAsync(ct).AsTask();
+        var diskCapacityTask = _metrics.GetNodeDiskCapacityAsync(ct).AsTask();
 
         // Pod counts come from the pod list, not the metrics source — they are always available.
-        var pods = await _client.CoreV1.ListPodForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
-        var perNode = (pods.Items ?? [])
+        var podsTask = _client.CoreV1.ListPodForAllNamespacesAsync(cancellationToken: ct);
+
+        await Task.WhenAll(listTask, usageTask, diskCapacityTask, podsTask).ConfigureAwait(false);
+
+        var list = listTask.Result;
+        var usage = usageTask.Result;
+        var diskCapacity = diskCapacityTask.Result;
+
+        var perNode = (podsTask.Result.Items ?? [])
             .Where(p => !string.IsNullOrEmpty(p.Spec?.NodeName))
             .GroupBy(p => p.Spec!.NodeName!)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
@@ -459,7 +517,6 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
                     _ => WatchEvent.Modified,
                 },
                 Resource = new ResourceRef(kind, meta.Metadata?.NamespaceProperty, meta.Metadata?.Name ?? "?"),
-                Manifest = KubernetesYaml.Serialize(obj),
             };
         }
     }
@@ -550,30 +607,48 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
 
     // ── Manifests ────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// One object's live YAML, for any kind the cluster serves — the API server renders it itself
+    /// (<c>Accept: application/yaml</c>), so this is the same text <c>kubectl get -o yaml</c> shows.
+    /// <para>
+    /// Generic on the same footing as apply and delete: discovery names the plural, and nothing here
+    /// knows a Dragonfly from a Deployment. It used to be a switch over the dozen kinds this adapter
+    /// has a typed reader for, which left every custom resource — the half of the cluster the
+    /// Resources page exists for — showing a placeholder comment where its manifest should be.
+    /// </para>
+    /// </summary>
     public async ValueTask<string> GetManifestAsync(ResourceRef resource, CancellationToken ct = default)
     {
-        var ns = resource.Namespace;
-        var name = resource.Name;
+        // A kind the cluster does not serve is a fact about the cluster rather than a failed fetch,
+        // so it is stated in the panel instead of thrown at the caller.
+        if (await _resources.ResolveAsync(resource.Kind, ct).ConfigureAwait(false) is not { } info)
+            return $"# This cluster does not serve {resource.Kind.Kind}.";
 
-        object? obj = resource.Kind.Kind switch
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            ResourceTables.RequestUri(_client.BaseUri, info, resource.Namespace, resource.Name));
+
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(MediaTypeWithQualityHeaderValue.Parse("application/yaml"));
+
+        using var response = await _client.HttpClient.SendAsync(request, ct).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
         {
-            "Pod" => await _client.CoreV1.ReadNamespacedPodAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Service" => await _client.CoreV1.ReadNamespacedServiceAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Namespace" => await _client.CoreV1.ReadNamespaceAsync(name, cancellationToken: ct).ConfigureAwait(false),
-            "Node" => await _client.CoreV1.ReadNodeAsync(name, cancellationToken: ct).ConfigureAwait(false),
-            "PersistentVolumeClaim" => await _client.CoreV1.ReadNamespacedPersistentVolumeClaimAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Ingress" => await _client.NetworkingV1.ReadNamespacedIngressAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Deployment" => await _client.AppsV1.ReadNamespacedDeploymentAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "StatefulSet" => await _client.AppsV1.ReadNamespacedStatefulSetAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "DaemonSet" => await _client.AppsV1.ReadNamespacedDaemonSetAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "Job" => await _client.BatchV1.ReadNamespacedJobAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            "CronJob" => await _client.BatchV1.ReadNamespacedCronJobAsync(name, ns, cancellationToken: ct).ConfigureAwait(false),
-            _ => null,
-        };
+            // Mapped like every other call here, so a 403 reads as a permission problem rather than
+            // as a manifest that happens to be a Status object.
+            throw K8sErrors.Map(
+                new HttpOperationException(
+                    $"{resource.Kind.Kind} \"{resource.Name}\" could not be read: the cluster answered "
+                    + $"{(int)response.StatusCode} {response.ReasonPhrase}.")
+                {
+                    Response = new HttpResponseMessageWrapper(response, body),
+                },
+                _context);
+        }
 
-        return obj is null
-            ? $"# {resource.Kind.Kind} is not a kind this adapter can read yet."
-            : KubernetesYaml.Serialize(obj);
+        return body;
     }
 
     // ── Streams ──────────────────────────────────────────────────────────────
@@ -663,7 +738,6 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
             {
                 Type = type == K8sWatch.Deleted ? WatchEvent.Deleted : WatchEvent.Added,
                 Resource = K8sMap.ToEvent(e).InvolvedObject,
-                Manifest = e.Message,
             };
         }
     }
@@ -675,32 +749,125 @@ public sealed class KubernetesClusterEngine : IClusterEngine, IMetricsAware, IMe
     /// <see cref="ManifestBundle.DryRun"/> the API server runs the full admission chain and returns
     /// what the object would become, without persisting — so the plan comes from the cluster rather
     /// than from a local guess.
+    /// <para>
+    /// Namespaces and CRDs go first (KON-380). They are the only two things the API server will not
+    /// recognise a later document without, and nothing in a bundle needs the reverse order, so this
+    /// is the one ordering rule worth having — helm and kubectl both keep the same one. A chart like
+    /// kube-prometheus-stack ships ten CRDs and fifty resources that use them; without the split the
+    /// second half is rejected as unknown kinds no matter what it contains.
+    /// </para>
     /// </summary>
     public async IAsyncEnumerable<ApplyProgress> ApplyAsync(
-        ManifestBundle bundle, [EnumeratorCancellation] CancellationToken ct = default)
+        ManifestBundle bundle, IProgress<string>? status = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var documents = ManifestDocuments.Split(bundle.Yaml).ToList();
-        var pendingNamespaces = ManifestDocuments.NamespacesCreatedBy(documents);
+        status?.Report("Reading the bundle…");
+
+        // Off the caller's thread: splitting kube-prometheus-stack's 5 MB render is 1.5 s of parsing,
+        // and it runs before the first request — so the window that started the apply froze solid
+        // before there was anything to report (KON-381).
+        var documents = await Task
+            .Run(() => ManifestDocuments.Split(bundle.Yaml).ToList(), ct)
+            .ConfigureAwait(false);
+
+        var prerequisites = ManifestDocuments.PrerequisitesIn(documents);
         var fallback = bundle.Namespace is { Length: > 0 } chosen ? chosen : DefaultNamespace;
 
-        foreach (var document in documents)
+        var first = documents.Where(ManifestDocuments.IsPrerequisite).ToList();
+        var rest = documents.Where(d => !ManifestDocuments.IsPrerequisite(d)).ToList();
+
+        var verb = bundle.DryRun ? "Checking" : "Applying";
+        var done = 0;
+
+        foreach (var document in first)
         {
             ct.ThrowIfCancellationRequested();
-
-            if (document.Error is { } error)
-            {
-                yield return new ApplyProgress
-                {
-                    Resource = new ResourceRef(GroupVersionKind.Pod, null, "?"),
-                    Action = ApplyAction.Failed,
-                    Error = error,
-                };
-                continue;
-            }
-
-            yield return await _apply
-                .ApplyOneAsync(document.Content!, bundle.DryRun, fallback, pendingNamespaces, ct)
+            status?.Report($"{verb} {++done} of {documents.Count}");
+            yield return await ApplyDocumentAsync(document, bundle.DryRun, fallback, prerequisites, ct)
                 .ConfigureAwait(false);
+        }
+
+        // A dry-run persisted nothing, so there is nothing to wait for and nothing new to discover.
+        if (!bundle.DryRun && prerequisites.CustomKinds.Count > 0)
+            await WaitForNewKindsAsync(rest, prerequisites, status, ct).ConfigureAwait(false);
+
+        foreach (var document in rest)
+        {
+            ct.ThrowIfCancellationRequested();
+            status?.Report($"{verb} {++done} of {documents.Count}");
+            yield return await ApplyDocumentAsync(document, bundle.DryRun, fallback, prerequisites, ct)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task<ApplyProgress> ApplyDocumentAsync(
+        ManifestDocument document, bool dryRun, string fallback,
+        BundlePrerequisites prerequisites, CancellationToken ct)
+    {
+        if (document.Error is { } error)
+        {
+            return new ApplyProgress
+            {
+                Resource = new ResourceRef(GroupVersionKind.Pod, null, "?"),
+                Action = ApplyAction.Failed,
+                Error = error,
+            };
+        }
+
+        return await _apply
+            .ApplyOneAsync(document.Content!, dryRun, fallback, prerequisites, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>How long to wait for a just-created CRD before applying the resources that need it.</summary>
+    private static readonly TimeSpan KindTimeout = TimeSpan.FromSeconds(30);
+
+    private static readonly TimeSpan KindPoll = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Wait until the API server serves the kinds the CRDs just applied define, forgetting what
+    /// discovery said while they did not exist.
+    /// <para>
+    /// Creating a CRD and being able to use it are not the same moment: the server accepts the
+    /// definition, then establishes it and starts serving the new endpoint. Applying a custom
+    /// resource in between fails with a plain "no matches for kind", which is why <c>kubectl</c>
+    /// tells people to install CRDs as a separate step. Giving up on the timeout is deliberate —
+    /// the resources that follow then report their own error, which is more use than one thrown here.
+    /// </para>
+    /// </summary>
+    private async Task WaitForNewKindsAsync(
+        IEnumerable<ManifestDocument> rest, BundlePrerequisites prerequisites,
+        IProgress<string>? status, CancellationToken ct)
+    {
+        var wanted = rest
+            .Select(d => d.Content is { } content ? ManifestDocuments.KindOf(content) : null)
+            .OfType<GroupVersionKind>()
+            .Where(gvk => prerequisites.CustomKinds.Contains($"{gvk.Group}/{gvk.Kind}"))
+            .Distinct()
+            .ToList();
+
+        var deadline = DateTimeOffset.UtcNow + KindTimeout;
+
+        foreach (var gvk in wanted)
+        {
+            while (true)
+            {
+                _resources.Invalidate(gvk.Group, gvk.Version);
+                if (await _resources.ResolveAsync(gvk, ct).ConfigureAwait(false) is not null)
+                    break;
+
+                var now = DateTimeOffset.UtcNow;
+                if (now >= deadline)
+                    return;
+
+                // The one step of an apply that is pure waiting, and the one the page used to spend
+                // half a minute on with nothing to show for it.
+                status?.Report(
+                    $"Waiting for the cluster to serve {gvk.Kind} " +
+                    $"({(int)(KindTimeout - (deadline - now)).TotalSeconds}/{(int)KindTimeout.TotalSeconds}s)");
+
+                await Task.Delay(KindPoll, ct).ConfigureAwait(false);
+            }
         }
     }
 

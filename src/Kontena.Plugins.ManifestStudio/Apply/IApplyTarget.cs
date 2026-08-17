@@ -18,5 +18,5 @@ public interface IApplyTarget
 public sealed class ClusterEngineApplyTarget(IClusterEngine engine) : IApplyTarget
 {
     public IAsyncEnumerable<ApplyProgress> ApplyAsync(ManifestBundle bundle, CancellationToken ct = default) =>
-        engine.ApplyAsync(bundle, ct);
+        engine.ApplyAsync(bundle, ct: ct);
 }

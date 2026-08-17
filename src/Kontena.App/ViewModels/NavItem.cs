@@ -52,6 +52,15 @@ public partial class NavItem : ObservableObject
     public bool HasCount => Count.Length > 0;
 
     /// <summary>
+    /// Whether the count is the loud kind (KON-207). A firing-alert count is not the same sort of
+    /// number as "3 nodes": one is an inventory, the other is a queue of things wrong. This is the
+    /// only badge in the sidebar allowed to shout, and it still carries a tooltip in words — the
+    /// colour is never the only thing saying it.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isLoud;
+
+    /// <summary>
     /// Draws a small marker on the item: something here needs looking at, independently of
     /// <see cref="Count"/>. Kept separate from the count because the count answers "how many are
     /// working", and those are different questions — a dropped tunnel is an event whether or not others

@@ -1,11 +1,17 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.Adapters.Podman;
+using Kontena.Adapters.RemoteClusters;
 using Kontena.App.Services;
+using Kontena.Core.Orchestration.Fakes;
+using Kontena.Core.Orchestration.Preflight;
 using Kontena.Sdk;
 using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Provisioning;
+using Kontena.Sdk.Tooling;
 using Kontena.Core.Models;
 using Kontena.Core.Versioning;
 using Kontena.Engines;
@@ -515,6 +521,7 @@ public partial class MainWindowViewModel
         EngineChip = new BackendChipInfo("!");
         EngineDetail = "not connected";
         EngineEndpoint = string.Empty;
+        EngineSupport = null;
         CurrentPage = null;
         OnPropertyChanged(nameof(HasAlternatives));
 
@@ -592,6 +599,11 @@ public partial class MainWindowViewModel
         _activeBackend = provider.Backend;
         EngineName = NameOf(provider);
         EngineChip = BackendChipInfo.For(provider);
+
+        // Said before the wait rather than after it (KON-375). Everything below this line is the wait.
+        ConnectingMessage = provider.Kind == BackendKind.Cluster
+            ? $"Opening {EngineName}…"
+            : $"Connecting to {EngineName}…";
 
         RebuildEngineList();
         CloseDetail();
@@ -757,23 +769,38 @@ public partial class MainWindowViewModel
         ComposeProjects = null;
         Activity = null;
 
+        // The ping answered, so the promise this makes can be kept: offering to reopen tunnels on a
+        // cluster we cannot reach would be an empty one (KON-105).
+        RestorePortForwards(cluster, _activeBackend);
+
+        // Everything a page is built from, before the first page is built (KON-375).
+        //
+        // This used to run the other way round, and it cost the whole open. The picker was filled by
+        // hand here, the overview was built, and then selecting a namespace read the workload kinds
+        // and rebuilt the page — because which page Workloads is depends on those kinds (KON-200).
+        // So one open listed the namespaces six times, and built the landing page twice: six reads
+        // and seven watch streams opened, torn down, and started again, with nobody ever seeing the
+        // first set of answers. On a remote cluster every one of those is a round-trip, and they
+        // compete with each other for the same connection pool — which is most of what "fetching a
+        // cluster feels slow" was.
         Namespaces.Clear();
         Namespaces.Add(AllNamespaces);
-        foreach (var ns in await cluster.ListNamespacesAsync())
-            Namespaces.Add(ns.Name);
 
-        // Only now that the cluster answered: offering to reopen tunnels on a cluster we cannot reach
-        // would be an empty promise (KON-105).
-        RestorePortForwards(cluster, _activeBackend);
+        // The field rather than the property: the change handler's job is to rebuild the open page,
+        // and there is no page yet. Announced below, once the picker behind it holds real names.
+        _selectedNamespace = AllNamespaces;
+
+        // Fills both the picker and the Workloads submenu, in one round.
+        await UpdateClusterNavAsync();
+        OnPropertyChanged(nameof(SelectedNamespace));
 
         SearchText = string.Empty;
 
         // Same door, same reason (KON-263). This side had the identical gap: the overview was built
-        // here rather than navigated to, so a cluster's first Back was missing too.
-        Navigate("overview");
+        // here rather than navigated to, so a cluster's first Back was missing too. Without the
+        // sidebar refresh it normally brings, since the line above is that read.
+        NavigateTo("overview", refreshNav: false);
 
-        SelectedNamespace = AllNamespaces; // OnSelectedNamespaceChanged refreshes the nav counts
-        await UpdateClusterNavAsync();
         IsReady = true;
         return true;
     }
@@ -863,6 +890,7 @@ public partial class MainWindowViewModel
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
             LocalClusters = _localClusters ??= BuildLocalClustersPage(),
+            RemoteClusters = _remoteClusters ??= BuildProvisioningWizard(),
 
             // A changed shortcut has to reach the window's binding collection, or it would only take
             // effect on the next launch (KON-180).
@@ -914,6 +942,69 @@ public partial class MainWindowViewModel
 
         ActiveBackendNow = () => _activeBackend,
     };
+
+    /// <summary>
+    /// The provisioning wizard (KON-379), built once and kept across settings rebuilds — for the same
+    /// reason the local page is: a half-filled host table is work, and handing the user a fresh one
+    /// because something unrelated changed throws it away.
+    /// <para>
+    /// The demo backends switch decides which provisioners it offers. With them on it gets KON-236's
+    /// fake, which streams a rollout and touches nothing, and a preflight probe that answers from a
+    /// script — so the whole flow is walkable, and screenshottable, on a machine with no fleet. With
+    /// them off it gets the real k0s provisioner over real SSH.
+    /// </para>
+    /// </summary>
+    private ProvisioningWizardViewModel BuildProvisioningWizard()
+    {
+        var demo = BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends);
+
+        IRemoteClusterProvisioner provisioner = demo
+            ? new FakeRemoteClusterProvisioner { DisplayName = "k0s (demo)" }
+            : new K0sClusterProvisioner(new ToolRunner());
+
+        var choice = new RemoteProvisionerChoiceViewModel(
+            provisioner,
+            "One k0sctl.yaml describes the whole cluster — machines, roles and network in one file — "
+            + "and what comes out ships Autopilot, so it can upgrade itself later.");
+
+        var wizard = new ProvisioningWizardViewModel(
+            [choice],
+            demo ? (host, _) => DemoProbe(host.Address) : null)
+        {
+            RequestConfirm = ShowConfirm,
+        };
+
+        // Not awaited: the page is built synchronously and the rows fill themselves in.
+        _ = wizard.LoadAsync();
+
+        return wizard;
+    }
+
+    /// <summary>
+    /// A machine for the demo: healthy enough to reach the end, with its clock a few minutes out so
+    /// there is a real warning on screen rather than a wall of green.
+    /// <para>
+    /// Deliberately not the swap failure, which is the one with a remedy: the canned answers do not
+    /// change when a command runs, so "turn swap off" would report success and then find swap still
+    /// on. A demo that cannot be completed is worse than one that shows fewer states, and the
+    /// fix-and-check-again loop is covered by tests instead.
+    /// </para>
+    /// </summary>
+    private static IPreflightProbe DemoProbe(string address)
+    {
+        var last = address.Split('.')[^1];
+
+        return new FakePreflightProbe(address)
+            .Answer("echo kontena-preflight", ProbeResult.Success("kontena-preflight"))
+            .Answer("sudo -n true", ProbeResult.Success())
+            .Answer("uname", ProbeResult.Success("Linux x86_64"))
+            .Answer("ss -Hltn", ProbeResult.Success("LISTEN 0 128 0.0.0.0:22 0.0.0.0:*"))
+            .Answer("swapon", ProbeResult.Success())
+            .Answer("date +%s", ProbeResult.Success(
+                DateTimeOffset.UtcNow.AddMinutes(3).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)))
+            .Answer("hostname", ProbeResult.Success(
+                $"node-{last}\n{Guid.NewGuid()}\naa:bb:cc:00:00:{last},"));
+    }
 
     /// <summary>
     /// Rebuild the backend set after the demo toggle changed (KON-96), re-probe, and refresh the
@@ -1078,6 +1169,14 @@ public partial class MainWindowViewModel
 
     private void RebuildEngineList()
     {
+        // The same verdict the dropdown row carries, on the pill you are looking at anyway (KON-371).
+        // Outside the loop below and keyed on the active backend rather than set from its row, because
+        // the two things this needs arrive in either order: the support lookup is fired before the
+        // preferred backend is opened, so the rebuild it triggers can run while nothing is active yet,
+        // and the rebuild the open triggers can run before any answer has landed. Recomputing it on
+        // every rebuild is right whichever way round they finish.
+        EngineSupport = IsBackendDown ? null : _support.GetValueOrDefault(_activeBackend);
+
         Engines.Clear();
         Clusters.Clear();
         foreach (var probe in _probes)
