@@ -231,9 +231,8 @@ public sealed class PluginLoaderTests : IDisposable
         // The hole KON-362 closes: an answer recorded for one dll used to cover any dll that kept the
         // same id and version, because plugin.json is a text file beside the code it describes.
         //
-        // Deliberately not the loadable fixture: this test rewrites the assembly between two scans, and
-        // Windows holds a file it has loaded. Nothing here needs the file to be real — the digest is
-        // taken before anything decides whether to load it.
+        // Deliberately not the loadable fixture: nothing here needs the file to be real, because the
+        // digest is taken before anything decides whether to load it.
         var directory = WriteManifest("com.kontena.test", assembly: "Plugin.dll");
         var assembly = Path.Combine(directory, "Plugin.dll");
         File.WriteAllText(assembly, "the build the user saw");
@@ -510,6 +509,26 @@ public sealed class PluginLoaderTests : IDisposable
         var page = Assert.Single(found.Pages);
         Assert.Equal("editor", page.Key);
         Assert.Equal("Editor", page.Label);
+    }
+
+    [Fact]
+    public void A_loaded_plugin_leaves_its_directory_deletable()
+    {
+        // What KON-405 was: loading by path keeps the assembly open for the life of a context that is
+        // never collectible, so on Windows the file could not be deleted or replaced afterwards — a
+        // plugin impossible to uninstall or update without closing Kontena, and every test in this
+        // class failing in Dispose() on windows-latest while passing on the other two runners.
+        //
+        // This assertion is only ever load-bearing on Windows: Linux and macOS let an open file be
+        // unlinked, so it would pass there with the handle still held. That is fine — CI runs all
+        // three, and the runner that can tell the difference is the one that regressed.
+        var directory = InstallFixture();
+
+        Assert.Equal(PluginStatus.Loaded, Assert.Single(PluginLoader.Discover(_root, _ => true)).Status);
+
+        Directory.Delete(directory, recursive: true);
+
+        Assert.False(Directory.Exists(directory));
     }
 
     [Fact]
