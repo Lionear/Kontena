@@ -622,17 +622,132 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     public int CallsTo(string call) => Calls.GetValueOrDefault(call);
 
+    /// <summary>
+    /// How many objects those calls handed over (KON-395).
+    /// <para>
+    /// The second axis, and the one the read counts above cannot see: six reads that each pull a
+    /// thousand pods and six that pull an integer are the same number of round-trips and nothing like
+    /// the same page. Every perf fix so far lowered the count of reads; the overview was still
+    /// re-reading the whole cluster on every settled watch burst, which is a size problem wearing a
+    /// count problem's clothes.
+    /// </para>
+    /// </summary>
+    public ConcurrentDictionary<string, int> Objects { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>How many objects <paramref name="call"/> has handed over in total.</summary>
+    public int ObjectsFrom(string call) => Objects.GetValueOrDefault(call);
+
     private T Counted<T>(string call, T result)
     {
         Calls.AddOrUpdate(call, 1, (_, n) => n + 1);
+
+        if (result is System.Collections.ICollection collection)
+            Objects.AddOrUpdate(call, collection.Count, (_, n) => n + collection.Count);
+
         return result;
+    }
+
+    private static readonly WorkloadKind[] BulkKinds =
+    [
+        WorkloadKind.Deployment, WorkloadKind.StatefulSet, WorkloadKind.DaemonSet,
+        WorkloadKind.Job, WorkloadKind.CronJob,
+    ];
+
+    /// <summary>
+    /// Pad this cluster out until it is big enough to measure against (KON-395).
+    /// <para>
+    /// The seed is the mockups' cluster: a handful of everything, which answers instantly and hides
+    /// every cost that scales with size. The objects added here are deliberately dull — they exist to
+    /// be counted, not to be looked at — and they are appended, so a test can grow the seeded cluster
+    /// without any of the states the rest of the suite asserts on going missing.
+    /// </para>
+    /// </summary>
+    public void Grow(int pods = 0, int workloads = 0, int services = 0, int namespaces = 0)
+    {
+        for (var i = 0; i < namespaces; i++)
+            _namespaces.Add(Ns($"bulk-{i}"));
+
+        for (var i = 0; i < workloads; i++)
+        {
+            _workloads.Add(new Workload
+            {
+                Name = $"bulk-{i}",
+                Namespace = "app",
+                // Cycled across the kinds a controller grid actually rolls up, so a caller that counts
+                // them kind by kind — as the overview does — sees all five. ReplicaSet is left out on
+                // purpose: it is an implementation detail of a Deployment and no lister reports it.
+                Kind = BulkKinds[i % BulkKinds.Length],
+                Ready = 1,
+                Desired = 1,
+                Images = ["ghcr.io/lionear/bulk:1"],
+                Age = TimeSpan.FromHours(1),
+            });
+        }
+
+        for (var i = 0; i < pods; i++)
+        {
+            _pods.Add(Pod1(
+                $"bulk-{i}", "app", PodPhase.Running, 1, 0, _nodes[i % _nodes.Count].Name,
+                "Deployment/bulk", "ghcr.io/lionear/bulk:1"));
+        }
+
+        for (var i = 0; i < services; i++)
+        {
+            _services.Add(new Service
+            {
+                Name = $"bulk-{i}",
+                Namespace = "app",
+                Type = ServiceType.ClusterIp,
+                ClusterIp = "10.0.12.4",
+                Ports = [new ServicePort("http", 80, 8080, null, "TCP")],
+                Age = TimeSpan.FromHours(1),
+            });
+        }
     }
 
     public ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult(Counted<IReadOnlyList<KubeNamespace>>(nameof(ListNamespacesAsync), _namespaces));
 
-    public ValueTask<IReadOnlyList<Node>> ListNodesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult(Counted<IReadOnlyList<Node>>(nameof(ListNodesAsync), _nodes));
+    /// <summary>
+    /// What the last node listing asked for, or null before there was one. Every node here already
+    /// carries its pod count, so the flag costs the fake nothing — but on Kubernetes it is a second
+    /// cluster-wide read, and a page that turns it back on is the regression this notices (KON-395).
+    /// </summary>
+    public bool? NodesAskedWithPodCounts { get; private set; }
+
+    public ValueTask<IReadOnlyList<Node>> ListNodesAsync(
+        bool withPodCounts = true, CancellationToken ct = default)
+    {
+        NodesAskedWithPodCounts = withPodCounts;
+        return ValueTask.FromResult(Counted<IReadOnlyList<Node>>(nameof(ListNodesAsync), _nodes));
+    }
+
+    /// <summary>
+    /// The number without the objects — free here, where everything is a list in memory, and the whole
+    /// point on a real cluster (KON-395). Counted like a read, because on a real cluster it is one.
+    /// </summary>
+    public ValueTask<int> CountAsync(GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+    {
+        Calls.AddOrUpdate(nameof(CountAsync), 1, (_, n) => n + 1);
+
+        var count = kind.Kind switch
+        {
+            "Pod" => _pods.Count(p => Match(ns, p.Namespace)),
+            "Service" => _services.Count(s => Match(ns, s.Namespace)),
+            "Namespace" => _namespaces.Count,
+            "Node" => _nodes.Count,
+            _ => WorkloadKindOf(kind) is { } workload
+                ? _workloads.Count(w => w.Kind == workload && Match(ns, w.Namespace))
+                : 0,
+        };
+
+        return ValueTask.FromResult(count);
+    }
+
+    /// <summary>Which workload kind a GVK names, or null where it names something else.</summary>
+    private static WorkloadKind? WorkloadKindOf(GroupVersionKind kind) =>
+        Enum.GetValues<WorkloadKind>().Cast<WorkloadKind?>()
+            .FirstOrDefault(k => GroupVersionKind.For(k!.Value) == kind);
 
     public ValueTask<IReadOnlyList<Workload>> ListWorkloadsAsync(
         WorkloadKind? kind = null, string? ns = null, CancellationToken ct = default) =>

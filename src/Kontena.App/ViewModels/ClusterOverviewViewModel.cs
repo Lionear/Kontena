@@ -222,9 +222,9 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     private bool _hasLoaded;
 
     /// <summary>
-    /// Six reads that know nothing of each other, so all six are started before any is awaited
-    /// (KON-338). Sequentially they were six round-trips deep, and this page is the first thing a
-    /// cluster shows — on a remote one that wait is the whole first impression.
+    /// Reads that know nothing of each other, so all are started before any is awaited (KON-338).
+    /// Sequentially they were six round-trips deep, and this page is the first thing a cluster shows —
+    /// on a remote one that wait is the whole first impression.
     /// <para>
     /// Internal rather than private so a test can reload it the way a watch event does — the
     /// first-fetch-only rule above is a claim about the second load, and there is no other way in.
@@ -238,7 +238,7 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 
         try
         {
-            await ReadAsync();
+            await Services.Diag.TimeAsync("cluster overview read", ReadAsync());
             _hasLoaded = true;
         }
         finally
@@ -278,16 +278,40 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     /// </summary>
     private BackendInfo? _info;
 
+    /// <summary>
+    /// What the workload tile adds up — the same five kinds <c>ListWorkloadsAsync</c> rolls up, minus
+    /// the ReplicaSets it treats as an implementation detail of a Deployment. Counted kind by kind
+    /// because that is how the API server serves them; it is the same five round-trips one unfiltered
+    /// workload list was already making.
+    /// </summary>
+    private static readonly GroupVersionKind[] WorkloadKinds =
+    [
+        GroupVersionKind.Deployment,
+        GroupVersionKind.StatefulSet,
+        GroupVersionKind.DaemonSet,
+        GroupVersionKind.Job,
+        GroupVersionKind.CronJob,
+    ];
+
     private async Task ReadAsync()
     {
         var infoTask = _info is null ? _cluster.GetInfoAsync().AsTask() : Task.FromResult(_info);
-        var nodesTask = _cluster.ListNodesAsync().AsTask();
-        var namespacesTask = _cluster.ListNamespacesAsync().AsTask();
-        var workloadsTask = _cluster.ListWorkloadsAsync().AsTask();
-        var podsTask = _cluster.ListPodsAsync().AsTask();
-        var servicesTask = _cluster.ListServicesAsync().AsTask();
 
-        await Task.WhenAll(infoTask, nodesTask, namespacesTask, workloadsTask, podsTask, servicesTask);
+        // The node table is the only thing on this page made of objects rather than of a number, and
+        // it shows capacity, version and status — not the pods column the nodes grid has. Asking for
+        // the pod counts would fetch every pod on the cluster to fill a field nothing here draws
+        // (KON-395).
+        var nodesTask = _cluster.ListNodesAsync(withPodCounts: false).AsTask();
+
+        // Four tiles are four integers. They used to be four full listings — every pod, workload,
+        // service and namespace on the cluster, deserialised, mapped, and then counted — repeated on
+        // every settled watch burst, which on a big cluster never stops arriving.
+        var namespacesTask = _cluster.CountAsync(GroupVersionKind.Namespace).AsTask();
+        var podsTask = _cluster.CountAsync(GroupVersionKind.Pod).AsTask();
+        var servicesTask = _cluster.CountAsync(GroupVersionKind.Service).AsTask();
+        var workloadTasks = WorkloadKinds.Select(k => _cluster.CountAsync(k).AsTask()).ToArray();
+
+        await Task.WhenAll([infoTask, nodesTask, namespacesTask, podsTask, servicesTask, .. workloadTasks]);
 
         var info = _info = infoTask.Result;
         ClusterName = info.DisplayName;
@@ -299,10 +323,10 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
 
         (MaxCpu, MaxMemory) = Ceiling(nodes);
 
-        NamespaceCount = namespacesTask.Result.Count;
-        WorkloadCount = workloadsTask.Result.Count;
-        PodCount = podsTask.Result.Count;
-        ServiceCount = servicesTask.Result.Count;
+        NamespaceCount = namespacesTask.Result;
+        WorkloadCount = workloadTasks.Sum(t => t.Result);
+        PodCount = podsTask.Result;
+        ServiceCount = servicesTask.Result;
 
         // Reconciled rather than cleared and refilled, now that this runs on every watch event and not
         // only once (KON-340). NodeRow is a record, so a node that did not change is the same row and

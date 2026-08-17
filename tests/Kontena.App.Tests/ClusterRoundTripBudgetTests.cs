@@ -35,7 +35,8 @@ namespace Kontena.App.Tests;
 /// <item><term>ListWorkloadsAsync(kind)</term><description>1 list, in full</description></item>
 /// <item><term>ListWorkloadsAsync(null)</term><description>5 lists, in full — Deployment, StatefulSet, DaemonSet, Job, CronJob</description></item>
 /// <item><term>ListWorkloadKindsAsync</term><description>5 lists, <c>limit=1</c> each (KON-396)</description></item>
-/// <item><term>ListNodesAsync</term><description>2 lists — the nodes, plus every pod for the per-node count</description></item>
+/// <item><term>ListNodesAsync</term><description>2 lists — the nodes, plus every pod for the per-node count; 1 without it (KON-395)</description></item>
+/// <item><term>CountAsync</term><description>1 list, <c>limit=1</c> and metadata only (KON-395)</description></item>
 /// <item><term>everything else</term><description>1 list each</description></item>
 /// </list>
 /// </summary>
@@ -49,6 +50,11 @@ public sealed class ClusterRoundTripBudgetTests
         nameof(FakeClusterEngine.ListServicesAsync),
         nameof(FakeClusterEngine.ListWorkloadsAsync),
         nameof(FakeClusterEngine.ListWorkloadKindsAsync),
+
+        // A count is a round-trip like any other — free in the fake, one request on a real cluster —
+        // so it belongs on this axis even though the whole point of it is the other one (KON-395).
+        // <see cref="ClusterObjectBudgetTests"/> is where its size is held still.
+        nameof(FakeClusterEngine.CountAsync),
     ];
 
     /// <summary>Open a cluster, forget what that cost, and count what <paramref name="action"/> costs.</summary>
@@ -70,14 +76,21 @@ public sealed class ClusterRoundTripBudgetTests
     }
 
     [Fact]
-    public async Task Picking_a_namespace_costs_six_reads()
+    public async Task Picking_a_namespace_costs_ten_reads()
     {
         // One for the sidebar, which has to be read before the page can be built at all: which page
-        // Workloads is depends on the kinds in the namespace you just picked (KON-200). Five for the
-        // overview being rebuilt around the new filter — six, counting the cluster info this does not
-        // count. Was seven: the namespaces the sidebar re-read here are followed by a watch now
-        // (KON-396), and the kinds cost five limit=1 lists rather than five whole ones.
-        Assert.Equal(6, await ReadsForAsync(shell => shell.SelectedNamespace = "app"));
+        // Workloads is depends on the kinds in the namespace you just picked (KON-200) — the
+        // namespaces it used to re-read here are followed by a watch now (KON-396). Nine for the
+        // overview being rebuilt around the new filter — ten, counting the cluster info this does not
+        // count.
+        //
+        // Seven before, and the overview's share of it is the one number in this file that went up
+        // while the page got cheaper: five of its nine are the workload tile counted kind by kind,
+        // and one unfiltered ListWorkloadsAsync was already five requests inside the Kubernetes
+        // adapter. The cluster sees no more requests than before; what changed is that eight of them
+        // now answer with an integer instead of every object of their kind (KON-395). That trade is
+        // the whole ticket, and <see cref="ClusterObjectBudgetTests"/> is the axis it shows up on.
+        Assert.Equal(10, await ReadsForAsync(shell => shell.SelectedNamespace = "app"));
     }
 
     [Fact]

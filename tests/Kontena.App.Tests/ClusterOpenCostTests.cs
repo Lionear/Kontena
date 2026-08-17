@@ -35,14 +35,14 @@ public sealed class ClusterOpenCostTests
     }
 
     [Fact]
-    public async Task Opening_a_cluster_lists_its_namespaces_twice_and_no_more()
+    public async Task Opening_a_cluster_lists_its_namespaces_once_and_no_more()
     {
         var (_, cluster) = await OpenAsync();
 
-        // Once for the picker and the workload kinds together, once as one of the overview's six
-        // parallel reads. The overview's copy is the one left to remove, and removing it means a
-        // cache the pages share — a bigger change than this ticket, and noted rather than guessed at.
-        Assert.Equal(2, cluster.CallsTo(nameof(FakeClusterEngine.ListNamespacesAsync)));
+        // Once, for the picker and the workload kinds together. The overview's copy was the second,
+        // and it is gone: the tile it filled wants the number, which it now asks for as a number
+        // (KON-395). The listing that is left is the one whose answer is actually read.
+        Assert.Equal(1, cluster.CallsTo(nameof(FakeClusterEngine.ListNamespacesAsync)));
     }
 
     [Fact]
