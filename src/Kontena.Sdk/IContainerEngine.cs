@@ -103,7 +103,28 @@ public interface IContainerEngine : IBackend
     /// pre-fill the Run flow. Returns null when the image is not present locally.
     /// </summary>
     ValueTask<ImageConfig?> InspectImageAsync(string reference, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gives the image an additional name. <paramref name="newTag"/> is a full reference
+    /// (<c>ghcr.io/me/app:1.2</c>, or <c>app</c> for <c>app:latest</c>) — the registry it names is where a
+    /// following <see cref="PushImageAsync"/> would send it.
+    /// </summary>
+    /// <remarks>The old name stays; nothing is renamed and nothing is removed.</remarks>
     ValueTask TagImageAsync(string id, string newTag, CancellationToken ct = default);
+
+    /// <summary>Push an image to the registry its reference names, streaming progress until complete.</summary>
+    /// <param name="reference">
+    /// The name to push, registry included — <c>ghcr.io/me/app:1.2</c>. An image only reaches a registry
+    /// under a name that points at it, so the caller tags first (<see cref="TagImageAsync"/>) when the
+    /// local name is not the one to publish.
+    /// </param>
+    /// <param name="credential">
+    /// Login for the registry the reference points at, or null to push anonymously. Resolved by the
+    /// caller, for the same reason a pull's is (KON-114) — and unlike a pull, a registry that takes an
+    /// anonymous push is the exception rather than the rule.
+    /// </param>
+    IAsyncEnumerable<PushProgress> PushImageAsync(
+        string reference, RegistryCredential? credential = null, CancellationToken ct = default);
 
     /// <summary>Remove unused images. <paramref name="allUnused"/> also removes tagged
     /// images not used by any container (not just dangling ones).</summary>

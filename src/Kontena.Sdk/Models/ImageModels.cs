@@ -50,3 +50,10 @@ public sealed record PruneResult(int ItemsDeleted, long SpaceReclaimedBytes);
 /// <param name="Current">Bytes transferred so far, when known.</param>
 /// <param name="Total">Total bytes, when known.</param>
 public sealed record PullProgress(string Reference, string Status, long? Current, long? Total);
+
+/// <summary>Progress update while pushing an image. Same shape as a pull, the other way round.</summary>
+/// <param name="Reference">Image reference being pushed.</param>
+/// <param name="Status">Human-readable status line.</param>
+/// <param name="Current">Bytes transferred so far, when known.</param>
+/// <param name="Total">Total bytes, when known.</param>
+public sealed record PushProgress(string Reference, string Status, long? Current, long? Total);
