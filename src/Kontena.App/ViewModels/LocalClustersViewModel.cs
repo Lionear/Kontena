@@ -28,9 +28,10 @@ public enum LocalClustersStage
 /// Settings › Local clusters — the clusters kind and minikube own on this machine, and making another
 /// (KON-76, KON-77).
 /// <para>
-/// The tooling page from KON-109 lives on inside this one as <see cref="Tooling"/>: once a tool is
-/// present it folds down to a line, because "which binaries are installed" stops being the subject
-/// the moment it is settled. Creating a cluster is what the page is for.
+/// The tool list itself lives under Settings › Tools since KON-266: kubectl and helm are needed for
+/// every cluster, remote ones included, so a page named after this machine was the wrong home for
+/// them. What is left here is the one question this page has to answer — can a cluster be built —
+/// plus a pointer. A second list would only drift out of step with the first.
 /// </para>
 /// </summary>
 public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
@@ -53,9 +54,7 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
     public LocalClustersViewModel(
         IReadOnlyList<IClusterProvisioner>? provisioners = null,
         IToolRunner? runner = null,
-        ClusterToolingViewModel? tooling = null,
-        ManagedToolStore? store = null,
-        IToolReleaseSource? releases = null)
+        ManagedToolStore? store = null)
     {
         var toolRunner = runner ?? new ToolRunner();
         var toolStore = store ?? new ManagedToolStore();
@@ -67,11 +66,10 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
         ];
 
         _check = new ToolReadinessCheck(toolRunner, toolStore);
-        Tooling = tooling ?? new ClusterToolingViewModel(toolRunner, releases, toolStore);
     }
 
-    /// <summary>The KON-109 page, kept whole. Shown in full behind "Manage tooling".</summary>
-    public ClusterToolingViewModel Tooling { get; }
+    /// <summary>Opens Settings › Tools, where the tools themselves are installed (KON-266).</summary>
+    public Action? RequestShowTools { get; set; }
 
     /// <summary>
     /// What the shell is talking to right now, asked each time rather than handed over once: this page
@@ -105,7 +103,6 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private LocalClustersStage _stage = LocalClustersStage.List;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _hasLoaded;
-    [ObservableProperty] private bool _isToolingShown;
     [ObservableProperty] private string? _error;
 
     /// <summary>Whether anything here can build a cluster. Decides between "make one" and "get a tool".</summary>
@@ -145,7 +142,7 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
     }
 
     [RelayCommand]
-    private void ToggleTooling() => IsToolingShown = !IsToolingShown;
+    private void ShowTools() => RequestShowTools?.Invoke();
 
     /// <summary>
     /// Re-read the machine: which tools are here, and which clusters exist. Clears the error, because
@@ -162,7 +159,6 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
 
         try
         {
-            await Tooling.LoadAsync();
             await RefreshToolStateAsync();
             await RefreshClustersAsync();
             HasLoaded = true;
@@ -329,6 +325,5 @@ public sealed partial class LocalClustersViewModel : ViewModelBase, IDisposable
         _running?.Cancel();
         _running?.Dispose();
         _running = null;
-        Tooling.Dispose();
     }
 }

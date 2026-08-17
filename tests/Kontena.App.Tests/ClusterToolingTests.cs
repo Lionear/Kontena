@@ -4,7 +4,7 @@ using Kontena.Sdk.Tooling.Fakes;
 
 namespace Kontena.App.Tests;
 
-/// <summary>Settings › Local clusters (KON-109), driven against a fake tool runner.</summary>
+/// <summary>Settings › Tools (KON-109, moved by KON-266), driven against a fake tool runner.</summary>
 public sealed class ClusterToolingTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"kontena-page-{Guid.NewGuid():N}");
@@ -32,7 +32,7 @@ public sealed class ClusterToolingTests : IDisposable
         var page = Subject(runner);
         await page.LoadAsync();
 
-        Assert.Equal(3, page.Tools.Count);
+        Assert.Equal(KnownTools.All.Count, page.Tools.Count());
 
         var kind = page.Tools.First(t => t.Name == "kind");
         Assert.True(kind.IsReady);
@@ -43,35 +43,55 @@ public sealed class ClusterToolingTests : IDisposable
         Assert.Equal("Not installed", minikube.StateText);
     }
 
+    /// <summary>
+    /// KON-266: the tools needed for every cluster are not filed under the machine that may never
+    /// build one. The heading is what carries that, so the heading is what is asserted.
+    /// </summary>
     [Fact]
-    public async Task One_working_tool_is_enough_to_create_a_cluster()
+    public async Task Kubectl_and_helm_are_not_local_cluster_tooling()
     {
-        var page = Subject(new FakeToolRunner().Install(KnownTools.Kind, "kind v0.31.0"));
+        var page = Subject(new FakeToolRunner());
         await page.LoadAsync();
 
-        Assert.True(page.CanCreateCluster);
+        var everyCluster = page.Groups.First(g => g.Title == "Working with clusters");
+        Assert.Equal(["kubectl", "helm", "kustomize"], everyCluster.Tools.Select(t => t.Name));
+
+        var thisMachine = page.Groups.First(g => g.Title == "Clusters on this machine");
+        Assert.Equal(["kind", "minikube"], thisMachine.Tools.Select(t => t.Name));
+    }
+
+    /// <summary>
+    /// The trap KON-266 names: the purpose used to come from a dictionary this page kept, keyed by
+    /// executable and read through an indexer, so a seventh tool would have thrown rather than shown a
+    /// blank line. It comes off the tool now, and this is what says every tool brought one.
+    /// </summary>
+    [Fact]
+    public async Task Every_tool_says_what_it_is_for()
+    {
+        var page = Subject(new FakeToolRunner());
+        await page.LoadAsync();
+
+        Assert.All(page.Tools, t => Assert.NotEmpty(t.Purpose));
     }
 
     [Fact]
-    public async Task An_outdated_tool_still_counts_as_usable()
+    public async Task An_outdated_tool_is_a_warning_rather_than_a_wall()
     {
-        // Warning, not a wall: it is the user's machine, and most of what they want still works.
+        // It is the user's machine, and most of what they want still works.
         var page = Subject(new FakeToolRunner().Install(KnownTools.Kind, "kind v0.17.0"));
         await page.LoadAsync();
 
         var kind = page.Tools.First(t => t.Name == "kind");
         Assert.True(kind.IsOutdated);
-        Assert.True(page.CanCreateCluster);
         Assert.Contains("0.20", kind.OutdatedConsequence, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Nothing_installed_means_no_cluster_can_be_built()
+    public async Task Nothing_installed_shows_every_tool_as_missing()
     {
         var page = Subject(new FakeToolRunner());
         await page.LoadAsync();
 
-        Assert.False(page.CanCreateCluster);
         Assert.All(page.Tools, t => Assert.True(t.IsMissing));
     }
 

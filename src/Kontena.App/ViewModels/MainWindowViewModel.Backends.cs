@@ -903,6 +903,14 @@ public partial class MainWindowViewModel
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
             LocalClusters = _localClusters ??= BuildLocalClustersPage(),
+
+            // Tools (KON-266), kept for the same reason: a download in flight must not be thrown away
+            // because something unrelated rebuilt settings.
+            Tools = _tools ??= new ClusterToolingViewModel
+            {
+                RequestOpenUrl = Browser.OpenUrl,
+                RequestConfirm = ShowConfirm,
+            },
             RemoteClusters = _remoteClusters ??= BuildProvisioningWizard(),
 
             // A changed shortcut has to reach the window's binding collection, or it would only take
@@ -927,12 +935,7 @@ public partial class MainWindowViewModel
     /// they are reading and leave the running create writing into a view model nobody can see.
     /// </para>
     /// </summary>
-    private LocalClustersViewModel BuildLocalClustersPage() => new(
-        tooling: new ClusterToolingViewModel
-        {
-            RequestOpenUrl = Browser.OpenUrl,
-            RequestConfirm = ShowConfirm,
-        })
+    private LocalClustersViewModel BuildLocalClustersPage() => new()
     {
         RequestConfirm = ShowConfirm,
 

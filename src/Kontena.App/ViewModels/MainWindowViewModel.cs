@@ -182,6 +182,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// </summary>
     private LocalClustersViewModel? _localClusters;
 
+    /// <summary>The tools page (KON-266). Kept for the same reason: an install must survive a rebuild.</summary>
+    private ClusterToolingViewModel? _tools;
+
     /// <summary>Kept across settings rebuilds, like the local page — a half-filled host table is work.</summary>
     private ProvisioningWizardViewModel? _remoteClusters;
     [ObservableProperty] private ActivityViewModel? _activity;

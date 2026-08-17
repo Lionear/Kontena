@@ -63,6 +63,8 @@ namespace Kontena.Screenshots;
 //         settings-clusters (KON-109/KON-76 — the local-cluster page; reads this machine, so the
 //         shot differs per box by design), settings-clusters-new (the create form, reached by running
 //         the page's own command),
+//         settings-tools (KON-266 — the external tools, grouped by what you need them for; reads this
+//         machine for the same reason settings-clusters does),
 //         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
 //         confirmation and the deliberately non-destructive one, both reached by running the
 //         row's own command so the shot cannot show a dialog the button does not raise).
@@ -421,6 +423,7 @@ internal static class Program
             case "settings-engines-clusters":
             case "settings-clusters":
             case "settings-clusters-new":
+            case "settings-tools":
             case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
@@ -431,8 +434,17 @@ internal static class Program
                         "settings-registries" => "registries",
                         "settings" or "settings-keyboard" => "general",
                         "settings-clusters" or "settings-clusters-new" => "clusters",
+                        "settings-tools" => "tools",
                         _ => "engines",
                     });
+
+                    // Reads this machine, exactly like the local-cluster page: a posed "kubectl
+                    // detected" would render the same whether or not the detection works (KON-266).
+                    if (scene == "settings-tools" && s.Tools is { } tools)
+                    {
+                        SettleUntil(() => tools.HasLoaded, maxRounds: 200);
+                        Settle(rounds: 20);
+                    }
 
                     // The states of the keyboard section that only exist after someone has used it
                     // (KON-180): a changed row with its reset button, Restore defaults, a row still
