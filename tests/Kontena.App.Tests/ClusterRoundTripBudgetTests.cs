@@ -25,6 +25,19 @@ namespace Kontena.App.Tests;
 /// they are what a big cluster makes expensive, and a fetch of one named object is not the shape of
 /// this problem.
 /// </para>
+/// <para>
+/// <b>One read here is not one apiserver call</b>, which is the blind spot KON-396 walked into: a
+/// single <see cref="FakeClusterEngine.ListWorkloadsAsync"/> fans out to five lists in the Kubernetes
+/// adapter, so the three reads this file used to allow for a navigation were seven calls on the wire.
+/// The fan-out per counted read today:
+/// </para>
+/// <list type="table">
+/// <item><term>ListWorkloadsAsync(kind)</term><description>1 list, in full</description></item>
+/// <item><term>ListWorkloadsAsync(null)</term><description>5 lists, in full — Deployment, StatefulSet, DaemonSet, Job, CronJob</description></item>
+/// <item><term>ListWorkloadKindsAsync</term><description>5 lists, <c>limit=1</c> each (KON-396)</description></item>
+/// <item><term>ListNodesAsync</term><description>2 lists — the nodes, plus every pod for the per-node count</description></item>
+/// <item><term>everything else</term><description>1 list each</description></item>
+/// </list>
 /// </summary>
 public sealed class ClusterRoundTripBudgetTests
 {
@@ -35,6 +48,7 @@ public sealed class ClusterRoundTripBudgetTests
         nameof(FakeClusterEngine.ListPodsAsync),
         nameof(FakeClusterEngine.ListServicesAsync),
         nameof(FakeClusterEngine.ListWorkloadsAsync),
+        nameof(FakeClusterEngine.ListWorkloadKindsAsync),
     ];
 
     /// <summary>Open a cluster, forget what that cost, and count what <paramref name="action"/> costs.</summary>
@@ -56,24 +70,24 @@ public sealed class ClusterRoundTripBudgetTests
     }
 
     [Fact]
-    public async Task Picking_a_namespace_costs_seven_reads()
+    public async Task Picking_a_namespace_costs_six_reads()
     {
-        // Two for the sidebar, which has to be read before the page can be built at all: which page
+        // One for the sidebar, which has to be read before the page can be built at all: which page
         // Workloads is depends on the kinds in the namespace you just picked (KON-200). Five for the
         // overview being rebuilt around the new filter — six, counting the cluster info this does not
-        // count. Two of those five ask for what the sidebar just read.
-        Assert.Equal(7, await ReadsForAsync(shell => shell.SelectedNamespace = "app"));
+        // count. Was seven: the namespaces the sidebar re-read here are followed by a watch now
+        // (KON-396), and the kinds cost five limit=1 lists rather than five whole ones.
+        Assert.Equal(6, await ReadsForAsync(shell => shell.SelectedNamespace = "app"));
     }
 
     [Fact]
-    public async Task Opening_a_page_costs_three_reads()
+    public async Task Opening_a_page_costs_two_reads()
     {
-        // One is the page. The other two are the sidebar refreshing itself behind it — a cluster-wide
-        // workload list and a namespace list, on every navigation, to redraw a submenu and a picker
-        // that usually have not changed. Cheap next to the twelve this replaced (KON-354) and still
-        // the largest thing left on this path: see the KON-375 analysis for why it wants a shared
-        // read rather than a cache nobody can invalidate.
-        Assert.Equal(3, await ReadsForAsync(shell => shell.NavigateCommand.Execute("pods")));
+        // One is the page. The other is the sidebar asking which kinds exist, to redraw a submenu
+        // that usually has not changed — five limit=1 lists on the wire, where it used to be five
+        // whole ones plus a namespace list (KON-396). On a cluster running CronJobs those five
+        // included every finished Job in it, for a click on Deployments.
+        Assert.Equal(2, await ReadsForAsync(shell => shell.NavigateCommand.Execute("pods")));
     }
 
     [Fact]
@@ -82,6 +96,25 @@ public sealed class ClusterRoundTripBudgetTests
         // Port forwards are held in memory by the shell. A page that asks the cluster for nothing
         // should cost nothing but the sidebar — and if that ever stops being true, it is because
         // something started reading the cluster on a path that has no reason to.
-        Assert.Equal(2, await ReadsForAsync(shell => shell.NavigateCommand.Execute("portforwards")));
+        Assert.Equal(1, await ReadsForAsync(shell => shell.NavigateCommand.Execute("portforwards")));
+    }
+
+    [Fact]
+    public async Task The_sidebar_never_asks_for_the_workloads_themselves()
+    {
+        // The point of KON-396, stated as the thing that must not come back: whatever the numbers
+        // above end up being, none of those reads may be the app's most expensive one. A navigation
+        // that lists workloads is either the page doing it for itself, or this regressing.
+        var cluster = new FakeClusterEngine();
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(cluster));
+
+        cluster.Calls.Clear();
+        shell.NavigateCommand.Execute("portforwards");
+        await Task.Yield();
+        await Task.Delay(50);
+
+        Assert.Equal(0, cluster.CallsTo(nameof(FakeClusterEngine.ListWorkloadsAsync)));
+        Assert.Equal(0, cluster.CallsTo(nameof(FakeClusterEngine.ListNamespacesAsync)));
     }
 }

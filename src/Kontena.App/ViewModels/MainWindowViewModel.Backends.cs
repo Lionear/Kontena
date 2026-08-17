@@ -587,6 +587,7 @@ public partial class MainWindowViewModel
         Containers?.StopWatching();
         _activityLog.Detach();
         await StopPortForwardsAsync();
+        StopFollowingNamespaces();
         (_engine as IDisposable)?.Dispose();
         (_cluster as IDisposable)?.Dispose();
         _engine = null;
@@ -790,7 +791,12 @@ public partial class MainWindowViewModel
         // and there is no page yet. Announced below, once the picker behind it holds real names.
         _selectedNamespace = AllNamespaces;
 
-        // Fills both the picker and the Workloads submenu, in one round.
+        // The picker's one read. From here it is kept in step by its own watch rather than by being
+        // re-read in front of every navigation (KON-396) — so this is the read, not the first of many.
+        await ReadNamespacesAsync();
+        FollowNamespaces();
+
+        // Fills the Workloads submenu.
         await UpdateClusterNavAsync();
         OnPropertyChanged(nameof(SelectedNamespace));
 

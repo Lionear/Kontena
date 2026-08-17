@@ -640,6 +640,18 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             nameof(ListWorkloadsAsync),
             _workloads.Where(w => (kind is null || w.Kind == kind) && Match(ns, w.Namespace)).ToList()));
 
+    /// <summary>
+    /// Counted under its own name (KON-396). It is a cheap read where <see cref="ListWorkloadsAsync"/>
+    /// is the app's most expensive one, and a budget that could not tell the two apart would score the
+    /// swap as no change at all.
+    /// </summary>
+    public ValueTask<IReadOnlyList<WorkloadKind>> ListWorkloadKindsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(Counted<IReadOnlyList<WorkloadKind>>(
+            nameof(ListWorkloadKindsAsync),
+            [.. Enum.GetValues<WorkloadKind>().Where(k =>
+                _workloads.Any(w => w.Kind == k && Match(ns, w.Namespace)))]));
+
     public ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult(Counted<IReadOnlyList<Pod>>(
             nameof(ListPodsAsync), _pods.Where(p => Match(ns, p.Namespace)).ToList()));

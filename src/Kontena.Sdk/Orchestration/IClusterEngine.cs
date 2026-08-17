@@ -105,6 +105,23 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<Workload>> ListWorkloadsAsync(
         WorkloadKind? kind = null, string? ns = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Which workload kinds exist here, in <see cref="WorkloadKind"/> order (KON-396).
+    /// <para>
+    /// Separate from <see cref="ListWorkloadsAsync"/> because it is a different question, and asking
+    /// the expensive one to answer the cheap one is what made every cluster navigation cost the
+    /// largest read in the app. The sidebar's per-kind submenu wants to know <i>whether</i> a kind is
+    /// there, never which objects — and on a cluster that runs CronJobs, the finished Jobs it was
+    /// downloading to find that out are the biggest list anywhere in the product.
+    /// </para>
+    /// <para>
+    /// An implementation is expected to answer without fetching the objects: one object per kind is
+    /// already one more than the question needs.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<WorkloadKind>> ListWorkloadKindsAsync(
+        string? ns = null, CancellationToken ct = default);
+
     ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default);

@@ -91,6 +91,9 @@ public sealed class LiveClusterNavTests
     [Fact]
     public async Task A_cluster_page_that_sees_a_change_gets_the_sidebar_refreshed()
     {
+        // Read on the Workloads submenu rather than on the namespace picker, which is what this used
+        // to watch: the picker follows its own stream since KON-396 and would pass this whether or
+        // not the page ever reached the shell. The submenu is what the nav refresh is still for.
         var cluster = new FakeClusterEngine();
         var shell = new MainWindowViewModel();
         Assert.True(await shell.EnterClusterModeAsync(cluster));
@@ -99,15 +102,22 @@ public sealed class LiveClusterNavTests
         var page = Assert.IsAssignableFrom<IClusterLivePage>(shell.CurrentPage);
         Assert.NotNull(page.Changed);
 
-        // Behind the app's back, the way kubectl would.
-        Assert.Contains("monitoring", shell.Namespaces);
-        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Namespace, null, "monitoring"));
+        // Behind the app's back, the way kubectl would. The only DaemonSet there is, so the kind
+        // itself goes with it.
+        Assert.Contains(DaemonSets, NavKeys(shell));
+        await cluster.DeleteAsync(
+            new ResourceRef(GroupVersionKind.DaemonSet, "monitoring", "node-exporter"));
 
         page.Changed!.Invoke();
         await Task.Yield();
 
-        Assert.DoesNotContain("monitoring", shell.Namespaces);
+        Assert.DoesNotContain(DaemonSets, NavKeys(shell));
     }
+
+    private static readonly string DaemonSets = WorkloadNavGroups.KeyFor(WorkloadKind.DaemonSet);
+
+    private static IReadOnlyList<string> NavKeys(MainWindowViewModel shell) =>
+        [.. shell.NavGroups.SelectMany(g => g.Items).Select(i => i.Key)];
 
     [Fact]
     public async Task A_watch_event_moves_the_sidebar_without_anyone_asking()
@@ -126,9 +136,8 @@ public sealed class LiveClusterNavTests
 
         cluster.EmitWatchEvent(new ResourceEvent { Type = WatchEventType.Deleted, Resource = doomed });
 
-        // Polled to a deadline rather than slept for a fixed span: the settle is 400ms and a test that
-        // waits exactly that long is a coin flip on a loaded machine.
-        Assert.DoesNotContain("monitoring", await EventuallyAsync(() => shell.Namespaces));
+        Assert.DoesNotContain(
+            "monitoring", await NamespacesEventuallyAsync(shell, ns => !ns.Contains("monitoring")));
     }
 
     [Fact]
@@ -145,15 +154,16 @@ public sealed class LiveClusterNavTests
         var shell = new MainWindowViewModel();
         Assert.True(await shell.EnterClusterModeAsync(cluster));
 
-        Assert.Contains("monitoring", shell.Namespaces);
-        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Namespace, null, "monitoring"));
+        Assert.Contains(DaemonSets, NavKeys(shell));
+        await cluster.DeleteAsync(
+            new ResourceRef(GroupVersionKind.DaemonSet, "monitoring", "node-exporter"));
 
         // Resources watches nothing, so nothing here can be the page's own doing.
         shell.NavigateCommand.Execute("resources");
         Assert.IsNotAssignableFrom<IClusterLivePage>(shell.CurrentPage);
         await Task.Yield();
 
-        Assert.DoesNotContain("monitoring", shell.Namespaces);
+        Assert.DoesNotContain(DaemonSets, NavKeys(shell));
     }
 
     [Fact]
@@ -176,11 +186,16 @@ public sealed class LiveClusterNavTests
             // Drained for its effect on the cluster; the apply's own progress is not what is on trial.
         }
 
-        // The same refresh the badges ride on, which is why this costs no call of its own.
-        shell.NavigateCommand.Execute("pods");
-        await Task.Yield();
+        // Off the picker's own watch now, not off the next navigation (KON-396): re-reading a list
+        // that changes this rarely in front of every click bought nothing, and it left the picker
+        // wrong for as long as the user stood still — which is most of the time.
+        cluster.EmitWatchEvent(new ResourceEvent
+        {
+            Type = WatchEventType.Added,
+            Resource = new ResourceRef(GroupVersionKind.Namespace, null, "payments"),
+        });
 
-        Assert.Contains("payments", shell.Namespaces);
+        Assert.Contains("payments", await NamespacesEventuallyAsync(shell, ns => ns.Contains("payments")));
     }
 
     [Fact]
@@ -196,26 +211,27 @@ public sealed class LiveClusterNavTests
         shell.SelectedNamespace = "monitoring";
         Assert.Contains("monitoring", shell.Namespaces);
 
-        await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Namespace, null, "monitoring"));
-        shell.NavigateCommand.Execute("pods");
-        await Task.Yield();
+        var doomed = new ResourceRef(GroupVersionKind.Namespace, null, "monitoring");
+        await cluster.DeleteAsync(doomed);
+        cluster.EmitWatchEvent(new ResourceEvent { Type = WatchEventType.Deleted, Resource = doomed });
 
-        Assert.DoesNotContain("monitoring", shell.Namespaces);
+        Assert.DoesNotContain(
+            "monitoring", await NamespacesEventuallyAsync(shell, ns => !ns.Contains("monitoring")));
         Assert.Equal("All namespaces", shell.SelectedNamespace);
     }
 
-    /// <summary>Re-read <paramref name="read"/> until it no longer holds "monitoring", or time is up.</summary>
-    private static async Task<IReadOnlyList<string>> EventuallyAsync(Func<IEnumerable<string>> read)
+    /// <summary>
+    /// The picker, once it agrees with <paramref name="until"/> or the deadline passes. Polled rather
+    /// than slept for: the settle is 400ms and a test that waits exactly that long is a coin flip on a
+    /// loaded machine.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> NamespacesEventuallyAsync(
+        MainWindowViewModel shell, Func<IReadOnlyList<string>, bool> until)
     {
-        for (var i = 0; i < 60; i++)
-        {
-            if (!read().Contains("monitoring"))
-                break;
-
+        for (var i = 0; i < 60 && !until([.. shell.Namespaces]); i++)
             await Task.Delay(50);
-        }
 
-        return [.. read()];
+        return [.. shell.Namespaces];
     }
 
     [Fact]
