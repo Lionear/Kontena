@@ -31,6 +31,9 @@
 
     <StreamGeometry x:Key="IconPull">M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10L12 15L17 10 M12 15V3</StreamGeometry>
 
+    <!-- The pull tray with the arrow turned round, so the pair reads as one direction each. -->
+    <StreamGeometry x:Key="IconPush">M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 8L12 3L17 8 M12 3V15</StreamGeometry>
+
     <StreamGeometry x:Key="IconMoon">M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z</StreamGeometry>
 
     <StreamGeometry x:Key="IconCheck">M20 6L9 17L4 12</StreamGeometry>

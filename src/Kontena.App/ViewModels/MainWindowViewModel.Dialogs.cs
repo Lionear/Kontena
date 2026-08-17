@@ -141,6 +141,19 @@ public partial class MainWindowViewModel
         Dialog = new PullImageViewModel(
             _engine, CloseDialog, onPulled: RefreshAfterPullAsync, credentials: _registryCredentials);
     }
+    /// <summary>
+    /// "Tag and push" on an image row (KON-387). Both verbs land on the same refresh as a pull: either one
+    /// can add a name to the list.
+    /// </summary>
+    private void ShowTagPushDialog(ImageRowViewModel row)
+    {
+        if (_engine is null)
+            return;
+
+        Dialog = new TagPushImageViewModel(
+            _engine, row.Id, row.Reference, CloseDialog,
+            onChanged: RefreshAfterPullAsync, credentials: _registryCredentials);
+    }
     private async Task RefreshAfterPullAsync()
     {
         if (Images is { HasLoaded: true })

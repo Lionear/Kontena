@@ -44,5 +44,8 @@ public sealed partial class ImageRowViewModel : ObservableObject
     public string Reference => string.IsNullOrEmpty(_i.Repository) ? ShortId : $"{_i.Repository}:{_i.Tag}";
 
     [RelayCommand]
+    private void TagAndPush() => _parent.RequestTagPushImage?.Invoke(this);
+
+    [RelayCommand]
     private void Delete() => _parent.ConfirmDelete(this);
 }
