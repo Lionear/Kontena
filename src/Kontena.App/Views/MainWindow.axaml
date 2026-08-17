@@ -400,7 +400,8 @@
                             </Border>
                         </Grid>
                     </Button>
-                    <Button Classes="nav" Classes.selected="{Binding IsActivitySelected}" Command="{Binding ShowActivityCommand}">
+                    <Button Classes="nav" Classes.selected="{Binding IsActivitySelected}" Command="{Binding ShowActivityCommand}"
+                            IsVisible="{Binding HasActivity}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                   Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconActivity}"/>
@@ -428,8 +429,8 @@
                 <!-- Scrolls because the nav is no longer a fixed height: expanding Workloads adds up to
                      five entries (KON-169), and without this they slide behind the Activity/Settings
                      block pinned to the bottom. -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                              IsVisible="{Binding !IsBackendDown}">
+                <Panel IsVisible="{Binding !IsBackendDown}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <ItemsControl ItemsSource="{Binding NavGroups}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:NavGroup">
@@ -488,6 +489,14 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 </ScrollViewer>
+
+                    <!-- Where the nav runs out of room (KON-386). Without it the list is simply cut at
+                         the Activity/Settings block and reads as a menu that happens to end there, so
+                         nobody scrolls. Over the ScrollViewer rather than inside it, so it stays put
+                         while the content moves under it. -->
+                    <Border Height="18" VerticalAlignment="Bottom" IsHitTestVisible="False"
+                            Background="{DynamicResource SidebarFade}"/>
+                </Panel>
             </DockPanel>
         </Border>
 
