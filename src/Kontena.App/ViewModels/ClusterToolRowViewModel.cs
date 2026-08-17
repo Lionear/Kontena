@@ -131,11 +131,16 @@ public sealed partial class ClusterToolRowViewModel : ObservableObject
     public bool HasDocumentation => _readiness.Tool.DocumentationUrl is not null;
     public string DocumentationUrl => _readiness.Tool.DocumentationUrl ?? string.Empty;
 
-    /// <summary>What is lost by carrying on with a version that is too old.</summary>
+    /// <summary>
+    /// What is lost by carrying on with a version that is too old. The tool's own wording where it has
+    /// one — "the cluster settings it writes" is true of kind and minikube and nonsense for kubectl,
+    /// which Kontena never builds a cluster with.
+    /// </summary>
     public string OutdatedConsequence =>
-        $"Kontena needs {_readiness.Tool.MinimumVersion} or newer for the cluster settings it writes. " +
-        "On an older one those are ignored and the cluster comes up on the tool's own defaults; " +
-        "everything else works.";
+        _readiness.Tool.OutdatedConsequence
+        ?? $"Kontena needs {_readiness.Tool.MinimumVersion} or newer for the cluster settings it writes. " +
+           "On an older one those are ignored and the cluster comes up on the tool's own defaults; " +
+           "everything else works.";
 
     [RelayCommand]
     private Task Install() => _parent.InstallAsync(this, _readiness.Hint!);
