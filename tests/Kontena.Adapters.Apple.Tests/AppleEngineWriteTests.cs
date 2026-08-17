@@ -23,10 +23,16 @@ public sealed class AppleEngineWriteTests
     /// <summary>
     /// A create asks the image which architectures it carries before it builds its command line
     /// (KON-369), so a runner for these has to answer <c>image</c> as well as <c>create</c>.
+    /// <para>
+    /// The image runs natively here unless a test says otherwise, so no <c>--arch</c> reaches the
+    /// command line and every other assertion is about the flag it is actually testing. Naming a fixed
+    /// architecture would make that true on one kind of runner and not the other (KON-384).
+    /// </para>
     /// </summary>
-    private static FakeToolRunner Creating(string architecture = "arm64") =>
+    private static FakeToolRunner Creating(string? architecture = null) =>
         Installed()
-            .When(i => i.Arguments[0] == "image", output: [Inspect(architecture)])
+            .When(i => i.Arguments[0] == "image",
+                output: [Inspect(architecture ?? ToolPlatform.Architecture ?? "arm64")])
             .When(_ => true, output: ["web"]);
 
     /// <summary>One image with one platform variant, in the shape <c>image inspect</c> prints.</summary>
@@ -72,15 +78,22 @@ public sealed class AppleEngineWriteTests
     /// Without <c>--arch</c> the CLI creates for this host, and an amd64-only image — SQL Server is the
     /// one that found this — fails with the bare line <c>Error: platform linux/arm64</c>. Measured
     /// against 1.2.2: naming the architecture the image carries creates it and runs it emulated.
+    /// <para>
+    /// Which architecture is the foreign one is asked of the host rather than written down, because the
+    /// engine decides by comparing against <see cref="ToolPlatform.Architecture"/>. Hard-coding "amd64"
+    /// made this a test of the runner: it held on the arm64 Mac and failed on every x64 one, where amd64
+    /// is native and the engine rightly says nothing (KON-384).
+    /// </para>
     /// </summary>
     [Fact]
     public async Task CreateContainerAsync_asks_for_the_architecture_the_image_carries()
     {
-        var runner = Creating(architecture: "amd64");
+        var foreign = ToolPlatform.Architecture == "amd64" ? "arm64" : "amd64";
+        var runner = Creating(architecture: foreign);
 
         await Engine(runner).CreateContainerAsync(Request);
 
-        Assert.Equal(["--arch", "amd64"], Window(Created(runner), "--arch"));
+        Assert.Equal(["--arch", foreign], Window(Created(runner), "--arch"));
     }
 
     /// <summary>

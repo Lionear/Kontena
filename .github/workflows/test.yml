@@ -2,8 +2,16 @@ name: Tests
 
 # Runs the unit tests on every PR and on pushes to main and develop, so a regression is caught before
 # it reaches a build. develop is the integration branch (feature branches PR into it; develop promotes
-# to main for releases). The Docker adapter suite talks to a real engine when one is present and skips
-# cleanly when it isn't (SkippableFact), so it stays green on runners without Docker.
+# to main for releases).
+#
+# The whole solution, not a list of projects. The list this used to hold named six of the thirteen test
+# projects — Kontena.App.Tests, the largest suite, was not one of them — so a regression there passed the
+# gate and surfaced at the develop -> main promotion instead, where ci.yml does run the solution. A list
+# that has to be extended by hand every time a test project is added is a gate that quietly narrows
+# (KON-384).
+#
+# Still one runner: ci.yml keeps the three-OS matrix on main, and duplicating it here would double every
+# PR's wait for a platform difference the promotion catches anyway.
 on:
   push:
     branches: [main, develop]
@@ -40,28 +48,10 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Test (Core)
-        run: dotnet test tests/Kontena.Core.Tests/Kontena.Core.Tests.csproj -c Release
-
-      - name: Test (Engines)
-        run: dotnet test tests/Kontena.Engines.Tests/Kontena.Engines.Tests.csproj -c Release
-
-      - name: Test (Core.Orchestration)
-        run: dotnet test tests/Kontena.Core.Orchestration.Tests/Kontena.Core.Orchestration.Tests.csproj -c Release
-
-      # Integration tests against a real Docker engine; each test skips cleanly when Docker is absent.
-      - name: Test (Adapters.Docker)
-        run: dotnet test tests/Kontena.Adapters.Docker.Tests/Kontena.Adapters.Docker.Tests.csproj -c Release
-
-      # Same shape for Kubernetes: the mapper and metrics units always run, and the tests that need a
-      # real cluster skip cleanly when the runner has no kubeconfig.
-      - name: Test (Adapters.Kubernetes)
-        run: dotnet test tests/Kontena.Adapters.Kubernetes.Tests/Kontena.Adapters.Kubernetes.Tests.csproj -c Release
-
-      # The kind provisioner is driven through the tool seam's fake, so the unit tests need no cluster
-      # tooling; the two read-only tests against a real kind skip cleanly when the runner has none.
-      - name: Test (Adapters.LocalClusters)
-        run: dotnet test tests/Kontena.Adapters.LocalClusters.Tests/Kontena.Adapters.LocalClusters.Tests.csproj -c Release
+      # The adapter suites talk to a real engine, cluster or kind when the runner has one and skip
+      # cleanly when it does not (SkippableFact), so this stays green on a bare runner.
+      - name: Test
+        run: dotnet test Kontena.slnx -c Release
 
       # Keep THIRD-PARTY-NOTICES.md in sync with the dependency closure.
       - name: Check third-party notices
