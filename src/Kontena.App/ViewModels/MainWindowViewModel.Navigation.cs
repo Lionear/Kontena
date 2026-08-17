@@ -346,10 +346,11 @@ public partial class MainWindowViewModel
         if (CurrentPage is IClusterLivePage live)
             live.Changed = () => _ = RefreshClusterNavAsync();
 
-        // Except the Alerts page, whose refresh is a timer rather than a watch event (KON-393). What
-        // it can have changed beside itself is one number — the firing badge, off the same read — and
-        // rebuilding the whole sidebar every interval would put the namespace and workload listings
-        // on a loop, which is the cost KON-395 and KON-396 are open about.
+        // Except the Alerts page, whose refresh is a timer rather than a watch event (KON-393). The
+        // rest of the sidebar counts what the apiserver serves, and no interval of ours makes that
+        // change — so refreshing it on a clock reads the cluster to be told nothing, however cheap
+        // the reads have since become (KON-395, KON-396). What the alerts poll can have changed
+        // beside itself is one number: the firing badge, off the same read it just did.
         if (CurrentPage is ClusterAlertsViewModel alerts)
             alerts.Changed = () => _ = UpdateAlertCountAsync();
 
