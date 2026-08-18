@@ -72,16 +72,16 @@ public partial class ClusterNodesViewModel : ClusterListPageViewModel<NodeCardRo
     /// <summary>The context the cluster reported, which is what the insecure-kubelet guess reads.</summary>
     private string _context = string.Empty;
 
-    protected override async Task<IReadOnlyList<NodeCardRow>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<NodeCardRow>> LoadRowsAsync(CancellationToken ct)
     {
         // The apiserver version is what a kubelet version means anything against (KON-95): a node is
         // only "behind" relative to its own control plane.
-        var info = await _cluster.GetInfoAsync();
+        var info = await _cluster.GetInfoAsync(ct);
         _context = info is ClusterInfo { Context: { Length: > 0 } context } ? context : string.Empty;
 
         return
         [
-            .. (await _cluster.ListNodesAsync())
+            .. (await _cluster.ListNodesAsync(ct: ct))
                 .Select(n => new NodeCardRow(
                     n, info.Version,
                     canMaintain: _cluster.Capabilities.NodeMaintenance,
@@ -281,8 +281,8 @@ public partial class ClusterNamespacesViewModel : ClusterListPageViewModel<Names
 
     public override string SearchPlaceholder => "Search namespaces…";
 
-    protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListNamespacesAsync()).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
+    protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
 
     protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
 
@@ -377,8 +377,8 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         });
     }
 
-    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace))
+    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace, ct))
             .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(WorkloadRow row, string term) =>
@@ -437,8 +437,8 @@ public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
 
     protected override bool Include(PodRow row) => PhaseFilter == "All" || row.PhaseRaw.ToString() == PhaseFilter;
 
-    protected override async Task<IReadOnlyList<PodRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListPodsAsync(_namespace)).Select(p => new PodRow(p, _onOpenDetail, _onDelete))];
+    protected override async Task<IReadOnlyList<PodRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListPodsAsync(_namespace, ct)).Select(p => new PodRow(p, _onOpenDetail, _onDelete))];
 
     // Node and status too: "which pods are on worker-2" and "what is CrashLooping" are the two
     // questions a pod list gets asked.
@@ -495,8 +495,8 @@ public partial class ClusterServicesViewModel : ClusterListPageViewModel<Service
         });
     }
 
-    protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListServicesAsync(_namespace))
+    protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListServicesAsync(_namespace, ct))
             .Select(s => new ServiceRow(s, _onForward, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(ServiceRow row, string term) =>
@@ -543,8 +543,8 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
         });
     }
 
-    protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListIngressesAsync(_namespace)).Select(i => new IngressRow(i, ConfirmDelete))];
+    protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete))];
 
     // The host is the thing you know: someone reports that app.example.com is down and the ingress is
     // what you go looking for. The class matters when a cluster runs more than one controller.
@@ -591,8 +591,8 @@ public partial class ClusterPvcsViewModel : ClusterListPageViewModel<PvcRow>
 
     public override string SearchPlaceholder => "Search volume claims…";
 
-    protected override async Task<IReadOnlyList<PvcRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListPvcsAsync(_namespace)).Select(p => new PvcRow(p, _onOpenVolume, _onOpenClass))];
+    protected override async Task<IReadOnlyList<PvcRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListPvcsAsync(_namespace, ct)).Select(p => new PvcRow(p, _onOpenVolume, _onOpenClass))];
 
     // Status and storage class as well: "what is still Pending" and "what is on the slow class" are
     // the two questions a claim list gets asked.
@@ -634,8 +634,8 @@ public partial class ClusterVolumesViewModel : ClusterListPageViewModel<Persiste
 
     public override string SearchPlaceholder => "Search volumes…";
 
-    protected override async Task<IReadOnlyList<PersistentVolumeRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListVolumesAsync()).Select(v => new PersistentVolumeRow(v, _onOpenClaim, _onOpenClass))];
+    protected override async Task<IReadOnlyList<PersistentVolumeRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListVolumesAsync(ct)).Select(v => new PersistentVolumeRow(v, _onOpenClaim, _onOpenClass))];
 
     // The claim as well: you arrive here from a claim far more often than you arrive at a volume by
     // its generated name, which nobody has ever typed on purpose.
@@ -672,8 +672,8 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
 
     public override string SearchPlaceholder => "Search storage classes…";
 
-    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListStorageClassesAsync()).Select(c => new StorageClassRow(c))];
+    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListStorageClassesAsync(ct)).Select(c => new StorageClassRow(c))];
 
     protected override bool Matches(StorageClassRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Provisioner, term);

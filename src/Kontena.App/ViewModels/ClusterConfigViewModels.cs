@@ -40,9 +40,9 @@ public partial class ClusterConfigMapsViewModel : ClusterListPageViewModel<Confi
 
     public override string SearchPlaceholder => "Search config maps…";
 
-    protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
+    protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync(CancellationToken ct) =>
     [
-        .. (await _cluster.ListConfigMapsAsync(_namespace))
+        .. (await _cluster.ListConfigMapsAsync(_namespace, ct))
             .Select(c => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.ConfigMap, c.Namespace, c.Name),
                 type: null, c.Keys, c.Age, _cluster.GetConfigDataAsync, secret: false,
@@ -87,9 +87,9 @@ public partial class ClusterSecretsViewModel : ClusterListPageViewModel<ConfigOb
 
     public override string SearchPlaceholder => "Search secrets…";
 
-    protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync() =>
+    protected override async Task<IReadOnlyList<ConfigObjectRow>> LoadRowsAsync(CancellationToken ct) =>
     [
-        .. (await _cluster.ListSecretsAsync(_namespace))
+        .. (await _cluster.ListSecretsAsync(_namespace, ct))
             .Select(s => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.Secret, s.Namespace, s.Name),
                 s.Type, s.Keys, s.Age, _cluster.GetConfigDataAsync, secret: true,

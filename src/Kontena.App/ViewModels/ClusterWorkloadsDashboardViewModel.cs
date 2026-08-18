@@ -31,6 +31,9 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
     private CancellationTokenSource? _watch;
     private bool _started;
 
+    /// <summary>The one read this page has out, and the token that ends it (KON-413).</summary>
+    private readonly PageLoad _load = new();
+
     public ClusterWorkloadsDashboardViewModel(
         IClusterEngine cluster, string? @namespace,
         Action<WorkloadKind>? onOpenKind = null, Action<Workload>? onOpenWorkload = null,
@@ -97,6 +100,10 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
         _watch?.Cancel();
         _watch?.Dispose();
         _watch = null;
+
+        // And the two cluster-wide lists it opens with (KON-413).
+        _load.Cancel();
+
         IsLive = false;
         GC.SuppressFinalize(this);
     }
@@ -142,29 +149,40 @@ public partial class ClusterWorkloadsDashboardViewModel : ViewModelBase, IListPa
 
     public async Task LoadAsync()
     {
+        var ct = _load.Begin();
+
         var isFirstLoad = !HasLoaded;
         if (isFirstLoad)
             IsLoading = true;
 
         try
         {
-            await ReadAsync();
+            await ReadAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Left, or reloaded under this one. The cards stay as they were (KON-413).
         }
         finally
         {
-            if (isFirstLoad)
+            if (isFirstLoad && !ct.IsCancellationRequested)
                 IsLoading = false;
         }
     }
 
-    private async Task ReadAsync()
+    private async Task ReadAsync(CancellationToken ct)
     {
         // Both lists once. The cards are a rollup of the workloads and the reasons come from the pods,
         // so fetching them separately per section is two sources for one screen — and two chances to
         // disagree with each other. Side by side rather than one after the other (KON-338).
-        var workloadsTask = _cluster.ListWorkloadsAsync(null, _namespace).AsTask();
-        var podsTask = _cluster.ListPodsAsync(_namespace).AsTask();
+        var workloadsTask = _cluster.ListWorkloadsAsync(null, _namespace, ct).AsTask();
+        var podsTask = _cluster.ListPodsAsync(_namespace, ct).AsTask();
         await Task.WhenAll(workloadsTask, podsTask);
+
+        // Everything below is the page being written rather than read, and Kinds is cleared before it
+        // is refilled — a load that lost its page mid-answer would blank it (KON-413).
+        ct.ThrowIfCancellationRequested();
+
         var workloads = workloadsTask.Result;
         var pods = podsTask.Result;
 
