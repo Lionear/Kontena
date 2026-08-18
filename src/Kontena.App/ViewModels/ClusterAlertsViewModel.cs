@@ -303,16 +303,16 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     [RelayCommand]
     private void NewRule() => _onNewRule?.Invoke();
 
-    protected override async Task<IReadOnlyList<AlertGroupRow>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<AlertGroupRow>> LoadRowsAsync(CancellationToken ct)
     {
         if (!HasAlerting && _alerts is NoAlertSource)
             return [];
 
         // Three reads, one page load. Rules carry the `for` a pending group counts against, and
         // silences carry who muted it and until when — neither is on the alert itself.
-        var alerts = _alerts.ListAlertsAsync().AsTask();
-        var rules = _alerts.ListRulesAsync().AsTask();
-        var silences = _alerts.ListSilencesAsync().AsTask();
+        var alerts = _alerts.ListAlertsAsync(ct).AsTask();
+        var rules = _alerts.ListRulesAsync(ct).AsTask();
+        var silences = _alerts.ListSilencesAsync(ct).AsTask();
         await Task.WhenAll(alerts, rules, silences);
 
         return Group(alerts.Result, rules.Result, silences.Result, _onOpenDetail, ExpireSilence);

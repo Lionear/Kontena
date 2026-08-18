@@ -25,9 +25,9 @@ public sealed partial class NetworksViewModel : ListPageViewModel<NetworkRowView
 
     [ObservableProperty] private string _summary = string.Empty;
 
-    protected override async Task<IReadOnlyList<NetworkRowViewModel>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<NetworkRowViewModel>> LoadRowsAsync(CancellationToken ct)
     {
-        var list = await _engine.ListNetworksAsync();
+        var list = await _engine.ListNetworksAsync(ct);
 
         var custom = list.Count(n => !n.IsBuiltIn);
         Summary = $"{list.Count} networks · {custom} custom";

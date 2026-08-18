@@ -31,9 +31,9 @@ public sealed partial class VolumesViewModel : ListPageViewModel<VolumeRowViewMo
     [ObservableProperty] private bool _pruneArmed;
     [ObservableProperty] private string _pruneSummary = string.Empty;
 
-    protected override async Task<IReadOnlyList<VolumeRowViewModel>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<VolumeRowViewModel>> LoadRowsAsync(CancellationToken ct)
     {
-        var list = await _engine.ListVolumesAsync();
+        var list = await _engine.ListVolumesAsync(ct);
 
         var dangling = list.Where(v => v.IsDangling).ToList();
         Summary = $"{list.Count} volumes · {dangling.Count} dangling";

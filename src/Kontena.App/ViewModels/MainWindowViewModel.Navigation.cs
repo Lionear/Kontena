@@ -47,8 +47,6 @@ public partial class MainWindowViewModel
     /// </param>
     private void NavigateTo(string key, bool refreshNav = true)
     {
-        Diag.Mark($"navigate to {key}");
-
         // The history step replays as an ordinary visit, refresh and all: coming back to a page later
         // is exactly the moment its sidebar is most likely to be out of date.
         Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => NavigateTo(key));
@@ -57,15 +55,22 @@ public partial class MainWindowViewModel
         // fall through to a page of their own on an unknown key.
         if (_pluginPages.TryGetValue(key, out var pluginPage))
         {
+            Diag.Mark($"navigate to {key}");
             ShowPluginPage(key, pluginPage);
             return;
         }
 
+        // Marked there rather than here, once (KON-413). Cluster navigation also arrives at
+        // NavigateCluster without passing through this method, so a mark in both places logged every
+        // sidebar click twice — which read in the diagnostics like a command firing twice, and cost a
+        // bug report an afternoon chasing a double click that was never happening.
         if (IsClusterMode)
         {
             NavigateCluster(key, refreshNav);
             return;
         }
+
+        Diag.Mark($"navigate to {key}");
 
         IListPage? page = key switch
         {
@@ -383,15 +388,24 @@ public partial class MainWindowViewModel
     /// </summary>
     private async Task RefreshClusterNavAsync()
     {
+        // One in flight at a time (KON-413). Nothing awaits this, and it is fired behind every
+        // navigation and every watch event of the open page — so clicking through the sidebar stacked
+        // one cluster read per click, each of them answering into a sidebar the next click had already
+        // replaced. The last one asked is the only one whose answer is still true.
+        var ct = _navRefresh.Begin();
+
         try
         {
-            await Diag.TimeAsync("refresh the sidebar", UpdateClusterNavAsync());
+            await Diag.TimeAsync("refresh the sidebar", UpdateClusterNavAsync(ct));
         }
         catch (Exception)
         {
             // Left as they were, which is the same answer a refresh that never ran would give.
         }
     }
+
+    /// <summary>The one sidebar refresh that is out, and the token that ends it (KON-413).</summary>
+    private readonly PageLoad _navRefresh = new();
 
     /// <summary>
     /// Rebuild the currently-selected cluster page (e.g. after an action mutates it), keeping the
@@ -476,7 +490,11 @@ public partial class MainWindowViewModel
     /// left here is one cheap read.
     /// </para>
     /// </summary>
-    private async Task UpdateClusterNavAsync()
+    /// <param name="ct">
+    /// Ends this read where a later one has already superseded it (KON-413). Default where the caller
+    /// awaits it — an awaited refresh cannot be overtaken by itself.
+    /// </param>
+    private async Task UpdateClusterNavAsync(CancellationToken ct = default)
     {
         if (_cluster is null)
             return;
@@ -486,14 +504,16 @@ public partial class MainWindowViewModel
         // Only where the cluster cannot watch, in which case a re-read per navigation is the only way
         // the picker hears about a namespace that was created (KON-343).
         if (_namespaceWatch is null)
-            await ReadNamespacesAsync();
+            await ReadNamespacesAsync(ct);
 
         // One call, grouped there, rather than one per kind: five answers arriving separately is five
         // chances for the submenu to disagree with itself and with the list it labels (KON-169).
-        SyncWorkloadKindNav(await _cluster.ListWorkloadKindsAsync(ns));
+        var kinds = await _cluster.ListWorkloadKindsAsync(ns, ct);
+        ct.ThrowIfCancellationRequested();
+        SyncWorkloadKindNav(kinds);
 
         UpdatePortForwardCount();
-        await UpdateAlertCountAsync();
+        await UpdateAlertCountAsync(ct);
     }
 
     /// <summary>
@@ -505,10 +525,14 @@ public partial class MainWindowViewModel
     /// are standing still, which is the half of KON-343 that polling on navigation never covered.
     /// </para>
     /// </summary>
-    private async Task ReadNamespacesAsync()
+    private async Task ReadNamespacesAsync(CancellationToken ct = default)
     {
-        if (_cluster is not null)
-            SyncNamespacePicker(await _cluster.ListNamespacesAsync());
+        if (_cluster is null)
+            return;
+
+        var namespaces = await _cluster.ListNamespacesAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        SyncNamespacePicker(namespaces);
     }
 
     /// <summary>Live while the picker follows the cluster; null when this cluster cannot watch.</summary>
@@ -532,7 +556,7 @@ public partial class MainWindowViewModel
         // dropping the stream is what re-arms the per-navigation read in UpdateClusterNavAsync, and
         // the saving is given up before the freshness is.
         _namespaceWatch = ClusterWatch.Follow(
-            _cluster, [GroupVersionKind.Namespace], null, ReadNamespacesAsync,
+            _cluster, [GroupVersionKind.Namespace], null, () => ReadNamespacesAsync(),
             (live, _) =>
             {
                 if (!live)
@@ -559,7 +583,8 @@ public partial class MainWindowViewModel
     /// namespace picker, and an alert firing outside your current namespace is still your problem.
     /// </para>
     /// </summary>
-    private async Task UpdateAlertCountAsync()
+    /// <param name="ct"><inheritdoc cref="UpdateClusterNavAsync" path="/param[@name='ct']"/></param>
+    private async Task UpdateAlertCountAsync(CancellationToken ct = default)
     {
         if (NavItems.FirstOrDefault(i => i.Key == "alerts") is not { } item)
             return;
@@ -574,7 +599,7 @@ public partial class MainWindowViewModel
 
         try
         {
-            var firing = ClusterAlertsViewModel.BadgeCount(await source.ListAlertsAsync());
+            var firing = ClusterAlertsViewModel.BadgeCount(await source.ListAlertsAsync(ct));
 
             // No badge at zero rather than a "0": every other entry in this sidebar is silent when
             // it has nothing to say, and an all-clear is not news (KON-219).
@@ -584,7 +609,9 @@ public partial class MainWindowViewModel
                 ? string.Empty
                 : $"{firing} firing {(firing == 1 ? "alert" : "alerts")}, not silenced";
         }
-        catch (Exception)
+        // Not on a superseded refresh (KON-413): a read this shell itself cancelled says nothing
+        // about Alertmanager, and blanking the badge for it would clear a number that is still right.
+        catch (Exception) when (!ct.IsCancellationRequested)
         {
             // An Alertmanager that stopped answering is the page's story to tell, not the sidebar's.
             // A stale number here would be the one thing worse than no number.
