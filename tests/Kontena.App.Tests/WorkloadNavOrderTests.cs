@@ -1,6 +1,7 @@
 using Kontena.App.ViewModels;
 using Kontena.Core.Orchestration.Fakes;
 using Kontena.Sdk.Orchestration.Models;
+using Kontena.Sdk.Models;
 
 namespace Kontena.App.Tests;
 
@@ -10,18 +11,15 @@ namespace Kontena.App.Tests;
 /// with every other kind between the two.
 /// <para>
 /// Asserted on the order of the group rather than on an index, because the kinds above it come and go
-/// with the namespace — an index is exactly the thing this is not allowed to depend on.
+/// with what the cluster runs — an index is exactly the thing this is not allowed to depend on.
 /// </para>
 /// </summary>
 public sealed class WorkloadNavOrderTests
 {
-    private static async Task<IReadOnlyList<string>> WorkloadSectionAsync(string? ns = null)
+    private static async Task<IReadOnlyList<string>> WorkloadSectionAsync(FakeClusterEngine? cluster = null)
     {
         var shell = new MainWindowViewModel();
-        Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
-
-        if (ns is not null)
-            shell.SelectedNamespace = ns;
+        Assert.True(await shell.EnterClusterModeAsync(cluster ?? new FakeClusterEngine()));
 
         return [.. shell.NavGroups.Single(g => g.Label == "Workloads").Items.Select(i => i.Key)];
     }
@@ -32,7 +30,7 @@ public sealed class WorkloadNavOrderTests
         var keys = await WorkloadSectionAsync();
         var deployments = WorkloadNavGroups.KeyFor(WorkloadKind.Deployment);
 
-        // Across all namespaces the fake runs five kinds, so there is plenty for Pods to be buried under.
+        // The fake runs five kinds, so there is plenty for Pods to be buried under.
         Assert.Contains(WorkloadNavGroups.KeyFor(WorkloadKind.DaemonSet), keys);
         Assert.Equal("pods", keys[keys.ToList().IndexOf(deployments) + 1]);
     }
@@ -40,9 +38,13 @@ public sealed class WorkloadNavOrderTests
     [Fact]
     public async Task Without_Deployments_Pods_stays_where_it_was()
     {
-        // "monitoring" runs one DaemonSet and nothing else: no Deployments entry to sit under, and one
-        // kind draws no sub-entries at all (KON-219). Pods keeps its place at the end.
-        var keys = await WorkloadSectionAsync("monitoring");
+        // A cluster that runs none at all, which since KON-414 is the only way the entry Pods belongs
+        // under can be missing: a namespace without Deployments no longer takes it off the sidebar.
+        var cluster = new FakeClusterEngine();
+        foreach (var name in new[] { "api", "web", "redis" })
+            await cluster.DeleteAsync(new ResourceRef(GroupVersionKind.Deployment, "app", name));
+
+        var keys = await WorkloadSectionAsync(cluster);
 
         Assert.DoesNotContain(WorkloadNavGroups.KeyFor(WorkloadKind.Deployment), keys);
         Assert.Equal("pods", keys[^1]);

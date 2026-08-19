@@ -360,10 +360,15 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         _ => "READY",
     };
 
-    /// <summary>Shown when a kind's page is empty, so it does not look like a failed load.</summary>
-    public string EmptyText => _kind is { } k
-        ? $"No {k}s in this namespace."
-        : "No workloads in this namespace.";
+    /// <summary>
+    /// Shown when a kind's page is empty, so it does not look like a failed load. It names the
+    /// namespace, because a kind keeps its sidebar entry in a namespace that runs none of it
+    /// (KON-414): this line is the only place the user is told that it is the namespace that is empty
+    /// and not the cluster.
+    /// </summary>
+    public string EmptyText =>
+        $"No {_kind?.ToString() ?? "workload"} objects found for "
+        + (_namespace is { } ns ? $"namespace {ns}." : "any namespace.");
 
     /// <summary>Delete a workload, always confirmed (KON-332).</summary>
     private void ConfirmDelete(WorkloadRow row)
