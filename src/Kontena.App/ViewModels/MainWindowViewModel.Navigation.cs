@@ -423,14 +423,15 @@ public partial class MainWindowViewModel
     /// Read the workload kinds first, then build the page (KON-200).
     /// <para>
     /// Which page Workloads is — the dashboard or the plain list — depends on how many kinds exist,
-    /// and that answer arrives with that read. Navigating first meant deciding on the namespace you
-    /// had just left: one kind to several gave the list, several to one gave the dashboard. Both
-    /// directions were reported. The same order applies after an apply, which can add the first
-    /// DaemonSet or remove the last.
+    /// and that answer arrives with that read. Navigating first meant deciding on what the previous
+    /// read had found: one kind to several gave the list, several to one gave the dashboard. Both
+    /// directions were reported. The kinds are the cluster's rather than the namespace's since
+    /// KON-414, so what this is still ahead of is an apply that adds the first DaemonSet or removes
+    /// the last.
     /// </para>
     /// <para>
     /// That read failing must not cost the navigation — a page built from a stale answer is still
-    /// better than no page at all — so the await is guarded and the key resolved either way.
+    /// better than no page at all — so the await is guarded and the page opened either way.
     /// </para>
     /// </summary>
     /// <param name="keepSearch"><inheritdoc cref="NavigateCluster" path="/param[@name='keepSearch']"/></param>
@@ -451,8 +452,12 @@ public partial class MainWindowViewModel
             IsReadingCluster = false;
         }
 
+        // The key as asked for, never a substitute. A per-kind page used to fall back to Workloads
+        // when the new namespace had none of that kind (KON-200), because the sidebar entry it
+        // belonged to was about to be removed. The entry stays now (KON-414), so the page it points at
+        // has to stay too — it says "no objects here" itself rather than being navigated away from.
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadKinds), refreshNav: false, keepSearch);
+            NavigateCluster(key, refreshNav: false, keepSearch);
     }
 
     /// <summary>
@@ -499,8 +504,6 @@ public partial class MainWindowViewModel
         if (_cluster is null)
             return;
 
-        var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
-
         // Only where the cluster cannot watch, in which case a re-read per navigation is the only way
         // the picker hears about a namespace that was created (KON-343).
         if (_namespaceWatch is null)
@@ -508,7 +511,11 @@ public partial class MainWindowViewModel
 
         // One call, grouped there, rather than one per kind: five answers arriving separately is five
         // chances for the submenu to disagree with itself and with the list it labels (KON-169).
-        var kinds = await _cluster.ListWorkloadKindsAsync(ns, ct);
+        //
+        // Cluster-wide, not for the picked namespace (KON-414): the sidebar is the same shape whichever
+        // namespace you are in. Asking per namespace is what made entries vanish under the pointer on a
+        // switch and reappear on the way back.
+        var kinds = await _cluster.ListWorkloadKindsAsync(ct: ct);
         ct.ThrowIfCancellationRequested();
         SyncWorkloadKindNav(kinds);
 
@@ -731,6 +738,12 @@ public partial class MainWindowViewModel
     /// <summary>
     /// Rebuild the per-kind sub-entries under Workloads (KON-169). Which entries and in what order is
     /// the cluster's answer; this only reconciles the nav collection with it.
+    /// <para>
+    /// A rebuild that would produce the same entries is skipped (KON-414). It runs before every
+    /// cluster navigation and on every watch event of the open page, and the answer is cluster-wide
+    /// now, so the same rows were being torn down and put back several times a click — rows that blink
+    /// out and back under the pointer, for a list that had not changed.
+    /// </para>
     /// </summary>
     private void SyncWorkloadKindNav(IReadOnlyList<WorkloadKind> kinds)
     {
@@ -740,9 +753,15 @@ public partial class MainWindowViewModel
         if (items is null)
             return;
 
+        // On the collection rather than on _workloadKinds alone: opening a second cluster with the
+        // same kinds gets a freshly built sidebar with no children in it yet, and a field that still
+        // remembers the previous cluster would leave it that way.
+        if (items.Any(i => i.IsChild) && kinds.SequenceEqual(_workloadKinds))
+            return;
+
         var parentIndex = items.ToList().FindIndex(i => i.Key == "workloads");
 
-        // Drop the current children before rebuilding; the set changes as objects come and go.
+        // Drop the current children before rebuilding; the set changes as kinds come and go.
         for (var i = items.Count - 1; i > parentIndex; i--)
         {
             if (items[i].IsChild)
@@ -781,9 +800,10 @@ public partial class MainWindowViewModel
     /// Put Pods directly under Deployments (Rick, 2026-08-03). The pods you go looking for are nearly
     /// always a Deployment's, and Pods sat at the foot of the kinds with everything else between them.
     /// <para>
-    /// With no Deployments in this namespace it stays where it was, at the end: the entry it belongs
+    /// With no Deployments in this cluster it stays where it was, at the end: the entry it belongs
     /// under is not there to belong under. Redone on every rebuild rather than fixed at construction,
-    /// because the kind above it comes and goes with the namespace.
+    /// because the kind above it comes and goes with the cluster's objects — no longer with the
+    /// picked namespace (KON-414).
     /// </para>
     /// </summary>
     private static void MovePodsUnderDeployments(ObservableCollection<NavItem> items)
