@@ -375,6 +375,33 @@
             <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
         </Style>
 
+        <!-- A list row for something that is broken (KON-415). Three signals, because one is not
+             enough for everyone: a wash on the row, a warning glyph where the status dot sits, and
+             the reason itself in red. The reason is the text — "Pod in CrashLoopBackOff" says where
+             to look; a generic "Degraded" badge would only repeat the colour. -->
+        <Style Selector="Border.trouble">
+            <Setter Property="Background" Value="{DynamicResource DangerSoft}"/>
+        </Style>
+        <Style Selector="TextBlock.statuscell">
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <!-- Full-strength ink, not Danger: the reason is body text at body size, and Danger on the
+             wash it now sits on measures 4.35:1 in light — under AA, and this palette corrects a
+             colour rather than excusing it. Text on the wash is 13.2:1 light and 11.9:1 dark, and it
+             still reads as louder than the TextDim of every row around it. The red is carried by the
+             wash and the glyph, where the 3:1 non-text floor applies and both clear it (4.35 and
+             5.2). -->
+        <Style Selector="TextBlock.statuscell.trouble">
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+        <!-- The glyph that replaces the status dot. Same reasoning as the dots above: the reason is
+             spelled out beside it, so announcing the glyph too would only add a nameless element. -->
+        <Style Selector="Path.trouble">
+            <Setter Property="Stroke" Value="{DynamicResource Danger}"/>
+            <Setter Property="AutomationProperties.AccessibilityView" Value="Raw"/>
+        </Style>
+
         <!-- Surface card -->
         <Style Selector="Border.card">
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
