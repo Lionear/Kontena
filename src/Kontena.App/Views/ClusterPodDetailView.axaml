@@ -27,6 +27,16 @@
                             <TextBlock Text="{Binding PhaseText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                         </StackPanel>
                     </Border>
+                    <!-- The mark the pods list put on this row, carried through to the page it opens
+                         (KON-415). Beside the phase pill rather than instead of it: "Running" is still
+                         true of a pod whose container is in CrashLoopBackOff, and that pairing is the
+                         point. Glyph, wash and the reason in words — never colour on its own. -->
+                    <Border Classes="trouble" CornerRadius="20" Padding="9,3" VerticalAlignment="Center" IsVisible="{Binding HasTrouble}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon trouble" Width="13" Height="13" VerticalAlignment="Center" Data="{StaticResource IconWarning}"/>
+                            <TextBlock Text="{Binding Trouble}" Classes="statuscell trouble" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
                     <TextBlock Text="{Binding ReadyText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
 
                     <!-- Live metrics (metrics-server capability). The sparkline behind each number is

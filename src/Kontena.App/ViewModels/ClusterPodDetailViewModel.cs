@@ -193,6 +193,12 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
         _ => "#5C6675",
     }));
 
+    /// <summary>What is wrong with this pod, or null when nothing is — the same mark the pods list
+    /// carries, so a row you opened because it stood out still stands out here (KON-415).</summary>
+    public string? Trouble => WorkloadTrouble.DescribePod(_pod);
+
+    public bool HasTrouble => Trouble is not null;
+
     public bool IsRunning => _pod.Phase == PodPhase.Running;
 
     // ── Diagnosis (KON-150) ───────────────────────────────────────────────────
