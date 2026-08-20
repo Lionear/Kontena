@@ -76,6 +76,7 @@ internal static class K8sMap
         // joined by container name. Building the lookup once keeps that join in one place.
         var ports = PortsByContainer(p.Spec);
         var limits = MemoryLimitsByContainer(p.Spec);
+        var env = EnvByContainer(p.Spec);
 
         return new Pod
         {
@@ -89,9 +90,9 @@ internal static class K8sMap
                 "Failed" => PodPhase.Failed,
                 _ => PodPhase.Unknown,
             },
-            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports, limits))],
-            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports, limits))],
-            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports, limits))],
+            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports, limits, env))],
+            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports, limits, env))],
+            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports, limits, env))],
             // Init restarts are counted too: a pod that has retried its init container seven times has
             // restarted seven times, and reporting 0 there is the reading that hides the problem.
             Restarts = statuses.Sum(c => c.RestartCount) + initStatuses.Sum(c => c.RestartCount),
@@ -173,7 +174,8 @@ internal static class K8sMap
     private static Kontena.Sdk.Orchestration.Models.ContainerStatus ToContainerStatus(
         V1ContainerStatus c, ContainerKind kind,
         Dictionary<string, IReadOnlyList<ContainerPort>> ports,
-        Dictionary<string, long> memoryLimits) => new()
+        Dictionary<string, long> memoryLimits,
+        Dictionary<string, IReadOnlyList<ContainerEnv>> env) => new()
     {
         Name = c.Name,
         Image = c.Image ?? string.Empty,
@@ -181,6 +183,7 @@ internal static class K8sMap
         Restarts = c.RestartCount,
         Kind = kind,
         Ports = ports.TryGetValue(c.Name, out var declared) ? declared : [],
+        Env = env.TryGetValue(c.Name, out var declaredEnv) ? declaredEnv : [],
         RunState = RunStateOf(c.State),
         Reason = ReasonOf(c.State),
         ExitCode = c.State?.Terminated?.ExitCode,
@@ -239,6 +242,42 @@ internal static class K8sMap
 
         return map;
     }
+
+    /// <summary>
+    /// Declared environment variables per container name, init and ephemeral containers included —
+    /// a pod wedged in its init container is exactly when its environment is worth reading.
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<ContainerEnv>> EnvByContainer(V1PodSpec? spec)
+    {
+        var map = new Dictionary<string, IReadOnlyList<ContainerEnv>>(StringComparer.Ordinal);
+
+        foreach (var c in (spec?.InitContainers ?? []).Concat(spec?.Containers ?? []))
+            if (c.Env is { Count: > 0 })
+                map[c.Name] = [.. c.Env.Select(ToContainerEnv)];
+
+        foreach (var c in spec?.EphemeralContainers ?? [])
+            if (c.Env is { Count: > 0 })
+                map[c.Name] = [.. c.Env.Select(ToContainerEnv)];
+
+        return map;
+    }
+
+    /// <summary>
+    /// The declaration, not the value. Only a literal <c>value:</c> is in the spec at all; a
+    /// <c>valueFrom</c> is a reference the kubelet resolves at start-up, so what comes across is
+    /// where to look. Carrying it as an empty value instead would read as "set to nothing", which is
+    /// a different and wrong answer.
+    /// </summary>
+    private static ContainerEnv ToContainerEnv(V1EnvVar e) => e.ValueFrom switch
+    {
+        { SecretKeyRef: { } s } => new(e.Name, string.Empty, EnvSourceKind.Secret, s.Name, s.Key),
+        { ConfigMapKeyRef: { } c } => new(e.Name, string.Empty, EnvSourceKind.ConfigMap, c.Name, c.Key),
+        { FieldRef: { } f } => new(e.Name, string.Empty, EnvSourceKind.Field, string.Empty, f.FieldPath),
+        // The container name is optional and means "this one" when it is left out, which the row can
+        // say better than a dangling "of".
+        { ResourceFieldRef: { } r } => new(e.Name, string.Empty, EnvSourceKind.Resource, r.ContainerName ?? string.Empty, r.Resource),
+        _ => new(e.Name, e.Value ?? string.Empty, EnvSourceKind.Literal),
+    };
 
     private static ContainerPort ToContainerPort(V1ContainerPort p) =>
         new(p.Name ?? string.Empty, p.ContainerPort, p.Protocol ?? "TCP");

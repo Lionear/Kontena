@@ -45,6 +45,42 @@ public enum ContainerRunState
 /// </summary>
 public readonly record struct ContainerPort(string Name, int Number, string Protocol);
 
+/// <summary>Where an environment variable's value comes from (KON-416).</summary>
+public enum EnvSourceKind
+{
+    /// <summary>A literal value, written out in the pod spec.</summary>
+    Literal,
+
+    /// <summary>One key of a Secret — <c>valueFrom.secretKeyRef</c>.</summary>
+    Secret,
+
+    /// <summary>One key of a ConfigMap — <c>valueFrom.configMapKeyRef</c>.</summary>
+    ConfigMap,
+
+    /// <summary>A field of the pod itself — <c>valueFrom.fieldRef</c>, e.g. <c>status.podIP</c>.</summary>
+    Field,
+
+    /// <summary>A container's own resource request or limit — <c>valueFrom.resourceFieldRef</c>.</summary>
+    Resource,
+}
+
+/// <summary>
+/// One environment variable a container declares (KON-416).
+/// <para>
+/// Only a <see cref="EnvSourceKind.Literal"/> carries a <paramref name="Value"/>. Every other kind is
+/// a reference the kubelet resolves at start-up, so the spec holds where to look and never the value
+/// itself: <paramref name="SourceName"/> is the object it points at — or, for a resource field, the
+/// container — and <paramref name="SourceKey"/> the key, field path or resource inside it.
+/// </para>
+/// <para>
+/// <c>envFrom</c> is deliberately not modelled here: it names a whole object rather than variables,
+/// and which names it produces is only knowable by reading that object. It is carried as a
+/// <see cref="ConfigUse"/> instead.
+/// </para>
+/// </summary>
+public readonly record struct ContainerEnv(
+    string Name, string Value, EnvSourceKind Source, string SourceName = "", string SourceKey = "");
+
 /// <summary>Per-container status inside a pod — drives the pod-detail container list.</summary>
 public sealed record ContainerStatus
 {
@@ -64,6 +100,12 @@ public sealed record ContainerStatus
 
     /// <summary>Ports the container declares, for the port-forward dialog to offer (KON-170).</summary>
     public IReadOnlyList<ContainerPort> Ports { get; init; } = [];
+
+    /// <summary>
+    /// Environment variables the container declares (KON-416). Read off the spec that came with the
+    /// listing, so the pod-detail section that shows them costs no call of its own.
+    /// </summary>
+    public IReadOnlyList<ContainerEnv> Env { get; init; } = [];
 
     public ContainerRunState RunState { get; init; } = ContainerRunState.Unknown;
 

@@ -130,9 +130,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
         _pods =
         [
-            Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
-            Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
-            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
+            Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses, ApiEnv),
+            Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses, ApiEnv),
+            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses, ApiEnv),
             Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine", WebUses),
             // web is mid-rollout at 2/3, so two pods and not three — the counts and the list have to
             // tell the same story now that the detail page shows them together.
@@ -1361,6 +1361,19 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         Uses(GroupVersionKind.Secret, "ghcr-pull", ConfigUseKind.ImagePullSecret),
     ];
 
+    /// <summary>
+    /// What the api container runs with (KON-416): one literal, one key of the very
+    /// postgres-credentials secret <see cref="ApiUses"/> already names — so the environment section
+    /// and the config section tell the same story — and one field reference, the shape that has no
+    /// object behind it at all.
+    /// </summary>
+    private static IReadOnlyList<ContainerEnv> ApiEnv =>
+    [
+        new("LOG_LEVEL", "info", EnvSourceKind.Literal),
+        new("PGPASSWORD", string.Empty, EnvSourceKind.Secret, "postgres-credentials", "password"),
+        new("POD_IP", string.Empty, EnvSourceKind.Field, SourceKey: "status.podIP"),
+    ];
+
     private static IReadOnlyList<ConfigUse> WebUses =>
     [
         Uses(GroupVersionKind.ConfigMap, "web-config", ConfigUseKind.Volume),
@@ -1372,9 +1385,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// tab is only worth looking at when something is using something — an empty tab proves nothing
     /// about whether the matching works.
     /// </param>
+    /// <param name="env">
+    /// The environment of the pod's <i>first</i> container (KON-416) — seeded on one container rather
+    /// than all of them so the multi-container pod also exercises the case where only one of them
+    /// declares anything.
+    /// </param>
     private static Pod Pod1(
         string name, string ns, PodPhase phase, int containers, int restarts, string node, string owner,
-        string image, IReadOnlyList<ConfigUse>? uses = null) => new()
+        string image, IReadOnlyList<ConfigUse>? uses = null, IReadOnlyList<ContainerEnv>? env = null) => new()
     {
         ConfigUses = uses ?? [],
         // Pods carry the label their owner selects on, so ownership and selector matching agree —
@@ -1397,6 +1415,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 Ready = phase == PodPhase.Running,
                 Restarts = restarts,
                 Ports = PortsFor(image),
+                Env = i == 0 ? env ?? [] : [],
                 RunState = phase == PodPhase.Running ? ContainerRunState.Running : ContainerRunState.Waiting,
                 Reason = phase == PodPhase.Running ? string.Empty : phase.ToString(),
             })

@@ -107,6 +107,18 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
         Labels = [.. pod.Labels.OrderBy(l => l.Key, StringComparer.Ordinal).Select(l => $"{l.Key}={l.Value}")];
 
+        // The environment the containers actually run with (KON-416), grouped per container because
+        // that is how it is declared and the same name may hold different values in two of them. The
+        // container name is only shown when the pod has more than one — on the single-container pod
+        // that most pods are, it names the pod's own container back at you.
+        EnvGroups =
+        [
+            .. all.Where(c => c.Env.Count > 0)
+                .Select(c => new PodEnvGroup(
+                    c.Name, all.Count > 1,
+                    [.. c.Env.Select(e => new PodEnvRow(e, pod.Namespace, cluster.GetConfigDataAsync))])),
+        ];
+
         // One row per object, not per use: the same secret read by two containers is one secret
         // (KON-390). Read off the pod that is already here — ConfigUses came with the listing.
         ConfigRows =
@@ -292,6 +304,11 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     public IReadOnlyList<PodConfigRow> ConfigRows { get; }
 
     public bool HasConfigRows => ConfigRows.Count > 0;
+
+    /// <summary>The environment variables each container declares, one group per container (KON-416).</summary>
+    public IReadOnlyList<PodEnvGroup> EnvGroups { get; }
+
+    public bool HasEnv => EnvGroups.Count > 0;
 
     private readonly Dictionary<string, ContainerStatus> _containerByName;
 
@@ -904,6 +921,79 @@ public sealed partial class PodConfigRow : ObservableObject
             IsBusy = false;
         }
     }
+}
+
+/// <summary>
+/// The environment of one container, on the pod's Overview tab (KON-416). <paramref name="showContainer"/>
+/// is false on a single-container pod, where the heading would only repeat the pod.
+/// </summary>
+public sealed class PodEnvGroup(string container, bool showContainer, IReadOnlyList<PodEnvRow> rows)
+{
+    public string Container { get; } = container;
+    public bool ShowContainer { get; } = showContainer;
+    public IReadOnlyList<PodEnvRow> Rows { get; } = rows;
+}
+
+/// <summary>
+/// One environment variable a container declares (KON-416) — its name, and either the literal value
+/// from the spec or where the value comes from.
+/// </summary>
+public sealed class PodEnvRow
+{
+    public PodEnvRow(
+        ContainerEnv env, string ns,
+        Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> fetch)
+    {
+        Name = env.Name;
+        Value = env.Value;
+        IsLiteral = env.Source == EnvSourceKind.Literal;
+
+        // Where it comes from, said the way you would say it out loud, because that is the answer to
+        // the question this section gets asked: not "what is DB_PASSWORD" but "where is it set".
+        SourceText = env.Source switch
+        {
+            EnvSourceKind.Secret => $"from secret {env.SourceName}.{env.SourceKey}",
+            EnvSourceKind.ConfigMap => $"from configmap {env.SourceName}.{env.SourceKey}",
+            EnvSourceKind.Field => $"from field {env.SourceKey}",
+            EnvSourceKind.Resource when env.SourceName.Length > 0 => $"from resource {env.SourceKey} of {env.SourceName}",
+            EnvSourceKind.Resource => $"from resource {env.SourceKey}",
+            _ => string.Empty,
+        };
+
+        // A secret-backed variable can be opened on the same eye the config page uses. Borrowed whole
+        // rather than reimplemented, so the rule that makes that page safe holds here too: the value
+        // is fetched when the eye is pressed and dropped when it is pressed again, never cached
+        // (KON-390). A ConfigMap key is deliberately not offered the same way — it would be a second
+        // call for something the Config & secrets section below already unfolds.
+        if (env.Source == EnvSourceKind.Secret)
+            Secret = new ConfigObjectRow(
+                new ResourceRef(GroupVersionKind.Secret, ns, env.SourceName), type: null,
+                [new ConfigKey(env.SourceKey, 0)], TimeSpan.Zero, fetch, secret: true).BuildKeyRows()[0];
+    }
+
+    public string Name { get; }
+
+    /// <summary>The literal value; empty for everything that came from a <c>valueFrom</c>.</summary>
+    public string Value { get; }
+
+    public bool IsLiteral { get; }
+
+    /// <summary>"from secret db.password" and the like; empty for a literal.</summary>
+    public string SourceText { get; }
+
+    /// <summary>The reveal for a secret-backed variable, or null when there is nothing to reveal.</summary>
+    public ConfigKeyRow? Secret { get; }
+
+    public bool IsSecret => Secret is not null;
+
+    /// <summary>
+    /// The accessible name of the reveal, which says which of the two pressing it does (KON-56) —
+    /// and which variable it does it to. The page carries eyes in two sections now, and a screen
+    /// reader that hears "Show the value" three times has been told nothing.
+    /// </summary>
+    public string ShowTip => $"Show the value of {Name}";
+
+    public string HideTip => $"Hide the value of {Name}";
 }
 
 /// <summary>An event row in the pod-detail Events tab.</summary>
