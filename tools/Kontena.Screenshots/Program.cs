@@ -79,25 +79,6 @@ internal static class Program
     private static readonly BackendChipStyle Kubernetes =
         new(KubernetesBrand.Glyph, KubernetesBrand.Accent);
 
-    // The other half of the KON-418 dialog: the same object the fields are a view of. Base64, which
-    // is the point — it is what the editor shows today, and what the field view masks.
-    private const string SecretYaml =
-        """
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: postgres-credentials
-          namespace: app
-          labels:
-            app.kubernetes.io/name: postgres
-          annotations:
-            kontena.io/rotated-at: "2026-08-11T09:14:00Z"
-        type: Opaque
-        data:
-          password: czNjcjN0LWJ1dC1ub3QtcmVhbGx5
-          username: cG9zdGdyZXM=
-          ca.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURkekNDQWwrZ0F3SUJBZ0lFYlZlUXdEQU5CZ2txaGtpRzl3MEJBUXNGQURCTk1Rc3dDUVlEVlFRR0V3SlYKUXpFTk1Bc0dBMVVFQ2hNRVFXTnRaVEVYTUJVR0ExVUVDeE1PUTJ4MWMzUmxjaUJTYjI5MElFTkJNUmN3RlFZRApWUVFERXc1amJIVnpkR1Z5TFhKdmIzUXRZMkV3SGhjTk1qWXdOakE1TVRJd01EQXdXaGNOTXpZd05qQTNNVEl3Ck1EQXdXakJOTVFzd0NRWURWUVFHRXdKVlV6RU5NQXNHQTFVRUNoTUVRV050WlRFWE1CVUdBMVVFQ3hNT1EyeDEKY3pSbGNpQlNiMjkwSUVOQk1SY3dGUVlEVlFRREV3NWpiSFZ6ZEdWeUxYSnZiM1F0WTJFPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
-        """;
 
     [STAThread]
     public static int Main(string[] args)
@@ -805,55 +786,49 @@ internal static class Program
 
                 break;
 
-            // KON-418 — the structured Secret editor, over the secrets list it is opened from. A
-            // design preview: the rows are handed in rather than parsed out of a manifest, because
-            // what is up for review is the shape, not the plumbing.
+            // KON-418 — the Data tab as fields. Reached the way the app reaches it: open the
+            // secret's detail in the drawer, then run the page's own Edit command, so a shot cannot
+            // show a state the buttons do not really produce.
             case "secret-edit":
             case "secret-edit-revealed":
             case "secret-edit-add":
-            case "secret-edit-yaml":
+            case "secret-edit-binary":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("secrets");
                 Settle(rounds: 30);
 
-                // Four rows do not fit the 620 the manifest editor's shell is, so the add state
-                // drops the binary key rather than showing a new row half off the bottom edge —
-                // the binary notice has the other three scenes.
-                var edited = new Kontena.App.ViewModels.SecretEditDialogViewModel(
-                    "postgres-credentials", "app", "Opaque", "9d",
-                    [
-                        new Kontena.App.ViewModels.SecretFieldRow("password", "24 B", "s3cr3t-but-not-really"),
-                        new Kontena.App.ViewModels.SecretFieldRow("username", "8 B", "postgres"),
-                        // The state a field editor cannot serve: bytes get the notice and the YAML
-                        // view, not a text box one keystroke could corrupt.
-                        .. scene == "secret-edit-add"
-                            ? Array.Empty<Kontena.App.ViewModels.SecretFieldRow>()
-                            : [new Kontena.App.ViewModels.SecretFieldRow("ca.crt", "1.7 kB", string.Empty, binary: true)],
-                    ],
-                    yaml: SecretYaml);
+                // app-tls is the one whose keys are bytes, which is the state a field cannot serve.
+                var subject = scene == "secret-edit-binary" ? "app-tls" : "postgres-credentials";
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterSecretsViewModel editable)
+                    editable.Items.FirstOrDefault(r => r.Name == subject)?.OpenCommand.Execute(null);
 
-                if (scene == "secret-edit-revealed")
-                {
-                    // One key read, and the same key rewritten — so the eye's two states, the
-                    // "changed" mark, the per-row undo and a live Apply all stand in one frame.
-                    var password = edited.Keys[0];
-                    password.ToggleCommand.Execute(null);
-                    password.Value = "9f2c-rotated-2026-08-20";
-                }
-
-                if (scene == "secret-edit-add")
-                {
-                    edited.AddKeyCommand.Execute(null);
-                    edited.Keys[^1].Name = "PGSSLMODE";
-                    edited.Keys[^1].Value = "verify-full";
-                }
-
-                if (scene == "secret-edit-yaml")
-                    edited.SelectTabCommand.Execute("yaml");
-
-                vm.Dialog = edited;
                 Settle(rounds: 30);
+
+                if (vm.Detail is Kontena.App.ViewModels.ClusterConfigDetailViewModel editing)
+                {
+                    editing.BeginEditCommand.Execute(null);
+                    SettleUntil(() => editing.IsEditing && editing.Keys.All(k => !k.IsBusy), maxRounds: 120);
+
+                    if (scene == "secret-edit-revealed")
+                    {
+                        // One key read and rewritten, so the eye's two states, the "changed" mark,
+                        // the per-row undo and a live Apply all stand in the same frame.
+                        var password = editing.Keys[0];
+                        password.ToggleCommand.Execute(null);
+                        password.Value = "9f2c-rotated-2026-08-20";
+                    }
+
+                    if (scene == "secret-edit-add")
+                    {
+                        editing.AddKeyCommand.Execute(null);
+                        editing.Keys[^1].Name = "PGSSLMODE";
+                        editing.Keys[^1].Value = "verify-full";
+                    }
+
+                    Settle(rounds: 30);
+                }
+
                 break;
 
             case "pod":

@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 
@@ -21,6 +23,7 @@ namespace Kontena.App.ViewModels;
 public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailViewModel
 {
     private readonly ConfigObjectRow _row;
+    private readonly IClusterEngine _cluster;
 
     public ClusterConfigDetailViewModel(
         IClusterEngine cluster, ConfigObjectRow row, Action<Pod>? onOpenPod = null,
@@ -28,6 +31,7 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
         : base(cluster, RefOf(row), onOpenPod, onDelete)
     {
         _row = row;
+        _cluster = cluster;
         Keys = [.. row.BuildKeyRows()];
 
         _ = LoadPodsAsync();
@@ -47,7 +51,14 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
 
     public string TypeText => _row.Type;
     public string AgeText => _row.Age;
-    public string KeyCountText => _row.KeyCount;
+    /// <summary>
+    /// While editing, what is on screen — the listing's count would say "2 keys" over three rows the
+    /// moment you add one, and a header that disagrees with the list under it is a header nobody
+    /// trusts.
+    /// </summary>
+    public string KeyCountText => IsEditing
+        ? Keys.Count == 1 ? "1 key" : $"{Keys.Count} keys"
+        : _row.KeyCount;
 
     /// <summary>
     /// The keys, each able to fetch its own value on request. Same rows, same discipline as the list
@@ -57,6 +68,147 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
     public ObservableCollection<ConfigKeyRow> Keys { get; }
 
     public bool HasKeys => Keys.Count > 0;
+
+    // ---- Editing the Data tab (KON-418) ----------------------------------------------------------
+    //
+    // Editing a Secret used to mean the manifest editor as a modal (KON-252), which was right when
+    // these two kinds were rows that expanded and had nowhere to put a tab. KON-330 gave them a
+    // detail with tabs, and the modal outlived its reason: a Secret's keys are already on this tab,
+    // masked, with the reveal and the copy the page was built around. So editing happens here, and
+    // "Edit" on the list is now simply the way in to this page.
+    //
+    // DESIGN PREVIEW: Check and Apply set a status and send nothing. The real ones would go through
+    // ManifestEditorViewModel's flow — the manifest this tab is a view of, with the fields written
+    // back into it — so there is no second apply path and no new engine API.
+
+    /// <summary>Whether the object can be written at all — false hides the button entirely.</summary>
+    public bool CanEdit => _cluster.Capabilities.Apply;
+
+    [ObservableProperty] private bool _isEditing;
+
+    partial void OnIsEditingChanged(bool value) => Recompute();
+
+    /// <summary>The rows as they stood when editing began, so Revert has something to restore.</summary>
+    private ConfigKeyRow[] _snapshot = [];
+
+    /// <summary>
+    /// Turn the readings into fields (KON-418).
+    /// <para>
+    /// Every value is fetched here, at once — which is a weaker promise than this page makes while
+    /// reading, where a value is fetched per key and dropped again when you hide it. It has to be:
+    /// Apply sends the whole object back, so a key nobody looked at still has to be in hand. Making
+    /// it a button rather than the state the page opens in is what keeps the reading promise intact
+    /// for the times you only came to look.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task BeginEditAsync()
+    {
+        Status = null;
+        StatusIsError = false;
+        _snapshot = [.. Keys];
+
+        foreach (var row in Keys)
+        {
+            Watch(row);
+            await row.BeginEditAsync();
+        }
+
+        IsEditing = true;
+        Recompute();
+    }
+
+    /// <summary>Leave editing, dropping every secret value the way hiding one does.</summary>
+    [RelayCommand]
+    private void CancelEdit()
+    {
+        Restore();
+
+        foreach (var row in Keys)
+            row.EndEdit();
+
+        IsEditing = false;
+        Status = null;
+        StatusIsError = false;
+        Recompute();
+    }
+
+    /// <summary>Throw away the edits without leaving the fields — the manifest editor's Revert.</summary>
+    [RelayCommand]
+    private void Revert()
+    {
+        Restore();
+
+        foreach (var row in Keys)
+            row.UndoCommand.Execute(null);
+
+        Status = null;
+        StatusIsError = false;
+        Recompute();
+    }
+
+    private void Restore()
+    {
+        Keys.Clear();
+        foreach (var row in _snapshot)
+            Keys.Add(row);
+    }
+
+    [RelayCommand]
+    private void AddKey()
+    {
+        var row = ConfigKeyRow.NewKey(IsSecret);
+        Watch(row);
+        Keys.Add(row);
+        Recompute();
+    }
+
+    private void Watch(ConfigKeyRow row)
+    {
+        row.Changed = Recompute;
+        row.Removed = r =>
+        {
+            Keys.Remove(r);
+            Recompute();
+        };
+    }
+
+    /// <summary>Whether anything here differs from what the cluster holds.</summary>
+    public bool IsDirty =>
+        Keys.Count != _snapshot.Length || Keys.Any(k => k.IsChanged || k.IsNew);
+
+    public bool CanApply => IsEditing && IsDirty;
+
+    /// <summary>The result of the last check or apply, in the cluster's words where there are any.</summary>
+    [ObservableProperty] private string? _status;
+
+    [ObservableProperty] private bool _statusIsError;
+
+    public IBrush StatusBrush =>
+        new SolidColorBrush(Color.Parse(StatusIsError ? "#F87171" : "#34D399"));
+
+    partial void OnStatusIsErrorChanged(bool value) => OnPropertyChanged(nameof(StatusBrush));
+
+    /// <summary>
+    /// Ask the cluster what this would do, without doing it — the same server-side dry-run the
+    /// manifest editor offers, and the answer to the objection that a field editor encodes out of
+    /// sight: you can still see exactly what the apiserver would accept.
+    /// </summary>
+    [RelayCommand]
+    private void Check() =>
+        Status = $"Would change · {Reference.Kind.Kind}/{Reference.Name} configured";
+
+    [RelayCommand]
+    private void Apply() =>
+        Status = $"Applied · {Reference.Kind.Kind}/{Reference.Name} configured";
+
+    private void Recompute()
+    {
+        OnPropertyChanged(nameof(HasKeys));
+        OnPropertyChanged(nameof(KeyCountText));
+        OnPropertyChanged(nameof(IsDirty));
+        OnPropertyChanged(nameof(CanApply));
+    }
 
     /// <summary>"Used by", not "Pods": these pods are not owned by this object, they read it.</summary>
     public override string PodsTabLabel => "Used by";

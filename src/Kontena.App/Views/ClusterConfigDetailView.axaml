@@ -27,7 +27,19 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                        <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
+                        <!-- Edit turns the Data tab into fields (KON-418). It sits here rather than
+                             opening a window because the keys, the mask and the reveal are already on
+                             that tab: a second surface would be the same object twice. -->
+                        <Button Classes="pill" Command="{Binding BeginEditCommand}"
+                                IsVisible="{Binding !IsEditing}" IsEnabled="{Binding CanEdit}"
+                                ToolTip.Tip="Edit the keys and their values">Edit</Button>
+                        <!-- Cancel, not "Done": leaving throws the edits away. What it still needs is
+                             a confirm when there are any — the drawer also closes on Esc and on a
+                             click beside it, and a mis-click should not lose a rewritten secret. -->
+                        <Button Classes="pill" Command="{Binding CancelEditCommand}"
+                                IsVisible="{Binding IsEditing}">Cancel</Button>
+                        <Button Classes="pill" Command="{Binding DeleteCommand}"
+                                IsVisible="{Binding CanDelete}">Delete</Button>
                     </StackPanel>
                 </Grid>
 
@@ -65,69 +77,177 @@
 
         <Panel Grid.Row="1" Margin="28,20">
 
-            <!-- Data: the keys, and their values only once asked for -->
-            <ScrollViewer IsVisible="{Binding IsOverviewSelected}">
-                <StackPanel Spacing="16">
+            <!-- Data: the keys, and their values only once asked for — or, once you press Edit,
+                 the same keys as fields (KON-418). -->
+            <Grid IsVisible="{Binding IsOverviewSelected}" RowDefinitions="*,Auto">
+                <ScrollViewer Grid.Row="0">
+                    <StackPanel Spacing="16">
 
-                    <!-- How the pods use it, which is what decides whether this can go. Sits here
-                         rather than on the Used by tab: it is the answer, the pod list is the
-                         evidence for it. -->
-                    <StackPanel Spacing="3" IsVisible="{Binding UsedBySummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                        <TextBlock Text="USED BY" Classes="colhead"/>
-                        <TextBlock Text="{Binding UsedBySummary}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
-                    </StackPanel>
+                        <!-- How the pods use it, which is what decides whether this can go. Sits here
+                             rather than on the Used by tab: it is the answer, the pod list is the
+                             evidence for it. -->
+                        <StackPanel Spacing="3" IsVisible="{Binding UsedBySummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <TextBlock Text="USED BY" Classes="colhead"/>
+                            <TextBlock Text="{Binding UsedBySummary}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                        </StackPanel>
 
-                    <ItemsControl ItemsSource="{Binding Keys}" IsVisible="{Binding HasKeys}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ConfigKeyRow">
-                                <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                        CornerRadius="{StaticResource Radius}" Padding="14,12" Margin="0,0,0,8">
-                                    <StackPanel>
-                                        <Grid ColumnDefinitions="1.4*,0.6*,Auto,Auto">
-                                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
-                                                       Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Size}" FontFamily="{StaticResource Mono}" FontSize="12"
-                                                       Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                                            <Button Grid.Column="2" Classes="pill" Command="{Binding ToggleCommand}"
-                                                    IsEnabled="{Binding !IsBusy}" Margin="0,0,8,0" IsVisible="{Binding IsSecret}">
-                                                <Panel>
-                                                    <TextBlock Text="Show" IsVisible="{Binding !IsRevealed}"/>
-                                                    <TextBlock Text="Hide" IsVisible="{Binding IsRevealed}"/>
-                                                </Panel>
-                                            </Button>
-                                            <Button Grid.Column="3" Classes="pill" Click="CopyValue" Tag="{Binding}"
-                                                    ToolTip.Tip="Copy the value without putting it on screen">Copy</Button>
-                                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Keys}" IsVisible="{Binding HasKeys}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ConfigKeyRow">
+                                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                            CornerRadius="{StaticResource Radius}" Padding="14,12" Margin="0,0,0,8">
+                                        <StackPanel>
 
-                                        <!-- Revealed, and only while revealed: hiding drops the value rather
-                                             than folding it away. -->
-                                        <Border IsVisible="{Binding IsRevealed}" Margin="0,10,0,0"
-                                                Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource BorderSoft}"
-                                                BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="10,8">
-                                            <StackPanel>
-                                                <SelectableTextBlock Text="{Binding Value}" IsVisible="{Binding !IsBinary}"
-                                                                     FontFamily="{StaticResource Mono}" FontSize="12.5"
-                                                                     Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
-                                                <!-- Bytes are never drawn as characters: half a TLS key rendered as
-                                                     text is noise, and it is not what the value is. -->
-                                                <TextBlock Text="{Binding BinaryNotice}" IsVisible="{Binding IsBinary}"
-                                                           FontSize="12.5" FontStyle="Italic" Foreground="{DynamicResource TextDim}"/>
+                                            <!-- Reading. Nested rather than combined into one condition:
+                                                 an IsVisible whose binding cannot resolve falls back to
+                                                 its default, which is true, and that ships a row that
+                                                 nothing throws about (KON-416). -->
+                                            <StackPanel IsVisible="{Binding !IsEditing}">
+                                                <Grid ColumnDefinitions="1.4*,0.6*,Auto,Auto" MinHeight="26">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                               Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Size}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                                    <!-- An eye rather than a "Show"/"Hide" pill: the same
+                                                         call the pod detail made inside its cards, and the
+                                                         glyph carries the state in the width a word cannot.
+                                                         Its tooltip is its accessible name and names the row
+                                                         (KON-56, KON-416). -->
+                                                    <Button Grid.Column="2" Classes="qa" Classes.on="{Binding IsRevealed}"
+                                                            Command="{Binding ToggleCommand}" IsEnabled="{Binding !IsBusy}"
+                                                            IsVisible="{Binding IsSecret}" Width="26" Height="26" Margin="0,0,8,0"
+                                                            ToolTip.Tip="{Binding RevealTip}">
+                                                        <Panel>
+                                                            <Path Classes="icon" Width="14" Height="14" IsVisible="{Binding !IsRevealed}"
+                                                                  Data="{StaticResource IconEye}"/>
+                                                            <Path Classes="icon" Width="14" Height="14" IsVisible="{Binding IsRevealed}"
+                                                                  Data="{StaticResource IconEyeOff}"/>
+                                                        </Panel>
+                                                    </Button>
+                                                    <Button Grid.Column="3" Classes="pill" Click="CopyValue" Tag="{Binding}"
+                                                            ToolTip.Tip="Copy the value without putting it on screen">Copy</Button>
+                                                </Grid>
+
+                                                <!-- Revealed, and only while revealed: hiding drops the value rather
+                                                     than folding it away. -->
+                                                <Border IsVisible="{Binding IsRevealed}" Margin="0,10,0,0"
+                                                        Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource BorderSoft}"
+                                                        BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="10,8">
+                                                    <StackPanel>
+                                                        <SelectableTextBlock Text="{Binding Value}" IsVisible="{Binding !IsBinary}"
+                                                                             FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                             Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                                        <!-- Bytes are never drawn as characters: half a TLS key rendered as
+                                                             text is noise, and it is not what the value is. -->
+                                                        <TextBlock Text="{Binding BinaryNotice}" IsVisible="{Binding IsBinary}"
+                                                                   FontSize="12.5" FontStyle="Italic" Foreground="{DynamicResource TextDim}"/>
+                                                    </StackPanel>
+                                                </Border>
                                             </StackPanel>
-                                        </Border>
 
-                                        <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}"
-                                                   Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                                            <!-- Editing: the same row as fields. -->
+                                            <StackPanel IsVisible="{Binding IsEditing}" Spacing="8">
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" MinHeight="26">
+                                                    <TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" PlaceholderText="KEY_NAME"
+                                                             FontFamily="{StaticResource Mono}" FontSize="12.5" Margin="0,0,10,0"/>
 
-                    <!-- Valid, and worth saying rather than showing a blank panel. -->
-                    <TextBlock Text="This object holds no keys." IsVisible="{Binding !HasKeys}"
-                               Foreground="{DynamicResource TextFaint}" FontSize="12.5"/>
-                </StackPanel>
-            </ScrollViewer>
+                                                    <!-- What changed, on the row that changed it, so Revert is
+                                                         not the only way to find out. -->
+                                                    <Border Grid.Column="1" CornerRadius="20" Padding="8,3" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                            Background="{DynamicResource Surface2}" IsVisible="{Binding IsChanged}">
+                                                        <TextBlock Text="changed" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                                    </Border>
+                                                    <Border Grid.Column="1" CornerRadius="20" Padding="8,3" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                            Background="{DynamicResource Surface2}" IsVisible="{Binding IsNew}">
+                                                        <TextBlock Text="new" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                                    </Border>
+
+                                                    <TextBlock Grid.Column="2" Text="{Binding Size}" IsVisible="{Binding HasSize}"
+                                                               FontFamily="{StaticResource Mono}" FontSize="12"
+                                                               Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                                                    <Button Grid.Column="3" Classes="qa" Command="{Binding UndoCommand}" Width="26" Height="26"
+                                                            Margin="0,0,6,0" IsVisible="{Binding IsChanged}"
+                                                            ToolTip.Tip="Put this key back the way the cluster has it">
+                                                        <Path Classes="icon" Width="14" Height="14" Data="{StaticResource IconRefresh}"/>
+                                                    </Button>
+
+                                                    <Button Grid.Column="4" Classes="qa danger" Command="{Binding RemoveCommand}" Width="26" Height="26"
+                                                            ToolTip.Tip="{Binding RemoveTip}">
+                                                        <Path Classes="icon" Width="14" Height="14" Data="{StaticResource IconTrash}"/>
+                                                    </Button>
+                                                </Grid>
+
+                                                <!-- One box, masked, with the same eye switching the mask.
+                                                     While editing it only masks: the value is already here,
+                                                     and dropping it would throw away an edit the cluster
+                                                     has not seen. -->
+                                                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !IsBinary}">
+                                                    <TextBox Grid.Column="0" Text="{Binding Value, Mode=TwoWay}" PasswordChar="•"
+                                                             RevealPassword="{Binding IsRevealed}" AcceptsReturn="False"
+                                                             FontFamily="{StaticResource Mono}" FontSize="12.5" Margin="0,0,8,0"/>
+                                                    <Button Grid.Column="1" Classes="qa" Classes.on="{Binding IsRevealed}"
+                                                            Command="{Binding ToggleCommand}" IsVisible="{Binding IsSecret}"
+                                                            Width="30" Height="30" VerticalAlignment="Center"
+                                                            ToolTip.Tip="{Binding RevealTip}">
+                                                        <Panel>
+                                                            <Path Classes="icon" Width="15" Height="15" IsVisible="{Binding !IsRevealed}"
+                                                                  Data="{StaticResource IconEye}"/>
+                                                            <Path Classes="icon" Width="15" Height="15" IsVisible="{Binding IsRevealed}"
+                                                                  Data="{StaticResource IconEyeOff}"/>
+                                                        </Panel>
+                                                    </Button>
+                                                </Grid>
+
+                                                <!-- Bytes get no text box at all: one keystroke in a keystore
+                                                     corrupts the whole of it. -->
+                                                <Border IsVisible="{Binding IsBinary}" Background="{DynamicResource SurfaceRaised}"
+                                                        BorderBrush="{DynamicResource BorderSoft}" BorderThickness="1"
+                                                        CornerRadius="{StaticResource RadiusSm}" Padding="10,8">
+                                                    <TextBlock Text="{Binding BinaryEditNotice}" FontSize="12.5" FontStyle="Italic"
+                                                               Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}"
+                                                       Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button Classes="ghost" HorizontalAlignment="Left" Command="{Binding AddKeyCommand}"
+                                IsVisible="{Binding IsEditing}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Classes="icon" Width="13" Height="13" Data="{StaticResource IconPlus}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Add key" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Valid, and worth saying rather than showing a blank panel. -->
+                        <TextBlock Text="This object holds no keys." IsVisible="{Binding !HasKeys}"
+                                   Foreground="{DynamicResource TextFaint}" FontSize="12.5"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Pinned rather than at the end of the list: on an object with twenty keys, Apply
+                     would otherwise be somewhere below the fold. The same three actions the manifest
+                     editor has, including the cluster's own dry-run. -->
+                <Grid Grid.Row="1" IsVisible="{Binding IsEditing}" Margin="0,14,0,0" ColumnDefinitions="*,Auto,Auto,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Status}" VerticalAlignment="Center" FontSize="12.5"
+                               TextWrapping="Wrap" Margin="0,0,14,0"
+                               IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Foreground="{Binding StatusBrush}"/>
+                    <Button Grid.Column="1" Classes="pill" Margin="0,0,8,0" Command="{Binding RevertCommand}"
+                            IsEnabled="{Binding IsDirty}">Revert</Button>
+                    <Button Grid.Column="2" Classes="pill" Margin="0,0,8,0" Command="{Binding CheckCommand}"
+                            IsEnabled="{Binding CanApply}"
+                            ToolTip.Tip="Ask the cluster what this would change, without changing it">Check</Button>
+                    <Button Grid.Column="3" Classes="primary" Command="{Binding ApplyCommand}"
+                            IsEnabled="{Binding CanApply}">Apply</Button>
+                </Grid>
+            </Grid>
 
             <views:RelatedPodsView IsVisible="{Binding IsPodsSelected}"/>
             <views:ObjectEventsView IsVisible="{Binding IsEventsSelected}"/>
