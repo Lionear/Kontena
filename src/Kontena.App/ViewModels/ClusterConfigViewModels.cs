@@ -228,8 +228,16 @@ public sealed partial class ConfigKeyRow : ObservableObject
     }
 
     public string Name { get; }
-    public string Size { get; }
     public bool IsSecret { get; }
+
+    /// <summary>
+    /// The size of the value. Seeded from the listing, and corrected from the value itself once one
+    /// has been fetched — a row built without a listing behind it (the pod page's environment
+    /// section, KON-416) starts out not knowing it.
+    /// </summary>
+    [ObservableProperty] private string _size = string.Empty;
+
+    partial void OnSizeChanged(string value) => OnPropertyChanged(nameof(BinaryNotice));
 
     /// <summary>The value, when it is on screen. Null is both "not asked for" and "hidden again".</summary>
     [ObservableProperty] private string? _value;
@@ -295,6 +303,7 @@ public sealed partial class ConfigKeyRow : ObservableObject
             }
 
             IsBinary = entry.IsBinary;
+            Size = Format.Size(entry.SizeBytes);
             Value = entry.Text;
             IsRevealed = true;
         }
