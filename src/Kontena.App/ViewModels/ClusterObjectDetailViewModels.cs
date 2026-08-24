@@ -439,12 +439,17 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     public string UpToDateText => _workload.UpToDate.ToString(CultureInfo.InvariantCulture);
     public string AvailableText => _workload.Available.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// The same reading the grid gives, in the same colours (KON-420). It used to differ on two of the
+    /// four: Progressing was info blue and Paused was amber, so the one status this page is opened for
+    /// mid-rollout looked like a notice on the row and like a warning here.
+    /// </summary>
     public IBrush RolloutBrush => new SolidColorBrush(Color.Parse(_workload.RolloutStatus switch
     {
         RolloutStatus.Complete => "#34D399",
-        RolloutStatus.Progressing => "#5AB8FF",
+        RolloutStatus.Progressing => "#F5B14C",
         RolloutStatus.Degraded => "#F87171",
-        _ => "#F5B14C",
+        _ => "#5C6675",
     }));
 
     public bool CanScale => _onScale is not null && _workload.IsScalable;
