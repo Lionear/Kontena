@@ -93,7 +93,8 @@ public partial class ClusterSecretsViewModel : ClusterListPageViewModel<ConfigOb
             .Select(s => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.Secret, s.Namespace, s.Name),
                 s.Type, s.Keys, s.Age, _cluster.GetConfigDataAsync, secret: true,
-                onDelete: ConfirmDelete, onEdit: Edit, onOpen: Open)),
+                onDelete: ConfirmDelete, onEdit: Edit, onOpen: Open,
+                externallyManaged: ManagedSecrets.IsExternallyManaged(s.Labels))),
     ];
 
     protected override bool Matches(ConfigObjectRow row, string term) =>
@@ -114,9 +115,11 @@ public sealed partial class ConfigObjectRow : ObservableObject
         ResourceRef reference, string? type, IReadOnlyList<ConfigKey> keys, TimeSpan age,
         Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> fetch,
         bool secret, Action<ConfigObjectRow>? onDelete = null, Action<ConfigObjectRow>? onEdit = null,
-        Action<ConfigObjectRow>? onOpen = null)
+        Action<ConfigObjectRow>? onOpen = null, bool externallyManaged = false)
     {
         ArgumentNullException.ThrowIfNull(keys);
+
+        IsExternallyManaged = externallyManaged;
 
         Reference = reference;
         _fetch = fetch;
@@ -154,6 +157,13 @@ public sealed partial class ConfigObjectRow : ObservableObject
     public bool HasType => IsSecret;
 
     /// <summary>
+    /// Whether a controller keeps this object's contents up to date — today that means the External
+    /// Secrets Operator (KON-422). An edit here would be reconciled away, so the editor does not
+    /// offer itself.
+    /// </summary>
+    public bool IsExternallyManaged { get; }
+
+    /// <summary>
     /// The key names and sizes that came with the listing. Names only — the list holds no values at
     /// all, which is what lets a page of fifty secrets exist without any of them being anywhere in
     /// this process. Asking for one is the detail's job (KON-330).
@@ -189,8 +199,13 @@ public sealed partial class ConfigObjectRow : ObservableObject
     /// that meant the list itself pulling every value of every object it listed.
     /// </para>
     /// </summary>
-    public IReadOnlyList<ConfigKeyRow> BuildKeyRows() =>
-        [.. Keys.Select(k => new ConfigKeyRow(k, ResolveAsync, IsSecret))];
+    /// <param name="keys">
+    /// The keys to build from, for a caller holding a fresher answer than the listing did — the
+    /// detail after an apply, whose object now has one key more or one key less than the row it was
+    /// opened from (KON-422). Defaults to the listing's own.
+    /// </param>
+    public IReadOnlyList<ConfigKeyRow> BuildKeyRows(IReadOnlyList<ConfigKey>? keys = null) =>
+        [.. (keys ?? Keys).Select(k => new ConfigKeyRow(k, ResolveAsync, IsSecret))];
 
     /// <summary>
     /// Fetch one key's value, now.
@@ -215,7 +230,10 @@ public sealed partial class ConfigKeyRow : ObservableObject
 
     public ConfigKeyRow(ConfigKey key, Func<string, Task<ConfigEntry?>> resolve, bool secret)
     {
+        ArgumentNullException.ThrowIfNull(key);
+
         _resolve = resolve;
+        _originalName = key.Name;
 
         Name = key.Name;
         Size = Format.Size(key.SizeBytes);
@@ -227,8 +245,26 @@ public sealed partial class ConfigKeyRow : ObservableObject
             _ = ShowAsync();
     }
 
-    public string Name { get; }
-    public bool IsSecret { get; }
+    /// <summary>
+    /// A key that is not in the object yet (KON-418). It has no stored value to fetch and no size —
+    /// "0 B" would read as a value that is there and empty — and it starts revealed, because you
+    /// cannot type what you cannot see.
+    /// </summary>
+    public static ConfigKeyRow NewKey(bool secret) =>
+        new(new ConfigKey(string.Empty, 0), _ => Task.FromResult<ConfigEntry?>(null), secret)
+        {
+            IsNew = true,
+            IsEditing = true,
+            IsRevealed = true,
+            Value = string.Empty,
+        };
+
+    /// <summary>The name the object actually holds, which is what a fetch has to ask for.</summary>
+    private readonly string _originalName = string.Empty;
+
+    private string? _originalValue;
+
+    [ObservableProperty] private string _name = string.Empty;
 
     /// <summary>
     /// The size of the value. Seeded from the listing, and corrected from the value itself once one
@@ -237,21 +273,74 @@ public sealed partial class ConfigKeyRow : ObservableObject
     /// </summary>
     [ObservableProperty] private string _size = string.Empty;
 
-    partial void OnSizeChanged(string value) => OnPropertyChanged(nameof(BinaryNotice));
+    partial void OnSizeChanged(string value)
+    {
+        OnPropertyChanged(nameof(BinaryNotice));
+        OnPropertyChanged(nameof(BinaryEditNotice));
+    }
+
+    /// <summary>Nothing to show where there is no stored key yet.</summary>
+    public bool HasSize => !IsNew;
+
+    public bool IsSecret { get; }
+
+    /// <summary>
+    /// Whether this row is a field rather than a reading (KON-418). Set by the detail page when it
+    /// enters edit mode, never by the row itself: one key editable while the rest are not is a state
+    /// nothing here would know how to apply.
+    /// </summary>
+    [ObservableProperty] private bool _isEditing;
+
+    /// <summary>Added in this edit, so there is nothing to put back and no size to show.</summary>
+    [ObservableProperty] private bool _isNew;
+
+    partial void OnIsNewChanged(bool value) => OnPropertyChanged(nameof(HasSize));
+
+    partial void OnNameChanged(string value) => Recompute();
+
+    private void Recompute()
+    {
+        OnPropertyChanged(nameof(IsChanged));
+        OnPropertyChanged(nameof(RevealTip));
+        OnPropertyChanged(nameof(RemoveTip));
+        Changed?.Invoke();
+    }
+
+    /// <summary>Raised on every edit so the page can re-decide whether Apply has anything to send.</summary>
+    public Action? Changed { get; set; }
+
+    /// <summary>Set by the page so a row can take itself off the list.</summary>
+    public Action<ConfigKeyRow>? Removed { get; set; }
+
+    public bool IsChanged =>
+        !IsNew && IsEditing
+        && (!string.Equals(Name, _originalName, StringComparison.Ordinal)
+            || !string.Equals(Value, _originalValue, StringComparison.Ordinal));
 
     /// <summary>The value, when it is on screen. Null is both "not asked for" and "hidden again".</summary>
     [ObservableProperty] private string? _value;
+
+    partial void OnValueChanged(string? value) => Recompute();
 
     [ObservableProperty] private bool _isRevealed;
     [ObservableProperty] private bool _isBusy;
 
     partial void OnIsRevealedChanged(bool value) => OnPropertyChanged(nameof(RevealTip));
 
+    partial void OnIsEditingChanged(bool value) => Recompute();
+
     /// <summary>
     /// The tooltip of an icon-only reveal button, which is also its accessible name (KON-56) — so it
-    /// has to say which of the two pressing it does, not what the row is showing (KON-390).
+    /// has to say which of the two pressing it does, not what the row is showing (KON-390), and which
+    /// row it is on: a page of buttons all called "Show the value" tells a screen reader nothing
+    /// (KON-416).
     /// </summary>
-    public string RevealTip => IsRevealed ? "Hide the value" : "Show the value";
+    public string RevealTip => Name is { Length: > 0 } key
+        ? IsRevealed ? $"Hide the value of {key}" : $"Show the value of {key}"
+        : IsRevealed ? "Hide the value" : "Show the value";
+
+    /// <summary>Same rule as <see cref="RevealTip"/>, for the other icon-only button on the row.</summary>
+    public string RemoveTip => Name is { Length: > 0 } key ? $"Remove the key {key}" : "Remove this key";
 
     /// <summary>Set when the value is bytes rather than text — a certificate, a keystore, an archive.</summary>
     [ObservableProperty] private bool _isBinary;
@@ -269,9 +358,21 @@ public sealed partial class ConfigKeyRow : ObservableObject
     /// </summary>
     public string BinaryNotice => $"{Size} of binary data — copy takes it as base64.";
 
+    /// <summary>The same fact, for a row that is offering to be edited and cannot offer this one.</summary>
+    public string BinaryEditNotice => $"{Size} of binary data — edit this key in the YAML tab.";
+
     [RelayCommand]
     private async Task Toggle()
     {
+        // While editing, the eye only switches the mask. The value is already here — the page fetched
+        // every key to build the fields — and dropping it would throw away an edit that is not on the
+        // cluster yet. Reading and editing make different promises, and only one of them can be kept.
+        if (IsEditing)
+        {
+            IsRevealed = !IsRevealed;
+            return;
+        }
+
         if (IsRevealed)
         {
             // Dropped, not merely hidden.
@@ -285,6 +386,62 @@ public sealed partial class ConfigKeyRow : ObservableObject
         await ShowAsync();
     }
 
+    /// <summary>
+    /// Fetch this key's value and keep it, for a page about to edit it (KON-418).
+    /// <para>
+    /// The reading discipline does not survive here and is not meant to: Apply sends the whole object
+    /// back, so every key has to be in hand before any of them can be written. That is why editing is
+    /// a button you press and not the state the page opens in.
+    /// </para>
+    /// </summary>
+    public async Task BeginEditAsync()
+    {
+        if (!IsNew && Value is null)
+            await ShowAsync();
+
+        _originalValue = Value;
+        IsRevealed = IsNew;
+        IsEditing = true;
+    }
+
+    /// <summary>Back out of editing, dropping a secret's value the way hiding it does.</summary>
+    public void EndEdit()
+    {
+        Name = _originalName;
+        Value = IsSecret ? null : _originalValue;
+        IsRevealed = !IsSecret && Value is not null;
+        IsEditing = false;
+        Error = null;
+    }
+
+    /// <summary>Put this one key back the way the cluster has it, without leaving edit mode.</summary>
+    [RelayCommand]
+    private void Undo()
+    {
+        Name = _originalName;
+        Value = _originalValue;
+    }
+
+    /// <summary>
+    /// What the cluster held for this key, in the form it held it. Kept so that a key nobody
+    /// touched — and above all one nobody could touch, a certificate — goes back exactly as it
+    /// came (KON-422). Apply writes the whole object, so every key travels, not just the edited
+    /// ones.
+    /// </summary>
+    private string _storedBase64 = string.Empty;
+
+    /// <summary>
+    /// This row as an entry to write. A binary key is passed through untouched: its bytes were
+    /// never rendered and are not this editor's to re-encode. Anything else is the text in the
+    /// field, which is the whole point of the field.
+    /// </summary>
+    public ConfigEntry ToEntry() => IsBinary
+        ? new ConfigEntry { Key = Name, Text = null, Base64 = _storedBase64 }
+        : new ConfigEntry { Key = Name, Text = Value ?? string.Empty, Base64 = ConfigBytes.Encode(Value ?? string.Empty) };
+
+    [RelayCommand]
+    private void Remove() => Removed?.Invoke(this);
+
     private async Task ShowAsync()
     {
         IsBusy = true;
@@ -292,7 +449,7 @@ public sealed partial class ConfigKeyRow : ObservableObject
 
         try
         {
-            var entry = await _resolve(Name);
+            var entry = await _resolve(_originalName);
 
             if (entry is null)
             {
@@ -305,6 +462,7 @@ public sealed partial class ConfigKeyRow : ObservableObject
             IsBinary = entry.IsBinary;
             Size = Format.Size(entry.SizeBytes);
             Value = entry.Text;
+            _storedBase64 = entry.Base64;
             IsRevealed = true;
         }
         catch (Exception failure)
@@ -331,7 +489,7 @@ public sealed partial class ConfigKeyRow : ObservableObject
     {
         try
         {
-            var entry = await _resolve(Name);
+            var entry = await _resolve(_originalName);
 
             // Binary goes out as base64: the form the cluster stores it in, the form every other
             // tool takes it back in, and the only one that survives a clipboard whole.

@@ -42,6 +42,25 @@ internal sealed record ManifestDoc
     public IReadOnlyDictionary<string, string> Labels { get; init; } = new Dictionary<string, string>();
     public IReadOnlyDictionary<string, string> Selector { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>
+    /// A ConfigMap's or Secret's <c>data:</c>, base64 either way — the form the API stores and the
+    /// only one that carries bytes (KON-422).
+    /// <para>
+    /// The fake modelled these two kinds as far as their key listing and stopped there: a manifest
+    /// for one came back "not found", and applying one wrote nothing anybody could read back. Both
+    /// halves of that are what a field editor needs to be testable at all.
+    /// </para>
+    /// <para>
+    /// Null and empty are different. Null is "this document says nothing about data" — a Secret
+    /// patched for its labels alone — and merges to what the cluster holds. Empty is "no keys",
+    /// which is a real state an editor can produce by removing the last one.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Data { get; init; }
+
+    /// <summary>A Secret's <c>type:</c>, which sits at the top level rather than under a spec.</summary>
+    public string? SecretType { get; init; }
+
     /// <summary>Pre-rendered <c>status:</c> lines, shown when reading a manifest but never applied.</summary>
     public IReadOnlyList<string> Status { get; init; } = [];
 
@@ -86,6 +105,18 @@ internal sealed record ManifestDoc
             sb.Append("  labels:\n");
             foreach (var (k, v) in Labels.OrderBy(l => l.Key, StringComparer.Ordinal))
                 sb.Append("    ").Append(k).Append(": ").Append(v).Append('\n');
+        }
+
+        if (SecretType is not null)
+            sb.Append("type: ").Append(SecretType).Append('\n');
+
+        // Straight after metadata, where kubectl puts it: data is a top-level field on these kinds,
+        // not part of spec.
+        if (Data is { } data)
+        {
+            sb.Append("data:\n");
+            foreach (var (k, v) in data.OrderBy(d => d.Key, StringComparer.Ordinal))
+                sb.Append("  ").Append(k).Append(": ").Append(v).Append('\n');
         }
 
         var spec = new StringBuilder();
