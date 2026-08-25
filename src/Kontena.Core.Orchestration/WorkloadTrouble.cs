@@ -26,8 +26,7 @@ public static class WorkloadTrouble
         // obvious from anywhere else: the pod reads as Pending and its app containers never started.
         foreach (var pod in ownedPods)
         {
-            var stuckInit = pod.InitContainers.FirstOrDefault(c =>
-                c.RunState == ContainerRunState.Waiting && Looping(c.Reason));
+            var stuckInit = pod.InitContainers.FirstOrDefault(c => c.IsLooping);
 
             if (stuckInit is not null)
                 return $"Init container {stuckInit.Name} is not completing — {Humanise(stuckInit.Reason)}";
@@ -57,9 +56,52 @@ public static class WorkloadTrouble
             : "Not at its desired count";
     }
 
-    /// <summary>Waiting reasons that mean "it keeps trying and keeps failing".</summary>
-    private static bool Looping(string reason) =>
-        reason is "CrashLoopBackOff" or "ImagePullBackOff" or "ErrImagePull" or "CreateContainerError";
+    /// <summary>
+    /// The same question asked of one pod: what is wrong with it, or <c>null</c> when nothing is
+    /// (KON-415). A pods list only says "Running" for a pod whose container is in CrashLoopBackOff,
+    /// because the phase is about the pod and the trouble is in a container one level down.
+    /// <para>
+    /// The words are <see cref="Describe"/>'s on purpose — the reason stays leading, so a row reads
+    /// "Pod in CrashLoopBackOff" and says where to look, rather than "Degraded" and where not to.
+    /// </para>
+    /// </summary>
+    public static string? DescribePod(Pod pod)
+    {
+        // Same order as Describe: the init container is the most specific thing we can say, and the
+        // one the phase hides hardest — the pod reads as Pending and its app containers never started.
+        var stuckInit = pod.InitContainers.FirstOrDefault(c => c.IsLooping);
+
+        // Shorter than Describe's sentence on purpose: this one has to fit a table cell, and the
+        // container name plus the reason is the whole of what it has to point at. The sentence with
+        // the explanation in it is the detail page's job, where PodDiagnosis already tells it.
+        if (stuckInit is not null)
+            return $"Init container {stuckInit.Name} in {stuckInit.Reason}";
+
+        var failing = pod.Containers.FirstOrDefault(c => c.IsLooping);
+
+        if (failing is not null)
+            return $"Pod in {failing.Reason}";
+
+        if (pod.Phase == PodPhase.Failed)
+            return "Pod failed";
+
+        // No restart timestamps reach us, so "keeps restarting" can only be read off the count: a pod
+        // that has restarted this often is not one that had a bad afternoon once.
+        // ponytail: fixed threshold, swap for a rate once the SDK carries the last restart time.
+        if (pod.Restarts >= RestartsThatLookLikeALoop)
+            return $"Restarted {pod.Restarts} times";
+
+        // Only once it is Running. A pod still pulling or working through its init containers has
+        // no ready containers either, and calling that trouble would mark every pod that starts.
+        var notReady = pod.Containers.Count - pod.ReadyContainers;
+        if (pod.Phase == PodPhase.Running && notReady > 0)
+            return $"{notReady} of {pod.Containers.Count} containers not ready";
+
+        return null;
+    }
+
+    /// <summary>Restart count at which a pod stops looking unlucky and starts looking stuck.</summary>
+    private const int RestartsThatLookLikeALoop = 5;
 
     private static string Humanise(string reason) => reason switch
     {

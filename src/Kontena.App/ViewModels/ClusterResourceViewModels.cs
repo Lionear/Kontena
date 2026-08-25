@@ -360,10 +360,15 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         _ => "READY",
     };
 
-    /// <summary>Shown when a kind's page is empty, so it does not look like a failed load.</summary>
-    public string EmptyText => _kind is { } k
-        ? $"No {k}s in this namespace."
-        : "No workloads in this namespace.";
+    /// <summary>
+    /// Shown when a kind's page is empty, so it does not look like a failed load. It names the
+    /// namespace, because a kind keeps its sidebar entry in a namespace that runs none of it
+    /// (KON-414): this line is the only place the user is told that it is the namespace that is empty
+    /// and not the cluster.
+    /// </summary>
+    public string EmptyText =>
+        $"No {_kind?.ToString() ?? "workload"} objects found for "
+        + (_namespace is { } ns ? $"namespace {ns}." : "any namespace.");
 
     /// <summary>Delete a workload, always confirmed (KON-332).</summary>
     private void ConfirmDelete(WorkloadRow row)
@@ -444,7 +449,7 @@ public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
     // questions a pod list gets asked.
     protected override bool Matches(PodRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
-        || Contains(row.Node, term) || Contains(row.Phase, term);
+        || Contains(row.Node, term) || Contains(row.Phase, term) || Contains(row.StatusLine, term);
 
     protected override IReadOnlyDictionary<string, Func<PodRow, IComparable>> SortColumns { get; } =
         new Dictionary<string, Func<PodRow, IComparable>>(StringComparer.Ordinal)
@@ -452,7 +457,7 @@ public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
             ["NAME"] = r => r.Name,
             ["NAMESPACE"] = r => r.Namespace,
             ["READY"] = r => r.ReadyRaw,
-            ["STATUS"] = r => r.Phase,
+            ["STATUS"] = r => r.StatusLine,
             ["RESTARTS"] = r => r.RestartsRaw,
             ["NODE"] = r => r.Node,
             ["AGE"] = r => r.AgeSpan,
@@ -1262,6 +1267,10 @@ public sealed partial class PodRow
         // pod starting up and one wedged on its first init container (KON-168).
         Phase = p.StatusText;
         PhaseRaw = p.Phase;
+        // What the STATUS cell actually reads. A pod whose container is in CrashLoopBackOff has phase
+        // Running, so the phase alone is the one thing that does not mention the problem (KON-415).
+        Trouble = WorkloadTrouble.DescribePod(p);
+        StatusLine = Trouble ?? Phase;
         Restarts = p.Restarts.ToString(System.Globalization.CultureInfo.InvariantCulture);
         RestartsRaw = p.Restarts;
         ReadyRaw = p.ReadyContainers;
@@ -1286,6 +1295,16 @@ public sealed partial class PodRow
     /// <summary>What the STATUS filter dropdown matches on (KON-320) — <see cref="Phase"/> carries
     /// the "Init:0/2" detail this does not need.</summary>
     public PodPhase PhaseRaw { get; }
+
+    /// <summary>What is wrong with this pod, or null when nothing is (KON-415).</summary>
+    public string? Trouble { get; }
+
+    /// <summary>Whether the row should be marked as needing attention — wash, icon and red text
+    /// together, because colour on its own is not a signal everyone gets.</summary>
+    public bool HasTrouble => Trouble is not null;
+
+    /// <summary>The STATUS cell's text: the trouble when there is one, the phase otherwise.</summary>
+    public string StatusLine { get; }
 
     public string Restarts { get; }
     public string Node { get; }
@@ -1321,7 +1340,7 @@ public sealed partial class PodRow
     /// </para>
     /// </summary>
     private string Signature =>
-        string.Join('\u001f', Name, Namespace, Ready, Phase, Restarts, Node, Age);
+        string.Join('\u001f', Name, Namespace, Ready, StatusLine, Restarts, Node, Age);
 
     public override bool Equals(object? obj) =>
         obj is PodRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);

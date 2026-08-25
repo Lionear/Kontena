@@ -31,16 +31,20 @@
                     <ItemsControl ItemsSource="{Binding Pods}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PodRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11"
+                                        Classes.trouble="{Binding HasTrouble}">
                                     <Grid ColumnDefinitions="2*,0.7*,1.6*,0.8*,1.4*,0.7*">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
                                         </Button>
                                         <TextBlock Grid.Column="1" Text="{Binding Ready}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <Grid Grid.Column="2" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
-                                            <Ellipse Grid.Column="0" Width="7" Height="7" Margin="0,0,7,0" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Phase}" Foreground="{DynamicResource TextDim}"
-                                                       Margin="0,0,10,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Phase}"/>
+                                            <Ellipse Grid.Column="0" Width="7" Height="7" Margin="0,0,7,0" Fill="{Binding StatusBrush}" VerticalAlignment="Center"
+                                                     IsVisible="{Binding !HasTrouble}"/>
+                                            <Path Grid.Column="0" Classes="icon trouble" Width="13" Height="13" Margin="0,0,7,0" VerticalAlignment="Center"
+                                                  Data="{StaticResource IconWarning}" IsVisible="{Binding HasTrouble}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding StatusLine}" Classes="statuscell" Classes.trouble="{Binding HasTrouble}"
+                                                       Margin="0,0,10,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusLine}"/>
                                         </Grid>
                                         <TextBlock Grid.Column="3" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="4" Text="{Binding Node}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>

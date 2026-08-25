@@ -251,7 +251,18 @@ public sealed partial class ConfigKeyRow : ObservableObject
 
     [ObservableProperty] private string _name = string.Empty;
 
-    public string Size { get; }
+    /// <summary>
+    /// The size of the value. Seeded from the listing, and corrected from the value itself once one
+    /// has been fetched — a row built without a listing behind it (the pod page's environment
+    /// section, KON-416) starts out not knowing it.
+    /// </summary>
+    [ObservableProperty] private string _size = string.Empty;
+
+    partial void OnSizeChanged(string value)
+    {
+        OnPropertyChanged(nameof(BinaryNotice));
+        OnPropertyChanged(nameof(BinaryEditNotice));
+    }
 
     /// <summary>Nothing to show where there is no stored key yet.</summary>
     public bool HasSize => !IsNew;
@@ -417,6 +428,7 @@ public sealed partial class ConfigKeyRow : ObservableObject
             }
 
             IsBinary = entry.IsBinary;
+            Size = Format.Size(entry.SizeBytes);
             Value = entry.Text;
             IsRevealed = true;
         }

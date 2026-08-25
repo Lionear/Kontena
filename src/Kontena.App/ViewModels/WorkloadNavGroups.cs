@@ -18,6 +18,12 @@ public static class WorkloadNavGroups
     /// not to click — the dead-button problem (KON-117) spread across the sidebar.
     /// </para>
     /// <para>
+    /// Which is now the dashboard's question rather than the sidebar's (KON-414). The sidebar takes
+    /// the cluster's kinds, so its entries are the same in every namespace — asking per namespace made
+    /// it a different shape per namespace, and entries moved out from under the pointer on a switch.
+    /// The cards on the dashboard are still exactly the objects it is holding.
+    /// </para>
+    /// <para>
     /// Ordered by the enum rather than by count, so the sidebar does not reshuffle itself under the
     /// pointer when a Job finishes. The same order <c>IClusterEngine.ListWorkloadKindsAsync</c>
     /// promises, which is where the sidebar gets its answer from now (KON-396); this overload is for
@@ -41,6 +47,11 @@ public static class WorkloadNavGroups
     /// <summary>
     /// Whether the group is worth drawing at all. One kind needs no submenu: the parent already lists
     /// exactly those objects, so a single child under it is a row that says the same thing twice.
+    /// <para>
+    /// Asked of the cluster's kinds, so the answer does not change with the namespace (KON-414). It
+    /// used to be asked of the namespace's, which made the submenu appear and disappear on a switch —
+    /// and took the Workloads page with it, since the same rule decides dashboard or list.
+    /// </para>
     /// </summary>
     public static bool ShouldGroup(IReadOnlyList<WorkloadKind> kinds) => kinds.Count > 1;
 
@@ -49,20 +60,6 @@ public static class WorkloadNavGroups
 
     /// <summary>Plural label for the sub-entry: "Deployments", "StatefulSets", …</summary>
     public static string LabelFor(WorkloadKind kind) => kind + "s";
-
-    /// <summary>
-    /// The page key that still means something here (KON-200). A per-kind page survives a namespace
-    /// switch as a key even when the kind does not survive it as an object: standing on
-    /// <c>workloads:DaemonSet</c> and moving to a namespace with no DaemonSets would otherwise open an
-    /// empty list under a sidebar entry that is about to be removed. Falling back to Workloads is the
-    /// nearest page that is still about something.
-    /// </summary>
-    public static string ResolveKey(string key, IReadOnlyList<WorkloadKind> kinds)
-    {
-        ArgumentNullException.ThrowIfNull(kinds);
-
-        return KindOf(key) is { } kind && !kinds.Contains(kind) ? "workloads" : key;
-    }
 
     /// <summary>The kind a nav key addresses, or null when the key is not a per-kind workloads page.</summary>
     public static WorkloadKind? KindOf(string key) =>

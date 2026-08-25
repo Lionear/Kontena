@@ -27,6 +27,16 @@
                             <TextBlock Text="{Binding PhaseText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                         </StackPanel>
                     </Border>
+                    <!-- The mark the pods list put on this row, carried through to the page it opens
+                         (KON-415). Beside the phase pill rather than instead of it: "Running" is still
+                         true of a pod whose container is in CrashLoopBackOff, and that pairing is the
+                         point. Glyph, wash and the reason in words — never colour on its own. -->
+                    <Border Classes="trouble" CornerRadius="20" Padding="9,3" VerticalAlignment="Center" IsVisible="{Binding HasTrouble}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon trouble" Width="13" Height="13" VerticalAlignment="Center" Data="{StaticResource IconWarning}"/>
+                            <TextBlock Text="{Binding Trouble}" Classes="statuscell trouble" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
                     <TextBlock Text="{Binding ReadyText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
 
                     <!-- Live metrics (metrics-server capability). The sparkline behind each number is
@@ -253,6 +263,103 @@
                             </ItemsControl>
                         </StackPanel>
                     </Border>
+
+                    <!-- Environment variables (KON-416) — what each container actually runs with. Read
+                         off the pod's own spec, so this section costs no extra call: a valueFrom names
+                         where the value comes from and never holds it, which is exactly what the row
+                         says instead of showing a blank. -->
+                    <StackPanel Spacing="10" IsVisible="{Binding HasEnv}">
+                        <TextBlock Text="Environment variables" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <ItemsControl ItemsSource="{Binding EnvGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PodEnvGroup">
+                                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                            CornerRadius="{StaticResource Radius}" Padding="14,12" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <!-- Only on a pod that has more than one container; on the rest it
+                                                 would name the pod's own container back at you. -->
+                                            <TextBlock Text="{Binding Container}" Classes="colhead" IsVisible="{Binding ShowContainer}"
+                                                       Margin="0,0,0,8"/>
+
+                                            <ItemsControl ItemsSource="{Binding Rows}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:PodEnvRow">
+                                                        <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource BorderSoft}"
+                                                                BorderThickness="1" CornerRadius="{StaticResource RadiusSm}" Padding="10,8" Margin="0,0,0,6">
+                                                            <StackPanel>
+                                                                <!-- The eye column is a fixed width and not Auto: it collapses on
+                                                                     every row that has no secret behind it, and an Auto column that
+                                                                     is 26px on one row and 0 on the next moves the value column
+                                                                     with it, so nothing in the card lines up. -->
+                                                                <Grid ColumnDefinitions="1.1*,1.6*,26" MinHeight="26">
+                                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"
+                                                                               TextTrimming="CharacterEllipsis" Margin="0,0,14,0" ToolTip.Tip="{Binding Name}"/>
+
+                                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsLiteral}"
+                                                                               FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"
+                                                                               TextTrimming="CharacterEllipsis" Margin="0,0,8,0" ToolTip.Tip="{Binding Value}"/>
+                                                                    <!-- The source, not a blank: "set to nothing" and "set from
+                                                                         somewhere else" are different answers. -->
+                                                                    <TextBlock Grid.Column="1" Text="{Binding SourceText}" IsVisible="{Binding !IsLiteral}"
+                                                                               FontSize="12" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"
+                                                                               TextTrimming="CharacterEllipsis" Margin="0,0,8,0" ToolTip.Tip="{Binding SourceText}"/>
+
+                                                                    <!-- An eye rather than a "Show"/"Hide" pill, same call the
+                                                                         config cards make (KON-390): the glyph carries the state
+                                                                         in the width a word cannot, and its tooltip is its
+                                                                         accessible name, so it says which of the two pressing it
+                                                                         does (KON-56).
+                                                                         Two buttons rather than one with a bound tooltip, because
+                                                                         the name has to carry the variable: this page now has an
+                                                                         eye in two sections, and three buttons all announcing
+                                                                         "Show the value" tell a screen reader nothing about which
+                                                                         value. -->
+                                                                    <Panel Grid.Column="2" IsVisible="{Binding IsSecret}">
+                                                                        <Button Classes="qa" Command="{Binding Secret.ToggleCommand}"
+                                                                                IsEnabled="{Binding !Secret.IsBusy}" IsVisible="{Binding !Secret.IsRevealed}"
+                                                                                Width="26" Height="26" ToolTip.Tip="{Binding ShowTip}">
+                                                                            <Path Classes="icon" Width="14" Height="14" Data="{StaticResource IconEye}"/>
+                                                                        </Button>
+                                                                        <Button Classes="qa on" Command="{Binding Secret.ToggleCommand}"
+                                                                                IsEnabled="{Binding !Secret.IsBusy}" IsVisible="{Binding Secret.IsRevealed}"
+                                                                                Width="26" Height="26" ToolTip.Tip="{Binding HideTip}">
+                                                                            <Path Classes="icon" Width="14" Height="14" Data="{StaticResource IconEyeOff}"/>
+                                                                        </Button>
+                                                                    </Panel>
+                                                                </Grid>
+
+                                                                <!-- Everything below the line only exists for a secret, and the
+                                                                     wrapper is what makes that true in layout as well: a binding
+                                                                     through a null Secret resolves to unset, and unset means
+                                                                     IsVisible falls back to its default of true — which gave every
+                                                                     literal row an empty value block and a row half again as tall
+                                                                     as its neighbour. -->
+                                                                <StackPanel IsVisible="{Binding IsSecret}">
+                                                                    <!-- On screen only while revealed: hiding drops the value
+                                                                         rather than folding it away. -->
+                                                                    <StackPanel IsVisible="{Binding Secret.IsRevealed}" Margin="0,8,0,0">
+                                                                        <SelectableTextBlock Text="{Binding Secret.Value}" IsVisible="{Binding !Secret.IsBinary}"
+                                                                                             FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                                                             Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                                                        <TextBlock Text="{Binding Secret.BinaryNotice}" IsVisible="{Binding Secret.IsBinary}"
+                                                                                   FontSize="12.5" FontStyle="Italic" Foreground="{DynamicResource TextDim}"/>
+                                                                    </StackPanel>
+                                                                    <TextBlock Text="{Binding Secret.Error}" IsVisible="{Binding Secret.HasError}" Margin="0,8,0,0"
+                                                                               FontSize="12" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                                                </StackPanel>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
 
                     <!-- Config & secrets (KON-390) — which ConfigMaps and Secrets this pod reads, and
                          how. Read off the pod's own spec, so the section costs no extra call; the keys

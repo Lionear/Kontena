@@ -55,6 +55,8 @@ namespace Kontena.Screenshots;
 //         pod / pod-logs / pod-yaml (pod detail),
 //         pod-config (KON-390 — the Overview tab as a full page, with a Secret row of
 //         Config & secrets open and one of its values revealed),
+//         pod-env (KON-416 — the same page, with the Environment variables section's own eye
+//         pressed, so the shot carries both a reference and the value behind it),
 //         tag-push-image (KON-387 — the Tag-and-push modal over the Images page),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
@@ -851,6 +853,7 @@ internal static class Program
             case "pod-logs-tail":
             case "pod-yaml":
             case "pod-config":
+            case "pod-env":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("pods");
@@ -864,7 +867,7 @@ internal static class Program
                 // Config & secrets sits below the container table, which the drawer cannot show at
                 // once — so this one scene takes the detail's own "open as a page" command (KON-307)
                 // rather than a wider drawer the app has no button for.
-                if (scene == "pod-config")
+                if (scene is "pod-config" or "pod-env")
                 {
                     vm.OpenDetailAsPageCommand.Execute(null);
                     Settle(rounds: 20);
@@ -918,6 +921,21 @@ internal static class Program
                         var key = config.Keys.FirstOrDefault();
                         key?.ToggleCommand.Execute(null);
                         SettleUntil(() => key is null or { IsRevealed: true, IsBusy: false }, maxRounds: 120);
+                        Settle(rounds: 20);
+                    }
+                    else if (scene == "pod-env")
+                    {
+                        // Pressed through the row's own reveal, so the shot cannot show a value the
+                        // eye does not really fetch. One of the three is opened and the other two are
+                        // left alone, because the section's subject is the pair: a reference that
+                        // names where the value lives, and the value once you ask for it (KON-416).
+                        var secret = detailVm.EnvGroups
+                            .SelectMany(g => g.Rows)
+                            .First(r => r.Secret is not null)
+                            .Secret!;
+
+                        secret.ToggleCommand.Execute(null);
+                        SettleUntil(() => secret is { IsRevealed: true, IsBusy: false }, maxRounds: 120);
                         Settle(rounds: 20);
                     }
                 }
