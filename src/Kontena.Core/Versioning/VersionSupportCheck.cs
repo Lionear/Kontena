@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Kontena.Sdk;
 using Kontena.Sdk.Tooling;
 
 namespace Kontena.Core.Versioning;
@@ -26,9 +27,7 @@ public sealed class VersionSupportCheck(IReleaseCalendar calendar, string? cache
     private readonly string _root = cacheRoot ?? DefaultRoot();
 
     /// <summary>Beside the tool store, under the platform's application-data directory.</summary>
-    public static string DefaultRoot() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Lionear", "Kontena", "versions");
+    public static string DefaultRoot() => Path.Combine(ProductInfo.DataDirectory, "versions");
 
     /// <summary>
     /// What can be said about <paramref name="installed"/>, or null when there is nothing to say: a

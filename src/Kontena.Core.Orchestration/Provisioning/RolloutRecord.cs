@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kontena.Sdk;
 
 namespace Kontena.Core.Orchestration.Provisioning;
 
@@ -47,10 +48,7 @@ public sealed class RolloutRecordStore
 
     /// <param name="path">Where to write. Defaults next to the other application data.</param>
     public RolloutRecordStore(string? path = null) =>
-        _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Kontena",
-            "rollout.json");
+        _path = path ?? Path.Combine(ProductInfo.DataDirectory, "rollout.json");
 
     /// <summary>The interrupted rollout, or null when there is none — or when it cannot be read.</summary>
     public RolloutRecord? Read()
