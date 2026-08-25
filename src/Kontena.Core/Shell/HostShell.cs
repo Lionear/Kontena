@@ -1,3 +1,5 @@
+using Kontena.Sdk.Tooling;
+
 namespace Kontena.Core.Shell;
 
 /// <summary>The shell families Kontena knows how to hand an alias to.</summary>
@@ -109,6 +111,9 @@ public static class HostShell
         var env = new Dictionary<string, string>(environment, StringComparer.Ordinal);
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
 
+        if (OperatingSystem.IsMacOS())
+            env["PATH"] = ComposeMacPath(read("PATH"));
+
         switch (FamilyOf(executable))
         {
             case ShellFamily.Bash:
@@ -170,6 +175,84 @@ public static class HostShell
                 // No alias rather than a guessed flag: the cost of being wrong here is a shell that
                 // does not open at all.
                 return new ShellPlan(executable, [], env, files);
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="current"/> plus the directories a login shell would have added (KON-423).
+    /// <para>
+    /// A macOS app started from Finder inherits launchd's bare PATH, and everything else — Homebrew
+    /// above all — arrives through <c>/etc/zprofile</c>, which only a login shell reads. Handing the
+    /// directories over in the environment rather than starting one keeps every shell family covered,
+    /// including fish and the unknown ones we start with no arguments at all; a login shell would mean
+    /// giving up <c>--rcfile</c> on bash and hunting <c>.zprofile</c> inside the ZDOTDIR we redirect.
+    /// </para>
+    /// <para>What was already in PATH stays in front: an order the user arranged is one they meant.</para>
+    /// </summary>
+    private static string ComposeMacPath(string? current)
+    {
+        var directories = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(string directory)
+        {
+            if (directory.Length > 0 && seen.Add(directory))
+                directories.Add(directory);
+        }
+
+        foreach (var directory in (current ?? string.Empty).Split(
+                     Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            Add(directory.Trim());
+
+        foreach (var directory in PathHelperDirectories())
+            Add(directory);
+
+        // Homebrew is not always in /etc/paths.d: on Apple Silicon its installer writes a
+        // `brew shellenv` line into ~/.zprofile instead, which is just as login-only.
+        foreach (var directory in ToolLocator.DefaultSearchPaths())
+            Add(directory);
+
+        return string.Join(Path.PathSeparator, directories);
+    }
+
+    /// <summary>
+    /// The <c>/etc/paths</c> and <c>/etc/paths.d</c> entries that <c>/usr/libexec/path_helper</c> turns
+    /// into a login shell's PATH — read rather than run, because the files are the whole of it.
+    /// </summary>
+    private static IEnumerable<string> PathHelperDirectories()
+    {
+        var files = new List<string> { "/etc/paths" };
+
+        try
+        {
+            // Sorted, because path_helper reads them in that order and the order is the precedence.
+            if (Directory.Exists("/etc/paths.d"))
+                files.AddRange(Directory.EnumerateFiles("/etc/paths.d").Order(StringComparer.Ordinal));
+        }
+        catch (IOException)
+        {
+            // best effort: a PATH short one directory beats a terminal that refuses to open
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // best effort
+        }
+
+        foreach (var file in files)
+        {
+            string[] lines;
+
+            try
+            {
+                lines = File.ReadAllLines(file);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var line in lines)
+                yield return line.Trim();
         }
     }
 }
