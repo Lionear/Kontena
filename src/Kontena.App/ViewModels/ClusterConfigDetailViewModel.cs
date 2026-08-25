@@ -193,17 +193,43 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
     /// Ask the cluster what this would do, without doing it — the same server-side dry-run the
     /// manifest editor offers, and the answer to the objection that a field editor encodes out of
     /// sight: you can still see exactly what the apiserver would accept.
+    /// <para>
+    /// Not wired to <see cref="IClusterEngine.ApplyAsync"/> yet, so it says so. It used to answer
+    /// "Would change · Secret/x configured" — a sentence the cluster never said, about a round trip
+    /// that never happened.
+    /// </para>
     /// </summary>
     [RelayCommand]
-    private void Check() =>
-        Status = $"Would change · {Reference.Kind.Kind}/{Reference.Name} configured";
+    private void Check() => Unwired("checked against the cluster");
 
+    /// <summary>
+    /// <b>Nothing is written yet.</b> This reported "Applied · Secret/x configured" while sending
+    /// nothing, and Cancel — the only way out of edit mode — then dropped the fields. So the whole
+    /// visible flow was: type a new value, press Apply, read that it worked, leave, and find the
+    /// secret exactly as it was.
+    /// <para>
+    /// Saying so is the fix for the lie, not for the missing half: writing needs the fields rendered
+    /// back into the object's manifest and sent through <see cref="IClusterEngine.ApplyAsync"/>, and
+    /// the YAML tab on this same page already does exactly that.
+    /// </para>
+    /// </summary>
     [RelayCommand]
-    private void Apply() =>
-        Status = $"Applied · {Reference.Kind.Kind}/{Reference.Name} configured";
+    private void Apply() => Unwired("written to the cluster");
+
+    private void Unwired(string what)
+    {
+        StatusIsError = true;
+        Status = $"Not {what} — these fields cannot be sent yet. Use the YAML tab to apply.";
+    }
 
     private void Recompute()
     {
+        // A status describes one state of the fields, so it cannot outlive it: with this missing,
+        // "Would change ·" sat there unchanged while you typed a different value under it, and an
+        // "Applied ·" from one edit still read as a confirmation of the next.
+        Status = null;
+        StatusIsError = false;
+
         OnPropertyChanged(nameof(HasKeys));
         OnPropertyChanged(nameof(KeyCountText));
         OnPropertyChanged(nameof(IsDirty));

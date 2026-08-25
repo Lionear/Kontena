@@ -793,6 +793,8 @@ internal static class Program
             case "secret-edit-revealed":
             case "secret-edit-add":
             case "secret-edit-binary":
+            case "secret-edit-applied":
+            case "secret-edit-cancelled":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("secrets");
@@ -825,6 +827,19 @@ internal static class Program
                         editing.Keys[^1].Name = "PGSSLMODE";
                         editing.Keys[^1].Value = "verify-full";
                     }
+
+                    // What Apply really answers now that it no longer claims a write it did not
+                    // make, and what Cancel leaves behind afterwards — the two halves of the flow
+                    // that were reported as losing an edit.
+                    if (scene is "secret-edit-applied" or "secret-edit-cancelled")
+                    {
+                        editing.Keys[0].ToggleCommand.Execute(null);
+                        editing.Keys[0].Value = "9f2c-rotated-2026-08-20";
+                        editing.ApplyCommand.Execute(null);
+                    }
+
+                    if (scene == "secret-edit-cancelled")
+                        editing.CancelEditCommand.Execute(null);
 
                     Settle(rounds: 30);
                 }
