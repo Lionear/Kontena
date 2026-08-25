@@ -144,6 +144,20 @@ public sealed record ContainerStatus
         _ => string.Empty,
     };
 
+    /// <summary>
+    /// Whether this container keeps trying and keeps failing, as opposed to merely not being up yet.
+    /// The four kubelet reasons that mean it: a container waiting on any of them is not going to fix
+    /// itself, while one waiting on <c>ContainerCreating</c> or on nothing at all is simply starting.
+    /// <para>
+    /// The one place that list lives (KON-420). It decides both what a workload's rollout status says
+    /// and what a pod row calls trouble, and those two answers being written twice is exactly how
+    /// they would come to disagree.
+    /// </para>
+    /// </summary>
+    public bool IsLooping =>
+        RunState == ContainerRunState.Waiting
+        && Reason is "CrashLoopBackOff" or "ImagePullBackOff" or "ErrImagePull" or "CreateContainerError";
+
     /// <summary>An init container that finished as it should — the only success it has.</summary>
     public bool CompletedSuccessfully => RunState == ContainerRunState.Terminated && ExitCode is null or 0;
 

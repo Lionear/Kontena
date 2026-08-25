@@ -402,6 +402,13 @@ internal static class K8sMap
     /// <summary>
     /// Summarise rollout health from the replica counts — the same reading <c>kubectl rollout
     /// status</c> gives, minus the conditions detail.
+    /// <para>
+    /// The counts cannot say <c>Degraded</c>, and used to try (KON-420): zero ready replicas is what a
+    /// single-replica Deployment looks like for the couple of seconds it takes to restart, and calling
+    /// that degraded painted an ordinary restart red. Not being at the desired count is
+    /// <c>Progressing</c> whatever the count is; whether it is stuck there is a question only the pods
+    /// can answer, and <see cref="WithPodTrouble"/> asks them.
+    /// </para>
     /// </summary>
     private static RolloutStatus Rollout(WorkloadKind kind, int desired, int ready, int upToDate, bool suspended)
     {
@@ -414,12 +421,44 @@ internal static class K8sMap
 
         if (desired == 0)
             return RolloutStatus.Paused;
-        if (ready == 0)
-            return RolloutStatus.Degraded;
         if (ready < desired || upToDate < desired)
             return RolloutStatus.Progressing;
 
         return RolloutStatus.Complete;
+    }
+
+    /// <summary>
+    /// Settle the one thing the replica counts left open: a workload that is not at its desired count
+    /// is <c>Degraded</c> rather than <c>Progressing</c> when one of its own pods has a container that
+    /// keeps trying and keeps failing (KON-420).
+    /// <para>
+    /// Only <c>Progressing</c> is ever upgraded. A workload at its desired count has no container to
+    /// be looping — a looping one is not ready — and one scaled to zero is <c>Paused</c> on purpose,
+    /// which a pod still winding down does not undo.
+    /// </para>
+    /// <para>
+    /// Ownership is matched the way <c>PodMatching.OwnedBy</c> matches it, on the owner this same
+    /// mapper writes into <c>Pod.ControlledBy</c> — where a ReplicaSet is already rolled up to its
+    /// Deployment, so a Deployment finds its pods across revisions.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<Workload> WithPodTrouble(IReadOnlyList<Workload> workloads, IEnumerable<Pod> pods)
+    {
+        var stuck = new HashSet<string>(
+            pods.Where(p => p.AllContainers.Any(c => c.IsLooping))
+                .Select(p => $"{p.Namespace}/{p.ControlledBy}"),
+            StringComparer.Ordinal);
+
+        if (stuck.Count == 0)
+            return workloads;
+
+        return
+        [
+            .. workloads.Select(w =>
+                w.RolloutStatus == RolloutStatus.Progressing && stuck.Contains($"{w.Namespace}/{w.Kind}/{w.Name}")
+                    ? w with { RolloutStatus = RolloutStatus.Degraded }
+                    : w),
+        ];
     }
 
     private static IReadOnlyList<string> ImagesOf(V1PodTemplateSpec? template) =>

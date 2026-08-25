@@ -26,8 +26,7 @@ public static class WorkloadTrouble
         // obvious from anywhere else: the pod reads as Pending and its app containers never started.
         foreach (var pod in ownedPods)
         {
-            var stuckInit = pod.InitContainers.FirstOrDefault(c =>
-                c.RunState == ContainerRunState.Waiting && Looping(c.Reason));
+            var stuckInit = pod.InitContainers.FirstOrDefault(c => c.IsLooping);
 
             if (stuckInit is not null)
                 return $"Init container {stuckInit.Name} is not completing — {Humanise(stuckInit.Reason)}";
@@ -70,8 +69,7 @@ public static class WorkloadTrouble
     {
         // Same order as Describe: the init container is the most specific thing we can say, and the
         // one the phase hides hardest — the pod reads as Pending and its app containers never started.
-        var stuckInit = pod.InitContainers.FirstOrDefault(c =>
-            c.RunState == ContainerRunState.Waiting && Looping(c.Reason));
+        var stuckInit = pod.InitContainers.FirstOrDefault(c => c.IsLooping);
 
         // Shorter than Describe's sentence on purpose: this one has to fit a table cell, and the
         // container name plus the reason is the whole of what it has to point at. The sentence with
@@ -79,8 +77,7 @@ public static class WorkloadTrouble
         if (stuckInit is not null)
             return $"Init container {stuckInit.Name} in {stuckInit.Reason}";
 
-        var failing = pod.Containers.FirstOrDefault(c =>
-            c.RunState == ContainerRunState.Waiting && Looping(c.Reason));
+        var failing = pod.Containers.FirstOrDefault(c => c.IsLooping);
 
         if (failing is not null)
             return $"Pod in {failing.Reason}";
@@ -105,10 +102,6 @@ public static class WorkloadTrouble
 
     /// <summary>Restart count at which a pod stops looking unlucky and starts looking stuck.</summary>
     private const int RestartsThatLookLikeALoop = 5;
-
-    /// <summary>Waiting reasons that mean "it keeps trying and keeps failing".</summary>
-    private static bool Looping(string reason) =>
-        reason is "CrashLoopBackOff" or "ImagePullBackOff" or "ErrImagePull" or "CreateContainerError";
 
     private static string Humanise(string reason) => reason switch
     {

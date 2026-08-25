@@ -410,12 +410,97 @@ public class K8sMapTests
     [InlineData(3, 3, 3, RolloutStatus.Complete)]
     [InlineData(3, 2, 2, RolloutStatus.Progressing)]
     [InlineData(3, 3, 1, RolloutStatus.Progressing)]
-    [InlineData(3, 0, 0, RolloutStatus.Degraded)]
+    // Zero ready is not degraded, it is not-there-yet (KON-420). A one-replica Deployment reads
+    // exactly like this for the couple of seconds a restart takes, and it used to answer Degraded.
+    [InlineData(3, 0, 0, RolloutStatus.Progressing)]
+    [InlineData(1, 0, 1, RolloutStatus.Progressing)]
     [InlineData(0, 0, 0, RolloutStatus.Paused)]
     public void Deployment_rollout_status_follows_the_replica_counts(
         int desired, int ready, int updated, RolloutStatus expected)
     {
         Assert.Equal(expected, K8sMap.ToWorkload(Deployment(desired, ready, updated)).RolloutStatus);
+    }
+
+    // ── Rollout status, once the pods have their say (KON-420) ───────────────
+
+    /// <summary>A pod of <paramref name="owner"/> with one container waiting on <paramref name="waitingOn"/>.</summary>
+    private static Pod OwnedPod(string owner, string waitingOn, bool init = false)
+    {
+        ContainerStatus[] waiting =
+            [new ContainerStatus { Name = "api", RunState = ContainerRunState.Waiting, Reason = waitingOn }];
+
+        return new Pod
+        {
+            Name = "pod-1",
+            Namespace = "app",
+            Phase = PodPhase.Running,
+            ControlledBy = owner,
+            Containers = init ? [new ContainerStatus { Name = "api" }] : waiting,
+            InitContainers = init ? waiting : [],
+        };
+    }
+
+    [Theory]
+    [InlineData("CrashLoopBackOff")]
+    [InlineData("ImagePullBackOff")]
+    [InlineData("ErrImagePull")]
+    [InlineData("CreateContainerError")]
+    public void A_workload_whose_pod_keeps_failing_is_degraded(string reason)
+    {
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/api", reason)]);
+
+        Assert.Equal(RolloutStatus.Degraded, workloads[0].RolloutStatus);
+    }
+
+    [Fact]
+    public void An_init_container_that_keeps_failing_degrades_the_workload_too()
+    {
+        // The pod reads as Running with its app container merely not started, so the app containers
+        // alone would call this an ordinary wait.
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/api", "CrashLoopBackOff", init: true)]);
+
+        Assert.Equal(RolloutStatus.Degraded, workloads[0].RolloutStatus);
+    }
+
+    [Theory]
+    // A pod restarting: waiting, but on nothing that says it will keep failing.
+    [InlineData("ContainerCreating")]
+    [InlineData("PodInitializing")]
+    public void A_workload_whose_pod_is_merely_coming_up_stays_progressing(string reason)
+    {
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/api", reason)]);
+
+        Assert.Equal(RolloutStatus.Progressing, workloads[0].RolloutStatus);
+    }
+
+    [Fact]
+    public void Someone_elses_failing_pod_does_not_degrade_this_workload()
+    {
+        // Same namespace, same shape of trouble, different owner — the one mistake a looser match
+        // would make, and the one that would put a red row next to the wrong name.
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/redis", "CrashLoopBackOff")]);
+
+        Assert.Equal(RolloutStatus.Progressing, workloads[0].RolloutStatus);
+    }
+
+    [Fact]
+    public void A_workload_at_its_desired_count_is_never_degraded_by_a_pod()
+    {
+        // Only Progressing is ever upgraded: a leftover pod from the previous revision must not turn
+        // a finished rollout red.
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 1, 1))],
+            [OwnedPod("Deployment/api", "CrashLoopBackOff")]);
+
+        Assert.Equal(RolloutStatus.Complete, workloads[0].RolloutStatus);
     }
 
     [Fact]
