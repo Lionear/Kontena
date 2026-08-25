@@ -15,9 +15,7 @@ namespace Kontena.Engines.Plugins;
 public static class PluginLoader
 {
     /// <summary>Where a user's plugins live — the directory <c>SettingsStore</c> already writes into.</summary>
-    public static string DefaultRoot { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Lionear", "Kontena", "plugins");
+    public static string DefaultRoot { get; } = Path.Combine(ProductInfo.DataDirectory, "plugins");
 
     /// <summary>
     /// Scan <paramref name="root"/> and report every directory in it. Nothing thrown from one directory

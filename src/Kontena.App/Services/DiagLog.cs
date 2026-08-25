@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using Kontena.Sdk;
 
 namespace Kontena.App.Services;
 
@@ -52,9 +53,7 @@ public static partial class DiagLog
     public static bool IsOpen => _open;
 
     /// <summary>Where the log lives, beside the settings file it is switched on from.</summary>
-    public static string DefaultPath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Lionear", "Kontena", "diagnostics.log");
+    public static string DefaultPath { get; } = Path.Combine(ProductInfo.DataDirectory, "diagnostics.log");
 
     /// <summary>What the previous session's log is renamed to.</summary>
     public const string PreviousSuffix = ".prev";

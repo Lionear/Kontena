@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
@@ -19,10 +20,7 @@ public sealed class SettingsStore
 
     public SettingsStore()
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Lionear", "Kontena");
-        _path = Path.Combine(dir, "settings.json");
+        _path = Path.Combine(ProductInfo.DataDirectory, "settings.json");
     }
 
     /// <summary>A store over a specific file. For tests, which must not touch the real settings.</summary>
