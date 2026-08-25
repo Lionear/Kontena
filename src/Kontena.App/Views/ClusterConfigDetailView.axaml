@@ -91,6 +91,16 @@
                             <TextBlock Text="{Binding UsedBySummary}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
                         </StackPanel>
 
+                        <!-- Where the values come from, when it is not a person (KON-422). Drawn as
+                             the dim note it is: nothing is wrong with this Secret, so it does not
+                             borrow the styling that means something needs attention. It sits above
+                             the keys because it is the reason Edit is greyed out beside them. -->
+                        <StackPanel Spacing="3" IsVisible="{Binding IsExternallyManaged}">
+                            <TextBlock Text="MANAGED BY" Classes="colhead"/>
+                            <TextBlock Text="{Binding ExternallyManagedNotice}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
                         <ItemsControl ItemsSource="{Binding Keys}" IsVisible="{Binding HasKeys}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ConfigKeyRow">
@@ -234,18 +244,28 @@
                 <!-- Pinned rather than at the end of the list: on an object with twenty keys, Apply
                      would otherwise be somewhere below the fold. The same three actions the manifest
                      editor has, including the cluster's own dry-run. -->
-                <Grid Grid.Row="1" IsVisible="{Binding IsEditing}" Margin="0,14,0,0" ColumnDefinitions="*,Auto,Auto,Auto">
+                <!-- The row outlives the edit, because the answer does: an apply ends edit mode, and
+                     hiding the whole row with the buttons took "Applied ·" off screen in the same
+                     frame it appeared (KON-422). The buttons still go; the sentence stays until the
+                     next edit replaces it. -->
+                <Grid Grid.Row="1" Margin="0,14,0,0" ColumnDefinitions="*,Auto,Auto,Auto">
+                    <Grid.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="IsEditing"/>
+                            <Binding Path="Status" Converter="{x:Static ObjectConverters.IsNotNull}"/>
+                        </MultiBinding>
+                    </Grid.IsVisible>
                     <TextBlock Grid.Column="0" Text="{Binding Status}" VerticalAlignment="Center" FontSize="12.5"
                                TextWrapping="Wrap" Margin="0,0,14,0"
                                IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"
                                Foreground="{Binding StatusBrush}"/>
                     <Button Grid.Column="1" Classes="pill" Margin="0,0,8,0" Command="{Binding RevertCommand}"
-                            IsEnabled="{Binding IsDirty}">Revert</Button>
+                            IsVisible="{Binding IsEditing}" IsEnabled="{Binding IsDirty}">Revert</Button>
                     <Button Grid.Column="2" Classes="pill" Margin="0,0,8,0" Command="{Binding CheckCommand}"
-                            IsEnabled="{Binding CanApply}"
+                            IsVisible="{Binding IsEditing}" IsEnabled="{Binding CanApply}"
                             ToolTip.Tip="Ask the cluster what this would change, without changing it">Check</Button>
                     <Button Grid.Column="3" Classes="primary" Command="{Binding ApplyCommand}"
-                            IsEnabled="{Binding CanApply}">Apply</Button>
+                            IsVisible="{Binding IsEditing}" IsEnabled="{Binding CanApply}">Apply</Button>
                 </Grid>
             </Grid>
 

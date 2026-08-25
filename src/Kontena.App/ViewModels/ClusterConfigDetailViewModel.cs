@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Core.Orchestration;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 
@@ -56,9 +57,15 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
     /// moment you add one, and a header that disagrees with the list under it is a header nobody
     /// trusts.
     /// </summary>
-    public string KeyCountText => IsEditing
+    public string KeyCountText => IsEditing || _appliedKeyCount is not null
         ? Keys.Count == 1 ? "1 key" : $"{Keys.Count} keys"
         : _row.KeyCount;
+
+    /// <summary>
+    /// Set once an apply has landed, so the header stops quoting the listing this page was opened
+    /// from: that row was read before the write and still says "2 keys" over three.
+    /// </summary>
+    private int? _appliedKeyCount;
 
     /// <summary>
     /// The keys, each able to fetch its own value on request. Same rows, same discipline as the list
@@ -77,12 +84,35 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
     // masked, with the reveal and the copy the page was built around. So editing happens here, and
     // "Edit" on the list is now simply the way in to this page.
     //
-    // DESIGN PREVIEW: Check and Apply set a status and send nothing. The real ones would go through
-    // ManifestEditorViewModel's flow — the manifest this tab is a view of, with the fields written
-    // back into it — so there is no second apply path and no new engine API.
+    // Check and Apply go through the object's own manifest and the engine's one write door,
+    // ApplyAsync (KON-422). They were a preview that set a status and sent nothing, which read as a
+    // save and was not one.
 
     /// <summary>Whether the object can be written at all — false hides the button entirely.</summary>
-    public bool CanEdit => _cluster.Capabilities.Apply;
+    public bool CanEdit => _cluster.Capabilities.Apply && !IsExternallyManaged;
+
+    /// <summary>
+    /// Whether a controller owns this object's contents (KON-422).
+    /// <para>
+    /// Today that is the External Secrets Operator, which reconciles the Secret from an
+    /// ExternalSecret. Editing one is not blocked by the cluster — the write goes through, and then
+    /// gets undone at the next reconcile, which is a worse outcome than not offering the button:
+    /// the value looks changed until something quietly changes it back.
+    /// </para>
+    /// </summary>
+    public bool IsExternallyManaged => _row.IsExternallyManaged;
+
+    /// <summary>
+    /// Why Edit is not there, said in one line and in a normal voice.
+    /// <para>
+    /// Not an error, not a warning: nothing is wrong with this Secret. It is a fact about where its
+    /// values come from, so it is drawn as the muted note it is rather than borrowing the styling
+    /// that means something needs attention.
+    /// </para>
+    /// </summary>
+    public string ExternallyManagedNotice =>
+        "Managed by the External Secrets Operator — its values come from the ExternalSecret that "
+        + "reconciles it, so a change made here would be overwritten. Edit the ExternalSecret instead.";
 
     [ObservableProperty] private bool _isEditing;
 
@@ -177,7 +207,7 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
     public bool IsDirty =>
         Keys.Count != _snapshot.Length || Keys.Any(k => k.IsChanged || k.IsNew);
 
-    public bool CanApply => IsEditing && IsDirty;
+    public bool CanApply => IsEditing && IsDirty && !IsBusy;
 
     /// <summary>The result of the last check or apply, in the cluster's words where there are any.</summary>
     [ObservableProperty] private string? _status;
@@ -193,33 +223,156 @@ public sealed partial class ClusterConfigDetailViewModel : ClusterObjectDetailVi
     /// Ask the cluster what this would do, without doing it — the same server-side dry-run the
     /// manifest editor offers, and the answer to the objection that a field editor encodes out of
     /// sight: you can still see exactly what the apiserver would accept.
-    /// <para>
-    /// Not wired to <see cref="IClusterEngine.ApplyAsync"/> yet, so it says so. It used to answer
-    /// "Would change · Secret/x configured" — a sentence the cluster never said, about a round trip
-    /// that never happened.
-    /// </para>
     /// </summary>
     [RelayCommand]
-    private void Check() => Unwired("checked against the cluster");
+    private Task CheckAsync() => SendAsync(dryRun: true);
+
+    [RelayCommand]
+    private Task ApplyAsync() => SendAsync(dryRun: false);
+
+    [ObservableProperty] private bool _isBusy;
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanApply));
 
     /// <summary>
-    /// <b>Nothing is written yet.</b> This reported "Applied · Secret/x configured" while sending
-    /// nothing, and Cancel — the only way out of edit mode — then dropped the fields. So the whole
-    /// visible flow was: type a new value, press Apply, read that it worked, leave, and find the
-    /// secret exactly as it was.
+    /// Write the fields back through the object's own manifest (KON-422).
     /// <para>
-    /// Saying so is the fix for the lie, not for the missing half: writing needs the fields rendered
-    /// back into the object's manifest and sent through <see cref="IClusterEngine.ApplyAsync"/>, and
-    /// the YAML tab on this same page already does exactly that.
+    /// Through the manifest and not through a second engine call: <see cref="IClusterEngine"/> has
+    /// one door for writing, <see cref="IClusterEngine.ApplyAsync"/>, and everything an apply gets
+    /// right — server-side dry-run, the apiserver's own message when it says no, the diff — comes
+    /// free by using it. What this adds is only the encoding, which is the part a field editor
+    /// exists to do for you.
+    /// </para>
+    /// <para>
+    /// The manifest is fetched here rather than held: between opening the page and pressing Apply, a
+    /// controller may have written to the object, and rewriting a copy from minutes ago would revert
+    /// whatever it did. Only the data block is replaced; everything else travels back as it came.
     /// </para>
     /// </summary>
-    [RelayCommand]
-    private void Apply() => Unwired("written to the cluster");
-
-    private void Unwired(string what)
+    private async Task SendAsync(bool dryRun)
     {
-        StatusIsError = true;
-        Status = $"Not {what} — these fields cannot be sent yet. Use the YAML tab to apply.";
+        if (!CanApply)
+            return;
+
+        if (FirstFault() is { } fault)
+        {
+            StatusIsError = true;
+            Status = fault;
+            return;
+        }
+
+        IsBusy = true;
+        Status = null;
+        StatusIsError = false;
+
+        try
+        {
+            Services.Diag.Action(dryRun ? "preview config fields" : "apply config fields", "config detail");
+
+            var manifest = await _cluster.GetManifestAsync(Reference);
+            var yaml = ConfigManifest.WithData(manifest, ConfigManifest.DataOf(Keys.Select(k => k.ToEntry())));
+
+            if (yaml is null)
+            {
+                // Refused rather than guessed at. Naming the YAML tab matters: it is the same
+                // object, and it can edit what this cannot.
+                StatusIsError = true;
+                Status = "This object's manifest is not one this editor can rewrite. Use the YAML tab.";
+                return;
+            }
+
+            var results = new List<ApplyProgress>();
+            await foreach (var step in _cluster.ApplyAsync(
+                new ManifestBundle { Yaml = yaml, Source = "config detail", DryRun = dryRun }))
+            {
+                results.Add(step);
+            }
+
+            if (results.Find(r => r.Action == ApplyAction.Failed) is { } failed)
+            {
+                // The apiserver's own message. It names the field it rejected, and summarising that
+                // into "apply failed" sends someone to a terminal to find out which.
+                StatusIsError = true;
+                Status = failed.Error ?? "The cluster refused it.";
+                return;
+            }
+
+            if (results.TrueForAll(r => r.Action == ApplyAction.Unchanged))
+            {
+                Status = dryRun
+                    ? "No change — these values already match what the cluster holds."
+                    : "No change — the values already matched.";
+                return;
+            }
+
+            var what = string.Join(", ", results.Select(
+                r => $"{r.Resource.Kind.Kind}/{r.Resource.Name} {r.Action.ToString().ToLowerInvariant()}"));
+
+            if (dryRun)
+            {
+                // Future tense, because nothing has happened. A dry-run that reports "configured"
+                // reads as done, and then Apply looks redundant.
+                Status = $"Would change · {what}";
+                return;
+            }
+
+            // Re-read rather than assume: defaulting and admission webhooks get a say, so what the
+            // cluster now holds is not simply what was typed. This is also what makes the edit
+            // survive — the fields become a reading of the written object, and leaving the tab has
+            // nothing left to undo.
+            await ReloadAsync();
+            Status = $"Applied · {what}";
+        }
+        catch (Exception failure)
+        {
+            StatusIsError = true;
+            Status = failure.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// What the cluster would reject, said here instead — a round trip to be told a key has no name
+    /// is a round trip nobody needed.
+    /// </summary>
+    private string? FirstFault()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var key in Keys)
+        {
+            if (string.IsNullOrWhiteSpace(key.Name))
+                return "A key needs a name.";
+
+            if (!seen.Add(key.Name))
+                return $"There are two keys called {key.Name}. A key can only be in the object once.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Rebuild the fields from what the cluster now holds, and leave editing. The rows are new ones:
+    /// a key added in this edit has a size and a stored value now, and a row that was standing in
+    /// for it knows neither.
+    /// </summary>
+    private async Task ReloadAsync()
+    {
+        var entries = await _cluster.GetConfigDataAsync(Reference);
+        var keys = entries.Select(e => new ConfigKey(e.Key, e.SizeBytes)).ToList();
+
+        _appliedKeyCount = keys.Count;
+        IsEditing = false;
+
+        Keys.Clear();
+        foreach (var row in _row.BuildKeyRows(keys))
+            Keys.Add(row);
+
+        _snapshot = [.. Keys];
+        Recompute();
     }
 
     private void Recompute()

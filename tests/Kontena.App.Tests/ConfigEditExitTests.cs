@@ -4,12 +4,13 @@ using Kontena.Core.Orchestration.Fakes;
 namespace Kontena.App.Tests;
 
 /// <summary>
-/// Leaving the Data tab's field editor (KON-418).
+/// Leaving the Data tab's field editor without applying (KON-418).
 /// <para>
-/// Cancel was reported as losing an edit halfway. It does not: every case below shows it putting the
-/// rows back exactly as the cluster has them. What did go wrong was the other half of the flow —
-/// Apply said "Applied · Secret/x configured" while sending nothing, so the only way out of edit
-/// mode was a Cancel that dropped the edit the message had just called saved.
+/// Cancel was reported as losing an edit halfway. It does not, and every case below shows it
+/// putting the rows back exactly as the cluster has them. The fault was in the other half of the
+/// flow — Apply claimed a write it never made — and that is fixed elsewhere, in
+/// <see cref="ConfigEditApplyTests"/>. What is pinned here is that discarding still discards
+/// cleanly now that saving really saves.
 /// </para>
 /// </summary>
 public sealed class ConfigEditExitTests
@@ -124,50 +125,15 @@ public sealed class ConfigEditExitTests
     }
 
     /// <summary>
-    /// The reported bug, at its root: Apply must not report a write it did not do. Nothing here is
-    /// wired to the cluster yet, and a page that says otherwise sends someone away believing a
-    /// secret was rotated.
-    /// </summary>
-    [Fact]
-    public async Task Apply_does_not_claim_a_write_it_did_not_make()
-    {
-        var detail = await EditingAsync();
-        detail.Keys[0].Value = "9f2c-rotated";
-
-        detail.ApplyCommand.Execute(null);
-
-        Assert.True(detail.StatusIsError);
-        Assert.DoesNotContain("Applied", detail.Status, StringComparison.Ordinal);
-        Assert.Contains("YAML tab", detail.Status, StringComparison.Ordinal);
-
-        // And the edit is still in hand rather than sitting behind a confirmation.
-        Assert.True(detail.IsEditing);
-        Assert.True(detail.CanApply);
-        Assert.Equal("9f2c-rotated", detail.Keys[0].Value);
-    }
-
-    [Fact]
-    public async Task Check_does_not_claim_a_dry_run_it_did_not_make()
-    {
-        var detail = await EditingAsync();
-        detail.Keys[0].Value = "9f2c-rotated";
-
-        detail.CheckCommand.Execute(null);
-
-        Assert.True(detail.StatusIsError);
-        Assert.DoesNotContain("Would change", detail.Status, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// A status describes one state of the fields. Typing again makes it a claim about a value that
-    /// is no longer on screen, which is how "Applied ·" came to sit over an unsaved edit.
+    /// is no longer on screen, which is how a dry-run's answer came to sit over a different edit.
     /// </summary>
     [Fact]
     public async Task A_status_does_not_outlive_the_edit_it_described()
     {
         var detail = await EditingAsync();
         detail.Keys[0].Value = "9f2c-rotated";
-        detail.CheckCommand.Execute(null);
+        await detail.CheckCommand.ExecuteAsync(null);
         Assert.NotNull(detail.Status);
 
         detail.Keys[0].Value = "9f2c-rotated-again";
@@ -181,7 +147,7 @@ public sealed class ConfigEditExitTests
     {
         var detail = await EditingAsync();
         detail.Keys[0].Value = "9f2c-rotated";
-        detail.ApplyCommand.Execute(null);
+        await detail.CheckCommand.ExecuteAsync(null);
 
         detail.CancelEditCommand.Execute(null);
 

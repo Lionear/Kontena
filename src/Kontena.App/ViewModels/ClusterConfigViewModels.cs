@@ -93,7 +93,8 @@ public partial class ClusterSecretsViewModel : ClusterListPageViewModel<ConfigOb
             .Select(s => new ConfigObjectRow(
                 new ResourceRef(GroupVersionKind.Secret, s.Namespace, s.Name),
                 s.Type, s.Keys, s.Age, _cluster.GetConfigDataAsync, secret: true,
-                onDelete: ConfirmDelete, onEdit: Edit, onOpen: Open)),
+                onDelete: ConfirmDelete, onEdit: Edit, onOpen: Open,
+                externallyManaged: ManagedSecrets.IsExternallyManaged(s.Labels))),
     ];
 
     protected override bool Matches(ConfigObjectRow row, string term) =>
@@ -114,9 +115,11 @@ public sealed partial class ConfigObjectRow : ObservableObject
         ResourceRef reference, string? type, IReadOnlyList<ConfigKey> keys, TimeSpan age,
         Func<ResourceRef, CancellationToken, ValueTask<IReadOnlyList<ConfigEntry>>> fetch,
         bool secret, Action<ConfigObjectRow>? onDelete = null, Action<ConfigObjectRow>? onEdit = null,
-        Action<ConfigObjectRow>? onOpen = null)
+        Action<ConfigObjectRow>? onOpen = null, bool externallyManaged = false)
     {
         ArgumentNullException.ThrowIfNull(keys);
+
+        IsExternallyManaged = externallyManaged;
 
         Reference = reference;
         _fetch = fetch;
@@ -154,6 +157,13 @@ public sealed partial class ConfigObjectRow : ObservableObject
     public bool HasType => IsSecret;
 
     /// <summary>
+    /// Whether a controller keeps this object's contents up to date — today that means the External
+    /// Secrets Operator (KON-422). An edit here would be reconciled away, so the editor does not
+    /// offer itself.
+    /// </summary>
+    public bool IsExternallyManaged { get; }
+
+    /// <summary>
     /// The key names and sizes that came with the listing. Names only — the list holds no values at
     /// all, which is what lets a page of fifty secrets exist without any of them being anywhere in
     /// this process. Asking for one is the detail's job (KON-330).
@@ -189,8 +199,13 @@ public sealed partial class ConfigObjectRow : ObservableObject
     /// that meant the list itself pulling every value of every object it listed.
     /// </para>
     /// </summary>
-    public IReadOnlyList<ConfigKeyRow> BuildKeyRows() =>
-        [.. Keys.Select(k => new ConfigKeyRow(k, ResolveAsync, IsSecret))];
+    /// <param name="keys">
+    /// The keys to build from, for a caller holding a fresher answer than the listing did — the
+    /// detail after an apply, whose object now has one key more or one key less than the row it was
+    /// opened from (KON-422). Defaults to the listing's own.
+    /// </param>
+    public IReadOnlyList<ConfigKeyRow> BuildKeyRows(IReadOnlyList<ConfigKey>? keys = null) =>
+        [.. (keys ?? Keys).Select(k => new ConfigKeyRow(k, ResolveAsync, IsSecret))];
 
     /// <summary>
     /// Fetch one key's value, now.
@@ -407,6 +422,23 @@ public sealed partial class ConfigKeyRow : ObservableObject
         Value = _originalValue;
     }
 
+    /// <summary>
+    /// What the cluster held for this key, in the form it held it. Kept so that a key nobody
+    /// touched — and above all one nobody could touch, a certificate — goes back exactly as it
+    /// came (KON-422). Apply writes the whole object, so every key travels, not just the edited
+    /// ones.
+    /// </summary>
+    private string _storedBase64 = string.Empty;
+
+    /// <summary>
+    /// This row as an entry to write. A binary key is passed through untouched: its bytes were
+    /// never rendered and are not this editor's to re-encode. Anything else is the text in the
+    /// field, which is the whole point of the field.
+    /// </summary>
+    public ConfigEntry ToEntry() => IsBinary
+        ? new ConfigEntry { Key = Name, Text = null, Base64 = _storedBase64 }
+        : new ConfigEntry { Key = Name, Text = Value ?? string.Empty, Base64 = ConfigBytes.Encode(Value ?? string.Empty) };
+
     [RelayCommand]
     private void Remove() => Removed?.Invoke(this);
 
@@ -430,6 +462,7 @@ public sealed partial class ConfigKeyRow : ObservableObject
             IsBinary = entry.IsBinary;
             Size = Format.Size(entry.SizeBytes);
             Value = entry.Text;
+            _storedBase64 = entry.Base64;
             IsRevealed = true;
         }
         catch (Exception failure)

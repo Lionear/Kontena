@@ -797,17 +797,30 @@ internal static class Program
             case "secret-edit-binary":
             case "secret-edit-applied":
             case "secret-edit-cancelled":
+            case "secret-managed":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("secrets");
                 Settle(rounds: 30);
 
-                // app-tls is the one whose keys are bytes, which is the state a field cannot serve.
-                var subject = scene == "secret-edit-binary" ? "app-tls" : "postgres-credentials";
+                // app-tls is the one whose keys are bytes, which is the state a field cannot serve;
+                // stripe-api is the one a controller keeps up to date, which is the state no field
+                // can serve at all (KON-422).
+                var subject = scene switch
+                {
+                    "secret-edit-binary" => "app-tls",
+                    "secret-managed" => "stripe-api",
+                    _ => "postgres-credentials",
+                };
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterSecretsViewModel editable)
                     editable.Items.FirstOrDefault(r => r.Name == subject)?.OpenCommand.Execute(null);
 
                 Settle(rounds: 30);
+
+                // The managed one is shown as it opens: Edit is off and the tab says why, so there
+                // is nothing to drive.
+                if (scene == "secret-managed")
+                    break;
 
                 if (vm.Detail is Kontena.App.ViewModels.ClusterConfigDetailViewModel editing)
                 {
@@ -830,16 +843,17 @@ internal static class Program
                         editing.Keys[^1].Value = "verify-full";
                     }
 
-                    // What Apply really answers now that it no longer claims a write it did not
-                    // make, and what Cancel leaves behind afterwards — the two halves of the flow
-                    // that were reported as losing an edit.
+                    // A real apply and what it leaves behind (KON-422): the fields become a
+                    // reading of the written object, so there is nothing left to cancel.
                     if (scene is "secret-edit-applied" or "secret-edit-cancelled")
                     {
                         editing.Keys[0].ToggleCommand.Execute(null);
                         editing.Keys[0].Value = "9f2c-rotated-2026-08-20";
                         editing.ApplyCommand.Execute(null);
+                        SettleUntil(() => !editing.IsBusy, maxRounds: 200);
                     }
 
+                    // Cancel from a clean edit, which is the discard half rather than the save one.
                     if (scene == "secret-edit-cancelled")
                         editing.CancelEditCommand.Execute(null);
 

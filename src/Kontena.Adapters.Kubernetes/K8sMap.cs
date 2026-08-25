@@ -727,6 +727,13 @@ internal static class K8sMap
             .. Keys(s.Data, v => v?.LongLength ?? 0)
                 .OrderBy(k => k.Name, StringComparer.Ordinal),
         ],
+
+        // Carried so the editor can see a controller's claim on this object before offering to
+        // write it (KON-422).
+        Labels = s.Metadata?.Labels is { } labels
+            ? new Dictionary<string, string>(labels, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal),
+
         Age = AgeOf(s.Metadata),
     };
 

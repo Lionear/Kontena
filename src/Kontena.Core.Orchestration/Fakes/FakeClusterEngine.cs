@@ -212,6 +212,21 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             new SecretSummary { Name = "postgres-credentials", Namespace = "app", Type = "Opaque", Age = TimeSpan.FromDays(9), Keys = [new ConfigKey("password", 24), new ConfigKey("username", 8)] },
             new SecretSummary { Name = "app-tls", Namespace = "app", Type = "kubernetes.io/tls", Age = TimeSpan.FromDays(2), Keys = [new ConfigKey("tls.crt", 1704), new ConfigKey("tls.key", 1675)] },
             new SecretSummary { Name = "ghcr-pull", Namespace = "app", Type = "kubernetes.io/dockerconfigjson", Age = TimeSpan.FromDays(40), Keys = [new ConfigKey(".dockerconfigjson", 187)] },
+            // A fourth shape (KON-422): one that a controller keeps up to date. Everything about it
+            // reads like the others — that is the point. Only the label says the values come from
+            // somewhere else, and it is the label the editor has to notice.
+            new SecretSummary
+            {
+                Name = "stripe-api",
+                Namespace = "app",
+                Type = "Opaque",
+                Age = TimeSpan.FromDays(6),
+                Keys = [new ConfigKey("secret-key", 32), new ConfigKey("webhook-secret", 32)],
+                Labels = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [ManagedSecrets.ExternalSecretsLabel] = ManagedSecrets.ExternalSecretsLabelValue,
+                },
+            },
             // Minted beside a service account rather than by anyone; same reason as kube-root-ca.crt.
             new SecretSummary { Name = "default-token-x9f2q", Namespace = "kube-system", Type = "kubernetes.io/service-account-token", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("token", 1024)] },
         ];
@@ -229,11 +244,19 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 new ConfigEntry { Key = "username", Text = "postgres", SizeBytes = 8 },
             ],
             // Text null is what "these bytes are not text" looks like — the case the reveal path has
-            // to handle without rendering a terminal full of noise.
+            // to handle without rendering a terminal full of noise. The bytes are real rather than
+            // absent (KON-422): an editor that writes the whole object back has to carry the keys
+            // nobody looked at, and a seed with no bytes behind them would let that path pass a test
+            // it would fail on a cluster.
             ["Secret/app/app-tls"] =
             [
-                new ConfigEntry { Key = "tls.crt", Text = null, SizeBytes = 1704 },
-                new ConfigEntry { Key = "tls.key", Text = null, SizeBytes = 1675 },
+                new ConfigEntry { Key = "tls.crt", Text = null, Base64 = NotText(1704), SizeBytes = 1704 },
+                new ConfigEntry { Key = "tls.key", Text = null, Base64 = NotText(1675), SizeBytes = 1675 },
+            ],
+            ["Secret/app/stripe-api"] =
+            [
+                new ConfigEntry { Key = "secret-key", Text = "sk_live_51Mx8Qp2eZvKYlo2C0000", SizeBytes = 32 },
+                new ConfigEntry { Key = "webhook-secret", Text = "whsec_9Ht2Kq7Lm4Nr8Ss1Tv3Ww6Xy", SizeBytes = 32 },
             ],
         };
 
@@ -506,6 +529,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         Containers = MergeByName(live.Containers, desired.Containers, c => c.Name),
         Ports = MergeByName(live.Ports, desired.Ports, p => p.Name),
         Raw = desired.Raw ?? live.Raw,
+        SecretType = desired.SecretType ?? live.SecretType,
+
+        // Data replaces rather than merges the way a label map does. A key the document leaves out
+        // is a key the editor removed, and merging would make removal the one edit that silently
+        // does nothing. (kubectl apply reaches the same answer by a longer road: data is not a
+        // strategic-merge list, so the three-way merge prunes what last-applied held and the
+        // document no longer does.)
+        Data = desired.Data ?? live.Data,
     };
 
     private static IReadOnlyDictionary<string, string> MergeMap(
@@ -1102,6 +1133,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             case "PersistentVolumeClaim":
                 return _pvcs.Find(p => p.Name == name && p.Namespace == ns) is { } pvc ? ToDoc(pvc) : null;
 
+            case "ConfigMap":
+            case "Secret":
+                return ToConfigDoc(resource);
+
             default:
                 if (ParseWorkloadKind(resource.Kind.Kind) is { } kind)
                 {
@@ -1112,6 +1147,91 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
                 return _extras.GetValueOrDefault(resource);
         }
+    }
+
+    /// <summary>
+    /// <paramref name="length"/> bytes that are deliberately not valid UTF-8, as base64 — a stand-in
+    /// for a certificate or a key. Continuation bytes with nothing to continue: every decoder
+    /// rejects them, which is exactly the property the binary path is being seeded for.
+    /// </summary>
+    private static string NotText(int length)
+    {
+        var bytes = new byte[length];
+        for (var i = 0; i < length; i++)
+            bytes[i] = (byte)(0x80 + (i % 0x40));
+
+        return Convert.ToBase64String(bytes);
+    }
+
+    /// <summary>
+    /// A ConfigMap or Secret as a manifest, values and all (KON-422).
+    /// <para>
+    /// These two used to fall through to <see cref="_extras"/>, which is only ever filled by an
+    /// apply — so a seeded Secret had no manifest at all and its YAML tab read "not found". Nothing
+    /// noticed while the fields were read-only; a field editor that writes through the manifest
+    /// needs one to write into.
+    /// </para>
+    /// </summary>
+    private ManifestDoc? ToConfigDoc(ResourceRef resource)
+    {
+        var ns = resource.Namespace;
+        var secret = resource.Kind.Kind == "Secret";
+
+        var type = secret
+            ? _secrets.Find(s => s.Name == resource.Name && s.Namespace == ns)?.Type
+            : _configMaps.Exists(c => c.Name == resource.Name && c.Namespace == ns) ? string.Empty : null;
+
+        if (type is null)
+            return null;
+
+        var key = $"{resource.Kind.Kind}/{ns}/{resource.Name}";
+        var entries = _configData.TryGetValue(key, out var found) ? found : [];
+
+        return new ManifestDoc
+        {
+            ApiVersion = "v1",
+            Kind = resource.Kind.Kind,
+            Name = resource.Name,
+            Namespace = ns,
+            SecretType = secret ? type : null,
+            Data = entries.ToDictionary(e => e.Key, ConfigBytes.Base64Of, StringComparer.Ordinal),
+        };
+    }
+
+    /// <summary>Write an applied ConfigMap or Secret back into the listing and the values.</summary>
+    private void StoreConfig(ManifestDoc doc)
+    {
+        var ns = doc.Namespace ?? "default";
+        var secret = doc.Kind == "Secret";
+
+        // No data block means the document did not speak about the values — a patch for labels
+        // alone. Merge has already resolved that against what is live, so a null here is only
+        // possible when neither side had any.
+        var entries = (doc.Data ?? new Dictionary<string, string>(StringComparer.Ordinal))
+            .OrderBy(d => d.Key, StringComparer.Ordinal)
+            .Select(d => ConfigBytes.ToEntry(d.Key, d.Value))
+            .ToList();
+
+        _configData[$"{doc.Kind}/{ns}/{doc.Name}"] = entries;
+
+        var keys = entries.Select(e => new ConfigKey(e.Key, e.SizeBytes)).ToList();
+
+        if (secret)
+        {
+            var i = _secrets.FindIndex(s => s.Name == doc.Name && s.Namespace == ns);
+            if (i >= 0)
+                _secrets[i] = _secrets[i] with { Keys = keys, Type = doc.SecretType ?? _secrets[i].Type };
+            else
+                _secrets.Add(new SecretSummary { Name = doc.Name, Namespace = ns, Type = doc.SecretType ?? "Opaque", Keys = keys, Age = TimeSpan.Zero });
+
+            return;
+        }
+
+        var j = _configMaps.FindIndex(c => c.Name == doc.Name && c.Namespace == ns);
+        if (j >= 0)
+            _configMaps[j] = _configMaps[j] with { Keys = keys };
+        else
+            _configMaps.Add(new ConfigMapSummary { Name = doc.Name, Namespace = ns, Keys = keys, Age = TimeSpan.Zero });
     }
 
     /// <summary>Write an applied manifest back into the seeded world.</summary>
@@ -1160,6 +1280,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                     _namespaces.Add(new KubeNamespace { Name = doc.Name, Phase = "Active", Labels = doc.Labels, Age = TimeSpan.Zero });
                 break;
             }
+
+            case "ConfigMap":
+            case "Secret":
+                StoreConfig(doc);
+                break;
 
             default:
             {

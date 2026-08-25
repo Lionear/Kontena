@@ -119,7 +119,7 @@ public sealed class NodeAndNamespaceDetailTests
         var page = await NamespaceDetailAsync();
 
         Assert.False(page.IsEmptyNamespace);
-        Assert.Equal(3, page.Contents.Single(c => c.Label == "Secrets").Count);
+        Assert.Equal(4, page.Contents.Single(c => c.Label == "Secrets").Count);
     }
 
     [Fact]
