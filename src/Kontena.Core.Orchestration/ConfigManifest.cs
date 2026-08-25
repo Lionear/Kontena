@@ -47,12 +47,23 @@ public static class ConfigManifest
 
         var kept = new List<string>();
         var insertAt = -1;
+        var inMetadata = false;
 
         for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
+            var top = line.Length > 0 && !char.IsWhiteSpace(line[0]);
 
-            if (!IsTopLevelKey(line, "data") && !IsTopLevelKey(line, "stringData"))
+            if (top)
+                inMetadata = IsTopLevelKey(line, "metadata");
+
+            var drop =
+                IsTopLevelKey(line, "data")
+                || IsTopLevelKey(line, "stringData")
+                || IsTopLevelKey(line, "status")
+                || (inMetadata && IsMetadataKey(line) is { } key && NotOurs.Contains(key));
+
+            if (!drop)
             {
                 kept.Add(line);
                 continue;
@@ -65,10 +76,23 @@ public static class ConfigManifest
                 insertAt = kept.Count;
 
             // The block is the header's nested lines. A blank line inside it is still inside it;
-            // the next line at column zero is what ends it.
+            // anything at the header's own indent or shallower ends it — except a sequence item,
+            // which YAML lets sit at the same column as the key it belongs to. managedFields is
+            // written exactly that way, and stopping at its first "- " left the list behind under a
+            // header that had just been removed.
+            var indent = Indent(line);
             for (var j = i + 1; j < lines.Length; j++)
             {
-                if (lines[j].Trim().Length > 0 && !char.IsWhiteSpace(lines[j][0]))
+                var next = lines[j];
+                if (next.Trim().Length == 0)
+                {
+                    i = j;
+                    continue;
+                }
+
+                var deeper = Indent(next) > indent;
+                var item = Indent(next) == indent && next.TrimStart().StartsWith("- ", StringComparison.Ordinal);
+                if (!deeper && !item)
                     break;
 
                 i = j;
@@ -132,6 +156,35 @@ public static class ConfigManifest
             ? key
             : "\"" + key.Replace("\\", "\\\\", StringComparison.Ordinal)
                         .Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+
+    /// <summary>
+    /// The metadata the cluster writes and will not accept back (KON-422).
+    /// <para>
+    /// <c>GetManifestAsync</c> asks the apiserver for the object as it is, which includes what the
+    /// apiserver keeps about it. Sending <c>managedFields</c> back into a server-side apply is a hard
+    /// error — <i>"metadata.managedFields must be nil"</i> — and it failed every apply from this tab
+    /// against a real cluster while passing against a fake that has no such field. The rest go with
+    /// it for the same reason a human piping <c>kubectl get -o yaml</c> into <c>kubectl apply</c>
+    /// deletes them: they describe this copy of the object, not the object.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> NotOurs = new(StringComparer.Ordinal)
+    {
+        "managedFields", "resourceVersion", "uid", "creationTimestamp", "generation", "selfLink",
+    };
+
+    private static int Indent(string line) => line.Length - line.TrimStart().Length;
+
+    /// <summary>The key on a line nested one level under <c>metadata:</c>, or null.</summary>
+    private static string? IsMetadataKey(string line)
+    {
+        if (Indent(line) != 2)
+            return null;
+
+        var text = line.TrimStart();
+        var colon = text.IndexOf(':', StringComparison.Ordinal);
+        return colon > 0 ? text[..colon] : null;
+    }
 
     /// <summary>Whether a <c>---</c> appears with a document already behind it.</summary>
     private static bool SeparatesDocuments(string[] lines)

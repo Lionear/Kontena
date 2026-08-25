@@ -178,6 +178,87 @@ public sealed class ConfigManifestTests
         Assert.Null(ConfigManifest.WithData("   ", Data(("x", "eA=="))));
     }
 
+    /// <summary>
+    /// What the apiserver actually hands back, keys in its own alphabetical order and its own
+    /// bookkeeping attached. Sending <c>managedFields</c> into a server-side apply is refused with
+    /// "metadata.managedFields must be nil" — it failed every write from the Data tab against a real
+    /// cluster while passing against the fake, which has no such field (KON-422).
+    /// </summary>
+    [Fact]
+    public void The_clusters_own_bookkeeping_does_not_travel_back()
+    {
+        const string live = """
+            apiVersion: v1
+            data:
+              password: czNjcjN0
+              username: cG9zdGdyZXM=
+            kind: Secret
+            metadata:
+              annotations:
+                keep: me
+              creationTimestamp: "2026-08-25T12:01:43Z"
+              managedFields:
+              - apiVersion: v1
+                fieldsType: FieldsV1
+                fieldsV1:
+                  f:data:
+                    f:password: {}
+                  f:type: {}
+                manager: kontena
+                operation: Apply
+                time: "2026-08-25T12:01:43Z"
+              name: creds
+              namespace: app
+              resourceVersion: "1871"
+              uid: 8c28eb0a-fced-4918-915c-facbb8c60409
+            type: Opaque
+            """;
+
+        var result = ConfigManifest.WithData(live, Data(("username", "cG9zdGdyZXM=")));
+
+        Assert.NotNull(result);
+
+        // The list under managedFields sits at the same column as its key, so a block that ends at
+        // the first line "not deeper" left the entries behind under a header that had gone.
+        Assert.DoesNotContain("managedFields", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("fieldsV1", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("operation: Apply", result, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("resourceVersion", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("uid:", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("creationTimestamp", result, StringComparison.Ordinal);
+
+        // What is the object rather than this copy of it stays.
+        Assert.Contains("name: creds", result, StringComparison.Ordinal);
+        Assert.Contains("namespace: app", result, StringComparison.Ordinal);
+        Assert.Contains("keep: me", result, StringComparison.Ordinal);
+        Assert.Contains("type: Opaque", result, StringComparison.Ordinal);
+        Assert.Contains("  username: cG9zdGdyZXM=", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("password", result, StringComparison.Ordinal);
+    }
+
+    /// <summary>A status block is the cluster's answer about the object, not a field to send it.</summary>
+    [Fact]
+    public void A_status_block_does_not_travel_back()
+    {
+        const string withStatus = """
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: s
+            data:
+              a: YQ==
+            status:
+              observedGeneration: 3
+            """;
+
+        var result = ConfigManifest.WithData(withStatus, Data(("a", "QQ==")));
+
+        Assert.DoesNotContain("status", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("observedGeneration", result, StringComparison.Ordinal);
+        Assert.Contains("  a: QQ==", result, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Rows_become_data_with_text_encoded_and_bytes_passed_through()
     {
