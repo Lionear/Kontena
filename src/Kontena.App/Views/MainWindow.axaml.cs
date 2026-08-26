@@ -269,6 +269,50 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() => BackendPill.Flyout?.Hide());
     }
 
+    /// <summary>
+    /// Open the clicked connection in a second main window (KON-424) — Docker and a cluster side by
+    /// side, instead of one window switching between them.
+    /// <para>
+    /// A whole shell rather than the drawer's hand-over (KON-308): the two windows are connected to
+    /// different backends, so there is nothing to move across. The switcher row this was clicked in
+    /// belongs to the window that stays where it is.
+    /// </para>
+    /// </summary>
+    private void OnOpenBackendWindowClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: EngineOption option }
+            || DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        // The row's own button, so the flyout does not close on its own — and it has to, or the new
+        // window comes up behind a popup belonging to the old one.
+        BackendPill.Flyout?.Hide();
+
+        var window = new MainWindow { DataContext = vm.OpenInNewWindow(option.Backend) };
+
+        // Offset from this window rather than dropped exactly on top of it: MainWindow restores the
+        // one remembered placement, which is this window's, and a second window landing pixel-perfect
+        // on the first looks like nothing happened.
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Position = new PixelPoint(Position.X + CascadeOffset, Position.Y + CascadeOffset);
+        window.Show();
+    }
+
+    /// <summary>How far a spawned window sits down and to the right of the one it came from.</summary>
+    private const int CascadeOffset = 32;
+
+    /// <summary>
+    /// Whether this is the window the app launched with, as opposed to one spawned from the switcher
+    /// (KON-424). Asked of the lifetime rather than kept as a flag here, so a window built by a test
+    /// or the designer — where there is no lifetime — answers the same as the only window there is.
+    /// </summary>
+    private bool IsLaunchWindow =>
+        Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop
+        || ReferenceEquals(desktop.MainWindow, this)
+        || desktop.MainWindow is null;
+
     // ── Namespace picker (KON-373) ───────────────────────────────────────────
     //
     // An AutoCompleteBox filters, which is why it is here, but it is a text box underneath: its text
@@ -369,14 +413,20 @@ public partial class MainWindow : Window
     {
         CaptureNormal();
 
-        _store.Update(s => s with
+        // Only the launch window's placement is remembered (KON-424). A window spawned from the
+        // switcher opens offset from the one it came from, so letting it save would walk the
+        // remembered position down the screen one spawn at a time.
+        if (IsLaunchWindow)
         {
-            WindowWidth = _normalWidth,
-            WindowHeight = _normalHeight,
-            WindowX = _normalX,
-            WindowY = _normalY,
-            WindowMaximized = WindowState == WindowState.Maximized,
-        });
+            _store.Update(s => s with
+            {
+                WindowWidth = _normalWidth,
+                WindowHeight = _normalHeight,
+                WindowX = _normalX,
+                WindowY = _normalY,
+                WindowMaximized = WindowState == WindowState.Maximized,
+            });
+        }
 
         // A rollout runs from here — there is no cluster yet to hand it to — so closing stops k0sctl
         // where it is (KON-239). Write down what was standing, so the next launch can say "four of five

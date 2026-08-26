@@ -50,6 +50,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
+
+    /// <summary>What this shell was told to open, instead of what the settings remember (KON-424).
+    /// Set only on a window spawned from the switcher — see <see cref="OpenInNewWindow"/>.</summary>
+    private readonly string? _openBackend;
     private readonly ActivityLog _activityLog = new();
 
     // Port forwards outlive the modal that starts them and belong to the cluster connection, so the
@@ -97,6 +101,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// says nothing about any version, so a test never reaches the network by accident. A constructor
     /// parameter rather than an init property because <c>InitAsync</c> starts from here and would read
     /// an init property before it was assigned.</param>
+    /// <param name="openBackend">The backend this shell opens, whatever the settings remember
+    /// (KON-424). Null — the default — is the launch window, which opens what was pinned or last
+    /// used; a window spawned from the switcher passes the row it was spawned from.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
@@ -104,9 +111,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
         IReadOnlyList<DiscoveredPlugin>? plugins = null,
         string? pluginRoot = null,
         TimeSpan? probeGrace = null,
-        VersionSupportCheck? versions = null)
+        VersionSupportCheck? versions = null,
+        string? openBackend = null)
     {
         Versions = versions;
+        _openBackend = openBackend;
         _probeGrace = probeGrace ?? ProbeRoundGrace;
         // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
         // seam to its own dialog host means those read like every other confirm in the app rather
@@ -311,13 +320,23 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasBackendCrumb))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private string _engineName = "Connecting…";
+
+    /// <summary>
+    /// What the OS window list calls this window (KON-424). Kontena draws its own title bar, so this
+    /// is only ever read where the system lists windows — and that list is the one place two windows
+    /// on two different backends have to be told apart. Bare product name until something is open:
+    /// "Kontena — Connecting…" in the dock says less than nothing.
+    /// </summary>
+    public string WindowTitle => HasBackendCrumb ? $"{ProductInfo.Name} — {EngineName}" : ProductInfo.Name;
 
     [ObservableProperty] private BackendChipInfo _engineChip = new("?");
 
     /// <summary>Second line of the sidebar pill — the active backend's version/kind.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasBackendCrumb))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private string _engineDetail = string.Empty;
 
     /// <summary>
