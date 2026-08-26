@@ -746,7 +746,7 @@ public partial class MainWindowViewModel
             RequestProjectLogs = ShowComposeLogsDialog,
             RequestConfirm = ShowConfirm,
         };
-        SearchText = string.Empty;
+        ForgetSearches();
 
         await Containers.LoadAsync();
 
@@ -841,7 +841,7 @@ public partial class MainWindowViewModel
         await UpdateClusterNavAsync();
         OnPropertyChanged(nameof(SelectedNamespace));
 
-        SearchText = string.Empty;
+        ForgetSearches();
 
         // Same door, same reason (KON-263). This side had the identical gap: the overview was built
         // here rather than navigated to, so a cluster's first Back was missing too. Without the

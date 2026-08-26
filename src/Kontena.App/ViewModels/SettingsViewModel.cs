@@ -312,6 +312,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
+        _shareSearchAcrossResources = settings.ShareSearchAcrossResources;
         _autoDetect = settings.AutoDetectEngines;
         _diagnosticLogging = settings.DiagnosticLogging;
 
@@ -466,6 +467,15 @@ public partial class SettingsViewModel : ViewModelBase
         DensityApplier.Apply(value);
         Save();
     }
+
+    /// <summary>
+    /// One search term for the whole connection instead of one per resource type (KON-426). Read by
+    /// the shell when it opens a page, so it applies to the next navigation rather than the next
+    /// launch — there is nothing to apply here.
+    /// </summary>
+    [ObservableProperty] private bool _shareSearchAcrossResources;
+
+    partial void OnShareSearchAcrossResourcesChanged(bool value) => Save();
 
     // ── Diagnostics (KON-389) ───────────────────────────────────────────────
 
@@ -655,6 +665,7 @@ public partial class SettingsViewModel : ViewModelBase
         {
             Theme = Theme,
             CompactDensity = CompactDensity,
+            ShareSearchAcrossResources = ShareSearchAcrossResources,
             AutoDetectEngines = AutoDetect,
             Startup = startup,
             PinnedBackend = startup == StartupBackend.Pinned ? pinned : null,
