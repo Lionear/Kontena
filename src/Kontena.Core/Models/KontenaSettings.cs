@@ -55,6 +55,18 @@ public sealed record KontenaSettings
     public bool AutoDetectEngines { get; init; } = true;
 
     /// <summary>
+    /// Whether one search term is shared by every resource type in a connection, instead of each
+    /// keeping its own (KON-426).
+    /// <para>
+    /// Off by default. Remembering per resource type is what a search box on a list is expected to
+    /// do: the term you left on Pods is about pods. Carrying it across is the other useful reading —
+    /// one name, followed through pods, deployments and services — but it is a way of working rather
+    /// than the obvious behaviour, so it is asked for rather than assumed.
+    /// </para>
+    /// </summary>
+    public bool ShareSearchAcrossResources { get; init; }
+
+    /// <summary>
     /// Legacy: the engine to activate on launch, from before clusters existed and before "last
     /// used" was an option. Superseded by <see cref="Startup"/> and <see cref="PinnedBackend"/>,
     /// and only read now to carry an existing choice forward — see <see cref="ResolvedStartup"/>.

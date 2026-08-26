@@ -89,7 +89,13 @@ public partial class MainWindowViewModel
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
 
-        SearchText = page.SearchText;
+        // The page's own term, which is where an engine page keeps it — or the one the shell is
+        // already carrying, when the connection shares a single term (KON-426). Onto the page first:
+        // assigning the shell's SearchText the value it already holds raises nothing, so nothing
+        // would reach the page (KON-377).
+        var term = SharesSearchAcrossResources ? SearchText : page.SearchText;
+        page.SearchText = term;
+        SearchText = term;
 
         if (!page.HasLoaded)
             _ = page.LoadAsync();
@@ -240,6 +246,11 @@ public partial class MainWindowViewModel
 
         Diag.Mark($"navigate to {key}");
         var built = System.Diagnostics.Stopwatch.StartNew();
+
+        // Before anything is replaced: the page about to go is the only one that can still say what
+        // it was searching for (KON-426).
+        RememberClusterSearch();
+
         CloseDetail();
         // Any page that holds something running — a port-forward registry, a watch stream (KON-250).
         // By interface rather than by type: the list of page types that own a resource has grown
@@ -366,20 +377,23 @@ public partial class MainWindowViewModel
         if (refreshNav)
             _ = RefreshClusterNavAsync();
 
-        // The search term does not survive navigating away, and that is the honest behaviour while
-        // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
-        // pages keep theirs because they are long-lived fields. Restoring a term onto a fresh page
-        // would show a filtered list with no way to tell it had been filtered (KON-164).
+        // The term the page being opened should be searching for: what a reload in place was holding
+        // (KON-377), else what this resource type was left searching for (KON-426).
         //
-        // A reload in place is the exception, and the one case where clearing is the dishonest answer
-        // (KON-377): the user never left. They clicked Restart or Scale on the one row their search
-        // had left standing, and the list they were working in came back showing everything. Put on
-        // the page rather than left to the shell's own SearchText, which still holds the term and so
-        // raises nothing to push down — a filled box over an unfiltered list.
-        if (keepSearch is { Length: > 0 } && CurrentPage is IListPage { SupportsSearch: true } page)
-            page.SearchText = keepSearch;
+        // A term used to be cleared by every navigation, because cluster pages are rebuilt on every
+        // visit and the page a term filtered no longer exists. What KON-164 was actually about is a
+        // filtered list with nothing to say it had been filtered — so the answer is to put the term
+        // back in the box as well, not to throw it away. Which is what the engine pages have always
+        // done: they are long-lived fields and carry their own term across a visit.
+        //
+        // Put on the page rather than left to the shell's own SearchText, which may still hold the
+        // term and so raise nothing to push down — a filled box over an unfiltered list (KON-377).
+        var term = keepSearch ?? RecallClusterSearch(key);
 
-        SearchText = keepSearch ?? string.Empty;
+        if (term.Length > 0 && CurrentPage is IListPage { SupportsSearch: true } page)
+            page.SearchText = term;
+
+        SearchText = term;
     }
     /// <summary>
     /// Follow the cluster after the open page saw it change (KON-339). Failure is silent on purpose:
@@ -730,6 +744,48 @@ public partial class MainWindowViewModel
 
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
     private string _clusterPageKey = "overview";
+
+    /// <summary>
+    /// The term each cluster page was last searching for, keyed by nav key, for as long as this
+    /// connection lasts (KON-426).
+    /// <para>
+    /// Cluster pages are rebuilt on every visit, so unlike the engine pages — long-lived fields that
+    /// carry their own <c>SearchText</c> — they have nowhere of their own to keep it. The shell is
+    /// that place, and one shell is one connection since KON-424, which is the scope the term belongs
+    /// to: a search for "api" means nothing on the next cluster.
+    /// </para>
+    /// </summary>
+    private readonly Dictionary<string, string> _clusterSearch = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether one term is shared by every resource type instead of each keeping its own (KON-426).
+    /// Read off the store rather than the cached settings, for the reason
+    /// <see cref="CurrentTerminalFont"/> gives: a change made in Settings should reach the next page
+    /// you open, not the next launch.
+    /// </summary>
+    private bool SharesSearchAcrossResources => _store.Load().ShareSearchAcrossResources;
+
+    /// <summary>Put the open cluster page's term away before its page is replaced (KON-426).</summary>
+    private void RememberClusterSearch()
+    {
+        if (CurrentPage is IListPage { SupportsSearch: true })
+            _clusterSearch[_clusterPageKey] = SearchText;
+    }
+
+    /// <summary>
+    /// What the cluster page being opened should be searching for (KON-426) — the term it was left
+    /// with, or the one term the whole connection shares.
+    /// </summary>
+    private string RecallClusterSearch(string key) => SharesSearchAcrossResources
+        ? SearchText
+        : _clusterSearch.GetValueOrDefault(key, string.Empty);
+
+    /// <summary>Forget every remembered term. A new connection is a new set of objects (KON-426).</summary>
+    private void ForgetSearches()
+    {
+        _clusterSearch.Clear();
+        SearchText = string.Empty;
+    }
 
     /// <summary>The workload kinds the last read found, which is what decides the Workloads page.</summary>
     private IReadOnlyList<WorkloadKind> _workloadKinds = [];
