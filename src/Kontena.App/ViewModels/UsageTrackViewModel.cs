@@ -295,18 +295,23 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
 
         try
         {
-            var drawn = TimeSpan.Zero;
-            var any = false;
+            // Ask for everything first, then draw it all in one go with nothing awaited in between
+            // (KON-425). Plotting each answer as it arrived left a window — the await for the next
+            // chart's series — in which a live sample could arrive, see that history had not claimed
+            // the picture yet, and redraw every chart from the buffer. What was left on screen was
+            // three live points under a chip saying Prometheus, and nothing put it right until the
+            // source's refresh interval was up. It is also what made
+            // PodUsageGraphTests.The_short_ranges_come_from_history_too_when_there_is_any flaky.
+            var answers = new List<(UsageChartViewModel Chart, IReadOnlyList<UsageSample>? Samples)>(Charts.Count);
 
             foreach (var chart in Charts)
             {
+                // No stored series for this measure; it stays on what the buffer holds. Its own axis
+                // label then says fifteen minutes while its neighbours say a day, which is the truth
+                // rather than an inconsistency.
                 if (chart.Metric is not { } metric)
                 {
-                    // No stored series for this measure; leave it on what the buffer holds. Its own
-                    // axis label then says fifteen minutes while its neighbours say a day, which is
-                    // the truth rather than an inconsistency.
-                    var live = UsageGraphs.Range(RangeMinutes);
-                    chart.Plot(chart.Buffer.Window(live, now), live, now);
+                    answers.Add((chart, null));
                     continue;
                 }
 
@@ -317,16 +322,12 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
                 if (wanted != RangeMinutes)
                     return;
 
-                chart.Plot([.. samples.Select(s => (s.At, s.Value))], range, now);
-
-                if (samples.Count > 1)
-                {
-                    any = true;
-                    drawn = samples[^1].At - samples[0].At;
-                }
+                answers.Add((chart, samples));
             }
 
-            if (!any)
+            // ── Nothing below this line may await. ──
+
+            if (!answers.Any(a => a.Samples is { Count: > 1 }))
             {
                 // Nothing stored yet — a pod created a minute ago, or a scrape that has not seen it.
                 // Where the buffer can cover the range itself, draw that instead of an empty frame
@@ -345,7 +346,22 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
             }
 
             UsageError = string.Empty;
+
+            // Before the plotting, not after it: this is what a live sample arriving mid-draw reads
+            // to decide whether the picture is its to refresh.
             _drewFromHistory = true;
+
+            foreach (var (chart, samples) in answers)
+            {
+                if (samples is null)
+                {
+                    var live = UsageGraphs.Range(RangeMinutes);
+                    chart.Plot(chart.Buffer.Window(live, now), live, now);
+                    continue;
+                }
+
+                chart.Plot([.. samples.Select(s => (s.At, s.Value))], range, now);
+            }
 
             UpdateSourceText();
             OnPropertyChanged(nameof(IsEmpty));

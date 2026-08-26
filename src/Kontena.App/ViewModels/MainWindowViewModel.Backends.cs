@@ -119,13 +119,25 @@ public partial class MainWindowViewModel
     /// </summary>
     private Task<BackendProbe>? StartupProbe(IReadOnlyList<Task<BackendProbe>> round)
     {
+        // A window spawned on a chosen backend waits for that one and nothing else (KON-424): it is
+        // neither onboarding nor a screenshot run, and what the file remembers is about the launch
+        // window rather than this one.
+        if (_openBackend is { Length: > 0 } chosen)
+            return ProbeFor(chosen, round);
+
         if (!_settings.Onboarded || Environment.GetEnvironmentVariable("KONTENA_SCREENSHOT") == "1")
             return null;
 
         if (_settings.StartupTarget is not { Length: > 0 } target)
             return null;
 
-        var index = _registry.Providers.ToList().FindIndex(p => p.Backend == target);
+        return ProbeFor(target, round);
+    }
+
+    /// <summary>The round's probe for one backend, or null when it is no longer a provider.</summary>
+    private Task<BackendProbe>? ProbeFor(string backend, IReadOnlyList<Task<BackendProbe>> round)
+    {
+        var index = _registry.Providers.ToList().FindIndex(p => p.Backend == backend);
         return index < 0 ? null : round[index];
     }
 
@@ -254,6 +266,28 @@ public partial class MainWindowViewModel
         {
             var demo = _probes.FirstOrDefault(p => p.Connected) ?? (_probes.Count > 0 ? _probes[0] : null);
             if (demo is not null) { await ActivateAsync(demo.Provider); return; }
+        }
+
+        // Spawned on a chosen backend (KON-424). Its own branch rather than a fallback into the one
+        // below, because that one forgets the remembered backend when its target is gone — and this
+        // window's target says nothing about where the next launch should land.
+        if (_openBackend is { Length: > 0 } chosen)
+        {
+            var picked = _probes.FirstOrDefault(p => p.Provider.Backend == chosen);
+
+            if (picked is { Connected: true })
+            {
+                await ActivateAsync(picked.Provider);
+                return;
+            }
+
+            EnterBackendDown(
+                picked is null ? $"{Pretty(chosen)} is gone" : $"Can't reach {NameOf(picked.Provider)}",
+                picked is null
+                    ? $"{Pretty(chosen)} was in the switcher a moment ago and is no longer available."
+                    : Unreachable(picked),
+                picked);
+            return;
         }
 
         if (_settings.StartupTarget is { Length: > 0 } target)
@@ -1081,6 +1115,28 @@ public partial class MainWindowViewModel
         if (probe is not null)
             await ActivateAsync(probe.Provider);
     }
+
+    /// <summary>
+    /// A second shell over the same catalog, opened on <paramref name="backend"/> (KON-424) — so
+    /// Docker and a cluster can be on screen at once instead of taking turns in one window.
+    /// <para>
+    /// The registry is shared rather than rebuilt: a provider is a factory, every connection comes
+    /// from its own <c>CreateBackend()</c>, and rebuilding would probe every backend a second time to
+    /// arrive at the same list. Settings are re-read instead of shared, because this shell keeps its
+    /// own copy from here on and the launch window's is as old as the launch.
+    /// </para>
+    /// <para>
+    /// Here rather than in the view because it is the shell's dependencies that are being handed on;
+    /// the window around it is the view's business (<c>MainWindow.OnOpenBackendWindowClick</c>).
+    /// </para>
+    /// </summary>
+    internal MainWindowViewModel OpenInNewWindow(string backend) => new(
+        _registry, _store, _store.Load(),
+        // The same instances, not fresh ones: a test or the screenshot harness passes fakes for these,
+        // and a second window built out of the real thing would not be the same app.
+        updateService: _updateService, toolRunner: _toolRunner, buildCatalog: _buildCatalog,
+        plugins: _plugins, pluginRoot: _pluginRoot, probeGrace: _probeGrace, versions: Versions,
+        openBackend: backend);
 
     /// <summary>The backend currently being re-probed, or null — the switcher row that was clicked says
     /// so rather than looking ignored while a remote takes its ten seconds.</summary>
