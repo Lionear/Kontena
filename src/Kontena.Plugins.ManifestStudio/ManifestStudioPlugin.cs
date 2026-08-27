@@ -39,6 +39,7 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         Author = "Kontena",
         Description = "Write, validate and apply Kubernetes manifests from a folder or Git repository.",
         MinSdkVersion = "0.4.0",
+        ContributesUi = true,
     };
 
     public IEnumerable<PluginPage> GetPages() =>

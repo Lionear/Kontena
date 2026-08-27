@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kontena.Sdk;
 
 namespace Kontena.Engines.Plugins;
 
@@ -37,8 +38,30 @@ public sealed record PluginManifest
     /// <summary>Short description of the plugin's purpose.</summary>
     public string Description { get; init; } = string.Empty;
 
-    /// <summary>Minimum Kontena SDK version this plugin targets.</summary>
+    /// <summary>
+    /// Minimum Kontena SDK version this plugin targets, as <c>major.minor.patch</c>, or empty for no
+    /// floor. <see cref="Kontena.Sdk.EngineManifest.MinSdkVersion"/> states the format; the loader
+    /// rejects anything that does not match it.
+    /// </summary>
     public string MinSdkVersion { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The operating systems this plugin runs on, or empty for all of them (KON-280). Read before the
+    /// consent question and before the assembly is touched: whether a plugin belongs on this machine is
+    /// answerable from this file alone, and asking the user about one that cannot run here is a question
+    /// with no useful answer.
+    /// </summary>
+    public IReadOnlyList<PluginPlatform> Platforms { get; init; } = [];
+
+    /// <summary>
+    /// Which kinds of backend this plugin contributes, or empty for none. See
+    /// <see cref="Kontena.Sdk.EngineManifest.Backends"/>; <c>PluginLoader</c> checks the assembly against it.
+    /// </summary>
+    public IReadOnlyList<BackendKind> Backends { get; init; } = [];
+
+    /// <summary>Whether this plugin contributes pages of its own. See
+    /// <see cref="Kontena.Sdk.EngineManifest.ContributesUi"/>.</summary>
+    public bool ContributesUi { get; init; }
 
     /// <summary>
     /// What this plugin says it will do, in the plugin author's own words, one line per capability
@@ -47,7 +70,10 @@ public sealed record PluginManifest
     /// <para>
     /// That is exactly why they are worth showing: what a user agrees to is a claim by a named author
     /// about a signed build (KON-79), and a claim you never see is not one you can hold anyone to. The
-    /// structured, checkable version of this is KON-280.
+    /// structured, checkable version of this is KON-79's capability declaration, which is deliberately
+    /// still unbuilt: it is the one part of a manifest that cannot change after publication without
+    /// breaking every plugin already out there, so it waits for the trust model that gives it teeth.
+    /// KON-280 left room for it and built the rest.
     /// </para>
     /// </summary>
     public IReadOnlyList<string> Permissions { get; init; } = [];
@@ -57,6 +83,10 @@ public sealed record PluginManifest
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip,
+
+        // BackendKind is written by hand in plugin.json, so it is written as "engine"/"cluster" rather
+        // than as the ordinal of an enum member whose order is ours to change.
+        Converters = { new JsonStringEnumConverter() },
     };
 
     /// <summary>

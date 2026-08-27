@@ -38,6 +38,7 @@ public sealed class NerdctlPlugin(IToolRunner runner) : IEnginePlugin
         // Kept in sync with Directory.Build.props' <Version> by hand: the SDK does not (yet) publish
         // its own version at runtime for a plugin to read (KON-141 built against SDK 0.4.0).
         MinSdkVersion = "0.4.0",
+        Backends = [BackendKind.Engine],
     };
 
     /// <summary>One provider per containerd namespace — see <see cref="NerdctlEngineProvider.DiscoverAll"/>
