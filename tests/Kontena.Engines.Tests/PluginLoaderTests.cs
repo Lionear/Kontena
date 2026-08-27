@@ -657,6 +657,7 @@ public sealed class PluginLoaderTests : IDisposable
         var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
 
         Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains("does not declare", found.Reason);
         Assert.Empty(found.Pages);
     }
 
