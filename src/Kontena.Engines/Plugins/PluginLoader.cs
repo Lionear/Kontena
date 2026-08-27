@@ -52,6 +52,17 @@ public static class PluginLoader
             if (manifest is null)
                 return new DiscoveredPlugin(directory, null, PluginStatus.Rejected, reason, []);
 
+            // Ahead of everything else, because it is answerable from plugin.json alone (KON-280) and
+            // because the alternatives are worse in both directions: a consent prompt for a plugin that
+            // cannot run here is a question with no useful answer, and hashing and loading an assembly
+            // built for another operating system is work done to reach a failure already on the label.
+            if (!PluginPlatform.SupportsHost(manifest.Platforms))
+            {
+                var wanted = string.Join(" or ", manifest.Platforms);
+                return new DiscoveredPlugin(
+                    directory, manifest, PluginStatus.Rejected, $"Not for this platform — needs {wanted}", []);
+            }
+
             // GetFileName strips any directory component: an absolute path in the manifest would
             // otherwise replace `directory` outright, and "../.." would escape it. Resolved here rather
             // than after the consent check because the digest below is of this file.
@@ -168,7 +179,37 @@ public static class PluginLoader
                 + $"{declared.Id} {declared.Version}");
         }
 
+        // What the plugin said it would contribute, held against what it did (KON-280). The point of
+        // declaring it is that a wizard, a store listing and the switcher's grouping can be built
+        // without instantiating a single provider — and a declaration nothing ever checks is precisely
+        // the state MinSdkVersion sat in until it was enforced.
+        if (manifest.ContributesUi != (ui is not null))
+        {
+            return Reject(manifest.ContributesUi
+                ? "plugin.json declares a UI contribution, the assembly has no IUiPlugin"
+                : $"{uiType!.FullName} contributes a UI that plugin.json does not declare");
+        }
+
+        if (manifest.Backends.Count > 0 && plugin is null)
+        {
+            return Reject(
+                $"plugin.json declares backends ({string.Join(", ", manifest.Backends)}), "
+                + "the assembly has no IEnginePlugin");
+        }
+
         var providers = plugin?.GetProviders().ToList() ?? [];
+
+        // Only one direction is a lie. A plugin that declares a kind and contributes none of it on this
+        // machine is ordinary — nerdctl's providers are one per containerd namespace, and a machine
+        // without nerdctl has none — so under-delivery passes. Contributing a kind that was never
+        // declared does not: it is a backend appearing in a group the manifest said it would stay out of.
+        var undeclared = providers.Select(p => p.Kind).Distinct().Except(manifest.Backends).ToList();
+        if (undeclared.Count > 0)
+        {
+            return Reject(
+                $"{engineType!.FullName} contributes {string.Join(", ", undeclared)} backends "
+                + "that plugin.json does not declare");
+        }
 
         // Touch every identity member here, inside the containment this method already sits in. The
         // host reads these while building the very first switcher — outside any try, before there is a
@@ -210,9 +251,14 @@ public static class PluginLoader
         if (string.IsNullOrWhiteSpace(minSdkVersion))
             return false;
 
-        if (!Version.TryParse(minSdkVersion, out var required))
+        // major.minor.patch, and nothing else (KON-280). Version.TryParse alone also accepts "1.2" and
+        // "1.2.3.4", which would leave the manifest saying two things — is the missing part a zero or a
+        // wildcard? — about the one number that decides whether foreign code runs. Build >= 0 rules out
+        // the two-part form, Revision == -1 the four-part one. A prerelease suffix never parses at all,
+        // which is the right answer: the SDK assembly version it is compared against has no such part.
+        if (!Version.TryParse(minSdkVersion, out var required) || required is not { Build: >= 0, Revision: -1 })
         {
-            reason = $"Unreadable MinSdkVersion '{minSdkVersion}'";
+            reason = $"MinSdkVersion '{minSdkVersion}' is not a major.minor.patch version";
             return true;
         }
 

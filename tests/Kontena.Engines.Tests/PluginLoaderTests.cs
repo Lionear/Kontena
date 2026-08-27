@@ -51,8 +51,21 @@ public sealed class PluginLoaderTests : IDisposable
             Directory.Delete(_outside, recursive: true);
     }
 
-    /// <summary>Copy the built fixture into the plugins root and give it a manifest.</summary>
-    private string InstallFixture(string version = "1.0.0", string minSdk = "0.1.0", string? id = null)
+    /// <summary>
+    /// Copy the built fixture into the plugins root and give it a manifest.
+    /// <para>
+    /// The contribution declaration defaults to what <c>TestPlugin</c> genuinely is — one engine
+    /// backend and a page — because the loader holds a manifest to its assembly (KON-280), so a
+    /// fixture that under-declares is rejected before it reaches whatever a test is actually about.
+    /// </para>
+    /// </summary>
+    private string InstallFixture(
+        string version = "1.0.0",
+        string minSdk = "0.1.0",
+        string? id = null,
+        object[]? platforms = null,
+        string[]? backends = null,
+        bool contributesUi = true)
     {
         id ??= "com.kontena.test";
         var dir = Path.Combine(_root, id);
@@ -70,10 +83,22 @@ public sealed class PluginLoaderTests : IDisposable
             description = "A plugin.",
             minSdkVersion = minSdk,
             assembly = "Kontena.TestPlugin.dll",
+            platforms = platforms ?? [],
+            backends = backends ?? EngineOnly,
+            contributesUi,
         }));
 
         return dir;
     }
+
+    /// <summary>The one backend kind the engine fixtures contribute, as plugin.json spells it.</summary>
+    private static readonly string[] EngineOnly = ["engine"];
+
+    /// <summary>The operating system this test run is on, named the way a manifest names it.</summary>
+    private static string ThisOs =>
+        OperatingSystem.IsWindows() ? "windows"
+        : OperatingSystem.IsMacOS() ? "macos"
+        : "linux";
 
     /// <summary>Copy the built hostile fixture into the plugins root and give it a manifest.</summary>
     private string InstallHostileFixture(string id = "com.kontena.hostile")
@@ -93,6 +118,7 @@ public sealed class PluginLoaderTests : IDisposable
             description = "A plugin whose provider throws.",
             minSdkVersion = "0.1.0",
             assembly = "Kontena.HostilePlugin.dll",
+            backends = EngineOnly,
         }));
 
         return dir;
@@ -116,6 +142,7 @@ public sealed class PluginLoaderTests : IDisposable
             description = "A plugin that contributes pages.",
             minSdkVersion = "0.1.0",
             assembly = "Kontena.UiTestPlugin.dll",
+            contributesUi = true,
         }));
 
         return dir;
@@ -541,5 +568,147 @@ public sealed class PluginLoaderTests : IDisposable
         Assert.Equal(PluginStatus.Loaded, found.Status);
         Assert.Single(found.Providers);
         Assert.Single(found.Pages);
+    }
+
+    // ---- Platform requirements (KON-280) ----------------------------------------------------------
+
+    [Fact]
+    public void A_plugin_for_another_platform_is_rejected_with_what_it_needs()
+    {
+        InstallFixture(platforms: [new { os = "haiku" }]);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains("haiku", found.Reason);
+        Assert.Empty(found.Providers);
+    }
+
+    [Fact]
+    public void A_plugin_for_this_platform_loads()
+    {
+        InstallFixture(platforms: [new { os = ThisOs }]);
+
+        Assert.Equal(PluginStatus.Loaded, Assert.Single(PluginLoader.Discover(_root, _ => true)).Status);
+    }
+
+    [Fact]
+    public void A_plugin_that_names_no_platform_loads_anywhere()
+    {
+        InstallFixture(platforms: []);
+
+        Assert.Equal(PluginStatus.Loaded, Assert.Single(PluginLoader.Discover(_root, _ => true)).Status);
+    }
+
+    /// <summary>Apple's <c>container</c> wanting macOS 26 is the case the version part exists for.</summary>
+    [Fact]
+    public void A_plugin_that_needs_a_newer_os_than_this_one_is_rejected()
+    {
+        var above = Environment.OSVersion.Version.Major + 1;
+
+        InstallFixture(platforms: [new { os = ThisOs, minVersion = $"{above}.0" }]);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains($"{above}.0", found.Reason);
+    }
+
+    /// <summary>
+    /// Before the consent question, not after: a plugin that cannot run here is not something to ask
+    /// the user about, and the prompt would come back every launch with no answer that helps.
+    /// </summary>
+    [Fact]
+    public void The_platform_is_checked_before_consent_is_asked()
+    {
+        InstallFixture(platforms: [new { os = "haiku" }]);
+
+        var asked = false;
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ =>
+        {
+            asked = true;
+            return true;
+        }));
+
+        Assert.False(asked);
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+    }
+
+    // ---- The contribution declaration, held to the assembly (KON-280) -----------------------------
+
+    [Fact]
+    public void A_plugin_that_contributes_a_backend_kind_it_did_not_declare_is_rejected()
+    {
+        InstallFixture(backends: []);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains("does not declare", found.Reason);
+        Assert.Empty(found.Providers);
+    }
+
+    [Fact]
+    public void A_plugin_that_contributes_pages_it_did_not_declare_is_rejected()
+    {
+        InstallFixture(contributesUi: false);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains("does not declare", found.Reason);
+        Assert.Empty(found.Pages);
+    }
+
+    [Fact]
+    public void A_plugin_that_declares_a_ui_it_does_not_have_is_rejected()
+    {
+        InstallHostileFixture();
+
+        // The hostile fixture is an IEnginePlugin and nothing else; claiming pages is the lie here.
+        var dir = Path.Combine(_root, "com.kontena.hostile");
+        var manifest = File.ReadAllText(Path.Combine(dir, "plugin.json"));
+        File.WriteAllText(
+            Path.Combine(dir, "plugin.json"),
+            manifest.Replace("}", ",\"contributesUi\":true}", StringComparison.Ordinal));
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains("no IUiPlugin", found.Reason);
+    }
+
+    /// <summary>
+    /// Under-delivery is not a lie. nerdctl declares an engine backend and contributes one provider per
+    /// containerd namespace, so a machine without nerdctl gives it none — and that plugin still loaded
+    /// correctly, it just has nothing to offer here.
+    /// </summary>
+    [Fact]
+    public void A_plugin_that_declares_more_than_it_contributes_here_still_loads()
+    {
+        InstallFixture(backends: ["engine", "cluster"]);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Single(found.Providers);
+    }
+
+    // ---- MinSdkVersion is major.minor.patch, and nothing else (KON-280) ---------------------------
+
+    [Theory]
+    [InlineData("0.1")]
+    [InlineData("0.1.0.0")]
+    [InlineData("0.1.0-beta")]
+    [InlineData("v0.1.0")]
+    public void A_minimum_sdk_that_is_not_major_minor_patch_is_rejected(string minSdk)
+    {
+        InstallFixture(minSdk: minSdk);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+        Assert.Contains("major.minor.patch", found.Reason);
     }
 }

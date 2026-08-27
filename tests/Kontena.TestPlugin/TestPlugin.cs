@@ -28,6 +28,8 @@ public sealed class TestPlugin : IEnginePlugin, IUiPlugin
         Author = "Kontena",
         Description = "Fixture for the plugin loader tests.",
         MinSdkVersion = "0.1.0",
+        Backends = [BackendKind.Engine],
+        ContributesUi = true,
     };
 
     public IEnumerable<IBackendProvider> GetProviders() => [new TestProvider()];
