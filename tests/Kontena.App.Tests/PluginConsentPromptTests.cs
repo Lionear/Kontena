@@ -67,7 +67,7 @@ public sealed class PluginConsentPromptTests : IDisposable
     private MainWindowViewModel Build(params DiscoveredPlugin[] plugins) =>
         new(
             new BackendRegistry([]), new SettingsStore(_settingsPath), new KontenaSettings(),
-            buildCatalog: (_, _, _, _) => [],
+            buildCatalog: (_, _, _, _, _) => [],
             plugins: plugins);
 
     /// <summary>Like <see cref="Build(DiscoveredPlugin[])"/>, but with the loader pointed at a real,
@@ -77,7 +77,7 @@ public sealed class PluginConsentPromptTests : IDisposable
     private MainWindowViewModel Build(string pluginRoot, params DiscoveredPlugin[] plugins) =>
         new(
             new BackendRegistry([]), new SettingsStore(_settingsPath), new KontenaSettings(),
-            buildCatalog: (_, _, _, _) => [],
+            buildCatalog: (_, _, _, _, _) => [],
             plugins: plugins,
             pluginRoot: pluginRoot);
 
@@ -89,7 +89,7 @@ public sealed class PluginConsentPromptTests : IDisposable
     private MainWindowViewModel Build(KontenaSettings settings, params DiscoveredPlugin[] plugins) =>
         new(
             new BackendRegistry([]), new SettingsStore(_settingsPath), settings,
-            buildCatalog: (_, _, _, _) => [],
+            buildCatalog: (_, _, _, _, _) => [],
             plugins: plugins);
 
     /// <summary>Write a real plugin directory under <paramref name="root"/>, for tests that exercise a

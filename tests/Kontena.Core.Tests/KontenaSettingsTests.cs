@@ -104,6 +104,7 @@ public class KontenaSettingsTests
             ],
             KubeconfigPaths = ["/srv/kubeconfigs/acme.yaml", "~/Downloads/kubeconfig"],
             AllowedPlugins = ["com.acme.nerdctl@1.0.0", "com.acme.nerdctl@1.1.0"],
+            DisabledAdapters = ["podman", "kubernetes"],
             AllowedExecCredentials =
             [
                 "gke-prod#gke-gcloud-auth-plugin",
@@ -161,6 +162,10 @@ public class KontenaSettingsTests
         // Consent is recorded per id and version independently, so both entries must survive.
         Assert.Equal(original.AllowedPlugins, restored.AllowedPlugins);
 
+        // Switched-off adapters are stored as deviations (KON-283), so an entry that does not survive is
+        // an adapter that quietly comes back on.
+        Assert.Equal(original.DisabledAdapters, restored.DisabledAdapters);
+
         // The same for a kubeconfig credential command (KON-365): the command is part of the entry, and
         // one carrying spaces has to come back as the one string it went in as.
         Assert.Equal(original.AllowedExecCredentials, restored.AllowedExecCredentials);
@@ -188,6 +193,7 @@ public class KontenaSettingsTests
                 RemoteEngines = restored.RemoteEngines,
                 KubeconfigPaths = restored.KubeconfigPaths,
                 AllowedPlugins = restored.AllowedPlugins,
+                DisabledAdapters = restored.DisabledAdapters,
                 AllowedExecCredentials = restored.AllowedExecCredentials,
                 BackendNames = restored.BackendNames,
                 KnownClusters = restored.KnownClusters,

@@ -39,7 +39,7 @@ public sealed class SettingsRebuildTests : IDisposable
         // own deadline.
         var vm = new MainWindowViewModel(
             new BackendRegistry([]), store, settings, new FakeUpdateService(),
-            buildCatalog: (_, _, _, _) => []);
+            buildCatalog: (_, _, _, _, _) => []);
 
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (vm.SettingsPage is null && DateTime.UtcNow < deadline)

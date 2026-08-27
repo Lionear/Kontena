@@ -257,6 +257,39 @@ public sealed record KontenaSettings
         $"{id}@{version}#{sha256}";
 
     /// <summary>
+    /// Adapters the user switched off in Settings › Extensions, by adapter id (KON-283). Not everyone
+    /// needs Kubernetes, and an adapter nobody uses still costs a probe on every launch and a group in
+    /// the switcher.
+    /// <para>
+    /// Deviations only, following <see cref="Shortcuts"/> and <see cref="ContainerGrouping"/>: absent
+    /// means on. Writing every adapter out would freeze today's set into every installation, so an
+    /// adapter added in a later release would arrive switched off for everyone who had ever opened this
+    /// page — which is the opposite of what not listing it means.
+    /// </para>
+    /// <para>
+    /// Distinct from <see cref="AllowedPlugins"/>, which answers whether a plugin may run at all. This
+    /// answers whether an adapter the user already trusts should be offered, and the two are not the
+    /// same question: switching Docker off is a preference, and there was never a consent step for it.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> DisabledAdapters { get; init; } = [];
+
+    /// <summary>Whether this adapter should be offered. Unknown ids are enabled — see above.</summary>
+    public bool IsAdapterEnabled(string id) =>
+        !DisabledAdapters.Contains(id, StringComparer.Ordinal);
+
+    /// <summary>Switch an adapter on or off, storing nothing for the on case.</summary>
+    public KontenaSettings WithAdapterEnabled(string id, bool enabled) =>
+        enabled == IsAdapterEnabled(id)
+            ? this
+            : this with
+            {
+                DisabledAdapters = enabled
+                    ? [.. DisabledAdapters.Where(entry => !string.Equals(entry, id, StringComparison.Ordinal))]
+                    : [.. DisabledAdapters, id],
+            };
+
+    /// <summary>
     /// Kubeconfig credential commands the user has agreed to run, as <c>"&lt;context&gt;#&lt;command&gt;"</c>
     /// (KON-365). A context's user may carry an <c>exec:</c> plugin, and connecting to it starts that
     /// program on this machine — normal for EKS and GKE, and not something a file picker should do

@@ -71,6 +71,10 @@ namespace Kontena.Screenshots;
 //         the page's own command),
 //         settings-tools (KON-266 — the external tools, grouped by what you need them for; reads this
 //         machine for the same reason settings-clusters does),
+//         settings-extensions (KON-283 — the adapters this build ships and whether each is switched
+//         on; Apple's runtime is absent off macOS by design, so this shot differs per box),
+//         confirm-turn-off-adapter (KON-283 — the question asked before switching off an adapter the
+//         shell has something open on, reached by really moving the row's switch),
 //         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
 //         confirmation and the deliberately non-destructive one, both reached by running the
 //         row's own command so the shot cannot show a dialog the button does not raise).
@@ -431,6 +435,8 @@ internal static class Program
             case "settings-clusters":
             case "settings-clusters-new":
             case "settings-tools":
+            case "settings-extensions":
+            case "confirm-turn-off-adapter":
             case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
@@ -442,6 +448,7 @@ internal static class Program
                         "settings" or "settings-keyboard" => "general",
                         "settings-clusters" or "settings-clusters-new" => "clusters",
                         "settings-tools" => "tools",
+                        "settings-extensions" or "confirm-turn-off-adapter" => "extensions",
                         _ => "engines",
                     });
 
@@ -491,6 +498,16 @@ internal static class Program
 
                             Settle(rounds: 20);
                         }
+                    }
+
+                    // Switching off an adapter the shell has something open on asks first (KON-283).
+                    // Driven by really moving the row's switch, so the shot cannot show a dialog the
+                    // toggle does not raise.
+                    if (scene == "confirm-turn-off-adapter"
+                        && s.Adapters.FirstOrDefault(a => a.InUse.Count > 0) is { } inUse)
+                    {
+                        inUse.IsEnabled = false;
+                        Settle(rounds: 20);
                     }
 
                     // The TCP form is where the security decision lives, so it gets its own shot.

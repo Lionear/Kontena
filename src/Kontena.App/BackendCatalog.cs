@@ -26,7 +26,8 @@ public static class BackendCatalog
         bool includeDemo,
         IReadOnlyList<RemoteEngine>? remotes,
         IReadOnlyList<string>? kubeconfigPaths,
-        Func<string, bool>? showsCluster);
+        Func<string, bool>? showsCluster,
+        Func<string, bool>? adapterEnabled);
 
     /// <summary>
     /// Whether demo backends may be offered at all. They exist for development and screenshots and
@@ -44,7 +45,7 @@ public static class BackendCatalog
     /// on where demo backends are permitted, off otherwise.</summary>
     public static bool DemoDefault => DemoAllowed;
 
-    private static readonly List<IBackendProvider> Plugins = [];
+    private static readonly List<(string AdapterId, IBackendProvider Provider)> Plugins = [];
 
     /// <summary>
     /// Backends contributed by loaded plugins. Set once at startup and once more after the user agrees
@@ -53,19 +54,24 @@ public static class BackendCatalog
     /// would mean a second <c>AssemblyLoadContext</c> over the same files, so where the providers live
     /// has to outlast the call that builds the list.
     /// </summary>
-    public static IReadOnlyList<IBackendProvider> PluginProviders => Plugins;
+    public static IReadOnlyList<IBackendProvider> PluginProviders => [.. Plugins.Select(p => p.Provider)];
 
     /// <summary>
     /// Add what the loader produced. Adds rather than replaces, because the loader runs twice and the
     /// second run only knows about what consent just unlocked. A backend id already present is skipped:
     /// a directory is only ever loaded once, so a repeat means the same providers, not new ones.
     /// </summary>
-    public static void SetPluginProviders(IEnumerable<IBackendProvider> providers)
+    /// <param name="adapterId">
+    /// The plugin these came from, kept beside them so <see cref="Build"/> can leave out an adapter the
+    /// user switched off (KON-283). Recovering it from the backend ids afterwards would mean a second
+    /// table that has to agree with the loader's.
+    /// </param>
+    public static void SetPluginProviders(string adapterId, IEnumerable<IBackendProvider> providers)
     {
         foreach (var provider in providers)
         {
-            if (!Plugins.Any(p => p.Backend == provider.Backend))
-                Plugins.Add(provider);
+            if (!Plugins.Any(p => p.Provider.Backend == provider.Backend))
+                Plugins.Add((adapterId, provider));
         }
     }
 
@@ -94,40 +100,58 @@ public static class BackendCatalog
     /// filtered further up: a provider that exists gets probed, and a cluster nobody asked for should not
     /// be contacted at all.
     /// </param>
+    /// <param name="adapterEnabled">
+    /// Whether an adapter the user can switch off in Settings › Extensions is switched on (KON-283).
+    /// Null means every adapter, which is what discovery and the tests want. Filtered here rather than
+    /// after the fact, because this is the one place that decides what Kontena offers: a switched-off
+    /// adapter should never be built, probed, or reachable from the switcher, and a filter anywhere else
+    /// is one every future caller has to remember.
+    /// </param>
     public static List<IBackendProvider> Build(
         bool includeDemo,
         IReadOnlyList<RemoteEngine>? remotes = null,
         IReadOnlyList<string>? kubeconfigPaths = null,
-        Func<string, bool>? showsCluster = null)
+        Func<string, bool>? showsCluster = null,
+        Func<string, bool>? adapterEnabled = null)
     {
-        var providers = new List<IBackendProvider>
-        {
-            new DockerEngineProvider(),
-            new PodmanEngineProvider(),
+        bool Enabled(string adapter) => adapterEnabled is null || adapterEnabled(adapter);
 
-            // Apple's native runtime (KON-31). Unlike the two above it is not offered unasked on every
-            // machine: its `IsInstalled` is false off macOS and false without the binary, so it appears
-            // where it can exist and nowhere else. Listing it always, the way Docker and Podman are
-            // listed, would put a permanently unreachable row in every Windows and Linux switcher.
-            new AppleEngineProvider(),
-        };
+        var providers = new List<IBackendProvider>();
+
+        if (Enabled(DockerAdapterModule.BackendId))
+            providers.Add(new DockerEngineProvider());
+
+        if (Enabled(PodmanAdapterModule.BackendId))
+            providers.Add(new PodmanEngineProvider());
+
+        // Apple's native runtime (KON-31). Unlike the two above it is not offered unasked on every
+        // machine: its `IsInstalled` is false off macOS and false without the binary, so it appears
+        // where it can exist and nowhere else. Listing it always, the way Docker and Podman are
+        // listed, would put a permanently unreachable row in every Windows and Linux switcher.
+        if (Enabled(AppleAdapterModule.BackendId))
+            providers.Add(new AppleEngineProvider());
 
         // A misconfigured remote is skipped rather than added as an entry that cannot connect: the
         // Settings page is where its problem is explained, and the switcher is not the place to argue.
+        // A remote speaks the Docker Engine API at another host, so switching that adapter off takes
+        // the remotes with it rather than leaving rows nothing can serve.
         foreach (var remote in remotes ?? [])
         {
-            if (remote.Problem is null)
+            if (remote.Problem is null && Enabled(DockerAdapterModule.BackendId))
                 providers.Add(new RemoteDockerEngineProvider(remote, SshPasswordPrompt.For(remote)));
         }
 
         // After what is on this machine, before the clusters: the switcher reads top-down and a plugin
         // backend is still an engine on this host.
-        providers.AddRange(Plugins);
+        providers.AddRange(Plugins.Where(p => Enabled(p.AdapterId)).Select(p => p.Provider));
 
         // One cluster backend per chosen kube-context. Yields nothing when there is no kubeconfig, so a
         // machine that only runs containers simply shows no Clusters group.
-        providers.AddRange(DiscoverClusters(kubeconfigPaths)
-            .Where(p => showsCluster is null || showsCluster(p.Backend)));
+        if (Enabled(KubernetesAdapterModule.BackendId))
+        {
+            providers.AddRange(DiscoverClusters(kubeconfigPaths)
+                .Where(p => showsCluster is null || showsCluster(p.Backend)));
+        }
 
         if (includeDemo && DemoAllowed)
         {
