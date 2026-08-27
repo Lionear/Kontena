@@ -69,12 +69,14 @@ public partial class App : Application
                 PluginLoader.DefaultRoot,
                 c => settings.AllowsPlugin(c.Manifest.Id, c.Manifest.Version, c.Sha256));
 
-            BackendCatalog.SetPluginProviders(plugins.SelectMany(p => p.Providers));
+            foreach (var plugin in plugins.Where(p => p.Manifest is not null))
+                BackendCatalog.SetPluginProviders(plugin.Manifest!.Id, plugin.Providers);
 
             var registry = new BackendRegistry(
                 BackendCatalog.Build(
                     BackendCatalog.ShouldIncludeDemo(settings.ShowDemoBackends),
-                    settings.RemoteEngines, settings.KubeconfigPaths, settings.ShowsCluster));
+                    settings.RemoteEngines, settings.KubeconfigPaths, settings.ShowsCluster,
+                    settings.IsAdapterEnabled));
             Diag.Mark("plugins loaded, catalog built");
 
             var window = Diag.Time("build the window", () => new MainWindow());

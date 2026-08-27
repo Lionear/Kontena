@@ -47,7 +47,7 @@ public sealed class PluginPageNavTests : IDisposable
     private MainWindowViewModel Build(params DiscoveredPlugin[] plugins) =>
         new(
             new BackendRegistry([]), new SettingsStore(_settingsPath), new KontenaSettings(),
-            buildCatalog: (_, _, _, _) => [],
+            buildCatalog: (_, _, _, _, _) => [],
             plugins: plugins);
 
     private static NavItem[] PluginItems(MainWindowViewModel vm) =>

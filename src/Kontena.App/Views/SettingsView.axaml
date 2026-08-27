@@ -126,6 +126,13 @@
                         <TextBlock Grid.Column="1" Text="Updates" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Button>
+                <Button Classes="snav" Classes.on="{Binding IsExtensions}" Command="{Binding SelectCategoryCommand}"
+                        CommandParameter="extensions" IsVisible="{Binding HasAdapters}">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconPlug}"/>
+                        <TextBlock Grid.Column="1" Text="Extensions" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
                 <Button Classes="snav" Classes.on="{Binding IsTools}" Command="{Binding SelectCategoryCommand}"
                         CommandParameter="tools" IsVisible="{Binding Tools, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <Grid ColumnDefinitions="Auto,*">
@@ -901,6 +908,61 @@
                             </Grid>
                         </Border>
                     </StackPanel>
+                </StackPanel>
+
+                <!-- Extensions (KON-283) — the adapters and plugins this installation has, and whether
+                     each is switched on. Downloading new ones needs the trust model (KON-79) and is
+                     deliberately not here yet, so there is no Discover tab: a tab that can only be
+                     empty tells the user something untrue about what this page does. -->
+                <StackPanel IsVisible="{Binding IsExtensions}" Spacing="0">
+                    <TextBlock Text="Extensions" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="Engines &amp; orchestrators — backend adapters, delivered as plugins." FontSize="13.5" Foreground="{DynamicResource TextDim}" Margin="0,4,0,26"/>
+
+                    <TextBlock Classes="gh" Text="INSTALLED"/>
+                    <ItemsControl ItemsSource="{Binding Adapters}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="2"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AdapterRow">
+                                <Border Classes="card" Margin="0,0,14,14">
+                                    <StackPanel Spacing="11">
+                                        <Grid ColumnDefinitions="Auto,*">
+                                            <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="44" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock Text="{Binding Name}" FontSize="14.5" FontWeight="Bold" Foreground="{DynamicResource Text}"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                                    <TextBlock Text="{Binding AuthorLabel}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                        <Path Classes="icon" Width="11" Height="11" Stroke="{DynamicResource Success}" Data="{StaticResource IconCheck}" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding SourceLabel}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <TextBlock Text="{Binding Description}" FontSize="12.5" LineHeight="19"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
+
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,8,0,0">
+                                            <Border Grid.Column="0" Background="{DynamicResource Surface2}" CornerRadius="20" Padding="10,3" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding KindLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding Version}" Margin="10,0,0,0" FontSize="11.5"
+                                                       Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <ToggleSwitch Grid.Column="3" Classes="pill" VerticalAlignment="Center"
+                                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Margin="0,10,0,0" FontSize="12.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"
+                               Text="Switching an adapter off stops Kontena offering its backends and probing for them. Nothing is removed from your machine, and nothing it manages is touched."/>
                 </StackPanel>
 
                 <!-- The external tools Kontena drives (KON-109, moved here by KON-266). -->

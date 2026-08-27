@@ -244,7 +244,9 @@ public partial class MainWindowViewModel
                 // not a fresh scan) does not ask about it again or hand it to another PluginLoadContext.
                 _plugins = loaded;
 
-                BackendCatalog.SetPluginProviders(loaded.SelectMany(p => p.Providers));
+                foreach (var plugin in loaded.Where(p => p.Manifest is not null))
+                    BackendCatalog.SetPluginProviders(plugin.Manifest!.Id, plugin.Providers);
+
                 await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));
             }));
     }
@@ -284,7 +286,9 @@ public partial class MainWindowViewModel
             EnterBackendDown(
                 picked is null ? $"{Pretty(chosen)} is gone" : $"Can't reach {NameOf(picked.Provider)}",
                 picked is null
-                    ? $"{Pretty(chosen)} was in the switcher a moment ago and is no longer available."
+                    ? SwitchedOffAdapter(chosen) is { } off
+                        ? $"{Pretty(chosen)} came from the {off} adapter, and you switched that off in Settings › Extensions. Turn it back on there, or pick one below to carry on."
+                        : $"{Pretty(chosen)} was in the switcher a moment ago and is no longer available."
                     : Unreachable(picked),
                 picked);
             return;
@@ -305,9 +309,14 @@ public partial class MainWindowViewModel
                 });
                 BuildSettingsPage();
 
+                // One of these reasons is the user's own doing and is fixed in one click; the others
+                // send them looking at their machine. Saying "an engine uninstalled" to someone who
+                // switched the adapter off themselves is the wrong place to send them (KON-283).
                 EnterBackendDown(
                     $"{Pretty(target)} is gone",
-                    $"Kontena last opened {Pretty(target)}, and it is no longer available — a kube-context may have been removed, or an engine uninstalled. Pick one below to carry on.");
+                    SwitchedOffAdapter(target) is { } off
+                        ? $"Kontena last opened {Pretty(target)}, which came from the {off} adapter — and you switched that off in Settings › Extensions. Turn it back on there, or pick one below to carry on."
+                        : $"Kontena last opened {Pretty(target)}, and it is no longer available — a kube-context may have been removed, or an engine uninstalled. Pick one below to carry on.");
                 return;
             }
 
@@ -379,6 +388,20 @@ public partial class MainWindowViewModel
     /// </summary>
     private static string Pretty(string backend) =>
         backend.Split(':') is [_, var context] && context.Length > 0 ? context : backend;
+
+    /// <summary>
+    /// The name of the switched-off adapter this backend came from, or null when it went away for some
+    /// other reason (KON-283).
+    /// <para>
+    /// Asked of the whole catalog rather than of what is currently built, because what is built no
+    /// longer contains the adapter — that is the situation being explained.
+    /// </para>
+    /// </summary>
+    private string? SwitchedOffAdapter(string backend) =>
+        AdapterCatalog.OwnerOf(AdapterCatalog.All(_plugins), backend) is { } owner
+        && !_settings.IsAdapterEnabled(owner.Id)
+            ? owner.Manifest.Name
+            : null;
     /// <param name="autoDetect">
     /// The toggle to open with. Passed on a rescan, which builds a fresh view model: without it the
     /// switch would silently spring back to the stored value every time the user probed again.
@@ -933,6 +956,23 @@ public partial class MainWindowViewModel
             OnClustersChanged = () =>
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
             Kubeconfigs = Kubeconfigs(),
+
+            // Extensions (KON-283). Switching one off changes which providers exist, so it takes the
+            // same rebuild the demo toggle and the remotes use.
+            Adapters = AdapterCatalog.All(_plugins),
+            ActiveBackend = _activeBackend,
+            OnAdaptersChanged = async () =>
+            {
+                await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));
+
+                // A UI plugin contributes pages rather than backends, so the rebuild above would not
+                // notice it: the sidebar has to be built again for its entries to go or come back.
+                // Whichever nav is up — switching an adapter off does not change which mode you are in.
+                if (IsClusterMode)
+                    SetClusterNav();
+                else
+                    SetEngineNav();
+            },
         })
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
@@ -1097,7 +1137,8 @@ public partial class MainWindowViewModel
     {
         _registry.Replace(_buildCatalog(
             BackendCatalog.ShouldIncludeDemo(includeDemo),
-            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
+            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster,
+            stored.IsAdapterEnabled));
         BackendChips.Learn(_registry.Providers);
         _probes = await _registry.ProbeAllAsync();
         RefreshNewClusters();

@@ -133,7 +133,13 @@ public partial class MainWindowViewModel
 
         var items = new List<NavItem>();
 
-        foreach (var plugin in _plugins.Where(p => p.Status == PluginStatus.Loaded && p.Manifest is not null))
+        // A plugin the user switched off in Settings › Extensions contributes nothing, pages included
+        // (KON-283). Filtered here rather than at the call sites: this is the one place plugin pages
+        // reach the sidebar, and both navs come through it.
+        foreach (var plugin in _plugins.Where(p =>
+            p.Status == PluginStatus.Loaded
+            && p.Manifest is not null
+            && _settings.IsAdapterEnabled(p.Manifest.Id)))
         {
             foreach (var page in plugin.Pages)
             {
