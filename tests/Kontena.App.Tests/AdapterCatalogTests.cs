@@ -15,7 +15,46 @@ namespace Kontena.App.Tests;
 [Collection(BackendCatalogPluginState.Name)]
 public sealed class AdapterCatalogTests : IDisposable
 {
-    public void Dispose() => BackendCatalog.ResetPluginProviders();
+    private readonly List<string> _temporary = [];
+
+    public void Dispose()
+    {
+        BackendCatalog.ResetPluginProviders();
+
+        foreach (var path in _temporary.Where(File.Exists))
+            File.Delete(path);
+    }
+
+    /// <summary>
+    /// A kubeconfig with one context, so the Kubernetes adapter really contributes a provider. Written
+    /// rather than read from this machine: a test whose subject only exists where the developer happens
+    /// to have a cluster is one that stops checking anything on CI.
+    /// </summary>
+    private string WriteKubeconfig()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kontena-adapter-guard-{Guid.NewGuid():N}.yaml");
+
+        File.WriteAllText(path, """
+            apiVersion: v1
+            kind: Config
+            current-context: guard-ctx
+            clusters:
+              - name: guard-cluster
+                cluster:
+                  server: https://guard.invalid:6443
+            users:
+              - name: guard-user
+                user: {}
+            contexts:
+              - name: guard-ctx
+                context:
+                  cluster: guard-cluster
+                  user: guard-user
+            """);
+
+        _temporary.Add(path);
+        return path;
+    }
 
     private sealed class StubProvider(string backend, BackendKind kind = BackendKind.Engine) : IBackendProvider
     {
@@ -124,6 +163,84 @@ public sealed class AdapterCatalogTests : IDisposable
     public void A_backend_no_adapter_claims_has_no_owner()
     {
         Assert.Null(AdapterCatalog.OwnerOf(AdapterCatalog.All([]), "fake"));
+    }
+
+    // ── What nothing else checks ────────────────────────────────────────────
+
+    /// <summary>
+    /// A bundled adapter's card is described by hand in <see cref="AdapterCatalog.Bundled"/> and its
+    /// providers are constructed by hand in <c>BackendCatalog.Build</c>. Nothing holds the two together:
+    /// bundled adapters never pass through <c>PluginLoader</c>, so the checks that catch a plugin
+    /// misdescribing itself do not apply here at all.
+    /// <para>
+    /// Both halves of the entry are load-bearing and neither is obvious when wrong. A wrong
+    /// <c>Owns</c> silently makes the switch filter the wrong providers — or none — and points
+    /// <c>OwnerOf</c> at the wrong adapter, which is what the confirm dialog and the "… is gone"
+    /// message are named from. A wrong <c>Contribution</c> mislabels the card forever.
+    /// </para>
+    /// <para>
+    /// The kubeconfig is supplied rather than read off this machine, and every adapter is asserted to
+    /// have produced something. Without both, the Kubernetes half is vacuous wherever there is no
+    /// kubeconfig — which includes CI — so an <c>Assert.All</c> over an empty list would pass with the
+    /// entry plainly wrong. Verified by breaking each half in turn: the emptiness is what hid it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Each_bundled_adapter_owns_what_it_produces_and_claims_the_right_kind()
+    {
+        var kubeconfig = WriteKubeconfig();
+
+        foreach (var adapter in AdapterCatalog.Bundled)
+        {
+            var mine = BackendCatalog.Build(
+                includeDemo: false,
+                kubeconfigPaths: [kubeconfig],
+                adapterEnabled: id => id == adapter.Id);
+
+            // Vacuity is the failure mode this test exists to avoid, so it is the first thing checked.
+            Assert.True(
+                mine.Count > 0,
+                $"{adapter.Id} produced no providers, so nothing below was actually checked.");
+
+            Assert.All(mine, provider =>
+            {
+                Assert.True(
+                    adapter.Owns(provider.Backend),
+                    $"{adapter.Id} produced {provider.Backend} but does not claim it — its switch would "
+                    + "not reach that backend, and OwnerOf would name the wrong adapter for it.");
+
+                var expected = provider.Kind == BackendKind.Cluster
+                    ? AdapterContribution.Orchestrator
+                    : AdapterContribution.ContainerEngine;
+
+                Assert.Equal(expected, adapter.Contribution);
+            });
+        }
+    }
+
+    /// <summary>
+    /// Two adapters claiming one backend id makes <see cref="AdapterCatalog.OwnerOf"/> answer with
+    /// whichever is listed first — so the confirm dialog and the start-up message would name an adapter
+    /// the backend did not come from, and switching off the real one would leave the row behind.
+    /// </summary>
+    [Fact]
+    public void No_two_bundled_adapters_claim_the_same_backend()
+    {
+        // With a remote in it: Docker claims two families ("docker" and "docker-remote"), which is the
+        // one entry here with any room to overlap another.
+        var everything = BackendCatalog.Build(
+            includeDemo: false,
+            remotes: [new RemoteEngine("abc123", "Build server", RemoteEngineTransport.Ssh, "build-01")],
+            kubeconfigPaths: []);
+
+        foreach (var provider in everything)
+        {
+            var claimants = AdapterCatalog.Bundled.Where(a => a.Owns(provider.Backend)).ToList();
+
+            Assert.True(
+                claimants.Count <= 1,
+                $"{provider.Backend} is claimed by {string.Join(", ", claimants.Select(c => c.Id))}.");
+        }
     }
 
     // ── The filter ──────────────────────────────────────────────────────────
