@@ -1,3 +1,4 @@
+using Kontena.Adapters.Podman;
 using Kontena.App.Services;
 using Kontena.App.ViewModels;
 using Kontena.Sdk.Models;
@@ -99,6 +100,43 @@ public sealed class SettingsRebuildTests : IDisposable
 
         Assert.NotNull(page);
         Assert.Same(page, vm.SettingsPage!.Tools);
+    }
+
+    /// <summary>
+    /// A rebuilt page reads the settings the page it replaces just wrote (KON-430).
+    /// <para>
+    /// Switching an adapter off writes through immediately and then asks the shell to rebuild. The
+    /// shell used to rebuild the switcher from disk but the page from the copy it was holding, which
+    /// was a snapshot from before that write — so the switch sprang back to on while settings.json
+    /// said off, and clicking it again computed the wrong direction and wrote nothing at all.
+    /// </para>
+    /// <para>
+    /// At shell level on purpose: <c>ExtensionsSettingsTests</c> drives the page with a stand-in for
+    /// the rebuild and proves the write is right, which it always was. The defect only exists in the
+    /// hand-off.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_rebuilt_page_shows_the_adapter_the_previous_page_just_switched_off()
+    {
+        var vm = await ShellAsync();
+        var before = vm.SettingsPage;
+        var row = Assert.Single(vm.SettingsPage!.Adapters, r => r.Id == PodmanAdapterModule.BackendId);
+        Assert.True(row.IsEnabled);
+
+        row.IsEnabled = false;
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (ReferenceEquals(vm.SettingsPage, before) && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.False(ReferenceEquals(vm.SettingsPage, before), "the settings page was never rebuilt");
+
+        // Both halves matter. The store proves the click was recorded; the row proves the page the
+        // user is now looking at agrees with it. Before KON-430 the first passed and the second did not.
+        Assert.False(new SettingsStore(_path).Load().IsAdapterEnabled(PodmanAdapterModule.BackendId));
+        Assert.False(
+            Assert.Single(vm.SettingsPage!.Adapters, r => r.Id == PodmanAdapterModule.BackendId).IsEnabled);
     }
 
     /// <summary>
