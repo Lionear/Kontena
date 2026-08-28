@@ -317,6 +317,19 @@
     <Setter Property="MaxWidth" Value="440"/>
   </Style>
 
+  <!-- ============ inputs ============ -->
+
+  <!-- The commit box. Fluent's default TextBox carries its own light border and square corners, which
+       is the one control on these pages that still announced itself as a stock widget. -->
+  <Style Selector="TextBox.studio">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}"/>
+    <Setter Property="Padding" Value="10,8"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+
   <!-- ============ headings ============ -->
 
   <Style Selector="TextBlock.h2">

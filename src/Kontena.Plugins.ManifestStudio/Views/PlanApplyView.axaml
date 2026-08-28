@@ -41,27 +41,27 @@
          result rows themselves look identical either way. -->
     <Border DockPanel.Dock="Top" Classes="notice info" Margin="0,0,0,14"
             IsVisible="{Binding WasDryRun}">
-      <StackPanel Orientation="Horizontal" Spacing="12">
-        <Path Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+      <Grid ColumnDefinitions="Auto,*">
+        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,12,0"
               Stroke="{DynamicResource Info}" Data="{DynamicResource IconInfo}"/>
-        <StackPanel Spacing="3" MaxWidth="700">
+        <StackPanel Grid.Column="1" Spacing="3">
           <TextBlock Classes="title" Text="Nothing has been applied"/>
           <TextBlock Classes="body"
                      Text="Every document below was sent to the API server as a dry run: defaulting, quota and webhooks all ran, and the server returned the object as it would end up. It persisted nothing."/>
         </StackPanel>
-      </StackPanel>
+      </Grid>
     </Border>
 
     <Border DockPanel.Dock="Top" Classes="notice bad" Margin="0,0,0,14"
             IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-      <StackPanel Orientation="Horizontal" Spacing="12">
-        <Path Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+      <Grid ColumnDefinitions="Auto,*">
+        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,12,0"
               Stroke="{DynamicResource Danger}" Data="{DynamicResource IconWarning}"/>
-        <StackPanel Spacing="3" MaxWidth="700">
+        <StackPanel Grid.Column="1" Spacing="3">
           <TextBlock Classes="title" Text="The run did not finish"/>
           <TextBlock Classes="body" Text="{Binding Error}"/>
         </StackPanel>
-      </StackPanel>
+      </Grid>
     </Border>
 
     <Border DockPanel.Dock="Bottom" Classes="strip" Margin="0,12,0,0" IsVisible="{Binding HasResults}">
