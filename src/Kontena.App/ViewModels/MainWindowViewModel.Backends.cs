@@ -1103,7 +1103,6 @@ public partial class MainWindowViewModel
     /// </summary>
     private async Task ReloadBackendsAsync(bool includeDemo)
     {
-        _settings = _settings with { ShowDemoBackends = includeDemo };
         var stored = _store.Load();
 
         // Prune here rather than only at startup: removing a kubeconfig takes its clusters with it, and
@@ -1111,6 +1110,18 @@ public partial class MainWindowViewModel
         var known = BackendCatalog.DiscoverClusters(stored.KubeconfigPaths).Select(p => p.Backend).ToList();
         stored = _store.Update(s => s.PruneClusters(known)
             .PruneBackendNames([.. known, .. s.RemoteEngines.Select(r => r.Backend), "docker", "podman"]));
+
+        // Adopt what is on disk instead of patching the copy this view model is holding (KON-430).
+        // Everything that reaches here is a settings page that has already written through — an adapter
+        // switched off, a remote added, a cluster shown — and that page owns its own copy, so the one
+        // up here is a snapshot from before the write. BuildSettingsPage below builds the replacement
+        // page out of it, which is what made a switched-off adapter's toggle spring back to on while
+        // settings.json said otherwise: the switcher was rebuilt from `stored` and was right, the page
+        // was rebuilt from `_settings` and was one write behind.
+        //
+        // This also subsumes the ShowDemoBackends this used to patch in by hand: the demo toggle saves
+        // before it calls back, so the value is already in `stored`.
+        _settings = stored;
 
         await RebuildBackendsAsync(includeDemo, stored);
         BuildSettingsPage();
