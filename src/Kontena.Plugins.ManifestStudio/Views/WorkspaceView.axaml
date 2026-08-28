@@ -4,39 +4,235 @@
              x:Class="Kontena.Plugins.ManifestStudio.Views.WorkspaceView"
              x:CompileBindings="False">
   <!-- x:CompileBindings off: the tree, the tab strip and the editor each bind against a different
-       DataContext (WorkspaceNode / OpenDocument / WorkspaceViewModel) in the same file, and typing
-       every template with x:DataType buys nothing here yet — revisit once this view stops being the
-       only one. -->
-  <Grid ColumnDefinitions="220,4,*">
-    <DockPanel Grid.Column="0">
-      <Button DockPanel.Dock="Top" Content="Open folder…" Click="OnOpenFolderClick" HorizontalAlignment="Stretch" />
-      <TreeView ItemsSource="{Binding Workspace.Root.Children}">
-        <TreeView.ItemTemplate>
-          <TreeDataTemplate ItemsSource="{Binding Children}">
-            <TextBlock Text="{Binding Name}" DoubleTapped="OnNodeDoubleTapped" />
-          </TreeDataTemplate>
-        </TreeView.ItemTemplate>
-      </TreeView>
-    </DockPanel>
+       DataContext (TreeRow / OpenDocument / WorkspaceViewModel) in the same file, and typing every
+       template with x:DataType buys nothing here yet — revisit once this view stops being the only one. -->
+  <UserControl.Styles>
+    <views:StudioStyles/>
+  </UserControl.Styles>
 
-    <GridSplitter Grid.Column="1" Width="4" ResizeDirection="Columns" />
+  <Grid Margin="16">
 
-    <DockPanel Grid.Column="2">
-      <DockPanel DockPanel.Dock="Top">
-        <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveActiveCommand}" />
-        <TabStrip ItemsSource="{Binding OpenTabs}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}">
-          <TabStrip.ItemTemplate>
-            <DataTemplate>
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="{Binding Name}" />
-                <TextBlock Text="*" IsVisible="{Binding IsDirty}" />
-                <Button Content="x" Padding="4,0" Click="OnCloseTabClick" />
-              </StackPanel>
-            </DataTemplate>
-          </TabStrip.ItemTemplate>
-        </TabStrip>
+    <!-- ================= no workspace ================= -->
+    <!-- The mockup's state 2. Until KON-427 the whole page was an empty tree with a stretched
+         "Open folder…" button over it, which said what to do without ever saying what this is. -->
+    <Border x:Name="EmptyState" Classes="card" VerticalAlignment="Center" HorizontalAlignment="Center"
+            MaxWidth="640" Padding="20,56">
+      <StackPanel Spacing="14" HorizontalAlignment="Center">
+        <Border Classes="glyph" HorizontalAlignment="Center">
+          <Path Classes="icon" Width="26" Height="26"
+                Stroke="{DynamicResource Accent}"
+                Data="{DynamicResource IconFolder}"/>
+        </Border>
+        <TextBlock Classes="emptytitle" Text="No workspace open"/>
+        <TextBlock Classes="emptybody"
+                   Text="Open a folder that contains manifests. A folder with a kustomization.yaml is treated as a Kustomize project; anything else as plain manifests. Kontena does not import your files — the ones on disk stay the truth."/>
+        <Button x:Name="OpenFolderButton" Classes="primary" HorizontalAlignment="Center"
+                Click="OnOpenFolderClick">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Path Classes="icon" Width="15" Height="15"
+                  Stroke="{Binding $parent[Button].Foreground}"
+                  Data="{DynamicResource IconFolder}"/>
+            <TextBlock Text="Open folder…"/>
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <!-- ================= the workspace ================= -->
+    <DockPanel x:Name="Workspace" IsVisible="False">
+
+      <!-- Breadcrumb: which workspace, which file, and where the schemas behind the squiggles come
+           from — the mockup puts the schema source here because it is what makes the validation
+           trustworthy or not. -->
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+        <Border DockPanel.Dock="Right" Classes="badge info">
+          <TextBlock x:Name="SchemaSource" Text="bundled schemas"/>
+        </Border>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Classes="crumb lead" Text="{Binding Name}"/>
+          <Path Classes="icon" Width="11" Height="11" Data="{DynamicResource IconChevronRight}"/>
+          <TextBlock Classes="crumb file" Text="{Binding ActivePath}"/>
+        </StackPanel>
       </DockPanel>
-      <views:ManifestEditorView x:Name="Editor" DataContext="{Binding ActiveDocument}" Text="{Binding Text, Mode=TwoWay}" />
+
+      <!-- Status strip. Save lives here rather than beside the tabs: it belongs with what it acts on,
+           and the tab strip is for choosing, not for doing. -->
+      <Border DockPanel.Dock="Bottom" Classes="strip" Margin="0,10,0,0">
+        <DockPanel>
+          <Button x:Name="SaveButton" DockPanel.Dock="Right" Classes="primary sm"
+                  Command="{Binding SaveActiveCommand}" ToolTip.Tip="Write the active document to disk">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Path Classes="icon" Width="14" Height="14"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    Data="{DynamicResource IconCheck}"/>
+              <TextBlock Text="Save"/>
+            </StackPanel>
+          </Button>
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Ellipse Classes="dot"
+                       Classes.warn="{Binding #Editor.HasWarnings}"
+                       Classes.bad="{Binding #Editor.HasErrors}"/>
+              <TextBlock Classes="strip" Text="{Binding #Editor.ProblemSummary}"/>
+            </StackPanel>
+            <TextBlock Classes="strip mono" Text="{Binding ActivePath}"/>
+            <TextBlock Classes="strip mono" Text="YAML · spaces: 2"/>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- The IDE frame: one bordered surface, three panes, hairlines between them. -->
+      <Border Classes="frame" MinHeight="480">
+        <Grid ColumnDefinitions="216,*,288">
+
+          <!-- ===== files ===== -->
+          <DockPanel Grid.Column="0">
+            <Border DockPanel.Dock="Top" Classes="panehead">
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Classes="qa bare" Click="OnOpenFolderClick"
+                        ToolTip.Tip="Open another folder…">
+                  <Path Classes="icon" Width="14" Height="14" Data="{DynamicResource IconFolder}"/>
+                </Button>
+                <TextBlock Classes="panetitle" Text="FILES"/>
+              </DockPanel>
+            </Border>
+
+            <ScrollViewer HorizontalScrollBarVisibility="Auto">
+              <ItemsControl x:Name="Files" ItemsSource="{Binding Rows}" Margin="6,8">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="treerow" Classes.dir="{Binding IsFolder}" Classes.on="{Binding IsActive}"
+                            Margin="{Binding Indent}" DoubleTapped="OnRowDoubleTapped">
+                      <DockPanel>
+                        <Border DockPanel.Dock="Right" Classes="badge"
+                                Classes.mod="{Binding IsModified}"
+                                Classes.new="{Binding IsAdded}"
+                                Classes.err="{Binding IsRemoved}"
+                                IsVisible="{Binding HasBadge}"
+                                ToolTip.Tip="{Binding GitStatus}">
+                          <TextBlock Text="{Binding Badge}"/>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Path Classes="icon" Width="14" Height="14" VerticalAlignment="Center"
+                                IsVisible="{Binding IsFolder}"
+                                Data="{DynamicResource IconFolder}"/>
+                          <Path Classes="icon" Width="14" Height="14" VerticalAlignment="Center"
+                                IsVisible="{Binding !IsFolder}"
+                                Data="{DynamicResource IconLogs}"/>
+                          <TextBlock Classes="treename" Text="{Binding Name}"/>
+                        </StackPanel>
+                      </DockPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </DockPanel>
+
+          <!-- ===== editor ===== -->
+          <Border Grid.Column="1" Classes="paneedge">
+            <DockPanel>
+              <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceRaised}"
+                      BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,6,8,0">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                  <ItemsControl x:Name="Tabs" ItemsSource="{Binding OpenTabs}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="2"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Classes="tab" Classes.on="{Binding IsActive}" Tapped="OnTabClick">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Classes="tabname" Text="{Binding Name}"/>
+                            <Ellipse Width="6" Height="6" VerticalAlignment="Center"
+                                     Fill="{DynamicResource Warn}"
+                                     IsVisible="{Binding IsDirty}"
+                                     ToolTip.Tip="Unsaved changes"/>
+                            <Button Classes="qa bare" Click="OnCloseTabClick" ToolTip.Tip="Close tab">
+                              <Path Classes="icon" Width="11" Height="11" Data="{DynamicResource IconClose}"/>
+                            </Button>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Border>
+
+              <views:ManifestEditorView x:Name="Editor" DataContext="{Binding ActiveDocument}"
+                                        Text="{Binding Text, Mode=TwoWay}"/>
+            </DockPanel>
+          </Border>
+
+          <!-- ===== problems ===== -->
+          <Border Grid.Column="2" Classes="paneedge">
+            <DockPanel>
+              <Border DockPanel.Dock="Top" Classes="panehead">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="panetitle"
+                             Text="{Binding #Editor.ProblemSummary}"/>
+                  <TextBlock Classes="panetitle" Text="PROBLEMS"/>
+                </DockPanel>
+              </Border>
+
+              <!-- The empty state is a sentence, not a blank panel: "nothing found" and "nothing
+                   checked" are different answers and the strip's summary says which this is. -->
+              <TextBlock DockPanel.Dock="Bottom" Classes="sub" Margin="12,10" TextAlignment="Center"
+                         Text="Nothing to report here."
+                         IsVisible="{Binding !#Editor.HasProblems}"/>
+
+              <ScrollViewer>
+                <ItemsControl x:Name="Problems" ItemsSource="{Binding #Editor.Problems}" Margin="6">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Classes="problem">
+                        <DockPanel>
+                          <!-- Severity is a shape and a word, never the colour alone: the glyph differs
+                               between error and hint, and the row is announced by its text. -->
+                          <Path DockPanel.Dock="Left" Classes="icon" Width="14" Height="14"
+                                Margin="0,3,9,0" VerticalAlignment="Top"
+                                Stroke="{DynamicResource Danger}"
+                                Data="{DynamicResource IconWarning}"
+                                IsVisible="{Binding IsError}"/>
+                          <Path DockPanel.Dock="Left" Classes="icon" Width="14" Height="14"
+                                Margin="0,3,9,0" VerticalAlignment="Top"
+                                Stroke="{DynamicResource Warn}"
+                                Data="{DynamicResource IconWarning}"
+                                IsVisible="{Binding IsWarning}"/>
+                          <Path DockPanel.Dock="Left" Classes="icon" Width="14" Height="14"
+                                Margin="0,3,9,0" VerticalAlignment="Top"
+                                Stroke="{DynamicResource Info}"
+                                Data="{DynamicResource IconInfo}"
+                                IsVisible="{Binding IsHint}"/>
+                          <StackPanel Spacing="3">
+                            <TextBlock Classes="problemloc" Text="{Binding SeverityLabel}"/>
+                            <TextBlock Classes="problemtitle" Text="{Binding Message}"/>
+                            <TextBlock Classes="problemloc" Text="{Binding Location}"/>
+                            <!-- KON-292's quick fixes reach a screen here for the first time. -->
+                            <Button Classes="link" Click="OnQuickFixClick" IsVisible="{Binding HasFix}"
+                                    Margin="0,3,0,0">
+                              <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Path Classes="icon" Width="12" Height="12"
+                                      Stroke="{DynamicResource Primary}"
+                                      Data="{DynamicResource IconCheck}"/>
+                                <TextBlock Text="{Binding FixTitle}" FontSize="11.5"
+                                           Foreground="{DynamicResource Primary}"/>
+                              </StackPanel>
+                            </Button>
+                          </StackPanel>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+
+        </Grid>
+      </Border>
     </DockPanel>
   </Grid>
 </UserControl>

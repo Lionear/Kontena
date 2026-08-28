@@ -30,6 +30,9 @@
   <ItemGroup>
     <!-- KON-289's offline schema fallback — see Resources/Schemas/README.md for source and licence. -->
     <EmbeddedResource Include="Resources/Schemas/**/*.json" />
+    <!-- The YAML syntax definition AvaloniaEdit does not ship (KON-427). Embedded, not copied beside
+         the dll: the plugin is unzipped by hand, and a file that can go missing will. -->
+    <EmbeddedResource Include="Resources/Yaml.xshd" />
   </ItemGroup>
 
   <!-- The loader reads plugin.json before it touches the assembly and rejects the plugin outright if

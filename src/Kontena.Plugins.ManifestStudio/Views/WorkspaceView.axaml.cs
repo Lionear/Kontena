@@ -26,6 +26,15 @@ public partial class WorkspaceView : UserControl
     public static readonly StyledProperty<SchemaIndex?> SchemasProperty =
         AvaloniaProperty.Register<WorkspaceView, SchemaIndex?>(nameof(Schemas));
 
+    /// <summary>
+    /// Whether the schemas behind the squiggles came from the connected cluster or from the bundled
+    /// fallback (KON-427). The breadcrumb says which, because "no errors" from a bundled schema set that
+    /// has never heard of your CRD is a different statement from "no errors" out of your own API server
+    /// — and the mockup puts that badge next to the filename for exactly that reason.
+    /// </summary>
+    public static readonly StyledProperty<bool> SchemasFromClusterProperty =
+        AvaloniaProperty.Register<WorkspaceView, bool>(nameof(SchemasFromCluster));
+
     /// <summary>The kind the editor's schema currently belongs to, so a keystroke that changes nothing
     /// about apiVersion/kind does not re-ask the cluster.</summary>
     private GroupVersionKind? _schemaKind;
@@ -38,6 +47,18 @@ public partial class WorkspaceView : UserControl
         // this way a document opened, switched or edited all arrive through one path.
         Editor.GetObservable(ManifestEditorView.TextProperty)
             .Subscribe(new AnonymousObserver<string>(OnDocumentTextChanged));
+
+        // The page is built before a folder is picked, and again with a workspace already in hand when
+        // you navigate back to it — so which of the two halves is on screen follows the DataContext
+        // rather than being decided once in the constructor.
+        DataContextChanged += (_, _) => ShowWorkspace(DataContext is WorkspaceViewModel);
+        ShowWorkspace(DataContext is WorkspaceViewModel);
+    }
+
+    public bool SchemasFromCluster
+    {
+        get => GetValue(SchemasFromClusterProperty);
+        set => SetValue(SchemasFromClusterProperty, value);
     }
 
     public SchemaIndex? Schemas
@@ -52,6 +73,20 @@ public partial class WorkspaceView : UserControl
     /// need the same workspace (KON-296).
     /// </summary>
     public event EventHandler<WorkspaceViewModel>? WorkspaceOpened;
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == SchemasFromClusterProperty)
+            SchemaSource.Text = SchemasFromCluster ? "schemas from cluster" : "bundled schemas";
+    }
+
+    private void ShowWorkspace(bool open)
+    {
+        Workspace.IsVisible = open;
+        EmptyState.IsVisible = !open;
+    }
 
     private void OnDocumentTextChanged(string text)
     {
@@ -111,15 +146,27 @@ public partial class WorkspaceView : UserControl
         WorkspaceOpened?.Invoke(this, workspace);
     }
 
-    private void OnNodeDoubleTapped(object? sender, TappedEventArgs e)
+    private void OnRowDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is StyledElement { DataContext: WorkspaceNode node } && DataContext is WorkspaceViewModel vm)
-            vm.OpenNodeCommand.Execute(node);
+        if (sender is StyledElement { DataContext: TreeRow row } && DataContext is WorkspaceViewModel vm)
+            vm.OpenNodeCommand.Execute(row.Node);
+    }
+
+    private void OnTabClick(object? sender, TappedEventArgs e)
+    {
+        if (sender is StyledElement { DataContext: OpenDocument document } && DataContext is WorkspaceViewModel vm)
+            vm.ActiveDocument = document;
     }
 
     private void OnCloseTabClick(object? sender, RoutedEventArgs e)
     {
         if (sender is StyledElement { DataContext: OpenDocument document } && DataContext is WorkspaceViewModel vm)
             vm.CloseTabCommand.Execute(document);
+    }
+
+    private void OnQuickFixClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is StyledElement { DataContext: Problem { Fixes.Count: > 0 } problem })
+            Editor.ApplyFix(problem.Fixes[0]);
     }
 }

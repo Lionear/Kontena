@@ -1,45 +1,158 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Kontena.Plugins.ManifestStudio.Views"
              x:Class="Kontena.Plugins.ManifestStudio.Views.GitView"
              x:CompileBindings="False">
   <!-- x:CompileBindings off for the same reason WorkspaceView has it off: the list items bind against
        GitFileChange while everything around them binds against GitViewModel. -->
-  <DockPanel Margin="12">
-    <StackPanel DockPanel.Dock="Top" Spacing="6">
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock Text="{Binding Status.Branch, FallbackValue='no repository'}" FontWeight="SemiBold"
-                   VerticalAlignment="Center" />
-        <!-- Behind the remote is a warning, never a block (Plan §7) — it reads here and stops there. -->
-        <TextBlock Text="{Binding Status.Ahead, StringFormat='{}{0} ahead'}" VerticalAlignment="Center"
-                   IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}" />
-        <TextBlock Text="{Binding Status.Behind, StringFormat='{}{0} behind'}" VerticalAlignment="Center"
-                   IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}" />
-        <Button Content="Refresh" Command="{Binding RefreshCommand}" />
-        <Button Content="Pull" Command="{Binding PullCommand}" />
-        <Button Content="Push" Command="{Binding PushCommand}" />
+  <UserControl.Styles>
+    <views:StudioStyles/>
+  </UserControl.Styles>
+
+  <ScrollViewer>
+    <DockPanel Margin="16">
+
+      <StackPanel DockPanel.Dock="Top" Spacing="3" Margin="0,0,0,14">
+        <TextBlock Classes="h2" Text="Source control"/>
+        <TextBlock Classes="sub" MaxWidth="620" HorizontalAlignment="Left"
+                   Text="Enough Git to close the loop you just opened: see what you changed, commit it, push it. Branching beyond switching, merging and conflict resolution stay out (Plan §7)."/>
       </StackPanel>
 
-      <TextBlock Text="{Binding Error}" TextWrapping="Wrap"
-                 IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-    </StackPanel>
-
-    <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,8,0,0">
-      <TextBox Watermark="Commit message" Text="{Binding CommitMessage, Mode=TwoWay}" />
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <Button Content="Commit" Command="{Binding CommitCommand}" />
-        <Button Content="Commit and push" Command="{Binding CommitAndPushCommand}" />
-      </StackPanel>
-    </StackPanel>
-
-    <ListBox x:Name="Changes" ItemsSource="{Binding Status.Changes}" Margin="0,8,0,0">
-      <ListBox.ItemTemplate>
-        <DataTemplate>
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="{Binding Status}" FontFamily="monospace" Width="28" />
-            <TextBlock Text="{Binding Path}" />
+      <Border DockPanel.Dock="Top" Classes="notice bad" Margin="0,0,0,14"
+              IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Path Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                Stroke="{DynamicResource Danger}" Data="{DynamicResource IconWarning}"/>
+          <StackPanel Spacing="3" MaxWidth="700">
+            <TextBlock Classes="title" Text="git said no"/>
+            <TextBlock Classes="body" Text="{Binding Error}"/>
           </StackPanel>
-        </DataTemplate>
-      </ListBox.ItemTemplate>
-    </ListBox>
-  </DockPanel>
+        </StackPanel>
+      </Border>
+
+      <Grid ColumnDefinitions="*,14,320" VerticalAlignment="Top">
+
+        <!-- ===== changes ===== -->
+        <StackPanel Grid.Column="0" Spacing="14">
+          <Border Classes="frame">
+            <DockPanel>
+              <Border DockPanel.Dock="Top" Classes="panehead">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="panetitle"
+                             Text="{Binding Status.ChangeLabel, FallbackValue=''}"/>
+                  <TextBlock Classes="panetitle" Text="CHANGES"/>
+                </DockPanel>
+              </Border>
+
+              <TextBlock DockPanel.Dock="Bottom" Classes="sub" Margin="12,14" TextAlignment="Center"
+                         Text="Nothing has changed since the last commit."
+                         IsVisible="{Binding !Status.HasChanges, FallbackValue=True}"/>
+
+              <ItemsControl ItemsSource="{Binding Status.Changes}" Margin="6,8" MaxHeight="320">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="treerow">
+                      <DockPanel>
+                        <Border DockPanel.Dock="Right" Classes="badge"
+                                Classes.mod="{Binding IsModified}"
+                                Classes.new="{Binding IsAdded}"
+                                Classes.err="{Binding IsRemoved}"
+                                ToolTip.Tip="{Binding Status}">
+                          <TextBlock Text="{Binding Badge}"/>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Path Classes="icon" Width="14" Height="14" VerticalAlignment="Center"
+                                Data="{DynamicResource IconLogs}"/>
+                          <TextBlock Classes="treename" Text="{Binding Path}"/>
+                        </StackPanel>
+                      </DockPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </DockPanel>
+          </Border>
+
+          <Border Classes="card">
+            <StackPanel Spacing="10">
+              <TextBox Watermark="Commit message" Text="{Binding CommitMessage, Mode=TwoWay}"
+                       AcceptsReturn="True" MinHeight="64" TextWrapping="Wrap"
+                       CornerRadius="{DynamicResource RadiusSm}"/>
+              <StackPanel Orientation="Horizontal" Spacing="9">
+                <Button x:Name="CommitButton" Classes="primary sm" Command="{Binding CommitCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Classes="icon" Width="13" Height="13" Stroke="{Binding $parent[Button].Foreground}"
+                          Data="{DynamicResource IconCheck}"/>
+                    <TextBlock Text="Commit"/>
+                  </StackPanel>
+                </Button>
+                <Button x:Name="CommitAndPushButton" Classes="ghost sm" Command="{Binding CommitAndPushCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Classes="icon" Width="13" Height="13" Data="{DynamicResource IconPush}"/>
+                    <TextBlock Text="Commit and push"/>
+                  </StackPanel>
+                </Button>
+                <TextBlock Classes="strip" Text="Working…" IsVisible="{Binding IsBusy}"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- ===== branch ===== -->
+        <StackPanel Grid.Column="2" Spacing="14">
+          <Border Classes="card">
+            <StackPanel Spacing="12">
+              <StackPanel Spacing="3">
+                <TextBlock Classes="h3" Text="Branch"/>
+                <TextBlock Classes="sub" Text="One branch at a time, the one that is checked out."/>
+              </StackPanel>
+
+              <StackPanel Spacing="3">
+                <TextBlock Classes="k2" Text="CURRENT"/>
+                <TextBlock Classes="v2" Text="{Binding Status.Branch, FallbackValue='no repository'}"/>
+              </StackPanel>
+              <StackPanel Spacing="3">
+                <TextBlock Classes="k2" Text="SYNC"/>
+                <TextBlock Classes="v2 small" Text="{Binding Status.SyncLabel, FallbackValue='unknown'}"/>
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Spacing="9">
+                <Button x:Name="PullButton" Classes="ghost sm" Command="{Binding PullCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Classes="icon" Width="13" Height="13" Data="{DynamicResource IconPull}"/>
+                    <TextBlock Text="Pull"/>
+                  </StackPanel>
+                </Button>
+                <Button x:Name="PushButton" Classes="ghost sm" Command="{Binding PushCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Classes="icon" Width="13" Height="13" Data="{DynamicResource IconPush}"/>
+                    <TextBlock Text="Push"/>
+                  </StackPanel>
+                </Button>
+                <Button x:Name="RefreshButton" Classes="qa" Command="{Binding RefreshCommand}"
+                        ToolTip.Tip="Re-read git status">
+                  <Path Classes="icon" Width="14" Height="14" Data="{DynamicResource IconRefresh}"/>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- A warning, never a block: what is on disk is still valid, it just may not be what the
+               repository says (Plan §7). -->
+          <Border Classes="notice warn" IsVisible="{Binding Status.IsBehind, FallbackValue=False}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Path Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0"
+                    Stroke="{DynamicResource Warn}" Data="{DynamicResource IconWarning}"/>
+              <StackPanel Spacing="3">
+                <TextBlock Classes="title" Text="Behind the remote"/>
+                <TextBlock Classes="body"
+                           Text="Someone pushed after you last pulled. Applying what is on disk is still valid — it just may not be what the repository says."/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+      </Grid>
+    </DockPanel>
+  </ScrollViewer>
 </UserControl>

@@ -1,0 +1,344 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Kontena.Plugins.ManifestStudio.Views.StudioStyles">
+  <!--
+    The vocabulary the studio pages share and the shell does not already have (KON-427). Everything the
+    app already styles — Button.primary/.ghost, Border.card, Path.icon, TextBlock.colhead/.ivalue — is
+    used as-is from App.axaml rather than restated here: a plugin that draws its own buttons is exactly
+    how a window stops looking like one window.
+
+    Loaded as a compiled Styles subclass, not through a StyleInclude with an avares: URI: the loader
+    reads this assembly with LoadFromStream (PluginLoadContext), so Assembly.Location is empty and an
+    asset URI has nothing to resolve against.
+
+    Brushes are DynamicResource against the host's App.axaml. In the plugin's own unit tests those keys
+    do not exist and the properties simply stay at their defaults — which is what keeps this file out of
+    the way of assertions, and why none of them measure colour.
+  -->
+
+  <!-- ============ panes ============ -->
+
+  <!-- The IDE frame: one bordered box the three panes live inside, so the splits read as divisions of
+       one surface instead of three floating panels. -->
+  <Style Selector="Border.frame">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius}"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+  </Style>
+
+  <Style Selector="Border.panehead">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaised}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="Padding" Value="11,8"/>
+  </Style>
+
+  <!-- Typed in capitals rather than transformed: Avalonia has no text-transform, and a label that is
+       already the string it renders cannot drift from it. -->
+  <Style Selector="TextBlock.panetitle">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="LetterSpacing" Value="0.6"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- The vertical hairline between two panes. -->
+  <Style Selector="Border.paneedge">
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1,0,0,0"/>
+  </Style>
+
+  <!-- ============ file tree ============ -->
+
+  <Style Selector="Border.treerow">
+    <Setter Property="Padding" Value="8,5"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}"/>
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Border.treerow:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+  </Style>
+  <Style Selector="Border.treerow.on">
+    <Setter Property="Background" Value="{DynamicResource PrimarySoft}"/>
+  </Style>
+
+  <Style Selector="TextBlock.treename">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+  </Style>
+  <!-- A folder is the structure you read the list by, so it carries full ink; a file is an entry in it. -->
+  <Style Selector="Border.treerow.dir TextBlock.treename">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+  <Style Selector="Border.treerow.on TextBlock.treename">
+    <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+
+  <!-- ============ tabs ============ -->
+
+  <!-- Only the top corners are rounded: the active tab is continuous with the editor surface beneath
+       it, which is what says which document the text belongs to. -->
+  <Style Selector="Border.tab">
+    <Setter Property="Padding" Value="11,7"/>
+    <Setter Property="CornerRadius" Value="6,6,0,0"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="1,1,1,0"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+  </Style>
+  <Style Selector="Border.tab.on">
+    <Setter Property="Background" Value="{DynamicResource CodeSurface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+  </Style>
+  <Style Selector="Border.tab TextBlock.tabname">
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Border.tab.on TextBlock.tabname">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+
+  <!-- ============ badges &amp; tags ============ -->
+
+  <!-- A capsule, so 20 rather than the radius scale — DesignSystem.md §Shape keeps capsules off it. -->
+  <Style Selector="Border.badge">
+    <Setter Property="CornerRadius" Value="20"/>
+    <Setter Property="Padding" Value="6,1"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+  </Style>
+  <Style Selector="Border.badge > TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="FontSize" Value="10"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+  </Style>
+  <Style Selector="Border.badge.mod">
+    <Setter Property="Background" Value="{DynamicResource WarnSoft}"/>
+  </Style>
+  <Style Selector="Border.badge.mod > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource WarnText}"/>
+  </Style>
+  <Style Selector="Border.badge.new">
+    <Setter Property="Background" Value="{DynamicResource SuccessSoft}"/>
+  </Style>
+  <Style Selector="Border.badge.new > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Success}"/>
+  </Style>
+  <Style Selector="Border.badge.err">
+    <Setter Property="Background" Value="{DynamicResource DangerSoft}"/>
+  </Style>
+  <Style Selector="Border.badge.err > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Danger}"/>
+  </Style>
+  <Style Selector="Border.badge.info">
+    <Setter Property="Background" Value="{DynamicResource InfoSoft}"/>
+  </Style>
+  <Style Selector="Border.badge.info > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Info}"/>
+  </Style>
+
+  <!-- ============ status dots ============ -->
+
+  <!-- Never the only signal: every dot in this plugin sits next to the words it stands for, the same
+       rule the shell's rows follow (DesignSystem.md §Status language). -->
+  <Style Selector="Ellipse.dot">
+    <Setter Property="Width" Value="8"/>
+    <Setter Property="Height" Value="8"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Fill" Value="{DynamicResource Success}"/>
+  </Style>
+  <Style Selector="Ellipse.dot.warn">
+    <Setter Property="Fill" Value="{DynamicResource Warn}"/>
+  </Style>
+  <Style Selector="Ellipse.dot.bad">
+    <Setter Property="Fill" Value="{DynamicResource Danger}"/>
+  </Style>
+  <Style Selector="Ellipse.dot.dim">
+    <Setter Property="Fill" Value="{DynamicResource TextFaint}"/>
+  </Style>
+
+  <!-- ============ status strip ============ -->
+
+  <Style Selector="Border.strip">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius}"/>
+    <Setter Property="Padding" Value="12,8"/>
+  </Style>
+  <Style Selector="TextBlock.strip">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="TextBlock.strip.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="FontSize" Value="11.5"/>
+  </Style>
+
+  <!-- ============ breadcrumb ============ -->
+
+  <Style Selector="TextBlock.crumb">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="TextBlock.crumb.lead">
+    <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+  <Style Selector="TextBlock.crumb.file">
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+
+  <!-- ============ notices ============ -->
+
+  <!-- A block that interrupts the page, so it keeps the warm wash DesignSystem.md deliberately left out
+       of the grey ladder. -->
+  <Style Selector="Border.notice">
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius}"/>
+    <Setter Property="Padding" Value="14,13"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+  </Style>
+  <Style Selector="Border.notice.info">
+    <Setter Property="Background" Value="{DynamicResource InfoSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Info}"/>
+  </Style>
+  <Style Selector="Border.notice.warn">
+    <Setter Property="Background" Value="{DynamicResource WarnSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource WarnSoftBorder}"/>
+  </Style>
+  <Style Selector="Border.notice.bad">
+    <Setter Property="Background" Value="{DynamicResource DangerSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerSoftBorder}"/>
+  </Style>
+  <Style Selector="Border.notice TextBlock.title">
+    <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Border.notice TextBlock.body">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+
+  <!-- ============ problems list ============ -->
+
+  <Style Selector="Border.problem">
+    <Setter Property="Padding" Value="10,9"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}"/>
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Border.problem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+  </Style>
+  <Style Selector="TextBlock.problemtitle">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+  <!-- Where a finding comes from, in the same mono the editor uses, because "schema" and "cluster
+       discovery" are different authorities and the list has to say which (Plan §5). -->
+  <Style Selector="TextBlock.problemloc">
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="FontSize" Value="10.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+  </Style>
+
+  <!-- ============ key/value rows ============ -->
+
+  <Style Selector="TextBlock.k2">
+    <Setter Property="FontSize" Value="10.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="LetterSpacing" Value="0.7"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextFaint}"/>
+  </Style>
+  <Style Selector="TextBlock.v2">
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+  <Style Selector="TextBlock.v2.small">
+    <Setter Property="FontSize" Value="11.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+  </Style>
+
+  <!-- ============ diff ============ -->
+
+  <Style Selector="Border.diff">
+    <Setter Property="Background" Value="{DynamicResource Console}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius}"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+  </Style>
+  <Style Selector="Border.diffhead">
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="Padding" Value="12,8"/>
+  </Style>
+
+  <!-- ============ empty state ============ -->
+
+  <!-- 18px, off the radius scale on purpose: the glyph tile scales with its own box, per
+       DesignSystem.md §Shape. -->
+  <Style Selector="Border.glyph">
+    <Setter Property="Width" Value="58"/>
+    <Setter Property="Height" Value="58"/>
+    <Setter Property="CornerRadius" Value="18"/>
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="TextBlock.emptytitle">
+    <Setter Property="FontSize" Value="17"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="TextBlock.emptybody">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+    <Setter Property="TextAlignment" Value="Center"/>
+    <Setter Property="MaxWidth" Value="440"/>
+  </Style>
+
+  <!-- ============ headings ============ -->
+
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="20"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="TextBlock.h3">
+    <Setter Property="FontSize" Value="14.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="TextBlock.sub">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+
+  <!-- Small variants of the shell's buttons, for the strips and card footers where a full-height
+       button would set the row height. -->
+  <Style Selector="Button.sm">
+    <Setter Property="Padding" Value="11,6"/>
+    <Setter Property="FontSize" Value="12.5"/>
+  </Style>
+</Styles>
