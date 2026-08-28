@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AvaloniaEdit ships definitions for XML, JSON, C#, Markdown and a dozen more, but not for YAML — so
+  the manifest editor rendered as one flat colour until KON-427. This is the smallest definition that
+  makes a manifest readable: keys, quoted scalars, numbers, the YAML constants, comments, anchors and
+  the document separator. Nothing here tries to be a YAML parser; the parsing that matters happens in
+  YamlOutline and ManifestDiagnostics, where being wrong is an error rather than a colour.
+
+  The colours are named, not literal, because the app has a light theme: ManifestEditorView rebinds
+  every one of them to a per-theme value on load and on every theme change. The values below are the
+  dark set, so a definition read without that step still renders something sane.
+
+  Order matters. The quoted-string spans come before the comment span, so a '#' inside a string is not
+  a comment; the comment span has no nested rules, so a quote inside a comment is not a string.
+
+  ponytail: no block scalars (| and >), no flow mappings, no multi-line strings. Their content simply
+  renders as plain text, which is exactly what it should look like when in doubt.
+-->
+<SyntaxDefinition name="YAML" extensions=".yaml;.yml" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <Color name="Comment"   foreground="#8B949E"/>
+  <Color name="Key"       foreground="#79C0FF"/>
+  <Color name="String"    foreground="#A5D6FF"/>
+  <Color name="Number"    foreground="#F0B072"/>
+  <Color name="Constant"  foreground="#D2A8FF"/>
+  <Color name="Directive" foreground="#7CC4FF"/>
+
+  <RuleSet ignoreCase="false">
+
+    <!-- A document separator or a directive: the line that says a new object starts here. -->
+    <Rule color="Directive">^(---|\.\.\.|%\w+.*)$</Rule>
+
+    <!-- A mapping key. The colon has to be followed by whitespace or end-of-line, which is YAML's own
+         rule and the reason 'ghcr.io/lionear/checkout:1.8.2' is not read as a key. -->
+    <Rule color="Key">[\w.\-/]+(?=\s*:(\s|$))</Rule>
+
+    <Span color="String" multiline="false">
+      <Begin>"</Begin>
+      <End>"</End>
+    </Span>
+    <Span color="String" multiline="false">
+      <Begin>'</Begin>
+      <End>'</End>
+    </Span>
+
+    <Span color="Comment" multiline="false">
+      <Begin>\#</Begin>
+    </Span>
+
+    <!-- An anchor, an alias or a tag — the three ways a manifest points at something else. -->
+    <Rule color="Constant">[&amp;*!][\w.\-]+</Rule>
+
+    <Rule color="Constant">\b(true|false|null|True|False|Null|yes|no|on|off|~)\b</Rule>
+
+    <Rule color="Number">\b\d+(\.\d+)?\b</Rule>
+
+  </RuleSet>
+</SyntaxDefinition>

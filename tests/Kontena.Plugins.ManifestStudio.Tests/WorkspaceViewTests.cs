@@ -122,7 +122,9 @@ public sealed class WorkspaceViewTests(HeadlessSessionFixture headless) : IDispo
                 Assert.True(document.IsDirty);
                 Assert.Equal("kind: StatefulSet\n", document.Text);
 
-                var save = view.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Save"));
+                // By name, not by content: since KON-427 the button carries an icon and a label rather
+                // than the bare string "Save".
+                var save = view.GetVisualDescendants().OfType<Button>().First(b => b.Name == "SaveButton");
                 save.Command!.Execute(null);
 
                 Assert.False(document.IsDirty);
@@ -141,7 +143,11 @@ public sealed class WorkspaceViewTests(HeadlessSessionFixture headless) : IDispo
                 vm.Open(path);
                 Settle();
 
-                var close = view.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "x"));
+                // The close button is inside the tab template, so it has no name of its own — its
+                // tooltip is both its accessible name (DesignSystem.md §Accessibility) and the only
+                // stable handle on it from here.
+                var close = view.GetVisualDescendants().OfType<Button>()
+                    .First(b => Equals(ToolTip.GetTip(b), "Close tab"));
                 close.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Empty(vm.OpenTabs);

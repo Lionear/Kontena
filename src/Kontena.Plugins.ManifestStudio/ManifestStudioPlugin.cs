@@ -26,6 +26,11 @@ public sealed class ManifestStudioPlugin : IUiPlugin
 {
     private WorkspaceViewModel? _workspace;
 
+    // One git model for the whole session, not one per page: the Source control page and the editor's
+    // file badges are two views of the same `git status`, and two models would let them disagree about
+    // what changed (KON-427).
+    private GitViewModel? _git;
+
     // Kept across navigations, because a fresh SchemaIndex would refetch every OpenAPI document the
     // first time you type in each page. Rebuilt when the cluster changes — schemas are that cluster's.
     private SchemaIndex? _schemas;
@@ -51,13 +56,44 @@ public sealed class ManifestStudioPlugin : IUiPlugin
 
     private WorkspaceView CreateEditor(IPluginHost host)
     {
-        var view = new WorkspaceView { Schemas = SchemasFor(host) };
+        var view = new WorkspaceView
+        {
+            Schemas = SchemasFor(host),
+            SchemasFromCluster = host.Cluster is not null,
+        };
 
         if (_workspace is not null)
+        {
             view.DataContext = _workspace;
 
-        view.WorkspaceOpened += (_, workspace) => _workspace = workspace;
+            // The folder is on disk and other things write to it, so what git said last time this page
+            // was open is history, not state.
+            _git?.RefreshCommand.Execute(null);
+        }
+
+        view.WorkspaceOpened += (_, workspace) =>
+        {
+            _workspace = workspace;
+            AttachGit(workspace);
+        };
+
         return view;
+    }
+
+    /// <summary>Points a fresh git model at the new workspace and keeps the file pane's badges following
+    /// it. A folder that is not a repository simply reports an error and leaves the badges off, which is
+    /// the state the tree already renders.</summary>
+    private void AttachGit(WorkspaceViewModel workspace)
+    {
+        var git = new GitViewModel(new GitCli(), workspace.Workspace.RootPath);
+        git.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(GitViewModel.Status))
+                workspace.SetGitStatus(git.Status);
+        };
+
+        _git = git;
+        git.RefreshCommand.Execute(null);
     }
 
     private Control CreatePlan(IPluginHost host)
@@ -85,10 +121,8 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         if (_workspace is not { } workspace)
             return Explain("Open a folder in the Editor first — source control follows the workspace.");
 
-        return new GitView
-        {
-            DataContext = new GitViewModel(new GitCli(), workspace.Workspace.RootPath),
-        };
+        _git ??= new GitViewModel(new GitCli(), workspace.Workspace.RootPath);
+        return new GitView { DataContext = _git };
     }
 
     private SchemaIndex SchemasFor(IPluginHost host)

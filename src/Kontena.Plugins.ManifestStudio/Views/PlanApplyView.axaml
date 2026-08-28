@@ -1,36 +1,137 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Kontena.Plugins.ManifestStudio.Views"
              x:Class="Kontena.Plugins.ManifestStudio.Views.PlanApplyView"
              x:CompileBindings="False">
   <!-- x:CompileBindings off: the root DataContext is PlanApplyViewModel, but the Plan/Apply buttons'
        CommandParameter reaches past it to this control's own Document property ($parent) — same
        mixed-context reason as WorkspaceView. -->
-  <DockPanel>
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <Button Content="Plan" Command="{Binding PlanCommand}"
-              CommandParameter="{Binding $parent[UserControl].Document}" />
-      <Button Content="Apply" Command="{Binding ApplyCommand}"
-              CommandParameter="{Binding $parent[UserControl].Document}" />
-      <TextBlock Text="Running…" IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
+  <UserControl.Styles>
+    <views:StudioStyles/>
+  </UserControl.Styles>
+
+  <DockPanel Margin="16">
+
+    <StackPanel DockPanel.Dock="Top" Spacing="3" Margin="0,0,0,14">
+      <TextBlock Classes="h2" Text="Plan &amp; apply"/>
+      <TextBlock Classes="sub" MaxWidth="620" HorizontalAlignment="Left"
+                 Text="The same server-side dry-run and diff the rest of Kontena uses, reached from the workspace instead of a file picker. The document in the editor is what gets planned."/>
     </StackPanel>
 
-    <TextBlock DockPanel.Dock="Top" Text="{Binding Error}" Foreground="Crimson" Margin="0,0,0,8" />
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="9" Margin="0,0,0,14">
+      <Button x:Name="PlanButton" Classes="primary" Command="{Binding PlanCommand}"
+              CommandParameter="{Binding $parent[UserControl].Document}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Path Classes="icon" Width="14" Height="14" Stroke="{Binding $parent[Button].Foreground}"
+                Data="{DynamicResource IconGauge}"/>
+          <TextBlock Text="Plan"/>
+        </StackPanel>
+      </Button>
+      <Button x:Name="ApplyButton" Classes="ghost" Command="{Binding ApplyCommand}"
+              CommandParameter="{Binding $parent[UserControl].Document}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Path Classes="icon" Width="14" Height="14" Data="{DynamicResource IconPlay}"/>
+          <TextBlock Text="Apply"/>
+        </StackPanel>
+      </Button>
+      <TextBlock Classes="strip" Text="Running…" IsVisible="{Binding IsRunning}"/>
+    </StackPanel>
 
-    <ListBox ItemsSource="{Binding Results}">
-      <ListBox.ItemTemplate>
-        <DataTemplate>
-          <StackPanel Margin="0,4">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="{Binding Action}" FontWeight="Bold" />
-              <TextBlock Text="{Binding Resource.Kind.Kind}" />
-              <TextBlock Text="{Binding Resource.Namespace}" />
-              <TextBlock Text="{Binding Resource.Name}" />
-            </StackPanel>
-            <TextBlock Text="{Binding Diff}" FontFamily="Cascadia Code,Consolas,Menlo,monospace" />
-            <TextBlock Text="{Binding Error}" Foreground="Crimson" />
-          </StackPanel>
-        </DataTemplate>
-      </ListBox.ItemTemplate>
-    </ListBox>
+    <!-- The whole point of a dry run is that it did not happen, and only the page can say so — the
+         result rows themselves look identical either way. -->
+    <Border DockPanel.Dock="Top" Classes="notice info" Margin="0,0,0,14"
+            IsVisible="{Binding WasDryRun}">
+      <Grid ColumnDefinitions="Auto,*">
+        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,12,0"
+              Stroke="{DynamicResource Info}" Data="{DynamicResource IconInfo}"/>
+        <StackPanel Grid.Column="1" Spacing="3">
+          <TextBlock Classes="title" Text="Nothing has been applied"/>
+          <TextBlock Classes="body"
+                     Text="Every document below was sent to the API server as a dry run: defaulting, quota and webhooks all ran, and the server returned the object as it would end up. It persisted nothing."/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border DockPanel.Dock="Top" Classes="notice bad" Margin="0,0,0,14"
+            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <Grid ColumnDefinitions="Auto,*">
+        <Path Grid.Column="0" Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,12,0"
+              Stroke="{DynamicResource Danger}" Data="{DynamicResource IconWarning}"/>
+        <StackPanel Grid.Column="1" Spacing="3">
+          <TextBlock Classes="title" Text="The run did not finish"/>
+          <TextBlock Classes="body" Text="{Binding Error}"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Classes="strip" Margin="0,12,0,0" IsVisible="{Binding HasResults}">
+      <StackPanel Orientation="Horizontal" Spacing="14">
+        <Ellipse Classes="dot dim"/>
+        <TextBlock Classes="strip" Text="{Binding Summary}"/>
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer>
+      <ItemsControl x:Name="Results" ItemsSource="{Binding Results}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Classes="frame" Margin="0,0,0,10">
+              <StackPanel>
+
+                <!-- What happened, to what. The action is a word in a coloured capsule rather than a
+                     coloured row: four outcomes on one screen need to be distinguishable by shape as
+                     well as hue. -->
+                <DockPanel Margin="13,11">
+                  <Border DockPanel.Dock="Left" Classes="badge" Margin="0,0,11,0"
+                          Classes.new="{Binding Action, Converter={x:Static views:ApplyActionConverter.Instance}, ConverterParameter=created}"
+                          Classes.info="{Binding Action, Converter={x:Static views:ApplyActionConverter.Instance}, ConverterParameter=changed}"
+                          Classes.err="{Binding Action, Converter={x:Static views:ApplyActionConverter.Instance}, ConverterParameter=failed}"
+                          Classes.mod="{Binding Action, Converter={x:Static views:ApplyActionConverter.Instance}, ConverterParameter=deferred}">
+                    <TextBlock Text="{Binding Action, Converter={x:Static views:ApplyActionConverter.Instance}, ConverterParameter=label}"/>
+                  </Border>
+                  <StackPanel Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Classes="h3" Text="{Binding Resource.Kind.Kind}"/>
+                      <TextBlock Classes="h3" Text="/" Foreground="{DynamicResource TextFaint}"/>
+                      <TextBlock Classes="h3" Text="{Binding Resource.Name}"/>
+                    </StackPanel>
+                    <TextBlock Classes="problemloc" Text="{Binding Resource.Namespace, StringFormat='namespace {0}'}"
+                               IsVisible="{Binding Resource.Namespace, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                  </StackPanel>
+                </DockPanel>
+
+                <Border Classes="diff" Margin="13,0,13,12"
+                        IsVisible="{Binding Diff, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                  <StackPanel>
+                    <Border Classes="diffhead">
+                      <TextBlock Classes="problemloc" Text="live → planned · server-side apply"/>
+                    </Border>
+                    <ItemsControl Margin="0,8"
+                                  ItemsSource="{Binding Diff, Converter={x:Static views:DiffLinesConverter.Instance}}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <!-- The wash repeats what the leading + or - already says, so a diff read
+                               without colour still says which way each line goes. -->
+                          <Border Padding="14,0" Background="{Binding ., Converter={x:Static views:DiffColourConverter.Wash}}">
+                            <TextBlock Text="{Binding Text}" FontFamily="{DynamicResource Mono}" FontSize="12"
+                                       Foreground="{Binding ., Converter={x:Static views:DiffColourConverter.Ink}}"/>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="notice bad" Margin="13,0,13,12"
+                        IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                  <TextBlock Classes="body" Text="{Binding Error}"/>
+                </Border>
+
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
   </DockPanel>
 </UserControl>
