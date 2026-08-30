@@ -17,8 +17,9 @@ public sealed class SettingsStoreTests : IDisposable
 
     public void Dispose()
     {
-        if (File.Exists(_path))
-            File.Delete(_path);
+        foreach (var path in new[] { _path, _path + ".corrupt", _path + ".tmp" })
+            if (File.Exists(path))
+                File.Delete(path);
     }
 
     private SettingsStore Store() => new(_path);
@@ -114,6 +115,38 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.True(updated.Onboarded);
         Assert.Equal(ThemePreference.Dark, updated.Theme);
+    }
+
+    [Fact]
+    public void A_file_that_cannot_be_read_is_kept_before_the_next_write_replaces_it()
+    {
+        // KON-432. A power cut, a full disk or a hand-merged file leaves settings.json unparseable. The
+        // app starts on defaults, and the first preference the user changes after that used to write
+        // those defaults straight over the file — taking the remote engines, registries and kubeconfig
+        // paths with it, silently and for good. It may still overwrite; it may not be the only copy.
+        const string corrupt = """{ "RemoteEngines": [ { "Id": "r1", "Host": "build-0""";
+        File.WriteAllText(_path, corrupt);
+
+        var store = Store();
+        store.Update(s => s with { LaunchAtLogin = true });
+
+        Assert.NotNull(store.LastLoadError);
+        Assert.Equal(corrupt, File.ReadAllText(store.QuarantinePath));
+        Assert.True(store.Load().LaunchAtLogin);
+        Assert.Null(store.LastLoadError);
+    }
+
+    [Fact]
+    public void A_save_leaves_no_half_written_file_behind()
+    {
+        // The write goes to a temporary file and is renamed over the settings, so that a crash mid-write
+        // cannot leave a truncated one. The rename has to be the last step: a leftover .tmp means the
+        // file a reader finds is not the one this method wrote.
+        var store = Store();
+        store.Save(new KontenaSettings { PinnedBackend = "docker" });
+
+        Assert.False(File.Exists(_path + ".tmp"));
+        Assert.Equal("docker", store.Load().PinnedBackend);
     }
 
     [Fact]
