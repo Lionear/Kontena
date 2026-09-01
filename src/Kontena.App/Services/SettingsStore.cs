@@ -18,13 +18,49 @@ public sealed class SettingsStore
 
     private readonly string _path;
 
+    // Null in the app; a temp file for the rest of a test run — see RedirectToTempForTests.
+    private static string? _testPath;
+
     public SettingsStore()
     {
-        _path = Path.Combine(ProductInfo.DataDirectory, "settings.json");
+        _path = _testPath ?? Path.Combine(ProductInfo.DataDirectory, "settings.json");
     }
 
     /// <summary>A store over a specific file. For tests, which must not touch the real settings.</summary>
     internal SettingsStore(string path) => _path = path;
+
+    /// <summary>
+    /// Points every store built by the parameterless constructor at a fresh temp file for the rest of
+    /// this process. A test assembly calls this once, from a module initializer (KON-433).
+    /// <para>
+    /// The store already takes a path, but the shell forms the tests reach for most —
+    /// <c>new MainWindowViewModel()</c> and <c>new MainWindowViewModel { … }</c>, some twenty test
+    /// classes — build a store of their own, and so read the settings of whoever runs the suite.
+    /// That made the outcome depend on what that person had once clicked in Settings: with
+    /// <c>ShareSearchAcrossResources</c> on, navigating carries the search term and
+    /// <c>SearchSurvivesActionTests</c> fails on a Release profile while CI, which has no settings
+    /// file at all, stays green. The default is the one place all those forms route through — the
+    /// alternative was a constructor argument in twenty files, with nothing to stop the
+    /// twenty-first.
+    /// </para>
+    /// </summary>
+    internal static void RedirectToTempForTests()
+    {
+        var directory = Directory.CreateTempSubdirectory("kontena-tests-");
+        _testPath = Path.Combine(directory.FullName, "settings.json");
+
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try
+            {
+                directory.Delete(recursive: true);
+            }
+            catch (Exception)
+            {
+                // An empty directory left under the temp dir is not worth failing a test run over.
+            }
+        };
+    }
 
     /// <summary>Where <see cref="Load"/> puts a copy of a file it could not read.</summary>
     public string QuarantinePath => _path + ".corrupt";
