@@ -35,6 +35,44 @@
             <TextBlock Text="Open folder…"/>
           </StackPanel>
         </Button>
+
+        <!-- Recent workspaces (KON-434). Here rather than behind a menu because this is the page you
+             are on when you want one: the picker is for a folder Kontena has never seen, and going
+             back to yesterday's folder was otherwise the same five clicks every morning. Hidden
+             entirely when there are none — a "Recent" heading over nothing is worse than no heading. -->
+        <StackPanel x:Name="RecentPanel" IsVisible="False" MaxWidth="560" Margin="0,10,0,0">
+          <TextBlock Classes="panetitle" Text="RECENT" Margin="2,0,0,8"/>
+          <ItemsControl x:Name="RecentList">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <!-- Button.kindcard rather than a Border with a Tapped handler: it is a card you can
+                     click, and the host already styles exactly that — hover included — while keeping
+                     it reachable from the keyboard, which a clickable Border is not. -->
+                <Button Classes="kindcard" Padding="12,11" Margin="0,0,0,8"
+                        HorizontalAlignment="Stretch" Click="OnRecentClick"
+                        ToolTip.Tip="{Binding RootPath}">
+                  <DockPanel>
+                    <Border DockPanel.Dock="Right" Classes="badge" Margin="10,0,0,0"
+                            IsVisible="{Binding IsKustomizeProject}">
+                      <TextBlock Text="kustomize"/>
+                    </Border>
+                    <Path DockPanel.Dock="Left" Classes="icon" Width="15" Height="15"
+                          VerticalAlignment="Center" Margin="0,0,11,0"
+                          Stroke="{DynamicResource Primary}"
+                          Data="{DynamicResource IconFolder}"/>
+                    <StackPanel Spacing="2">
+                      <TextBlock Classes="h3" Text="{Binding Name}"/>
+                      <!-- The path in mono, because two folders called "deploy" are told apart by
+                           nothing else. -->
+                      <TextBlock Classes="strip mono" Text="{Binding RootPath}"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                  </DockPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
       </StackPanel>
     </Border>
 
