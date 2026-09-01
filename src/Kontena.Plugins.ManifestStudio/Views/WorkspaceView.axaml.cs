@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Reactive;
+using Kontena.Plugins.ManifestStudio.Git;
 using Kontena.Plugins.ManifestStudio.Schemas;
 using Kontena.Plugins.ManifestStudio.Workspace;
 using Kontena.Sdk.Orchestration.Models;
@@ -43,6 +44,15 @@ public partial class WorkspaceView : UserControl
     public static readonly StyledProperty<IReadOnlyList<RecentWorkspace>> RecentProperty =
         AvaloniaProperty.Register<WorkspaceView, IReadOnlyList<RecentWorkspace>>(nameof(Recent), []);
 
+    /// <summary>
+    /// Cloning a repository into a new workspace (KON-436). Handed in for the same reason
+    /// <see cref="Recent"/> is: the view owns the folder picker and the page, the plugin owns the
+    /// session. Null leaves the "Clone repository…" button off the card entirely — a button that
+    /// cannot do anything is worse than one that is not there.
+    /// </summary>
+    public static readonly StyledProperty<CloneViewModel?> CloneProperty =
+        AvaloniaProperty.Register<WorkspaceView, CloneViewModel?>(nameof(Clone));
+
     /// <summary>The kind the editor's schema currently belongs to, so a keystroke that changes nothing
     /// about apiVersion/kind does not re-ask the cluster.</summary>
     private GroupVersionKind? _schemaKind;
@@ -81,6 +91,12 @@ public partial class WorkspaceView : UserControl
         set => SetValue(RecentProperty, value);
     }
 
+    public CloneViewModel? Clone
+    {
+        get => GetValue(CloneProperty);
+        set => SetValue(CloneProperty, value);
+    }
+
     /// <summary>
     /// Raised when the user picks a folder, with the workspace that came of it. The view owns the
     /// picker, but not the session: the plan and source-control pages are built beside this one and
@@ -99,6 +115,18 @@ public partial class WorkspaceView : UserControl
         {
             RecentList.ItemsSource = Recent;
             RecentPanel.IsVisible = Recent.Count > 0;
+        }
+
+        if (change.Property == CloneProperty)
+        {
+            if (change.OldValue is CloneViewModel previous)
+                previous.Cloned -= OnCloned;
+
+            ClonePanel.DataContext = Clone;
+            CloneButton.IsVisible = Clone is not null;
+
+            if (Clone is { } clone)
+                clone.Cloned += OnCloned;
         }
     }
 
@@ -149,19 +177,39 @@ public partial class WorkspaceView : UserControl
 
     private async void OnOpenFolderClick(object? sender, RoutedEventArgs e)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel?.StorageProvider is not { } storage)
-            return;
+        if (await PickFolderAsync() is { } path)
+            Open(path);
+    }
+
+    /// <summary>Unfolds the clone form on the same card. Kept a toggle rather than a one-way reveal so
+    /// the page can be put back the way it was without leaving and coming back.</summary>
+    private void OnCloneRepositoryClick(object? sender, RoutedEventArgs e) =>
+        ClonePanel.IsVisible = !ClonePanel.IsVisible;
+
+    /// <summary>Picks the folder to clone into — the same picker as "Open folder…", because it is the
+    /// same question asked a moment earlier.</summary>
+    private async void OnChooseCloneFolderClick(object? sender, RoutedEventArgs e)
+    {
+        if (await PickFolderAsync() is { } path && Clone is { } clone)
+            clone.ParentFolder = path;
+    }
+
+    /// <summary>The clone landed; from here on it is a folder like any other, so it goes in through the
+    /// one <see cref="Open"/> the picker and the recent list also use.</summary>
+    private void OnCloned(object? sender, string path) => Open(path);
+
+    /// <summary>
+    /// The folder picker, the one piece of this view no test can drive: it needs a real
+    /// <see cref="TopLevel"/> storage provider. Null means the user cancelled, or picked something with
+    /// no local path (a cloud location) — both of which are "carry on", not an error.
+    /// </summary>
+    private async Task<string?> PickFolderAsync()
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+            return null;
 
         var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions { AllowMultiple = false });
-        if (folders.Count == 0)
-            return;
-
-        var path = folders[0].TryGetLocalPath();
-        if (path is null)
-            return;
-
-        Open(path);
+        return folders.Count == 0 ? null : folders[0].TryGetLocalPath();
     }
 
     /// <summary>
