@@ -93,15 +93,32 @@ public sealed class AdapterCatalogTests : IDisposable
     }
 
     /// <summary>
-    /// Apple's runtime exists only on macOS, so it is left out elsewhere rather than shown switched off —
-    /// a Windows machine has no decision to make about it (KON-280 will move this to the manifest).
+    /// Apple's runtime exists only on macOS 26 and up, so it is left out everywhere else rather than
+    /// shown switched off — a Windows machine has no decision to make about it. The expectation is
+    /// written out here rather than read back from the manifest, so that a manifest that stops saying
+    /// "macos 26" fails this instead of agreeing with itself.
     /// </summary>
     [Fact]
     public void An_adapter_that_cannot_run_here_is_not_listed()
     {
         var listed = AdapterCatalog.All([]).Any(a => a.Id == AppleAdapterModule.BackendId);
 
-        Assert.Equal(OperatingSystem.IsMacOS(), listed);
+        Assert.Equal(OperatingSystem.IsMacOSVersionAtLeast(26), listed);
+    }
+
+    /// <summary>
+    /// The filter is <see cref="PluginPlatform.SupportsHost"/>, and an empty platform list means
+    /// "anywhere" — so the manifest declaring the operating system is the whole of what keeps Apple's
+    /// runtime off Windows and Linux. Asserted separately from the test above because that one can only
+    /// speak for the machine it runs on, and this is the half that would silently go missing (KON-429).
+    /// </summary>
+    [Fact]
+    public void The_Apple_adapter_declares_the_os_it_needs()
+    {
+        var platform = Assert.Single(AppleAdapterModule.Manifest.Platforms);
+
+        Assert.Equal("macos", platform.Os);
+        Assert.Equal("26", platform.MinVersion);
     }
 
     [Fact]

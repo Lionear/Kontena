@@ -95,15 +95,19 @@ public static class AdapterCatalog
     /// <summary>
     /// Whether this adapter can do anything on the machine it is running on.
     /// <para>
-    /// One place, and it is deliberately the only one: KON-280 puts platform requirements on
-    /// <see cref="EngineManifest"/>, and when it lands this method reads that field instead of naming
-    /// adapters. Until then it names the one adapter that is not cross-platform. An adapter that cannot
-    /// run here is not listed at all rather than listed and disabled — a Windows machine has no decision
-    /// to make about Apple's runtime, and offering one implies it does.
+    /// One place, and it is deliberately the only one: the answer comes from
+    /// <see cref="EngineManifest.Platforms"/> (KON-280), the same field the loader reads for a plugin,
+    /// so a bundled adapter and an installed one are judged by one rule. An adapter that cannot run here
+    /// is not listed at all rather than listed and disabled — a Windows machine has no decision to make
+    /// about Apple's runtime, and offering one implies it does.
+    /// </para>
+    /// <para>
+    /// The declaration is what does the work: an empty list means "anywhere", so an adapter that only
+    /// runs on one operating system is kept out by its manifest saying so and by nothing else (KON-429).
     /// </para>
     /// </summary>
     public static bool RunsOnThisOs(AdapterEntry adapter) =>
-        adapter.Id != AppleAdapterModule.BackendId || OperatingSystem.IsMacOS();
+        PluginPlatform.SupportsHost(adapter.Manifest.Platforms);
 
     /// <summary>
     /// Everything to show, bundled first, with what cannot run here left out.
