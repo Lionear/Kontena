@@ -32,7 +32,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:NamespaceRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <Grid ColumnDefinitions="2*,1*,0.8*">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
                                                 Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}">

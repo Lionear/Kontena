@@ -94,7 +94,7 @@
                             <ItemsControl ItemsSource="{Binding Ports}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ServicePortRow">
-                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                             <Grid ColumnDefinitions="1.4*,1*,1.2*,1*,1*">
                                                 <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Port}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>

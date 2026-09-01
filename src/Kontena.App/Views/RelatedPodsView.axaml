@@ -31,7 +31,7 @@
                     <ItemsControl ItemsSource="{Binding Pods}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PodRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11"
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}"
                                         Classes.trouble="{Binding HasTrouble}">
                                     <Grid ColumnDefinitions="2*,0.7*,1.6*,0.8*,1.4*,0.7*">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}" VerticalAlignment="Center">

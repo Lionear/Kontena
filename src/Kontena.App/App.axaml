@@ -155,8 +155,13 @@
 
             <FontFamily x:Key="Mono">JetBrains Mono, Cascadia Code, Consolas, monospace</FontFamily>
 
-            <!-- List-row content margin; swapped live by DensityApplier for compact density. -->
+            <!-- List-row spacing; both swapped live by DensityApplier for compact density.
+                 Two keys because the two table styles space their rows differently: the engine
+                 tables put the margin on the row's Grid at 18px in, the cluster tables put the
+                 padding on the row's Border at 16px in (which is what their headers line up on).
+                 Only the vertical half is what density changes. -->
             <Thickness x:Key="RowMargin">18,11</Thickness>
+            <Thickness x:Key="RowPadding">16,11</Thickness>
 
             <!-- The radius scale (KON-220). Three steps, not a collection: small things that sit
                  inside something else, panels, and surfaces that float above the page. Values that

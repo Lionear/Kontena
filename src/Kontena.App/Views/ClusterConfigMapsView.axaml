@@ -34,7 +34,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ConfigObjectRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <Grid ColumnDefinitions="2.2*,1.2*,0.9*,0.6*,140">
                                         <!-- The name opens the detail, where the values are (KON-330).
                                              The expander is gone from both this page and Secrets, so the
