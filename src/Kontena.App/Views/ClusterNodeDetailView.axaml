@@ -128,7 +128,7 @@
                             <ItemsControl ItemsSource="{Binding Conditions}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:NodeConditionRow">
-                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                             <Grid ColumnDefinitions="1.7*,0.7*,2.6*" ColumnSpacing="10">
                                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7">
                                                     <Ellipse Width="7" Height="7" Fill="{Binding Brush}" VerticalAlignment="Center"/>

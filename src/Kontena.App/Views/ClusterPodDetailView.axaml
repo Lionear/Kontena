@@ -233,7 +233,7 @@
                             <ItemsControl ItemsSource="{Binding ContainerRows}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:PodContainerRow">
-                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                             <Grid ColumnDefinitions="1.7*,1.6*,1.1*,0.5*,1.2*,1.2*" ColumnSpacing="8">
                                                 <Grid Grid.Column="0" ColumnDefinitions="*,Auto" VerticalAlignment="Center" Margin="0,0,8,0">
                                                     <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}"/>

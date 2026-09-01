@@ -37,7 +37,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PvcRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <Grid ColumnDefinitions="1.5*,1*,0.9*,1.3*,0.8*,1.1*,0.8*,0.7*">
                                         <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
                                                    TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
