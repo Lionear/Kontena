@@ -93,6 +93,13 @@
         </Style>
     </UserControl.Styles>
 
+    <!-- A dialog rather than a screen (KON-437). It fills whatever the shell's overlay gives it
+         rather than carrying a width of its own like the smaller modals: this one has a 216px
+         sub-nav and a whole wizard to hold, and the shell is the only one that knows how much room
+         the window actually has. -->
+    <Border HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+            Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+            CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
     <Grid ColumnDefinitions="216,*">
 
         <!-- Sub-nav -->
@@ -977,5 +984,13 @@
 
             </StackPanel>
         </ScrollViewer>
+
+        <!-- Over the content column, so it clears the 216px sub-nav and the scrollbar. -->
+        <Button Grid.Column="1" Classes="qa" Width="32" Height="32"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,20,26,0"
+                Command="{Binding CloseCommand}" ToolTip.Tip="Close">
+            <Path Classes="icon" Width="13" Height="13" Data="{StaticResource IconClose}"/>
+        </Button>
     </Grid>
+    </Border>
 </UserControl>

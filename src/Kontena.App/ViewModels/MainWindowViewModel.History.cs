@@ -158,17 +158,20 @@ public partial class MainWindowViewModel
     [RelayCommand(CanExecute = nameof(IsDismissable))]
     private void Dismiss()
     {
-        // Top down: a confirmation opened from inside the drawer sits over it, so the first Escape
-        // answers that and the second closes the drawer. Closing both at once would take away the
-        // thing the question was about.
+        // Top down: a confirmation opened from inside the drawer or from Settings sits over it, so the
+        // first Escape answers that and the second closes what it was asked about. Closing both at once
+        // would take away the thing the question was about.
         if (IsDialogOpen)
             CloseDialog();
+        else if (IsSettingsOpen)
+            IsSettingsOpen = false;
         else
             CloseDetail();
     }
 
-    /// <summary>Whether Escape has something to dismiss — a dialog, or the detail drawer (KON-307).</summary>
-    private bool IsDismissable => IsDialogOpen || IsDetailOpen;
+    /// <summary>Whether Escape has something to dismiss — a dialog, Settings (KON-437), or the detail
+    /// drawer (KON-307).</summary>
+    private bool IsDismissable => IsDialogOpen || IsSettingsOpen || IsDetailOpen;
 
     /// <summary>
     /// Enter. Runs the open dialog's primary action, where it has one.

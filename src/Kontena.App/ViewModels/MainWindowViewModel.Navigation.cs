@@ -947,20 +947,22 @@ public partial class MainWindowViewModel
         CurrentPage = Containers;
         SearchText = Containers.SearchText;
     }
+    /// <summary>
+    /// Open Settings over the app (KON-437). Nothing about where the user is standing changes: it is
+    /// not a history step, it does not close the drawer and it does not clear the search — all three
+    /// are still there when Settings closes again, which is the point of it being a dialog.
+    /// </summary>
     [RelayCommand]
     private void ShowSettings()
     {
-        CloseDetail();
-        CloseDialog();
         if (SettingsPage is null)
             return;
 
-        Arrived("Settings", ShowSettings);
-        CurrentPage = SettingsPage;
-        SearchText = string.Empty;
-        foreach (var item in NavItems)
-            item.IsSelected = false;
+        IsSettingsOpen = true;
     }
+
+    [RelayCommand]
+    private void CloseSettings() => IsSettingsOpen = false;
     [RelayCommand]
     private void ShowAbout()
     {

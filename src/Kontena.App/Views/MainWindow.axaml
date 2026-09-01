@@ -423,7 +423,7 @@
                             <TextBlock Grid.Column="1" Text="Activity" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
-                    <Button Classes="nav" Classes.selected="{Binding IsSettingsSelected}" Command="{Binding ShowSettingsCommand}">
+                    <Button Classes="nav" Classes.selected="{Binding IsSettingsOpen}" Command="{Binding ShowSettingsCommand}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                   Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconSettings}"/>
@@ -521,9 +521,11 @@
             <!-- Command bar -->
             <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                 <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto">
-                    <!-- Back, and the only one there is: Settings, Activity and About had no way back
-                         at all before this (KON-173). Hidden rather than disabled when there is no
-                         history, because an always-present greyed arrow is chrome nobody reads. -->
+                    <!-- Back, and the only one there is: Activity and About had no way back at all
+                         before this (KON-173). Settings is no longer among them — since KON-437 it
+                         opens over the page instead of replacing it, so there is nothing to go back
+                         from. Hidden rather than disabled when there is no history, because an
+                         always-present greyed arrow is chrome nobody reads. -->
                     <Button Grid.Column="0" Classes="qa" Width="30" Height="30" Margin="0,0,12,0"
                             IsVisible="{Binding CanGoBack}" Command="{Binding GoBackCommand}"
                             ToolTip.Tip="{Binding BackTooltipWithHint}">
@@ -763,6 +765,18 @@
                     </Thumb>
                 </Grid>
             </Border>
+        </Panel>
+
+        <!-- Settings, over whatever you were reading rather than instead of it (KON-437). Its own
+             layer under the modal slot below, because Settings raises confirmations into that slot
+             and one that replaced Settings would take away the thing it was asking about. -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsSettingsOpen}" Background="#B4060810">
+            <!-- Roomy where there is room, and never wider than the window: the smallest this app
+                 allows is 900x560, which after the title bar and these margins leaves 836x458. The
+                 floor keeps the dialog from resizing under you when you pick a shorter section. -->
+            <ContentControl Content="{Binding SettingsPage}" HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Margin="32"
+                            MinHeight="420" MaxWidth="1000" MaxHeight="720"/>
         </Panel>
 
         <!-- Modal overlay (Run container, …). Row 1 only: the title bar stays draggable behind it. -->

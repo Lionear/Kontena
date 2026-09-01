@@ -205,19 +205,37 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     [ObservableProperty] private object? _currentPage;
 
     public bool IsActivitySelected => Activity is not null && ReferenceEquals(CurrentPage, Activity);
-    public bool IsSettingsSelected => SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
     public bool IsAboutSelected => ReferenceEquals(CurrentPage, About);
+
+    /// <summary>
+    /// Whether Settings is open over whatever the window was already showing (KON-437).
+    /// <para>
+    /// Settings is a dialog rather than a destination: you go there to change one thing and come back
+    /// to the page you were reading, not to wherever you happened to be before you went there. It is
+    /// its own overlay and not the <see cref="Dialog"/> slot, because Settings puts confirmations in
+    /// that slot itself — switching an adapter off asks first — and a dialog that replaced Settings
+    /// would take away the thing the question was about.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isSettingsOpen;
+
+    partial void OnIsSettingsOpenChanged(bool value)
+    {
+        // Escape closes Settings too, so the binding has to be told the answer changed (KON-201).
+        DismissCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>
     /// Whether the page on screen says nothing about a backend (KON-137).
     /// <para>
-    /// These three are the ones you want most when nothing works: Settings is where the engine list,
-    /// a remote or a kubeconfig gets fixed, Activity is where you see what happened just before it
-    /// broke, and About has the version and the link you need to report it. So they show over the
-    /// engine-down card rather than behind it.
+    /// These two are the ones you want most when nothing works: Activity is where you see what
+    /// happened just before it broke, and About has the version and the link you need to report it.
+    /// So they show over the engine-down card rather than behind it. Settings was the third until
+    /// KON-437 made it an overlay — it now shows over anything, including the card, without the
+    /// content area having to yield it.
     /// </para>
     /// </summary>
-    public bool IsBackendIndependentPage => IsActivitySelected || IsSettingsSelected || IsAboutSelected;
+    public bool IsBackendIndependentPage => IsActivitySelected || IsAboutSelected;
 
     /// <summary>Whether the content area shows <see cref="CurrentPage"/> at all.</summary>
     public bool IsPageVisible => IsReady || IsBackendIndependentPage;
@@ -228,7 +246,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     partial void OnCurrentPageChanged(object? value)
     {
         OnPropertyChanged(nameof(IsActivitySelected));
-        OnPropertyChanged(nameof(IsSettingsSelected));
         OnPropertyChanged(nameof(IsAboutSelected));
         OnPropertyChanged(nameof(IsSearchEnabled));
         OnPropertyChanged(nameof(SearchPlaceholder));
