@@ -35,6 +35,14 @@ public partial class WorkspaceView : UserControl
     public static readonly StyledProperty<bool> SchemasFromClusterProperty =
         AvaloniaProperty.Register<WorkspaceView, bool>(nameof(SchemasFromCluster));
 
+    /// <summary>
+    /// Folders opened before, offered on the empty state (KON-434). Handed in rather than read here:
+    /// the plugin owns the session and is the one that records them, and a view that reads its own
+    /// history is a view that cannot be shown a different one in a test.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<RecentWorkspace>> RecentProperty =
+        AvaloniaProperty.Register<WorkspaceView, IReadOnlyList<RecentWorkspace>>(nameof(Recent), []);
+
     /// <summary>The kind the editor's schema currently belongs to, so a keystroke that changes nothing
     /// about apiVersion/kind does not re-ask the cluster.</summary>
     private GroupVersionKind? _schemaKind;
@@ -67,6 +75,12 @@ public partial class WorkspaceView : UserControl
         set => SetValue(SchemasProperty, value);
     }
 
+    public IReadOnlyList<RecentWorkspace> Recent
+    {
+        get => GetValue(RecentProperty);
+        set => SetValue(RecentProperty, value);
+    }
+
     /// <summary>
     /// Raised when the user picks a folder, with the workspace that came of it. The view owns the
     /// picker, but not the session: the plan and source-control pages are built beside this one and
@@ -80,6 +94,12 @@ public partial class WorkspaceView : UserControl
 
         if (change.Property == SchemasFromClusterProperty)
             SchemaSource.Text = SchemasFromCluster ? "schemas from cluster" : "bundled schemas";
+
+        if (change.Property == RecentProperty)
+        {
+            RecentList.ItemsSource = Recent;
+            RecentPanel.IsVisible = Recent.Count > 0;
+        }
     }
 
     private void ShowWorkspace(bool open)
@@ -141,6 +161,35 @@ public partial class WorkspaceView : UserControl
         if (path is null)
             return;
 
+        Open(path);
+    }
+
+    /// <summary>
+    /// Reopens a folder from the recent list (KON-434). The same path as the picker, deliberately: the
+    /// plugin learns about a workspace through one event whichever way it was chosen, so git, the plan
+    /// page and the recent list itself cannot end up describing different folders.
+    /// </summary>
+    private void OnRecentClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not StyledElement { DataContext: RecentWorkspace entry })
+            return;
+
+        try
+        {
+            Open(entry.RootPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The list leaves out folders that were gone when it was read, so getting here means it
+            // went away while this page was open. A row that silently does nothing is a bug report, so
+            // it leaves the list instead. Only the list — the file keeps it, for the same reason
+            // RecentWorkspaceStore.Read does not forget an unmounted volume.
+            Recent = [.. Recent.Where(other => !ReferenceEquals(other, entry))];
+        }
+    }
+
+    private void Open(string path)
+    {
         var workspace = new WorkspaceViewModel(ManifestWorkspace.Open(path));
         DataContext = workspace;
         WorkspaceOpened?.Invoke(this, workspace);

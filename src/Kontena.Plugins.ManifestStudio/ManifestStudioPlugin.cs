@@ -24,6 +24,11 @@ namespace Kontena.Plugins.ManifestStudio;
 /// </summary>
 public sealed class ManifestStudioPlugin : IUiPlugin
 {
+    // The one piece of studio state that outlives the process (KON-434). It belongs here rather than in
+    // the view for the same reason the workspace does: which folders have been opened is a fact about
+    // the session, and the editor page is built and thrown away around it.
+    private readonly RecentWorkspaceStore _recent = new();
+
     private WorkspaceViewModel? _workspace;
 
     // One git model for the whole session, not one per page: the Source control page and the editor's
@@ -60,6 +65,10 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         {
             Schemas = SchemasFor(host),
             SchemasFromCluster = host.Cluster is not null,
+
+            // Only when there is nothing open: the list lives on the empty state, and a workspace in
+            // hand means it is not on screen to read.
+            Recent = _workspace is null ? _recent.Read() : [],
         };
 
         if (_workspace is not null)
@@ -74,6 +83,7 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         view.WorkspaceOpened += (_, workspace) =>
         {
             _workspace = workspace;
+            _recent.Add(workspace.Workspace);
             AttachGit(workspace);
         };
 

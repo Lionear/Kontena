@@ -153,4 +153,61 @@ public sealed class WorkspaceViewTests(HeadlessSessionFixture headless) : IDispo
                 Assert.Empty(vm.OpenTabs);
             },
             CancellationToken.None);
+
+    /// <summary>
+    /// The recent list is the one way into a workspace that does not go through the folder picker
+    /// (KON-434) — which makes it the only half of "open a folder" this suite can actually drive. It has
+    /// to end where the picker ends: a workspace on the page, and the plugin told about it, or the git
+    /// badges and the plan page would follow a folder nobody opened.
+    /// </summary>
+    [Fact]
+    public Task Clicking_a_recent_folder_opens_it_as_the_workspace() =>
+        headless.Session.Dispatch(
+            () =>
+            {
+                var folder = Directory.CreateDirectory(Path.Combine(_root, "platform-manifests")).FullName;
+                File.WriteAllText(Path.Combine(folder, "deployment.yaml"), "kind: Deployment\n");
+
+                // No DataContext: this is the empty state, which is where the list lives.
+                var view = new WorkspaceView { Recent = [new RecentWorkspace(folder, IsKustomizeProject: false)] };
+                var window = new Window { Width = 800, Height = 600, Content = view };
+                window.Show();
+                Settle();
+
+                WorkspaceViewModel? announced = null;
+                view.WorkspaceOpened += (_, workspace) => announced = workspace;
+
+                var row = view.GetVisualDescendants().OfType<Button>()
+                    .First(b => Equals(ToolTip.GetTip(b), folder));
+                row.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Settle();
+
+                var opened = Assert.IsType<WorkspaceViewModel>(view.DataContext);
+                Assert.Equal(folder, opened.Workspace.RootPath);
+                Assert.Same(opened, announced);
+                Assert.Contains(opened.Rows, entry => entry.Name == "deployment.yaml");
+            },
+            CancellationToken.None);
+
+    /// <summary>Nothing remembered means no "Recent" heading over an empty list.</summary>
+    [Fact]
+    public Task The_recent_list_stays_off_the_page_when_there_is_nothing_to_offer() =>
+        headless.Session.Dispatch(
+            () =>
+            {
+                var view = new WorkspaceView();
+                var window = new Window { Width = 800, Height = 600, Content = view };
+                window.Show();
+                Settle();
+
+                var panel = view.GetVisualDescendants().OfType<StackPanel>()
+                    .First(p => p.Name == "RecentPanel");
+                Assert.False(panel.IsVisible);
+
+                view.Recent = [new RecentWorkspace(_root, IsKustomizeProject: false)];
+                Settle();
+
+                Assert.True(panel.IsVisible);
+            },
+            CancellationToken.None);
 }
