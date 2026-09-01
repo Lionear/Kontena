@@ -114,6 +114,23 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
     private readonly string? _historyCaveat;
     private DateTimeOffset _historyFetched = DateTimeOffset.MinValue;
 
+    /// <summary>
+    /// Held by everything that draws: a live sample arriving, a history answer coming back, and the
+    /// redraw a range change asks for.
+    /// <para>
+    /// Each of those decides what to draw by reading <see cref="_drewFromHistory"/> and then writes
+    /// it, and the two chains reach here independently — the metrics stream on one side, the history
+    /// probe and query on the other. In the app they are serialised by the dispatcher and this lock
+    /// is never contended. Nothing else guarantees that, and a run without one (the view-model tests,
+    /// where continuations land on the thread pool) genuinely interleaves them: a live tick that read
+    /// the flag before history claimed the picture goes on to clear it afterwards, leaving the charts
+    /// full of history under a chip saying the numbers were sampled live. KON-425 removed the awaits
+    /// from the drawing so it could not be split in the middle; that is only enough while the other
+    /// side waits its turn.
+    /// </para>
+    /// </summary>
+    private readonly object _gate = new();
+
     /// <param name="charts">One per measure, in the order they are drawn.</param>
     /// <param name="target">What the history source should be asked about.</param>
     /// <param name="history">Null where the backend has none — a container engine, say.</param>
@@ -183,31 +200,37 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
     /// </summary>
     public void Add(DateTimeOffset at, params double[] values)
     {
-        for (var i = 0; i < Charts.Count && i < values.Length; i++)
-            Charts[i].Buffer.Add(at, values[i]);
-
-        if (!UsesHistory)
+        lock (_gate)
         {
-            Refresh();
-            return;
-        }
+            for (var i = 0; i < Charts.Count && i < values.Length; i++)
+                Charts[i].Buffer.Add(at, values[i]);
 
-        // History is asked again on its own interval, so most ticks find it throttled and do
-        // nothing. That is right while history owns the picture — and wrong while the buffer does,
-        // which is what left a fallback chart frozen at whatever it held when it fell back.
-        if (!_drewFromHistory)
-            Refresh();
+            if (!UsesHistory)
+            {
+                Refresh();
+                return;
+            }
+
+            // History is asked again on its own interval, so most ticks find it throttled and do
+            // nothing. That is right while history owns the picture — and wrong while the buffer does,
+            // which is what left a fallback chart frozen at whatever it held when it fell back.
+            if (!_drewFromHistory)
+                Refresh();
+        }
 
         _ = LoadHistoryAsync(force: false);
     }
 
     public void Clear()
     {
-        foreach (var chart in Charts)
+        lock (_gate)
         {
-            chart.Buffer.Clear();
-            chart.Samples = [];
-            chart.Describe();
+            foreach (var chart in Charts)
+            {
+                chart.Buffer.Clear();
+                chart.Samples = [];
+                chart.Describe();
+            }
         }
 
         OnPropertyChanged(nameof(IsEmpty));
@@ -215,15 +238,19 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
 
     private void Refresh()
     {
-        var range = UsageGraphs.Range(RangeMinutes);
-        var now = DateTimeOffset.UtcNow;
+        lock (_gate)
+        {
+            var range = UsageGraphs.Range(RangeMinutes);
+            var now = DateTimeOffset.UtcNow;
 
-        foreach (var chart in Charts)
-            chart.Plot(chart.Buffer.Window(range, now), range, now);
+            foreach (var chart in Charts)
+                chart.Plot(chart.Buffer.Window(range, now), range, now);
 
-        UsageError = string.Empty;
-        _drewFromHistory = false;
-        UpdateSourceText();
+            UsageError = string.Empty;
+            _drewFromHistory = false;
+            UpdateSourceText();
+        }
+
         OnPropertyChanged(nameof(IsEmpty));
     }
 
@@ -325,45 +352,49 @@ public sealed partial class UsageTrackViewModel : ViewModelBase
                 answers.Add((chart, samples));
             }
 
-            // ── Nothing below this line may await. ──
+            // ── Nothing below this line may await, and it all happens under the gate. ──
 
-            if (!answers.Any(a => a.Samples is { Count: > 1 }))
+            lock (_gate)
             {
-                // Nothing stored yet — a pod created a minute ago, or a scrape that has not seen it.
-                // Where the buffer can cover the range itself, draw that instead of an empty frame
-                // with an explanation; only say so when neither source has anything.
-                // Any sample at all, not two: a probe that comes back after the first readings
-                // would otherwise stamp "returned nothing" over a chart that was already drawing.
-                if (UsageGraphs.IsLive(RangeMinutes) && Charts.Any(c => c.Buffer.Count > 0))
+                if (!answers.Any(a => a.Samples is { Count: > 1 }))
                 {
-                    Refresh();
-                    return;
-                }
+                    // Nothing stored yet — a pod created a minute ago, or a scrape that has not seen it.
+                    // Where the buffer can cover the range itself, draw that instead of an empty frame
+                    // with an explanation; only say so when neither source has anything.
+                    // Any sample at all, not two: a probe that comes back after the first readings
+                    // would otherwise stamp "returned nothing" over a chart that was already drawing.
+                    if (UsageGraphs.IsLive(RangeMinutes) && Charts.Any(c => c.Buffer.Count > 0))
+                    {
+                        Refresh();
+                        return;
+                    }
 
-                UsageError = $"{_history.Name} returned nothing for this over the last {Format.Duration(range)}.";
-                OnPropertyChanged(nameof(IsEmpty));
-                return;
+                    UsageError = $"{_history.Name} returned nothing for this over the last {Format.Duration(range)}.";
+                }
+                else
+                {
+                    UsageError = string.Empty;
+
+                    // Before the plotting, not after it: this is what a live sample arriving mid-draw
+                    // reads to decide whether the picture is its to refresh.
+                    _drewFromHistory = true;
+
+                    foreach (var (chart, samples) in answers)
+                    {
+                        if (samples is null)
+                        {
+                            var live = UsageGraphs.Range(RangeMinutes);
+                            chart.Plot(chart.Buffer.Window(live, now), live, now);
+                            continue;
+                        }
+
+                        chart.Plot([.. samples.Select(s => (s.At, s.Value))], range, now);
+                    }
+
+                    UpdateSourceText();
+                }
             }
 
-            UsageError = string.Empty;
-
-            // Before the plotting, not after it: this is what a live sample arriving mid-draw reads
-            // to decide whether the picture is its to refresh.
-            _drewFromHistory = true;
-
-            foreach (var (chart, samples) in answers)
-            {
-                if (samples is null)
-                {
-                    var live = UsageGraphs.Range(RangeMinutes);
-                    chart.Plot(chart.Buffer.Window(live, now), live, now);
-                    continue;
-                }
-
-                chart.Plot([.. samples.Select(s => (s.At, s.Value))], range, now);
-            }
-
-            UpdateSourceText();
             OnPropertyChanged(nameof(IsEmpty));
         }
         catch (Exception)
