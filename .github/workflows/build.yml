@@ -600,8 +600,9 @@ jobs:
           signature before it downloads anything, so an update can only come from a build published here.
 
           The kontena-plugin-*.zip files are optional and separate from the app. Unzip one into its own
-          folder under %APPDATA%\\Lionear\\Kontena\\plugins\\ (Windows) or
-          ~/.config/Lionear/Kontena/plugins/ (Linux, macOS), then start Kontena and approve it when
+          folder under %APPDATA%\\Lionear\\Kontena\\plugins\\ (Windows),
+          ~/Library/Application Support/Lionear/Kontena/plugins/ (macOS) or
+          ~/.config/Lionear/Kontena/plugins/ (Linux), then start Kontena and approve it when
           asked.
 
           kontena-plugin-nerdctl-*.zip adds containerd backends through the nerdctl CLI, one per
