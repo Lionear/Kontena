@@ -18,5 +18,11 @@ public static class AppleAdapterModule
         Description =
             "Apple's native container runtime, which ships with macOS 26 and runs each container in "
             + "its own lightweight VM.",
+
+        // The only bundled adapter with a platform floor, and it has to say so: an empty list means
+        // "anywhere" (PluginPlatform.SupportsHost), so leaving this out is what offers Apple's runtime
+        // on Windows and Linux. The floor is 26 because that is the release `container` ships with —
+        // an older macOS has no such binary to drive (KON-429).
+        Platforms = [new PluginPlatform { Os = "macos", MinVersion = "26" }],
     };
 }
