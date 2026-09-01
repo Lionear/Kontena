@@ -156,6 +156,11 @@ public static class AdapterCatalog
                 Author = manifest.Author,
                 Description = manifest.Description,
                 MinSdkVersion = manifest.MinSdkVersion,
+
+                // Read from the assembly rather than from plugin.json, which carries only the names
+                // (KON-438). The loader has already refused the plugin if the two disagree, so what is
+                // here is both fully described and named in the file the user was shown.
+                Tools = plugin.Tools,
             },
             contribution,
             chip,

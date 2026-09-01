@@ -222,6 +222,12 @@ public partial class MainWindowViewModel
                 // plugin will do. Nothing here enforces them — an in-process plugin can do whatever this
                 // app can — which is why they are shown as a claim, beside who made the claim.
                 .. manifest.Permissions.Select(p => new ConfirmDetail("IconCheck", "Says it will", p)),
+
+                // The command lines it says it runs (KON-438). Beside the sentences above rather than
+                // among them, because this one the loader checks: a plugin whose assembly drives a tool
+                // this list leaves out does not load at all. Still a claim — nothing stops loaded code
+                // running any command — but the one claim here that has to match what shipped.
+                .. manifest.Tools.Select(t => new ConfirmDetail("IconTerminal", "Runs the command", t)),
             ],
             OnConfirm: async () =>
             {
@@ -966,6 +972,11 @@ public partial class MainWindowViewModel
                     SetClusterNav();
                 else
                     SetEngineNav();
+
+                // Nor would it notice a tool the extension brought (KON-438). Settings › Tools re-checks
+                // whenever it is opened, so setting the catalogue is enough — but it has to be set
+                // before that, and nothing else rebuilds this page after a toggle.
+                RefreshToolCatalog();
             },
         })
         {
@@ -989,8 +1000,30 @@ public partial class MainWindowViewModel
         SettingsPage.RequestConfirm = ShowConfirm;
         SettingsPage.RequestClose = CloseSettings;
 
+        // After the initializer, because it needs the page that was just kept or built (KON-438).
+        RefreshToolCatalog();
+
         if (category is not null)
             SettingsPage.Category = category;
+    }
+
+    /// <summary>
+    /// Tell Settings &#8250; Tools which extensions are in force, so the tools they drive are listed
+    /// beside the ones Kontena drives itself (KON-438).
+    /// <para>
+    /// Switched off means gone, the same as its pages and its backends: an extension that contributes
+    /// nothing has no tool to need. And the list is rebuilt rather than added to, because the page is
+    /// kept across settings rebuilds and would otherwise still be offering to install <c>git</c> for a
+    /// plugin that is no longer running.
+    /// </para>
+    /// </summary>
+    private void RefreshToolCatalog()
+    {
+        if (_tools is null)
+            return;
+
+        var inForce = AdapterCatalog.All(_plugins).Where(a => _settings.IsAdapterEnabled(a.Id));
+        _tools.Catalog = [.. ToolGroup.Default, .. ToolGroup.ForExtensions(inForce)];
     }
 
     /// <summary>

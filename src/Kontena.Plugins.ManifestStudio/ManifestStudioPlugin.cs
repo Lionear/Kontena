@@ -50,6 +50,11 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         Description = "Write, validate and apply Kubernetes manifests from a folder or Git repository.",
         MinSdkVersion = "0.4.0",
         ContributesUi = true,
+
+        // What the host puts on Settings › Tools for us (KON-438). kustomize and kubectl are not here:
+        // the studio drives them too, but they are KnownTools — the core app needs them itself and
+        // already lists them, and a second row for one binary is two answers to one question.
+        Tools = [GitTool.Definition],
     };
 
     public IEnumerable<PluginPage> GetPages() =>
