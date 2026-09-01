@@ -26,8 +26,9 @@ _Nothing yet._
   as does browsing a volume's contents, and there is still no way to install this plugin; that comes later.
 - **The nerdctl plugin is now downloadable.** Every release carries a
   `kontena-plugin-nerdctl-<version>.zip` next to the app: unzip it into
-  `%APPDATA%\Lionear\Kontena\plugins\nerdctl\` on Windows or `~/.config/Lionear/Kontena/plugins/nerdctl/`
-  on Linux and macOS, start Kontena, and approve it when asked. It adds one backend per containerd
+  `%APPDATA%\Lionear\Kontena\plugins\nerdctl\` on Windows,
+  `~/Library/Application Support/Lionear/Kontena/plugins/nerdctl/` on macOS or
+  `~/.config/Lionear/Kontena/plugins/nerdctl/` on Linux, start Kontena, and approve it when asked. It adds one backend per containerd
   namespace and needs nerdctl already on the machine — it does not install one. Deliberately not
   bundled with the app: downloading, unpacking and approving is the same path the plugin store will
   take later, and shipping it in the box would prove none of it.
@@ -130,8 +131,9 @@ _Nothing yet._
   connected. Plan and apply reuse Kontena's own server-side dry-run and diff, so what you see before
   applying is what the API server says, not a local guess. It does not ship in the box: download
   `kontena-plugin-manifest-studio-*.zip` from the release, unzip it into its own folder under
-  `~/.config/Lionear/Kontena/plugins/` (or `%APPDATA%\Lionear\Kontena\plugins\` on Windows), and
-  approve it when Kontena asks. The approval dialog lists what the plugin says it will do — read it;
+  `~/.config/Lionear/Kontena/plugins/` on Linux,
+  `~/Library/Application Support/Lionear/Kontena/plugins/` on macOS or
+  `%APPDATA%\Lionear\Kontena\plugins\` on Windows, and approve it when Kontena asks. The approval dialog lists what the plugin says it will do — read it;
   a plugin runs inside Kontena with the access you have, and until signed builds land that list is a
   claim by its author rather than a limit Kontena enforces. Everything a plugin contributes carries a
   `plugin` badge in the sidebar, so it is always clear which parts of the window are not Kontena's own.
