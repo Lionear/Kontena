@@ -23,7 +23,7 @@ public sealed record GitStatusResult
 }
 
 /// <summary>
-/// Status, diff, commit, push, pull, branch switching — via the <c>git</c> CLI, not LibGit2Sharp
+/// Clone, status, diff, commit, push, pull, branch switching — via the <c>git</c> CLI, not LibGit2Sharp
 /// (Plan §11 point 2). Kontena has no native dependency anywhere in the codebase; LibGit2Sharp would
 /// have been the first, with its own per-platform native binaries to sign (KON-53). This drives the
 /// same <c>Kontena.Sdk.Tooling</c> seam (<see cref="ExternalTool"/>, <see cref="IToolRunner"/>) that
@@ -74,6 +74,55 @@ public sealed class GitCli(IToolRunner? runner = null)
 
     public ValueTask<GitCommandResult> PullAsync(string repositoryPath, CancellationToken ct = default) =>
         RunAsync(repositoryPath, ["pull"], ct);
+
+    /// <summary>
+    /// Clones <paramref name="url"/> into <paramref name="targetPath"/> (KON-436), which git creates.
+    /// Whether the target is usable — missing, empty, or already holding someone else's files — is
+    /// git's judgement, not a pre-check here: it is the one that knows, and it says so in words worth
+    /// putting on screen.
+    /// <para>
+    /// The one command in this class that streams instead of buffering. A clone of a real repository
+    /// takes long enough that buffered output is indistinguishable from a hang (see
+    /// <see cref="IToolRunner.StreamAsync"/>), and <paramref name="progress"/> hands on git's own
+    /// counting — nothing here knows how big the repository is until git says so.
+    /// </para>
+    /// </summary>
+    /// <param name="progress">Called with each line git writes, latest last. Deliberately not
+    /// <c>ConfigureAwait(false)</c>-ed below, unlike everything else here: this lands in a bound
+    /// property, and resuming on a pool thread would make every progress line an off-thread update.</param>
+    public async ValueTask<GitCommandResult> CloneAsync(
+        string url, string targetPath, Action<string>? progress = null, CancellationToken ct = default)
+    {
+        if (!(await _runner.FindAsync(Git, ct).ConfigureAwait(false)).Found)
+            return GitCommandResult.Failed("git was not found on PATH.");
+
+        var full = Path.GetFullPath(targetPath);
+        var invocation = new ToolInvocation(Git, ["clone", "--progress", "--", url, full])
+        {
+            // The parent, because the target itself is what git is about to create.
+            WorkingDirectory = Path.GetDirectoryName(full),
+
+            // No timeout: a large repository over a slow line is not a hang.
+            Timeout = null,
+        };
+
+        try
+        {
+            await foreach (var line in _runner.StreamAsync(invocation, ct))
+                if (line.Text.Trim() is { Length: > 0 } text)
+                    progress?.Invoke(text);
+
+            return GitCommandResult.Succeeded(full);
+        }
+        catch (ToolFailedException exception)
+        {
+            return GitCommandResult.Failed(exception.Complaint);
+        }
+        catch (ToolNotFoundException exception)
+        {
+            return GitCommandResult.Failed(exception.Message);
+        }
+    }
 
     public ValueTask<GitCommandResult> SwitchBranchAsync(
         string repositoryPath, string branch, CancellationToken ct = default) =>

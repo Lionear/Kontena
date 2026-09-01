@@ -67,8 +67,13 @@ public sealed class ManifestStudioPlugin : IUiPlugin
             SchemasFromCluster = host.Cluster is not null,
 
             // Only when there is nothing open: the list lives on the empty state, and a workspace in
-            // hand means it is not on screen to read.
+            // hand means it is not on screen to read. Cloning is on the same card, so it follows.
             Recent = _workspace is null ? _recent.Read() : [],
+
+            // ponytail: one per editor page rather than one per session, so a clone still running while
+            // you navigate away finishes on disk but is not opened. Hold it in a field here if that
+            // turns out to matter — but then only one view may be subscribed to it at a time.
+            Clone = _workspace is null ? new CloneViewModel(new GitCli()) : null,
         };
 
         if (_workspace is not null)
