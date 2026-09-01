@@ -1,3 +1,5 @@
+using Kontena.Sdk.Tooling;
+
 namespace Kontena.Sdk;
 
 /// <summary>
@@ -71,6 +73,26 @@ public sealed record EngineManifest
     /// </para>
     /// </summary>
     public IReadOnlyList<BackendKind> Backends { get; init; } = [];
+
+    /// <summary>
+    /// The external command-line tools this extension drives, described in full (KON-438). Empty for an
+    /// extension that shells out to nothing.
+    /// <para>
+    /// Here rather than in <c>KnownTools</c>, which is the host's own list: <c>git</c> belongs to
+    /// Manifest Studio and <c>nerdctl</c> to the nerdctl plugin, and putting either in the SDK's list
+    /// would make the core app carry an entry for a tool it never runs. The host collects these from
+    /// whatever is installed and shows them on Settings &#8250; Tools beside its own, so a plugin's tool
+    /// gets the same detection, minimum-version check and update check as kubectl does.
+    /// </para>
+    /// <para>
+    /// <see cref="ExternalTool"/> values rather than names, because a name alone cannot say how to ask
+    /// the tool its version or how someone would install it — and the host has no dictionary of tools it
+    /// does not know. The names alone <em>are</em> what a plugin's <c>plugin.json</c> declares, which is
+    /// the claim the user is shown before any of this code runs; the loader rejects an assembly whose
+    /// tools that file does not name.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ExternalTool> Tools { get; init; } = [];
 
     /// <summary>
     /// Whether this extension contributes pages of its own (<see cref="IUiPlugin"/>, KON-331). A plugin

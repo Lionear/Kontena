@@ -65,7 +65,8 @@ public sealed class PluginLoaderTests : IDisposable
         string? id = null,
         object[]? platforms = null,
         string[]? backends = null,
-        bool contributesUi = true)
+        bool contributesUi = true,
+        string[]? tools = null)
     {
         id ??= "com.kontena.test";
         var dir = Path.Combine(_root, id);
@@ -86,6 +87,7 @@ public sealed class PluginLoaderTests : IDisposable
             platforms = platforms ?? [],
             backends = backends ?? EngineOnly,
             contributesUi,
+            tools = tools ?? TestPluginTools,
         }));
 
         return dir;
@@ -93,6 +95,9 @@ public sealed class PluginLoaderTests : IDisposable
 
     /// <summary>The one backend kind the engine fixtures contribute, as plugin.json spells it.</summary>
     private static readonly string[] EngineOnly = ["engine"];
+
+    /// <summary>The one external tool <c>TestPlugin</c> declares (KON-438), as plugin.json names it.</summary>
+    private static readonly string[] TestPluginTools = ["testtool"];
 
     /// <summary>The operating system this test run is on, named the way a manifest names it.</summary>
     private static string ThisOs =>
@@ -659,6 +664,62 @@ public sealed class PluginLoaderTests : IDisposable
         Assert.Equal(PluginStatus.Rejected, found.Status);
         Assert.Contains("does not declare", found.Reason);
         Assert.Empty(found.Pages);
+    }
+
+    // ---- The external tools it drives, held to the assembly the same way (KON-438) ----------------
+
+    /// <summary>
+    /// The names in <c>plugin.json</c> are what the consent dialog puts on screen, so a tool the
+    /// assembly describes and that file leaves out is one the user was never asked about.
+    /// </summary>
+    [Fact]
+    public void A_plugin_that_drives_a_tool_it_did_not_name_is_rejected()
+    {
+        InstallFixture(tools: []);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Rejected, found.Status);
+
+        // The reason, not only the rejection: any broken fixture satisfies "Rejected" on its own.
+        Assert.Contains("testtool", found.Reason);
+        Assert.Contains("does not list", found.Reason);
+        Assert.Empty(found.Tools);
+    }
+
+    /// <summary>
+    /// The same one-directional rule the backends get. A plugin that named a tool and then dropped it in
+    /// a later version is not lying about anything, and rejecting it would be the host insisting on a
+    /// tool nothing runs.
+    /// </summary>
+    [Fact]
+    public void A_plugin_that_names_a_tool_it_no_longer_drives_still_loads()
+    {
+        InstallFixture(tools: ["testtool", "somethingelse"]);
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+        Assert.Equal(["testtool"], found.Tools.Select(t => t.Name));
+    }
+
+    /// <summary>
+    /// The described tool reaches the host, because a name alone cannot be detected: Settings › Tools
+    /// needs the executable and the version arguments to ask the machine anything.
+    /// </summary>
+    [Fact]
+    public void A_loaded_plugin_hands_over_the_tools_it_declared()
+    {
+        InstallFixture();
+
+        var found = Assert.Single(PluginLoader.Discover(_root, _ => true));
+
+        Assert.Equal(PluginStatus.Loaded, found.Status);
+
+        var tool = Assert.Single(found.Tools);
+        Assert.Equal("testtool", tool.Name);
+        Assert.Equal("testtool", tool.Executable);
+        Assert.Equal(["--version"], tool.VersionArguments);
     }
 
     [Fact]

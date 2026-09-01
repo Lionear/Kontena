@@ -27,8 +27,11 @@ public sealed record GitStatusResult
 /// (Plan §11 point 2). Kontena has no native dependency anywhere in the codebase; LibGit2Sharp would
 /// have been the first, with its own per-platform native binaries to sign (KON-53). This drives the
 /// same <c>Kontena.Sdk.Tooling</c> seam (<see cref="ExternalTool"/>, <see cref="IToolRunner"/>) that
-/// <c>KnownTools.Kind</c>/<c>Minikube</c> already use — <c>git</c> is not in <c>KnownTools</c> itself
-/// because, unlike those, it is not a tool the core app also needs; it belongs to this plugin.
+/// <c>KnownTools.Kind</c>/<c>Minikube</c> already use. <c>git</c> is still not in <c>KnownTools</c> —
+/// it is not a tool the core app also needs, it belongs to this plugin — but that no longer costs it the
+/// host's detection, version check and Tools page: since KON-438 the manifest declares the tools an
+/// extension drives and the host lists them beside its own. The description is <see cref="GitTool"/>,
+/// declared on <c>ManifestStudioPlugin.Manifest</c> and named in <c>plugin.json</c>.
 /// <para>
 /// Deliberately out: merge, rebase, conflict resolution, history rewriting, per-hunk staging (Plan
 /// §7) — a second Git client is a product, not a feature, and the failure mode is someone else's work.
@@ -43,7 +46,7 @@ public sealed record GitStatusResult
 /// </summary>
 public sealed class GitCli(IToolRunner? runner = null)
 {
-    private static readonly ExternalTool Git = new("git", "git", ["--version"], []);
+    private static readonly ExternalTool Git = GitTool.Definition;
 
     private readonly IToolRunner _runner = runner ?? new ToolRunner();
 

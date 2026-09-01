@@ -9,5 +9,8 @@
   "backends": [
     "engine"
   ],
-  "contributesUi": false
+  "contributesUi": false,
+  "tools": [
+    "nerdctl"
+  ]
 }

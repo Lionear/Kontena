@@ -59,6 +59,27 @@ public sealed record PluginManifest
     /// </summary>
     public IReadOnlyList<BackendKind> Backends { get; init; } = [];
 
+    /// <summary>
+    /// The external command-line tools this plugin runs, by name — <c>["git"]</c> (KON-438). Empty for a
+    /// plugin that shells out to nothing.
+    /// <para>
+    /// Names here where <see cref="Kontena.Sdk.EngineManifest.Tools"/> carries whole
+    /// <see cref="Kontena.Sdk.Tooling.ExternalTool"/> descriptions, and the asymmetry is the point. This
+    /// file is read before the user has agreed to anything, so what it is for is the sentence in the
+    /// consent dialog: "this plugin runs git". How to find git, how to ask its version and where to
+    /// download it are answers only the assembly gives, after consent — a download location read out of
+    /// an unvetted text file would be the host fetching and running a binary a stranger named.
+    /// </para>
+    /// <para>
+    /// <c>PluginLoader</c> holds the assembly to this in one direction: a tool the assembly describes and
+    /// this file does not name is a rejection, because the user agreed to a list they were shown.
+    /// Naming more than the assembly ships is fine — a plugin that drops a tool between versions is not
+    /// lying about anything. Nothing here <em>stops</em> a loaded plugin running any command it likes;
+    /// like <see cref="Permissions"/>, it is a claim by a named author, made checkable where it can be.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> Tools { get; init; } = [];
+
     /// <summary>Whether this plugin contributes pages of its own. See
     /// <see cref="Kontena.Sdk.EngineManifest.ContributesUi"/>.</summary>
     public bool ContributesUi { get; init; }
