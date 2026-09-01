@@ -899,15 +899,9 @@ public partial class MainWindowViewModel
     }
     private void BuildSettingsPage()
     {
-        // Rebuilding replaces the instance, and CurrentPage holds the old one by reference. Left
-        // alone, someone standing on Settings when a rebuild happens — flipping the demo toggle
-        // does exactly that — would be looking at a page the shell no longer considers shown
-        // (KON-137).
-        var wasShowing = SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
-
-        // …and the category with it. A rebuild happens for reasons that have nothing to do with where
-        // the user is standing — the demo toggle, a kubeconfig, a cluster being created — and dropping
-        // them back on General each time is the shell losing their place.
+        // The category survives a rebuild. A rebuild happens for reasons that have nothing to do with
+        // where the user is standing — the demo toggle, a kubeconfig, a cluster being created — and
+        // dropping them back on General each time is the shell losing their place.
         var category = SettingsPage?.Category;
 
         // Which of these are remotes the user configured decides whether the row can point at its own
@@ -993,12 +987,10 @@ public partial class MainWindowViewModel
         };
 
         SettingsPage.RequestConfirm = ShowConfirm;
+        SettingsPage.RequestClose = CloseSettings;
 
         if (category is not null)
             SettingsPage.Category = category;
-
-        if (wasShowing)
-            CurrentPage = SettingsPage;
     }
 
     /// <summary>
