@@ -127,6 +127,17 @@ public sealed record ContainerStatus
     public int? LastExitCode { get; init; }
 
     /// <summary>
+    /// When the previous run ended — the kubelet's <c>lastState.terminated.finishedAt</c>, which is
+    /// the moment this container last restarted (KON-443). Null when it never has.
+    /// <para>
+    /// The only restart timing that arrives with a plain listing, so it is the only one a list row can
+    /// have. It says when the last restart was and nothing about the ones before it: "8 restarts" and
+    /// "8 restarts in the last hour" still differ only in this one field.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? LastTerminationTime { get; init; }
+
+    /// <summary>
     /// Memory limit from the pod spec in bytes, when one is declared. Null means unlimited, which is
     /// a different answer than zero and changes what an OOM kill means.
     /// </summary>
@@ -196,6 +207,20 @@ public sealed record Pod
 
     /// <summary>Total restarts across all containers.</summary>
     public int Restarts { get; init; }
+
+    /// <summary>
+    /// The most recent restart across every container, or null when nothing here has restarted
+    /// (KON-443). The counterpart to <see cref="Restarts"/>: the count says a pod has a history, this
+    /// says whether that history is still happening.
+    /// <para>
+    /// Only containers that actually restarted are considered. A container can carry a terminated
+    /// last state without the count agreeing, and a moment taken from one of those would be a restart
+    /// time for a restart that never occurred.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? LastRestart => AllContainers
+        .Where(c => c.Restarts > 0 && c.LastTerminationTime is not null)
+        .Max(c => c.LastTerminationTime);
 
     /// <summary>Node the pod is scheduled on.</summary>
     public string Node { get; init; } = string.Empty;

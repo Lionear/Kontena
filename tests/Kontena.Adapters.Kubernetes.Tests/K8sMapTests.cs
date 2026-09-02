@@ -313,6 +313,44 @@ public class K8sMapTests
     }
 
     [Fact]
+    public void When_the_previous_run_ended_is_the_moment_the_container_restarted()
+    {
+        // The same lastState carries the time, and it is the only restart timing a plain listing has
+        // (KON-443) — which is what lets a row say "most recently 4 min ago" instead of only "8 times".
+        var ended = new DateTime(2026, 9, 2, 10, 15, 0, DateTimeKind.Utc);
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].LastState = new V1ContainerState
+        {
+            Terminated = new V1ContainerStateTerminated { Reason = "Error", FinishedAt = ended },
+        };
+
+        var pod = K8sMap.ToPod(source);
+
+        Assert.Equal(ended, pod.InitContainers[1].LastTerminationTime?.UtcDateTime);
+
+        // And the pod answers for its containers: the row asks the pod, not each container in turn.
+        Assert.Equal(ended, pod.LastRestart?.UtcDateTime);
+    }
+
+    [Fact]
+    public void A_container_that_never_ran_before_has_no_restart_time()
+    {
+        // "Never" arrives from Kubernetes as 0001-01-01, and converting that one directly throws east
+        // of UTC — the crash KON-160 closed. Null is the honest answer, and default(DateTimeOffset)
+        // would be a restart at the beginning of time.
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].LastState = new V1ContainerState
+        {
+            Terminated = new V1ContainerStateTerminated { Reason = "Error", FinishedAt = default(DateTime) },
+        };
+
+        var pod = K8sMap.ToPod(source);
+
+        Assert.Null(pod.InitContainers[1].LastTerminationTime);
+        Assert.Null(pod.LastRestart);
+    }
+
+    [Fact]
     public void A_declared_memory_limit_reaches_the_container_status()
     {
         var source = InitialisingPod();

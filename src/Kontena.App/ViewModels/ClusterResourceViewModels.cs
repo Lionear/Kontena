@@ -1276,9 +1276,7 @@ public sealed partial class PodRow
         RestartedOften = WorkloadTrouble.RestartedOften(p);
         // Only when nothing is wrong. A crash-looping pod has restarted plenty too, and telling it it
         // is "running normally" would contradict the washed red row it is sitting on.
-        RestartsTip = RestartedOften && Trouble is null
-            ? $"Restarted {p.Restarts} times. Running normally now — the count is history, not a fault."
-            : null;
+        RestartsTip = RestartedOften && Trouble is null ? Format.RestartsTip(p) : null;
         ReadyRaw = p.ReadyContainers;
         Node = string.IsNullOrEmpty(p.Node) ? "—" : p.Node;
         Age = Format.Duration(p.Age);
