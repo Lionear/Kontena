@@ -176,7 +176,8 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     /// gives, so the same pod does not change its mind about the number on the way to its own page.</summary>
     public bool RestartedOften => WorkloadTrouble.RestartedOften(_pod);
 
-    public string? RestartsTip => RestartedOften
+    /// <summary>Only when nothing is wrong — see the same guard on <c>PodRow</c>.</summary>
+    public string? RestartsTip => RestartedOften && !HasTrouble
         ? $"Restarted {_pod.Restarts} times. Running normally now — the count is history, not a fault."
         : null;
     public string QosText => _pod.Qos.ToString();

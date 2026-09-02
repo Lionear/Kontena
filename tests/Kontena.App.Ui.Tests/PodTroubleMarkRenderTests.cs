@@ -151,6 +151,11 @@ public sealed class PodTroubleMarkRenderTests(HeadlessSessionFixture headless)
                     [.. marked.Select(t => t.Text ?? string.Empty).Order()]);
                 Assert.Contains(marked, t => t.Text == restarted.Restarts);
 
+                // The reassurance is for the pod it is true of. The crash-looping pod has restarted
+                // often as well, and "running normally now" there would contradict its own red row.
+                Assert.NotNull(restarted.RestartsTip);
+                Assert.All(page.Items.Where(r => r.HasTrouble), r => Assert.Null(r.RestartsTip));
+
                 // And this pod adds no row to the marked set: the washes on screen are still only the
                 // ones the trouble rule asked for.
                 Assert.Equal(page.Items.Count(r => r.HasTrouble), TroubleRows(window).Count);
