@@ -400,6 +400,22 @@
             <Setter Property="Foreground" Value="{DynamicResource Text}"/>
             <Setter Property="FontWeight" Value="Medium"/>
         </Style>
+        <!-- The RESTARTS count (KON-442). A pod that restarted eight times and is now Ready is not in
+             trouble, so it keeps its green dot and its "Running" — but the count still deserves an
+             eye, and every count looking alike is what made the old red warning the only way to see
+             it. Amber, the middle tier of the KON-420 status language, and amber never carries the
+             triangle: that stays red's alone.
+             Measured, not assumed: Warn on Surface is 5.16:1 in light and 9.31:1 in dark, both over
+             the 4.5 floor for body text. Medium weight comes along so the difference survives being
+             read without colour — a lone hue is not a signal everyone gets. -->
+        <Style Selector="TextBlock.restarts">
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="TextBlock.restarts.often">
+            <Setter Property="Foreground" Value="{DynamicResource Warn}"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+
         <!-- The glyph that replaces the status dot. Same reasoning as the dots above: the reason is
              spelled out beside it, so announcing the glyph too would only add a nameless element. -->
         <Style Selector="Path.trouble">

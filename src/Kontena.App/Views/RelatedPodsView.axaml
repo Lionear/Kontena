@@ -46,7 +46,8 @@
                                             <TextBlock Grid.Column="1" Text="{Binding StatusLine}" Classes="statuscell" Classes.trouble="{Binding HasTrouble}"
                                                        Margin="0,0,10,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusLine}"/>
                                         </Grid>
-                                        <TextBlock Grid.Column="3" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" VerticalAlignment="Center"
+                                                   Classes="restarts" Classes.often="{Binding RestartedOften}" ToolTip.Tip="{Binding RestartsTip}"/>
                                         <TextBlock Grid.Column="4" Text="{Binding Node}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="5" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                                     </Grid>

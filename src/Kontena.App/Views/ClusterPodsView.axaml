@@ -63,7 +63,11 @@
                                             <TextBlock Grid.Column="1" Text="{Binding StatusLine}" Classes="statuscell" Classes.trouble="{Binding HasTrouble}"
                                                        Margin="0,0,10,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusLine}"/>
                                         </Grid>
-                                        <TextBlock Grid.Column="4" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <!-- Foreground comes from the class in both states: an inline
+                                             attribute would beat the style setter and the amber would
+                                             never show (KON-415's lesson, again). -->
+                                        <TextBlock Grid.Column="4" Text="{Binding Restarts}" FontFamily="{StaticResource Mono}" FontSize="12.5" VerticalAlignment="Center"
+                                                   Classes="restarts" Classes.often="{Binding RestartedOften}" ToolTip.Tip="{Binding RestartsTip}"/>
                                         <TextBlock Grid.Column="5" Text="{Binding Node}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="6" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                                         <Button Grid.Column="7" Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}"
