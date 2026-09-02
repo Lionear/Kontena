@@ -1542,6 +1542,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 Image = image,
                 Ready = phase == PodPhase.Running,
                 Restarts = restarts,
+                // A restart has a moment, and without one the tooltip can only say how often and not
+                // how long ago (KON-443). Relative to now so the demo does not age into "2 years ago".
+                LastTerminationTime = restarts > 0 ? DateTimeOffset.UtcNow.AddMinutes(-9) : null,
                 Ports = PortsFor(image),
                 Env = i == 0 ? env ?? [] : [],
                 RunState = phase == PodPhase.Running ? ContainerRunState.Running : ContainerRunState.Waiting,

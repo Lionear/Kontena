@@ -191,6 +191,10 @@ internal static class K8sMap
         // lastState is the only place that says whether it was killed or exited on its own (KON-150).
         LastTerminationReason = c.LastState?.Terminated?.Reason ?? string.Empty,
         LastExitCode = c.LastState?.Terminated?.ExitCode,
+        // …and when it died, which is the same instant as the restart that followed (KON-443). Through
+        // EngineTimestamp because "never" arrives here as 0001-01-01, and converting that one directly
+        // throws east of UTC — the crash KON-160 closed.
+        LastTerminationTime = EngineTimestamp.FromOptional(c.LastState?.Terminated?.FinishedAt),
         MemoryLimitBytes = memoryLimits.TryGetValue(c.Name, out var limit) ? limit : null,
     };
 
