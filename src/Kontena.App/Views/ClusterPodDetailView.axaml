@@ -73,7 +73,8 @@
                     </StackPanel>
                     <StackPanel Spacing="2">
                         <TextBlock Text="RESTARTS" Classes="colhead"/>
-                        <TextBlock Text="{Binding RestartsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                        <TextBlock Text="{Binding RestartsText}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                   Classes="restarts" Classes.often="{Binding RestartedOften}" ToolTip.Tip="{Binding RestartsTip}"/>
                     </StackPanel>
                     <StackPanel Spacing="2">
                         <TextBlock Text="QOS" Classes="colhead"/>

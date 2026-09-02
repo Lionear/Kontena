@@ -120,6 +120,60 @@ public sealed class PodTroubleMarkRenderTests(HeadlessSessionFixture headless)
         },
         CancellationToken.None);
 
+    private static List<TextBlock> OftenRestartedCells(Window window) =>
+        [.. window.GetVisualDescendants().OfType<TextBlock>()
+            .Where(t => t.Classes.Contains("restarts") && t.Classes.Contains("often"))];
+
+    [Fact]
+    public Task A_pod_that_restarted_often_but_is_healthy_is_pointed_at_without_being_called_broken() =>
+        headless.Session.Dispatch(
+            () =>
+            {
+                // KON-442. The two halves are the whole point and have to be asserted together: the
+                // row must stay unmarked (no wash, no triangle, "Running" in the status cell) *and*
+                // the count must still stand out. Either one alone is a state we already had.
+                var page = new ClusterPodsViewModel(new FakeClusterEngine(), "app");
+                page.LoadAsync().GetAwaiter().GetResult();
+
+                var restarted = page.Items.Single(r => r.RestartedOften && !r.HasTrouble);
+
+                Assert.Equal("Running", restarted.StatusLine);
+                Assert.Null(restarted.Trouble);
+
+                var window = Show(new ClusterPodsView { DataContext = page });
+
+                // Exactly the counts that earned it, and no others — a binding that fires on the wrong
+                // thing marks every row and would pass a weaker assertion. The crash-looping pod is in
+                // here too: it has restarted plenty, and the two readings are independent on purpose.
+                var marked = OftenRestartedCells(window);
+                Assert.Equal(
+                    [.. page.Items.Where(r => r.RestartedOften).Select(r => r.Restarts).Order()],
+                    [.. marked.Select(t => t.Text ?? string.Empty).Order()]);
+                Assert.Contains(marked, t => t.Text == restarted.Restarts);
+
+                // And this pod adds no row to the marked set: the washes on screen are still only the
+                // ones the trouble rule asked for.
+                Assert.Equal(page.Items.Count(r => r.HasTrouble), TroubleRows(window).Count);
+            },
+            CancellationToken.None);
+
+    [Fact]
+    public Task A_pod_that_restarted_once_is_left_alone() => headless.Session.Dispatch(
+        () =>
+        {
+            // The counterweight: without this, a binding that marks every count would pass the test
+            // above just as happily.
+            var page = new ClusterPodsViewModel(new FakeClusterEngine(), "monitoring");
+            page.LoadAsync().GetAwaiter().GetResult();
+
+            Assert.All(page.Items, r => Assert.False(r.RestartedOften));
+
+            var window = Show(new ClusterPodsView { DataContext = page });
+
+            Assert.Empty(OftenRestartedCells(window));
+        },
+        CancellationToken.None);
+
     [Fact]
     public Task A_healthy_pod_gets_no_mark_anywhere() => headless.Session.Dispatch(
         () =>

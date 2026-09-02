@@ -136,7 +136,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine", WebUses),
             // web is mid-rollout at 2/3, so two pods and not three — the counts and the list have to
             // tell the same story now that the detail page shows them together.
-            Pod1("web-5f2b", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine", WebUses),
+            // Restarted often and perfectly fine now — the case KON-442 is about, and the one the fake
+            // was missing: every healthy pod here had a restart count of zero, so "healthy, but that
+            // number is worth a look" was a state nothing could show.
+            Pod1("web-5f2b", "app", PodPhase.Running, 1, 6, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine", WebUses),
             new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Labels = App("redis"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
             // A pod wedged on its init container, which is the case the whole of KON-168 is about: the
             // container holding the answer is the one that used to be unreachable. Phase alone reports

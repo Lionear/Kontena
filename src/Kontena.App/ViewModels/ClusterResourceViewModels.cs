@@ -1273,6 +1273,10 @@ public sealed partial class PodRow
         StatusLine = Trouble ?? Phase;
         Restarts = p.Restarts.ToString(System.Globalization.CultureInfo.InvariantCulture);
         RestartsRaw = p.Restarts;
+        RestartedOften = WorkloadTrouble.RestartedOften(p);
+        RestartsTip = RestartedOften
+            ? $"Restarted {p.Restarts} times. Running normally now — the count is history, not a fault."
+            : null;
         ReadyRaw = p.ReadyContainers;
         Node = string.IsNullOrEmpty(p.Node) ? "—" : p.Node;
         Age = Format.Duration(p.Age);
@@ -1307,6 +1311,14 @@ public sealed partial class PodRow
     public string StatusLine { get; }
 
     public string Restarts { get; }
+
+    /// <summary>Whether the RESTARTS cell should stand out (KON-442). A count is not trouble — the
+    /// status stays a green dot and "Running" — but eight restarts and one are not the same news.</summary>
+    public bool RestartedOften { get; }
+
+    /// <summary>Says in words what the amber count means, for whoever the colour does not reach.</summary>
+    public string? RestartsTip { get; }
+
     public string Node { get; }
     public string Age { get; }
     public IBrush StatusBrush { get; }
