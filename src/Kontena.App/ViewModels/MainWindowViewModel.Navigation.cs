@@ -327,7 +327,9 @@ public partial class MainWindowViewModel
                 _cluster,
                 onOpenClaim: name => OpenStorage("pvcs", name),
                 onOpenClass: name => OpenStorage("storageclasses", name)),
-            "storageclasses" => new ClusterStorageClassesViewModel(_cluster),
+            "storageclasses" => new ClusterStorageClassesViewModel(
+                _cluster,
+                onOpenVolumes: name => OpenStorage("volumes", name)),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
             "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace)
