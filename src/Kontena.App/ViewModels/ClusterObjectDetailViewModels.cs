@@ -199,6 +199,14 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     public virtual string PodsTabLabel => "Pods";
 
     /// <summary>
+    /// Whether this kind has a pods tab at all — false on a StorageClass (KON-445), which has no
+    /// pods of its own and no label-selector or reference to match one by. Same shape as
+    /// <see cref="ShowUsageGraphs"/>: a tab that hides itself rather than opening onto an empty,
+    /// unexplained list.
+    /// </summary>
+    public virtual bool ShowPodsTab => true;
+
+    /// <summary>
     /// Which namespace this page's pods and events are read from; null means every one.
     /// <para>
     /// The object's own namespace is right for a Deployment or a Service and wrong for both of the
@@ -578,4 +586,73 @@ public sealed class ServicePortRow
     public string TargetPort { get; }
     public string NodePort { get; }
     public string Protocol { get; }
+}
+
+/// <summary>
+/// StorageClass detail (KON-445). The list answers "what would provision here and what happens to
+/// the data" in six columns; this is the same six answered in full, plus the YAML and the events a
+/// cluster-scoped object still has, none of which had anywhere to live until now.
+/// </summary>
+public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDetailViewModel
+{
+    private readonly StorageClass _class;
+    private readonly Action<string>? _onOpenVolumes;
+
+    /// <param name="volumeCount">How many PersistentVolumes this class provisioned — the same count
+    /// the list row shows (KON-445).</param>
+    /// <param name="onOpenVolumes">Route to those volumes, filtered to this class.</param>
+    public ClusterStorageClassDetailViewModel(
+        IClusterEngine cluster, StorageClass c, int volumeCount, Action<string>? onOpenVolumes = null)
+        : base(cluster, new ResourceRef(GroupVersionKind.StorageClass, null, c.Name), onOpenPod: null)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+
+        _class = c;
+        _onOpenVolumes = onOpenVolumes;
+
+        Provisioner = string.IsNullOrEmpty(c.Provisioner) ? "—" : c.Provisioner;
+        Reclaim = c.ReclaimPolicy.ToString();
+        IsDefault = c.IsDefault;
+        Expansion = c.AllowsExpansion ? "Yes" : "No";
+        Age = Format.Duration(c.Age);
+
+        Binding = c.BindingMode == VolumeBindingMode.WaitForFirstConsumer
+            ? "When a pod needs it"
+            : "As soon as a claim exists";
+        BindingDetail = c.BindingMode == VolumeBindingMode.WaitForFirstConsumer
+            ? "A claim on this class stays Pending until a pod actually mounts it. That is not a fault."
+            : "A claim on this class is provisioned straight away.";
+
+        NoProvisioner = string.IsNullOrEmpty(c.Provisioner) || c.Provisioner == "kubernetes.io/no-provisioner";
+        NoProvisionerDetail =
+            "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
+            + " creates by hand.";
+
+        VolumeCount = volumeCount;
+        VolumeCountLabel = volumeCount == 1 ? "1 volume" : $"{volumeCount} volumes";
+        CanOpenVolumes = onOpenVolumes is not null;
+    }
+
+    public string Provisioner { get; }
+    public string Reclaim { get; }
+    public bool IsDefault { get; }
+    public string Expansion { get; }
+    public string Binding { get; }
+    public string BindingDetail { get; }
+    public bool NoProvisioner { get; }
+    public string NoProvisionerDetail { get; }
+    public string Age { get; }
+    public int VolumeCount { get; }
+    public string VolumeCountLabel { get; }
+    public bool CanOpenVolumes { get; }
+
+    [RelayCommand]
+    private void OpenVolumes() => _onOpenVolumes?.Invoke(_class.Name);
+
+    // No pods to a StorageClass — its identity is the provisioning policy, not anything scheduled.
+    // The VOLUMES route above already answers "what does this affect".
+    public override bool ShowPodsTab => false;
+
+    protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) => [];
+    protected override string EmptyPodsReason() => string.Empty;
 }

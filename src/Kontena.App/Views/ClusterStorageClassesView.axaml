@@ -41,8 +41,12 @@
                                     <StackPanel>
                                         <Grid ColumnDefinitions="1.4*,1.6*,0.8*,1.5*,0.8*,0.7*,0.5*">
                                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,14,0">
-                                                <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
-                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                <!-- The detail page (KON-445): the same six columns in full,
+                                                     plus the YAML and events a cluster-scoped object still has. -->
+                                                <Button Classes="link" VerticalAlignment="Center" Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                </Button>
                                                 <!-- Which class a claim gets when it names none. Worth a marker:
                                                      it is the class most claims on this cluster will land on. -->
                                                 <Border IsVisible="{Binding IsDefault}" Background="{DynamicResource SurfaceRaised}"

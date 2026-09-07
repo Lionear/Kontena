@@ -92,14 +92,15 @@ public sealed class VolumeAndStorageClassTests
         string provisioner = "pd.csi.storage.gke.io",
         bool isDefault = false,
         int volumeCount = 0,
-        Action<string>? onOpenVolumes = null) =>
+        Action<string>? onOpenVolumes = null,
+        Action<StorageClass, int>? onOpenDetail = null) =>
         new(new StorageClass
         {
             Name = "standard-rwo",
             Provisioner = provisioner,
             BindingMode = binding,
             IsDefault = isDefault,
-        }, volumeCount, onOpenVolumes);
+        }, volumeCount, onOpenVolumes, onOpenDetail);
 
     [Fact]
     public void WaitForFirstConsumer_is_said_in_words_that_reach_the_conclusion()
@@ -171,6 +172,67 @@ public sealed class VolumeAndStorageClassTests
     public void Without_a_wired_route_the_class_offers_no_link()
     {
         Assert.False(Class(volumeCount: 2).CanOpenVolumes);
+    }
+
+    // ── The class's own detail page (KON-445) ────────────────────────────────
+
+    [Fact]
+    public void The_detail_route_carries_the_class_and_its_volume_count()
+    {
+        var opened = new List<(StorageClass Class, int VolumeCount)>();
+        var row = Class(volumeCount: 2, onOpenDetail: (c, n) => opened.Add((c, n)));
+
+        Assert.True(row.CanOpen);
+        row.OpenCommand.Execute(null);
+
+        var (openedClass, count) = Assert.Single(opened);
+        Assert.Equal("standard-rwo", openedClass.Name);
+        Assert.Equal(2, count);
+    }
+
+    [Fact]
+    public void Without_a_wired_detail_route_the_name_is_not_a_link()
+    {
+        Assert.False(Class().CanOpen);
+    }
+
+    private static ClusterStorageClassDetailViewModel Detail(
+        VolumeBindingMode binding = VolumeBindingMode.Immediate,
+        string provisioner = "pd.csi.storage.gke.io",
+        int volumeCount = 0,
+        Action<string>? onOpenVolumes = null) =>
+        new(
+            new FakeClusterEngine(),
+            new StorageClass { Name = "standard-rwo", Provisioner = provisioner, BindingMode = binding },
+            volumeCount, onOpenVolumes);
+
+    [Fact]
+    public void The_detail_page_has_no_pods_tab()
+    {
+        // A StorageClass has no pods of its own — the VOLUMES route already answers what it affects.
+        Assert.False(Detail().ShowPodsTab);
+    }
+
+    [Fact]
+    public void The_detail_page_carries_the_same_volume_count_as_the_row()
+    {
+        var opened = new List<string>();
+        var detail = Detail(volumeCount: 2, onOpenVolumes: opened.Add);
+
+        Assert.Equal("2 volumes", detail.VolumeCountLabel);
+        Assert.True(detail.CanOpenVolumes);
+
+        detail.OpenVolumesCommand.Execute(null);
+        Assert.Equal("standard-rwo", Assert.Single(opened));
+    }
+
+    [Fact]
+    public void The_detail_page_repeats_the_list_row_s_binding_explanation()
+    {
+        var detail = Detail(VolumeBindingMode.WaitForFirstConsumer);
+
+        Assert.Equal("When a pod needs it", detail.Binding);
+        Assert.Contains("not a fault", detail.BindingDetail, StringComparison.Ordinal);
     }
 
     // ── The claim's side of the routes ──────────────────────────────────────

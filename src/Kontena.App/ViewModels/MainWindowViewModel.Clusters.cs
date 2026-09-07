@@ -176,6 +176,22 @@ public partial class MainWindowViewModel
     }
 
     /// <summary>
+    /// The storage-class detail page (KON-445). The list answers "what would provision here and what
+    /// happens to the data" in six columns; this is the same six in full, plus the YAML and events a
+    /// cluster-scoped object still has.
+    /// </summary>
+    private void ShowStorageClassDetail(StorageClass c, int volumeCount)
+    {
+        if (_cluster is null)
+            return;
+
+        ShowDetail(new ClusterStorageClassDetailViewModel(
+            _cluster, c, volumeCount,
+            onOpenVolumes: name => OpenStorage("volumes", name)),
+            $"storage class {c.Name}", c);
+    }
+
+    /// <summary>
     /// Go to a list page with the namespace picker moved to the namespace you came from. Setting the
     /// picker rather than passing a filter keeps one source of truth for "which namespace am I in" —
     /// a page filtered to something the picker disagrees with is a page nobody can read.
