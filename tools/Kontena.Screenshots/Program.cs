@@ -47,7 +47,11 @@ namespace Kontena.Screenshots;
 //         update-{toast,card,downloading,ready,failed} (the in-app updater, driven through the real
 //         state machine against a fake update source), settings-updates and
 //         settings-updates-unmanaged (the Updates category, managed and not),
-//         cluster / cluster-{nodes,namespaces,workloads,pods,services} (the cluster browsers),
+//         cluster / cluster-{nodes,namespaces,workloads,pods,services,storageclasses,volumes} (the
+//         cluster browsers),
+//         storageclass-volumes (KON-445 — a storage class's own PROVISIONS/RECLAIM/EXPAND/AGE columns
+//         plus its VOLUMES count, then the click-through to the Volumes page filtered to that class,
+//         reached through the row's own OpenVolumes command),
 //         alerts (KON-393 — the Alerts page, with the notice that says how it keeps up),
 //         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
 //         reached by really switching backend and back, so it exercises the save/restore path),
@@ -741,6 +745,8 @@ internal static class Program
             case "cluster-workloads":
             case "cluster-pods":
             case "cluster-services":
+            case "cluster-storageclasses":
+            case "cluster-volumes":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -755,6 +761,19 @@ internal static class Program
                     Settle(rounds: 40);
                 }
 
+                break;
+
+            // KON-445: a storage class routes forward to the volumes it provisioned, reached through
+            // the row's own OpenVolumes command — same reasoning as cluster-node-drawer, so the shot
+            // cannot show a route the button does not really take.
+            case "storageclass-volumes":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("storageclasses");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterStorageClassesViewModel classes)
+                    classes.Items.FirstOrDefault(c => c.Name == "standard-rwo")?.OpenVolumesCommand.Execute(null);
+                Settle(rounds: 30);
                 break;
 
             case "cluster-node-drawer":
