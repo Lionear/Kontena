@@ -666,19 +666,35 @@ public partial class ClusterVolumesViewModel : ClusterListPageViewModel<Persiste
 public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<StorageClassRow>
 {
     private readonly IClusterEngine _cluster;
+    private readonly Action<string>? _onOpenVolumes;
+    private readonly Action<StorageClass>? _onOpenDetail;
 
-    public ClusterStorageClassesViewModel(IClusterEngine cluster)
+    /// <param name="onOpenVolumes">Route to the volumes provisioned by this class (KON-445) — the
+    /// reverse of <see cref="PersistentVolumeRow.OpenClass"/>.</param>
+    /// <param name="onOpenDetail">Opens the class's own detail page (KON-445).</param>
+    public ClusterStorageClassesViewModel(
+        IClusterEngine cluster, Action<string>? onOpenVolumes = null,
+        Action<StorageClass>? onOpenDetail = null)
         : base(cluster, GroupVersionKind.StorageClass, null)
     {
         _cluster = cluster;
+        _onOpenVolumes = onOpenVolumes;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
         StartWatching();
     }
 
     public override string SearchPlaceholder => "Search storage classes…";
 
-    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListStorageClassesAsync(ct)).Select(c => new StorageClassRow(c))];
+    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync(CancellationToken ct)
+    {
+        var classes = await _cluster.ListStorageClassesAsync(ct);
+        var volumes = await _cluster.ListVolumesAsync(ct);
+        var volumeCounts = volumes.CountBy(v => v.StorageClass).ToDictionary(StringComparer.Ordinal);
+
+        return [.. classes.Select(c =>
+            new StorageClassRow(c, volumeCounts.GetValueOrDefault(c.Name), _onOpenVolumes, _onOpenDetail))];
+    }
 
     protected override bool Matches(StorageClassRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Provisioner, term);
@@ -688,6 +704,7 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
         {
             ["NAME"] = r => r.Name,
             ["PROVISIONER"] = r => r.Provisioner,
+            ["VOLUMES"] = r => r.VolumeCount,
             ["RECLAIM"] = r => r.Reclaim,
             ["AGE"] = r => r.AgeSpan,
         };
@@ -949,11 +966,27 @@ public sealed partial class PersistentVolumeRow
     private void OpenClass() => _onOpenClass?.Invoke(StorageClass);
 }
 
-public sealed class StorageClassRow
+public sealed partial class StorageClassRow
 {
-    public StorageClassRow(StorageClass c)
+    private readonly StorageClass _class;
+    private readonly Action<string>? _onOpenVolumes;
+    private readonly Action<StorageClass>? _onOpenDetail;
+
+    /// <param name="volumeCount">How many PersistentVolumes this class provisioned (KON-445).</param>
+    /// <param name="onOpenVolumes">Route to those volumes, filtered to this class — the reverse of
+    /// <see cref="PersistentVolumeRow.OpenClass"/>.</param>
+    /// <param name="onOpenDetail">Opens the class's own detail page (KON-445) — the list answers "what
+    /// would provision here", the detail answers it in full plus the YAML and events.</param>
+    public StorageClassRow(
+        StorageClass c, int volumeCount, Action<string>? onOpenVolumes = null,
+        Action<StorageClass>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(c);
+
+        _class = c;
+        _onOpenVolumes = onOpenVolumes;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
 
         Name = c.Name;
         Provisioner = string.IsNullOrEmpty(c.Provisioner) ? "—" : c.Provisioner;
@@ -961,6 +994,10 @@ public sealed class StorageClassRow
         IsDefault = c.IsDefault;
         Expansion = c.AllowsExpansion ? "Yes" : "No";
         Age = Format.Duration(c.Age);
+
+        VolumeCount = volumeCount;
+        VolumeCountLabel = volumeCount == 1 ? "1 volume" : $"{volumeCount} volumes";
+        CanOpenVolumes = onOpenVolumes is not null;
 
         // Said as a sentence rather than as the API's word. "WaitForFirstConsumer" is the single most
         // common reason someone thinks their storage is broken when it is working exactly as designed,
@@ -995,6 +1032,19 @@ public sealed class StorageClassRow
     public string NoProvisionerDetail { get; } =
         "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
         + " creates by hand.";
+
+    public int VolumeCount { get; }
+    public string VolumeCountLabel { get; }
+    public bool CanOpenVolumes { get; }
+
+    [RelayCommand]
+    private void OpenVolumes() => _onOpenVolumes?.Invoke(Name);
+
+    /// <summary>Whether the shell wired a detail page to arrive at (KON-445).</summary>
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_class);
 }
 
 
