@@ -180,14 +180,14 @@ public partial class MainWindowViewModel
     /// happens to the data" in six columns; this is the same six in full, plus the YAML and events a
     /// cluster-scoped object still has.
     /// </summary>
-    private void ShowStorageClassDetail(StorageClass c, int volumeCount)
+    private void ShowStorageClassDetail(StorageClass c)
     {
         if (_cluster is null)
             return;
 
         ShowDetail(new ClusterStorageClassDetailViewModel(
-            _cluster, c, volumeCount,
-            onOpenVolumes: name => OpenStorage("volumes", name)),
+            _cluster, c,
+            onOpenClaim: name => OpenStorage("pvcs", name)),
             $"storage class {c.Name}", c);
     }
 

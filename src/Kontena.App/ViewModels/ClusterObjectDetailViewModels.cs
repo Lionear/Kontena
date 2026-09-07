@@ -595,20 +595,21 @@ public sealed class ServicePortRow
 /// </summary>
 public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDetailViewModel
 {
+    private readonly IClusterEngine _cluster;
     private readonly StorageClass _class;
-    private readonly Action<string>? _onOpenVolumes;
+    private readonly Action<string>? _onOpenClaim;
 
-    /// <param name="volumeCount">How many PersistentVolumes this class provisioned — the same count
-    /// the list row shows (KON-445).</param>
-    /// <param name="onOpenVolumes">Route to those volumes, filtered to this class.</param>
+    /// <param name="onOpenClaim">Route to the claim bound to one of this class's volumes — same
+    /// route the Volumes list uses for its own CLAIM column.</param>
     public ClusterStorageClassDetailViewModel(
-        IClusterEngine cluster, StorageClass c, int volumeCount, Action<string>? onOpenVolumes = null)
+        IClusterEngine cluster, StorageClass c, Action<string>? onOpenClaim = null)
         : base(cluster, new ResourceRef(GroupVersionKind.StorageClass, null, c.Name), onOpenPod: null)
     {
         ArgumentNullException.ThrowIfNull(c);
 
+        _cluster = cluster;
         _class = c;
-        _onOpenVolumes = onOpenVolumes;
+        _onOpenClaim = onOpenClaim;
 
         Provisioner = string.IsNullOrEmpty(c.Provisioner) ? "—" : c.Provisioner;
         Reclaim = c.ReclaimPolicy.ToString();
@@ -628,9 +629,7 @@ public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDe
             "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
             + " creates by hand.";
 
-        VolumeCount = volumeCount;
-        VolumeCountLabel = volumeCount == 1 ? "1 volume" : $"{volumeCount} volumes";
-        CanOpenVolumes = onOpenVolumes is not null;
+        _ = LoadVolumesAsync();
     }
 
     public string Provisioner { get; }
@@ -642,15 +641,51 @@ public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDe
     public bool NoProvisioner { get; }
     public string NoProvisionerDetail { get; }
     public string Age { get; }
-    public int VolumeCount { get; }
-    public string VolumeCountLabel { get; }
-    public bool CanOpenVolumes { get; }
 
-    [RelayCommand]
-    private void OpenVolumes() => _onOpenVolumes?.Invoke(_class.Name);
+    /// <summary>
+    /// The volumes themselves, not a count with a link to them (KON-445) — Rick, on the first cut:
+    /// a click-through to see two rows is a click-through too many when there is room for the two
+    /// rows right here.
+    /// </summary>
+    public ObservableCollection<PersistentVolumeRow> Volumes { get; } = [];
+
+    [ObservableProperty] private bool _volumesLoading = true;
+
+    partial void OnVolumesLoadingChanged(bool value) => OnPropertyChanged(nameof(ShowEmptyVolumesNote));
+
+    public bool HasVolumes => Volumes.Count > 0;
+
+    /// <summary>Distinct from <see cref="HasVolumes"/> being false: while loading there is no answer
+    /// yet, and "no volumes" would be a guess stated as a fact.</summary>
+    public bool ShowEmptyVolumesNote => !VolumesLoading && !HasVolumes;
+
+    public string EmptyVolumesNote { get; } = "No volumes use this class.";
+
+    private async Task LoadVolumesAsync()
+    {
+        VolumesLoading = true;
+        try
+        {
+            var all = await _cluster.ListVolumesAsync();
+
+            Volumes.Clear();
+            foreach (var v in all.Where(v => string.Equals(v.StorageClass, _class.Name, StringComparison.Ordinal)))
+                Volumes.Add(new PersistentVolumeRow(v, _onOpenClaim));
+        }
+        catch (Exception)
+        {
+            // Leave whatever was already showing rather than clearing it — a refresh that failed is
+            // not the same fact as "no volumes use this class".
+        }
+        finally
+        {
+            VolumesLoading = false;
+            OnPropertyChanged(nameof(HasVolumes));
+        }
+    }
 
     // No pods to a StorageClass — its identity is the provisioning policy, not anything scheduled.
-    // The VOLUMES route above already answers "what does this affect".
+    // The volumes list above already answers "what does this affect".
     public override bool ShowPodsTab => false;
 
     protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) => [];

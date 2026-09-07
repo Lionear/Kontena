@@ -93,7 +93,7 @@ public sealed class VolumeAndStorageClassTests
         bool isDefault = false,
         int volumeCount = 0,
         Action<string>? onOpenVolumes = null,
-        Action<StorageClass, int>? onOpenDetail = null) =>
+        Action<StorageClass>? onOpenDetail = null) =>
         new(new StorageClass
         {
             Name = "standard-rwo",
@@ -177,17 +177,15 @@ public sealed class VolumeAndStorageClassTests
     // ── The class's own detail page (KON-445) ────────────────────────────────
 
     [Fact]
-    public void The_detail_route_carries_the_class_and_its_volume_count()
+    public void The_detail_route_carries_the_class()
     {
-        var opened = new List<(StorageClass Class, int VolumeCount)>();
-        var row = Class(volumeCount: 2, onOpenDetail: (c, n) => opened.Add((c, n)));
+        var opened = new List<StorageClass>();
+        var row = Class(onOpenDetail: opened.Add);
 
         Assert.True(row.CanOpen);
         row.OpenCommand.Execute(null);
 
-        var (openedClass, count) = Assert.Single(opened);
-        Assert.Equal("standard-rwo", openedClass.Name);
-        Assert.Equal(2, count);
+        Assert.Equal("standard-rwo", Assert.Single(opened).Name);
     }
 
     [Fact]
@@ -196,40 +194,76 @@ public sealed class VolumeAndStorageClassTests
         Assert.False(Class().CanOpen);
     }
 
-    private static ClusterStorageClassDetailViewModel Detail(
+    /// <summary>A cluster whose named class is <c>standard-rwo</c> by default, provisioning the
+    /// fake's own two volumes — the same fixture the row-count integration test reads.</summary>
+    private static async Task<ClusterStorageClassDetailViewModel> DetailAsync(
         VolumeBindingMode binding = VolumeBindingMode.Immediate,
         string provisioner = "pd.csi.storage.gke.io",
-        int volumeCount = 0,
-        Action<string>? onOpenVolumes = null) =>
-        new(
-            new FakeClusterEngine(),
-            new StorageClass { Name = "standard-rwo", Provisioner = provisioner, BindingMode = binding },
-            volumeCount, onOpenVolumes);
+        string name = "standard-rwo",
+        Action<string>? onOpenClaim = null)
+    {
+        var engine = new FakeClusterEngine();
+        var page = new ClusterStorageClassDetailViewModel(
+            engine,
+            new StorageClass { Name = name, Provisioner = provisioner, BindingMode = binding },
+            onOpenClaim);
+
+        // The volumes load fire-and-forget from the constructor.
+        for (var i = 0; i < 50 && page.VolumesLoading; i++)
+            await Task.Delay(5);
+
+        return page;
+    }
 
     [Fact]
     public void The_detail_page_has_no_pods_tab()
     {
-        // A StorageClass has no pods of its own — the VOLUMES route already answers what it affects.
-        Assert.False(Detail().ShowPodsTab);
+        // A StorageClass has no pods of its own — the volumes list already answers what it affects.
+        // Synchronous: nothing here depends on the fire-and-forget load finishing.
+        Assert.False(new ClusterStorageClassDetailViewModel(
+            new FakeClusterEngine(), new StorageClass { Name = "standard-rwo" }).ShowPodsTab);
     }
 
     [Fact]
-    public void The_detail_page_carries_the_same_volume_count_as_the_row()
+    public async Task The_detail_page_shows_the_actual_volumes_not_just_a_count()
+    {
+        // The fake's standard-rwo has two real volumes (pvc-8a1f bound, pvc-3c02 released) — this is
+        // the page reading them, not a number handed in from the row that opened it.
+        var detail = await DetailAsync();
+
+        Assert.True(detail.HasVolumes);
+        Assert.False(detail.ShowEmptyVolumesNote);
+        Assert.Equal(["pvc-8a1f", "pvc-3c02"], detail.Volumes.Select(v => v.Name));
+    }
+
+    [Fact]
+    public async Task A_class_with_no_volumes_says_so_only_once_loading_settles()
+    {
+        // local-path is the fake's unused class (0 volumes) — see VolumeAndStorageClassTests'
+        // FakeClusterEngine-backed row-count test for the same fixture from the list's side.
+        var detail = await DetailAsync(name: "local-path", provisioner: "rancher.io/local-path");
+
+        Assert.False(detail.HasVolumes);
+        Assert.True(detail.ShowEmptyVolumesNote);
+    }
+
+    [Fact]
+    public async Task The_claim_on_a_volume_routes_the_same_way_the_volumes_list_does()
     {
         var opened = new List<string>();
-        var detail = Detail(volumeCount: 2, onOpenVolumes: opened.Add);
+        var detail = await DetailAsync(onOpenClaim: opened.Add);
 
-        Assert.Equal("2 volumes", detail.VolumeCountLabel);
-        Assert.True(detail.CanOpenVolumes);
+        var bound = detail.Volumes.Single(v => v.Name == "pvc-8a1f");
+        Assert.True(bound.CanOpenClaim);
+        bound.OpenClaimCommand.Execute(null);
 
-        detail.OpenVolumesCommand.Execute(null);
-        Assert.Equal("standard-rwo", Assert.Single(opened));
+        Assert.Equal("postgres-data", Assert.Single(opened));
     }
 
     [Fact]
-    public void The_detail_page_repeats_the_list_row_s_binding_explanation()
+    public async Task The_detail_page_repeats_the_list_row_s_binding_explanation()
     {
-        var detail = Detail(VolumeBindingMode.WaitForFirstConsumer);
+        var detail = await DetailAsync(VolumeBindingMode.WaitForFirstConsumer);
 
         Assert.Equal("When a pod needs it", detail.Binding);
         Assert.Contains("not a fault", detail.BindingDetail, StringComparison.Ordinal);

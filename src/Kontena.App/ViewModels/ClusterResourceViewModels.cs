@@ -667,14 +667,14 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
 {
     private readonly IClusterEngine _cluster;
     private readonly Action<string>? _onOpenVolumes;
-    private readonly Action<StorageClass, int>? _onOpenDetail;
+    private readonly Action<StorageClass>? _onOpenDetail;
 
     /// <param name="onOpenVolumes">Route to the volumes provisioned by this class (KON-445) — the
     /// reverse of <see cref="PersistentVolumeRow.OpenClass"/>.</param>
     /// <param name="onOpenDetail">Opens the class's own detail page (KON-445).</param>
     public ClusterStorageClassesViewModel(
         IClusterEngine cluster, Action<string>? onOpenVolumes = null,
-        Action<StorageClass, int>? onOpenDetail = null)
+        Action<StorageClass>? onOpenDetail = null)
         : base(cluster, GroupVersionKind.StorageClass, null)
     {
         _cluster = cluster;
@@ -970,7 +970,7 @@ public sealed partial class StorageClassRow
 {
     private readonly StorageClass _class;
     private readonly Action<string>? _onOpenVolumes;
-    private readonly Action<StorageClass, int>? _onOpenDetail;
+    private readonly Action<StorageClass>? _onOpenDetail;
 
     /// <param name="volumeCount">How many PersistentVolumes this class provisioned (KON-445).</param>
     /// <param name="onOpenVolumes">Route to those volumes, filtered to this class — the reverse of
@@ -979,7 +979,7 @@ public sealed partial class StorageClassRow
     /// would provision here", the detail answers it in full plus the YAML and events.</param>
     public StorageClassRow(
         StorageClass c, int volumeCount, Action<string>? onOpenVolumes = null,
-        Action<StorageClass, int>? onOpenDetail = null)
+        Action<StorageClass>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(c);
 
@@ -1044,7 +1044,7 @@ public sealed partial class StorageClassRow
     public bool CanOpen { get; }
 
     [RelayCommand]
-    private void Open() => _onOpenDetail?.Invoke(_class, VolumeCount);
+    private void Open() => _onOpenDetail?.Invoke(_class);
 }
 
 

@@ -63,18 +63,58 @@
             <ScrollViewer IsVisible="{Binding IsOverviewSelected}">
                 <StackPanel Spacing="16">
 
-                    <!-- Volumes: the class's own route forward (KON-445), same count and command the
-                         list row uses, so the two never disagree. -->
-                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                            BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,13">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="Volumes" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Classes="link" Command="{Binding OpenVolumesCommand}" IsVisible="{Binding CanOpenVolumes}">
-                                <TextBlock Text="{Binding VolumeCountLabel}"/>
-                            </Button>
-                            <TextBlock Grid.Column="1" Text="{Binding VolumeCountLabel}" IsVisible="{Binding !CanOpenVolumes}" Foreground="{DynamicResource TextDim}"/>
-                        </Grid>
+                    <!-- The volumes themselves (KON-445) — not a count with a link, the actual rows:
+                         there is room for them right here, and a click-through to see two rows is a
+                         click-through too many. -->
+                    <TextBlock Text="Volumes" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{StaticResource Radius}" ClipToBounds="True" IsVisible="{Binding HasVolumes}">
+                        <StackPanel>
+                            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                                <Grid ColumnDefinitions="1.1*,1.0*,0.75*,1.65*,0.5*">
+                                    <TextBlock Grid.Column="0" Text="NAME" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="1" Text="STATUS" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="2" Text="CAPACITY" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="3" Text="CLAIM" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="4" Text="AGE" Classes="colhead" TextTrimming="CharacterEllipsis"/>
+                                </Grid>
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding Volumes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PersistentVolumeRow">
+                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                            <Grid ColumnDefinitions="1.1*,1.0*,0.75*,1.65*,0.5*">
+                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                           Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                                <!-- A Grid, not a horizontal StackPanel: the drawer is narrower than the
+                                                     full Volumes list, and only a Grid column bounds the text enough
+                                                     for TextTrimming to trim it instead of overrunning CAPACITY. -->
+                                                <Grid Grid.Column="1" ColumnDefinitions="Auto,*" Margin="0,0,10,0" VerticalAlignment="Center">
+                                                    <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Status}" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                                </Grid>
+                                                <TextBlock Grid.Column="2" Text="{Binding Capacity}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                           Foreground="{DynamicResource TextDim}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                <Button Grid.Column="3" Classes="link" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="0,0,10,0"
+                                                        Command="{Binding OpenClaimCommand}" IsVisible="{Binding CanOpenClaim}">
+                                                    <TextBlock Text="{Binding Claim}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Left"/>
+                                                </Button>
+                                                <TextBlock Grid.Column="3" Text="{Binding Claim}" IsVisible="{Binding !CanOpenClaim}" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextDim}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </Border>
+
+                    <TextBlock Text="{Binding EmptyVolumesNote}" IsVisible="{Binding ShowEmptyVolumesNote}"
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
 
                     <!-- The API's word is WaitForFirstConsumer; this says what that means, because the
                          word is what leaves people believing their storage is broken when it is working
