@@ -106,6 +106,8 @@ internal static class K8sMap
             },
             ControlledBy = OwnerOf(p.Metadata),
             Labels = Labels(p.Metadata?.Labels),
+            Hostname = p.Spec?.Hostname ?? string.Empty,
+            Subdomain = p.Spec?.Subdomain ?? string.Empty,
             Age = AgeOf(p.Metadata),
             ConfigUses = ConfigUsesOf(p.Spec),
         };

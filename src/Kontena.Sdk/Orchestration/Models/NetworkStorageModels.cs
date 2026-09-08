@@ -34,6 +34,9 @@ public sealed record Service
         new Dictionary<string, string>();
 
     public TimeSpan Age { get; init; }
+
+    /// <summary>Cluster-internal DNS name Kubernetes always assigns a service (any type).</summary>
+    public string ClusterDnsName => $"{Name}.{Namespace}.svc.cluster.local";
 }
 
 /// <summary>One host/path routing rule of an Ingress.</summary>

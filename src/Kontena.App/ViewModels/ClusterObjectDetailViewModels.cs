@@ -518,6 +518,7 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
         public string TypeText => _service.Type.ToString();
     public string ClusterIpText => _service.ClusterIp.Length == 0 ? "—" : _service.ClusterIp;
     public string ExternalIpText => _service.ExternalIp.Length == 0 ? "—" : _service.ExternalIp;
+    public string HostnameText => _service.ClusterDnsName;
     public string SelectorText => FormatLabels(_service.Selector);
     public string AgeText => Format.Duration(_service.Age);
 
