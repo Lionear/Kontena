@@ -416,6 +416,21 @@
             <Setter Property="FontWeight" Value="Medium"/>
         </Style>
 
+        <!-- A pod that arrived seconds ago (KON-448). The point of a restart is that the pods are
+             replaced, and on a list of six near-identical names that is otherwise only legible by
+             reading the AGE column downwards. Green, not amber: an arriving replacement is the
+             rollout working, and amber in this palette is reserved for "not there yet" (KON-420).
+             The wash is the whole signal and it removes itself — the pod passes fifteen seconds and
+             the next reading draws it plain — so nothing has to remember to clean it up.
+             Motion is deliberately absent here. KON-220 kept animation off list rows because on a
+             dense grid it reads as lag, and rows on this tab are rebuilt on every refresh, so a
+             fade would replay on a pod that has been sitting there for ten seconds already. -->
+        <!-- :not(.trouble) rather than declaration order: a brand-new pod that is already failing is
+             a broken pod first, and "which setter is written lower" is not a thing to have to know. -->
+        <Style Selector="Border.fresh:not(.trouble)">
+            <Setter Property="Background" Value="{DynamicResource SuccessSoft}"/>
+        </Style>
+
         <!-- The glyph that replaces the status dot. Same reasoning as the dots above: the reason is
              spelled out beside it, so announcing the glyph too would only add a nameless element. -->
         <Style Selector="Path.trouble">

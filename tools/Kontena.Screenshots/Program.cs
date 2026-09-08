@@ -24,6 +24,7 @@ using Kontena.Engines.Fakes;
 using HostApp = Kontena.App.App;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Engines;
 
 namespace Kontena.Screenshots;
@@ -52,6 +53,8 @@ namespace Kontena.Screenshots;
 //         storageclass-volumes (KON-445 — a storage class's own PROVISIONS/RECLAIM/EXPAND/AGE columns
 //         plus its VOLUMES count, then the click-through to the Volumes page filtered to that class,
 //         reached through the row's own OpenVolumes command),
+//         workload-restarting (KON-448 — what Restart leaves behind: the toast that answers the
+//         click, driven through the row's own Restart and the confirm's own Confirm),
 //         alerts (KON-393 — the Alerts page, with the notice that says how it keeps up),
 //         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
 //         reached by really switching backend and back, so it exercises the save/restore path),
@@ -776,6 +779,28 @@ internal static class Program
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterStorageClassesViewModel classes)
                     classes.Items.FirstOrDefault(c => c.Name == "standard-rwo")?.OpenVolumesCommand.Execute(null);
                 Settle(rounds: 30);
+                break;
+
+            // KON-448: the moment after Restart is confirmed. Driven all the way through the row's
+            // Restart command and the confirm dialog's own Confirm, because the whole ticket is about
+            // what that path leaves behind — a scene that set the toast by hand could not tell a
+            // wired-up one from a dead binding.
+            //
+            // The row here reads Progressing and not "Restarting…", and that is correct: this fake's
+            // apiserver moves the rollout status inside the call, so the reload that follows already
+            // has the real answer and the placeholder rightly steps aside. "Restarting…" covers the
+            // window a real cluster has and this one does not — the tests drive that directly.
+            case "workload-restarting":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(WorkloadNavGroups.KeyFor(WorkloadKind.Deployment));
+                SettleUntil(() => vm.CurrentPage is ClusterWorkloadsViewModel { HasItems: true }, maxRounds: 120);
+                if (vm.CurrentPage is ClusterWorkloadsViewModel deployments)
+                    deployments.Items.FirstOrDefault(w => w.Name == "api")?.RestartCommand.Execute(null);
+                Settle(rounds: 10);
+                if (vm.Dialog is ConfirmViewModel restartConfirm)
+                    restartConfirm.ConfirmCommand.Execute(null);
+                Settle(rounds: 40);
                 break;
 
             case "cluster-node-drawer":

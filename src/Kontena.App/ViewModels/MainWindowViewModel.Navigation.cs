@@ -299,7 +299,9 @@ public partial class MainWindowViewModel
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing
             // between a click and a workload that is gone (KON-332).
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
-                new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind)
+                new ClusterWorkloadsViewModel(
+                    _cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail,
+                    kind, Restarts)
                 { RequestConfirm = ShowConfirm },
             // The dashboard only where there is something to summarise. With one kind the sidebar has
             // no submenu either, and a dashboard of a single card is a page that says less than the
@@ -310,7 +312,9 @@ public partial class MainWindowViewModel
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
                     onOpenWorkload: ShowWorkloadDetail,
                     onOpenPods: () => NavigateCluster("pods")),
-            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail)
+            "workloads" => new ClusterWorkloadsViewModel(
+                _cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail,
+                restarts: Restarts)
                 { RequestConfirm = ShowConfirm },
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail)

@@ -811,6 +811,21 @@
             </StackPanel>
         </Border>
 
+        <!-- Action toast: same corner as the update one, and never both — this one is a sentence that
+             takes itself away after a few seconds, so the two cannot queue up against each other
+             (KON-448). Above the update toast in the tree so a restart confirmed while an update is
+             on offer is the thing you see; the update keeps its sidebar entry either way. -->
+        <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding ActionToast.IsVisible}" MaxWidth="360"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,24"
+                Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,12" BoxShadow="0 12 40 0 #66000000">
+            <!-- No buttons and no icon: this reports, it does not ask. The update toast has two
+                 buttons because it is an offer; a line that leaves on its own in four seconds is not
+                 something to answer, and a dismiss you have four seconds to hit is not a control. -->
+            <TextBlock Text="{Binding ActionToast.Message}" FontSize="13" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+        </Border>
+
         <!-- First-run onboarding: opaque, covers the whole shell below the title bar -->
         <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsOnboarding}" Background="{DynamicResource Bg}">
             <!-- No ScrollViewer here on purpose (KON-336): scrolling the whole card takes its

@@ -48,11 +48,21 @@ public partial class MainWindowViewModel
                 await _cluster.RolloutRestartAsync(workload.Reference);
                 CloseDialog();
 
+                // The click needs an answer of its own (KON-448). The PATCH above returns before
+                // Kubernetes has touched a pod, so on a fast cluster the reload below can read the
+                // workload back unchanged — and the confirm closing is then the entire evidence that
+                // anything happened. The toast is the one piece of feedback that does not depend on
+                // the cluster having caught up; the tracker keeps the row honest until it has.
+                Restarts.Requested(workload, DateTimeOffset.UtcNow);
+                ActionToast.Show($"Restarting {workload.Kind} \"{workload.Name}\"…");
+
                 // A restart changes the workload's pods, not its identity — if this is the drawer the
                 // user just clicked Restart from, refresh its pods tab in place rather than closing it
                 // out from under them via the blanket page rebuild (KON-323).
                 if (Detail is ClusterWorkloadDetailViewModel detail && detail.DetailKey == workload.Reference.ToString())
-                    _ = detail.RefreshPodsAsync();
+                    // Header as well as pods since KON-448: the page used to refresh only the tab,
+                    // which is why its rollout pill sat frozen on the reading from before the click.
+                    _ = detail.RefreshAsync();
                 else
                     ReloadCurrentClusterPage();
             },
@@ -562,7 +572,8 @@ public partial class MainWindowViewModel
             onOpenPod: ShowPodDetail,
             onScale: ShowScaleDialog,
             onRestart: ConfirmRestartWorkload,
-            onDelete: () => ConfirmDeleteWorkload(workload)),
+            onDelete: () => ConfirmDeleteWorkload(workload),
+            restarts: Restarts),
             $"{workload.Kind} {workload.Name}", workload);
     }
 
