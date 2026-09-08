@@ -232,6 +232,7 @@ public partial class MainWindowViewModel
         NavGroups.Add(Group("System",
             new NavItem("events", "Events", "IconActivity"),
             new NavItem("resources", "Resources", "IconBox"),
+            new NavItem("find", "Find", "IconSearch"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
 
@@ -352,6 +353,10 @@ public partial class MainWindowViewModel
             "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
             // because deleting from here is as destructive as anywhere else.
+            "find" => new ClusterFindViewModel(_cluster, ActiveNamespace)
+            {
+                RequestOpen = target => _ = OpenEventObjectAsync(target),
+            },
             "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
             // A shell on this machine, already on this cluster (KON-171). Falls back to the
             // overview when the active backend is not a kubeconfig context, so the page can never
