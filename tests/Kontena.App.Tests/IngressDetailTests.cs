@@ -200,6 +200,110 @@ public sealed class IngressDetailTests
         Assert.Equal("nginx", detail.ClassText);
     }
 
+    // ── Open in the browser (KON-461) ────────────────────────────────────────
+
+    [Fact]
+    public void One_rule_gets_one_link_and_plain_http_when_no_certificate_covers_it()
+    {
+        using var detail = Detail(Ingress([new IngressRule("app.example.com", "/", "web", 80)]));
+
+        Assert.True(detail.HasOneLink);
+        Assert.False(detail.HasManyLinks);
+        Assert.Equal("http://app.example.com/", detail.OnlyLink?.Url);
+    }
+
+    [Fact]
+    public void A_host_the_ingress_has_a_certificate_for_is_opened_over_https()
+    {
+        // The scheme comes off the ingress's own TLS block rather than a setting of its own — the
+        // object already says which hosts it presents a certificate for.
+        using var detail = Detail(Ingress(
+            [new IngressRule("app.example.com", "/", "web", 80), new IngressRule("admin.example.com", "/", "admin", 80)],
+            tls: [new IngressTls("web-tls", ["app.example.com"])]));
+
+        Assert.Equal(
+            ["https://app.example.com/", "http://admin.example.com/"],
+            detail.Links.Select(l => l.Url));
+    }
+
+    [Fact]
+    public void A_wildcard_certificate_covers_the_hosts_under_it()
+    {
+        // *.example.com is what cert-manager issues by default, so matching only exact names would
+        // call the common case http.
+        using var detail = Detail(Ingress(
+            [
+                new IngressRule("app.example.com", "/", "web", 80),
+                new IngressRule("a.b.example.com", "/", "deep", 80),
+                new IngressRule("example.com", "/", "apex", 80),
+            ],
+            tls: [new IngressTls("star-tls", ["*.example.com"])]));
+
+        // One label only, as in the TLS spec: the apex and a two-label subdomain are not covered.
+        Assert.Equal(
+            ["https://app.example.com/", "http://a.b.example.com/", "http://example.com/"],
+            detail.Links.Select(l => l.Url));
+    }
+
+    [Fact]
+    public void Every_host_and_path_combination_becomes_its_own_entry()
+    {
+        // What the flyout lists: one entry per rule, not per host, because two paths on one host are
+        // two different places to land.
+        using var detail = Detail(Ingress([
+            new IngressRule("app.example.com", "/", "web", 80),
+            new IngressRule("app.example.com", "/api", "api", 8080),
+            new IngressRule("admin.example.com", "/", "admin", 80),
+        ]));
+
+        Assert.True(detail.HasManyLinks);
+        Assert.False(detail.HasOneLink);
+        Assert.Null(detail.OnlyLink);
+
+        Assert.Equal(
+            ["app.example.com/", "app.example.com/api", "admin.example.com/"],
+            detail.Links.Select(l => l.LinkText));
+        Assert.Equal(
+            ["http://app.example.com/", "http://app.example.com/api", "http://admin.example.com/"],
+            detail.Links.Select(l => l.Url));
+    }
+
+    [Fact]
+    public void A_rule_without_a_host_has_nothing_to_open()
+    {
+        // It matches whatever its controller answers on, which this machine has no way to name — and
+        // the rules table still shows the rule as "*".
+        using var detail = Detail(Ingress([new IngressRule(string.Empty, "/", "web", 80)]));
+
+        Assert.Single(detail.Rules);
+        Assert.Empty(detail.Links);
+        Assert.False(detail.HasOneLink);
+        Assert.False(detail.HasManyLinks);
+
+        var rule = Assert.Single(detail.Rules);
+        Assert.False(rule.CanOpen);
+        Assert.Null(rule.Url);
+        Assert.False(rule.OpenCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Links_follow_the_object_when_tls_is_added_after_the_page_opened()
+    {
+        // The scheme is a projection of the TLS block, so a certificate arriving on a re-read has to
+        // move the link from http to https rather than leave the first answer standing.
+        var engine = new FakeClusterEngine();
+        var stale = Ingress([new IngressRule("app.example.com", "/", "web", 80)], name: "web");
+
+        using var detail = new ClusterIngressDetailViewModel(engine, stale);
+
+        Assert.Equal("http://app.example.com/", detail.OnlyLink?.Url);
+
+        // The cluster's own web ingress carries a web-tls block over that host.
+        await detail.RefreshAsync();
+
+        Assert.Equal("https://app.example.com/", detail.OnlyLink?.Url);
+    }
+
     [Fact]
     public void The_detail_route_carries_the_ingress()
     {
