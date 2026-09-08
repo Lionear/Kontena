@@ -349,6 +349,72 @@ public sealed class DetailDrawerTests
         Assert.IsType<ClusterNodesViewModel>(shell.CurrentPage);
     }
 
+    /// <summary>Watches register and unregister on their own threads, so a test waits for a number
+    /// rather than reading one.</summary>
+    private static async Task<bool> WatchesReachAsync(FakeClusterEngine engine, int expected)
+    {
+        for (var i = 0; i < 400 && engine.OpenWatches != expected; i++)
+            await Task.Delay(5);
+
+        return engine.OpenWatches == expected;
+    }
+
+    [Fact]
+    public async Task Backing_out_of_a_buried_detail_disposes_the_layer_that_was_closed()
+    {
+        // The leak that made the app get slower the longer it ran (KON-449). Uncovering a buried
+        // detail assigns through SetDetail, which exists to skip disposal for a hand-over — but the
+        // layer being closed here is handed to nobody, so it kept its watch on the cluster's whole
+        // event stream, one more per Back, for the rest of the session.
+        var engine = new FakeClusterEngine();
+        var shell = new MainWindowViewModel();
+        Assert.True(await shell.EnterClusterModeAsync(engine));
+
+        // The per-kind list rather than "workloads": with several kinds seeded that key is the
+        // dashboard, and this test wants the plain list its rows come from.
+        shell.NavigateCommand.Execute("workloads:Deployment");
+        await WaitForRowsAsync(shell);
+
+        Assert.IsType<ClusterWorkloadsViewModel>(shell.CurrentPage).Items.First(w => w.CanOpen)
+            .OpenCommand.Execute(null);
+
+        var workload = Assert.IsType<ClusterWorkloadDetailViewModel>(shell.Detail);
+        for (var i = 0; i < 200 && workload.Pods.Count == 0; i++)
+            await Task.Delay(5);
+
+        Assert.NotEmpty(workload.Pods);
+
+        // Five rounds rather than one: a single leak is a leak, but the symptom Rick reported is that
+        // it accumulates, and a count that only has to be right once would not show that.
+        for (var round = 0; round < 5; round++)
+        {
+            // Measured per round, not once: the list pages and the sidebar follow kinds of their own,
+            // and this test is about the difference a round makes, not the absolute number.
+            var before = engine.OpenWatches;
+
+            workload.Pods[0].OpenCommand.Execute(null);
+            Assert.IsType<ClusterPodDetailViewModel>(shell.Detail);
+
+            // Gate rather than a courtesy wait. Asserting the count came back down is worthless if the
+            // watch had not gone up yet — the test would pass on the broken code for the wrong reason.
+            Assert.True(
+                await WatchesReachAsync(engine, before + 1),
+                $"round {round}: the pod detail never opened its watch, so the assert below proves nothing");
+
+            // Escape, which is how this is actually reached.
+            shell.DismissCommand.Execute(null);
+
+            Assert.True(
+                await WatchesReachAsync(engine, before),
+                $"round {round}: the closed pod detail kept its watch open");
+        }
+
+        // And the layer that was uncovered is the one still standing, undisposed — disposing what
+        // PopDetail was about to show would be the same bug pointed the other way.
+        Assert.Same(workload, shell.Detail);
+        Assert.False(string.IsNullOrEmpty(workload.Name));
+    }
+
     [Fact]
     public async Task A_drawer_is_not_somewhere_you_navigated_to()
     {
