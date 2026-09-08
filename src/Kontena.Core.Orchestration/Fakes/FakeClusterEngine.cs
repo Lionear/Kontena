@@ -610,9 +610,20 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         lock (_watchers)
             _watchers.Add(mine);
 
+        // Taken in one go, here, and not left to enumerate lazily while the snapshot drains below
+        // (KON-451). `refs` is a query straight over this fake's own live lists, and the loop that
+        // reads it gives the thread up between every item — so a test that changed the cluster while
+        // it drained (a cordon, an apply: both assign into a List<T>) bumped the version under the
+        // running enumerator and the watch died on "Collection was modified". The page reads any
+        // exception out of its watch as its object being gone, so the failure surfaced as an event
+        // that was delivered and never read, one full assembly run in three.
+        // This is also what an informer does: list once at a resource version, then watch from it.
+        // A lazy query over live state was never a snapshot.
+        var snapshot = refs.ToList();
+
         try
         {
-            foreach (var r in refs)
+            foreach (var r in snapshot)
             {
                 ct.ThrowIfCancellationRequested();
                 await Task.Yield();
