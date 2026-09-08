@@ -858,6 +858,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 Kind = new GroupVersionKind("cert-manager.io", "v1", "Certificate"),
                 Plural = "certificates", Namespaced = true, Verbs = ["list", "delete"], IsCustom = true,
                 ShortNames = ["cert", "certs"], Categories = ["cert-manager"],
+                Description = "A TLS certificate cert-manager requests and keeps renewed.",
+                Source = "cert-manager",
             },
         ];
 

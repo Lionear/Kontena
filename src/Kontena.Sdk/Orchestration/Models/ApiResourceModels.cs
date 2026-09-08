@@ -42,6 +42,24 @@ public sealed record ApiResource
     public IReadOnlyList<string> Verbs { get; init; } = [];
 
     /// <summary>
+    /// What this kind is for, in the CRD author's own words (KON-455). Empty for a built-in kind, and
+    /// empty for a custom one whose author wrote no description or whose definition this user may not
+    /// read — the picker shows the line only when there is one.
+    /// <para>
+    /// The one field here that is not free: it comes from the CustomResourceDefinition rather than from
+    /// discovery. It is worth the call because it is the only thing on the row written for a human who
+    /// does not already know the kind — which is the whole of what KON-455 reported.
+    /// </para>
+    /// </summary>
+    public string Description { get; init; } = string.Empty;
+
+    /// <summary>
+    /// What installed this kind — an operator's name or a Helm release, from the definition's own
+    /// labels. Empty when the definition says nothing about where it came from.
+    /// </summary>
+    public string Source { get; init; } = string.Empty;
+
+    /// <summary>
     /// Whether it came from outside Kubernetes itself. Not a judgement about quality — it is how the
     /// list is grouped, because "the kinds my operators added" is the half a user is looking for.
     /// </summary>

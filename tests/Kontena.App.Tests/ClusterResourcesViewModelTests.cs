@@ -234,4 +234,40 @@ public sealed class ClusterResourcesViewModelTests
 
         Assert.Empty(page.Groups);
     }
+
+    /// <summary>
+    /// The case KON-455 actually described: you remember what the thing does, not what it is called.
+    /// "TLS" appears in no name, no alias and no group — only in the description the CRD author wrote.
+    /// </summary>
+    [Fact]
+    public async Task A_kind_is_found_by_what_it_is_for()
+    {
+        var page = await PageAsync();
+
+        page.KindSearch = "TLS";
+
+        Assert.Equal(["Certificate"], page.Groups.SelectMany(g => g.Items).Select(i => i.Kind));
+    }
+
+    [Fact]
+    public async Task The_description_and_what_installed_it_are_on_the_row()
+    {
+        var page = await PageAsync();
+        var certificate = page.Groups.SelectMany(g => g.Items).Single(i => i.Kind == "Certificate");
+
+        Assert.True(certificate.HasDescription);
+        Assert.Contains("TLS", certificate.Description, StringComparison.Ordinal);
+        Assert.Equal("cert-manager.io · cert-manager", certificate.Origin);
+    }
+
+    /// <summary>A built-in kind has no definition to read, so it shows the group and nothing else.</summary>
+    [Fact]
+    public async Task A_built_in_kind_carries_no_description_line()
+    {
+        var page = await PageAsync();
+        var pod = page.Groups.SelectMany(g => g.Items).Single(i => i.Kind == "Pod");
+
+        Assert.False(pod.HasDescription);
+        Assert.Equal("core", pod.Origin);
+    }
 }

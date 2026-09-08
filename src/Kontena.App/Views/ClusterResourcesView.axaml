@@ -54,8 +54,17 @@
                                                     <StackPanel Spacing="1">
                                                         <TextBlock Text="{Binding Kind}" FontSize="13"
                                                                    Foreground="{DynamicResource Text}"/>
-                                                        <TextBlock Text="{Binding Group}" FontSize="10.5"
+                                                        <!-- What the kind is for, in the CRD author's
+                                                             words. The one line on the row written for
+                                                             someone who does not know it yet (KON-455). -->
+                                                        <TextBlock Text="{Binding Description}" FontSize="11"
+                                                                   TextWrapping="Wrap" MaxLines="2"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   IsVisible="{Binding HasDescription}"
+                                                                   Foreground="{DynamicResource TextDim}"/>
+                                                        <TextBlock Text="{Binding Origin}" FontSize="10.5"
                                                                    FontFamily="{StaticResource Mono}"
+                                                                   TextTrimming="CharacterEllipsis"
                                                                    Foreground="{DynamicResource TextFaint}"/>
                                                         <!-- The names you can search by, shown because a
                                                              name you can find with but cannot see reads

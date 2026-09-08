@@ -33,11 +33,30 @@ public sealed partial class ApiResourceItem(ApiResource resource) : ObservableOb
             .Where(n => !string.IsNullOrEmpty(n))
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Whether this kind is worth showing for a search term.</summary>
+    /// <summary>What this kind is for, in the words of whoever wrote the CRD. Empty for built-ins.</summary>
+    public string Description => Resource.Description;
+
+    public bool HasDescription => Description.Length > 0;
+
+    /// <summary>The group and version, with what installed the kind when the definition says.</summary>
+    public string Origin => Resource.Source.Length == 0
+        ? Group
+        : $"{Group} · {Resource.Source}";
+
+    /// <summary>
+    /// Whether this kind is worth showing for a search term.
+    /// <para>
+    /// Every field it matches on is one the row displays, which is deliberate: a result whose reason
+    /// for matching is nowhere on screen looks like a bug, and a page that has to explain its own hits
+    /// with a badge is a page that searched something it did not show.
+    /// </para>
+    /// </summary>
     internal static bool Matches(ApiResource resource, string term) =>
         term.Length == 0
         || Names(resource).Any(n => n.Contains(term, StringComparison.OrdinalIgnoreCase))
-        || resource.Kind.Group.Contains(term, StringComparison.OrdinalIgnoreCase);
+        || resource.Kind.Group.Contains(term, StringComparison.OrdinalIgnoreCase)
+        || resource.Source.Contains(term, StringComparison.OrdinalIgnoreCase)
+        || resource.Description.Contains(term, StringComparison.OrdinalIgnoreCase);
 
     [ObservableProperty]
     private bool _isSelected;
