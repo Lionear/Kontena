@@ -34,9 +34,9 @@ public sealed partial class ImagesViewModel : ListPageViewModel<ImageRowViewMode
     [ObservableProperty] private bool _pruneArmed;
     [ObservableProperty] private string _pruneSummary = string.Empty;
 
-    protected override async Task<IReadOnlyList<ImageRowViewModel>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<ImageRowViewModel>> LoadRowsAsync(CancellationToken ct)
     {
-        var list = await _engine.ListImagesAsync();
+        var list = await _engine.ListImagesAsync(ct);
 
         var total = list.Sum(i => i.SizeBytes);
         var unused = list.Where(i => !i.InUse).ToList();

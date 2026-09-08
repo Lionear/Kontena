@@ -53,6 +53,9 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
         }
     }
 
+    /// <summary>The cluster this page reads from, for a subclass that re-reads its own object.</summary>
+    protected IClusterEngine Cluster => _cluster;
+
     /// <summary>
     /// Whether this object is known to be gone (KON-308) — a Deleted event for it on the same watch
     /// the list pages already follow (KON-250), or that watch ending on its own. A cluster this fake
@@ -74,6 +77,20 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
                     IsSourceGone = true;
                     return;
                 }
+
+                // Everything else about this object was read once, in the constructor, and never
+                // again (KON-448): the loop watched only for the object disappearing, so a rollout
+                // could run from start to finish with the header still showing the reading from
+                // before it began. The pods tab was refreshed by hand after a restart, which is why
+                // the staleness was easy to miss — the half of the page that was watched was the
+                // half nobody was looking at.
+                // Re-read rather than read the event: a ResourceEvent carries a reference and not a
+                // manifest on purpose (KON-355), so "something moved" is all it can tell anyone.
+                // ponytail: one read per event, uncoalesced. Only this object's events get here, so a
+                // rollout is a handful of reads over its lifetime; if that ever shows up, ClusterWatch
+                // already settles a burst into one redraw and is the thing to reuse.
+                if (e.Type == WatchEventType.Modified)
+                    await OnResourceModifiedAsync();
             }
 
             // The stream ended without being cancelled. An apiserver closes a watch on its own
@@ -89,6 +106,37 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
         {
             if (!ct.IsCancellationRequested)
                 IsSourceGone = true;
+        }
+    }
+
+    /// <summary>
+    /// The watched object changed (KON-448). Does nothing by default: a page that shows only fields
+    /// which cannot change without the object being replaced has nothing to re-read, and a blanket
+    /// re-fetch on every kind would put one read per event on pages that never needed it.
+    /// </summary>
+    protected virtual Task OnResourceModifiedAsync() => Task.CompletedTask;
+
+    /// <summary>
+    /// Read this object again out of the only read there is (KON-450). <see cref="IClusterEngine"/>
+    /// has no get-one-object for any of these kinds, so every page re-reads through the same lister
+    /// that filled the grid it was opened from and picks itself out by name.
+    /// <para>
+    /// Null means "no answer", never "gone": a read that threw says nothing about the object, and an
+    /// object missing from the answer is one the same watch is about to report as Deleted. Either way
+    /// the page keeps what it has rather than blanking fields it can no longer vouch for — a detail
+    /// page full of em-dashes is a worse lie than one that is a few seconds behind.
+    /// </para>
+    /// </summary>
+    protected static async Task<T?> RefetchAsync<T>(
+        Func<ValueTask<IReadOnlyList<T>>> read, Func<T, bool> isThisOne) where T : class
+    {
+        try
+        {
+            return (await read()).FirstOrDefault(isThisOne);
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -197,6 +245,14 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
 
     /// <summary>What the pods tab is called for this kind — "Pods" is not always the honest word.</summary>
     public virtual string PodsTabLabel => "Pods";
+
+    /// <summary>
+    /// Whether this kind has a pods tab at all — false on a StorageClass (KON-445), which has no
+    /// pods of its own and no label-selector or reference to match one by. Same shape as
+    /// <see cref="ShowUsageGraphs"/>: a tab that hides itself rather than opening onto an empty,
+    /// unexplained list.
+    /// </summary>
+    public virtual bool ShowPodsTab => true;
 
     /// <summary>
     /// Which namespace this page's pods and events are read from; null means every one.
@@ -373,17 +429,22 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
 /// </summary>
 public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetailViewModel
 {
-    private readonly Workload _workload;
+    private readonly RestartTracker? _restarts;
+    private Workload _workload;
 
+    /// <param name="restarts">Lets the header say "Restarting…" over a status the cluster has not
+    /// moved yet (KON-448). Null on the detached detail window and in tests, which then simply show
+    /// the cluster's own reading.</param>
     public ClusterWorkloadDetailViewModel(
         IClusterEngine cluster, Workload workload,
         Action<Pod>? onOpenPod = null, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action? onDelete = null)
+        Action? onDelete = null, RestartTracker? restarts = null)
         : base(cluster, workload.Reference, onOpenPod, onDelete)
     {
         _workload = workload;
         _onScale = onScale;
         _onRestart = onRestart;
+        _restarts = restarts;
 
         // Live is the sum over the pods this workload has right now; history traces them through
         // kube_pod_owner, so a rollout's replaced pods still count (KON-347).
@@ -423,7 +484,11 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     public string SelectorText => FormatLabels(_workload.Selector);
     public string StrategyText => _workload.Strategy.Length == 0 ? "—" : _workload.Strategy;
     public string AgeText => Format.Duration(_workload.Age);
-    public string RolloutText => _workload.RolloutStatus.ToString();
+
+    /// <summary>Whether the restart asked for here has yet to show up in what the cluster reports.</summary>
+    private bool IsRestarting => _restarts?.IsRestarting(Reference, DateTimeOffset.UtcNow) == true;
+
+    public string RolloutText => IsRestarting ? RestartTracker.Restarting : _workload.RolloutStatus.ToString();
 
     /// <summary>A CronJob has a schedule where the others have replicas.</summary>
     public bool IsCronJob => _workload.Kind == WorkloadKind.CronJob;
@@ -439,19 +504,62 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     public string UpToDateText => _workload.UpToDate.ToString(CultureInfo.InvariantCulture);
     public string AvailableText => _workload.Available.ToString(CultureInfo.InvariantCulture);
 
-    public IBrush RolloutBrush => new SolidColorBrush(Color.Parse(_workload.RolloutStatus switch
-    {
-        RolloutStatus.Complete => "#34D399",
-        RolloutStatus.Progressing => "#5AB8FF",
-        RolloutStatus.Degraded => "#F87171",
-        _ => "#F5B14C",
-    }));
+    /// <summary>
+    /// The same reading the grid gives, in the same colours (KON-420). It used to differ on two of the
+    /// four: Progressing was info blue and Paused was amber, so the one status this page is opened for
+    /// mid-rollout looked like a notice on the row and like a warning here.
+    /// </summary>
+    public IBrush RolloutBrush => new SolidColorBrush(Color.Parse(
+        IsRestarting ? RestartTracker.RestartingColour : _workload.RolloutStatus switch
+        {
+            RolloutStatus.Complete => "#34D399",
+            RolloutStatus.Progressing => "#F5B14C",
+            RolloutStatus.Degraded => "#F87171",
+            _ => "#5C6675",
+        }));
 
     public bool CanScale => _onScale is not null && _workload.IsScalable;
     public bool CanRestart => _onRestart is not null && !IsCronJob;
 
     [RelayCommand] private void Scale() => _onScale?.Invoke(_workload);
     [RelayCommand] private void Restart() => _onRestart?.Invoke(_workload);
+
+    /// <summary>
+    /// Re-read this workload after the watch said it changed (KON-448), and redraw the fields that
+    /// can differ. Everything else in the header is identity — a Deployment does not change
+    /// namespace or kind — so only the rollout reading and the replica counts are raised.
+    /// <para>
+    /// Filtered by kind and namespace so the re-read is the narrowest one this lister offers. See
+    /// <see cref="RefetchAsync{T}"/> for why a missing or failed answer changes nothing on the page.
+    /// </para>
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    /// <remarks>Also called straight after a restart is requested from this page, so the header
+    /// answers the click without waiting for the first watch event.</remarks>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListWorkloadsAsync(_workload.Kind, _workload.Namespace),
+            w => w.Name == _workload.Name);
+
+        if (fresh is null)
+            return;
+
+        _workload = fresh;
+        _restarts?.Observe([fresh], DateTimeOffset.UtcNow);
+
+        OnPropertyChanged(nameof(RolloutText));
+        OnPropertyChanged(nameof(RolloutBrush));
+        OnPropertyChanged(nameof(DesiredText));
+        OnPropertyChanged(nameof(ReadyText));
+        OnPropertyChanged(nameof(UpToDateText));
+        OnPropertyChanged(nameof(AvailableText));
+
+        // The pods are the other half of what a rollout changes, and this page's tab holds them.
+        await RefreshPodsAsync();
+    }
 
     public override string PodsTabLabel => IsCronJob ? "Jobs" : "Pods";
 
@@ -473,7 +581,7 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
 /// </summary>
 public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailViewModel
 {
-    private readonly Service _service;
+    private Service _service;
     private readonly Action<Service>? _onForward;
     private readonly PortForwardRegistry? _portForwards;
 
@@ -505,6 +613,7 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
         public string TypeText => _service.Type.ToString();
     public string ClusterIpText => _service.ClusterIp.Length == 0 ? "—" : _service.ClusterIp;
     public string ExternalIpText => _service.ExternalIp.Length == 0 ? "—" : _service.ExternalIp;
+    public string HostnameText => _service.ClusterDnsName;
     public string SelectorText => FormatLabels(_service.Selector);
     public string AgeText => Format.Duration(_service.Age);
 
@@ -544,6 +653,53 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
         base.Dispose();
     }
 
+    /// <summary>
+    /// Follow this service (KON-450). The page read it once and then watched only for it being
+    /// deleted, so a service edited while you had it open kept showing what it looked like when you
+    /// opened it.
+    /// <para>
+    /// The Endpoints tab is the reason this matters more here than anywhere else on this page shape:
+    /// it is not a stored list but a live derivation from the selector, so a changed selector points
+    /// the service at a different set of pods and the old list stops being an answer to anything.
+    /// The other field worth the read is the external IP, which on a LoadBalancer is blank until the
+    /// provider fills it in — and that arrival is exactly a Modified event.
+    /// </para>
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListServicesAsync(_service.Namespace),
+            s => s.Name == _service.Name);
+
+        if (fresh is null)
+            return;
+
+        _service = fresh;
+
+        Ports.Clear();
+        foreach (var p in fresh.Ports)
+        {
+            Ports.Add(new ServicePortRow(p));
+        }
+
+        OnPropertyChanged(nameof(TypeText));
+        OnPropertyChanged(nameof(ClusterIpText));
+        OnPropertyChanged(nameof(ExternalIpText));
+        OnPropertyChanged(nameof(SelectorText));
+        OnPropertyChanged(nameof(AgeText));
+        OnPropertyChanged(nameof(HasPorts));
+
+        // Not HostnameText (KON-447): a service's cluster DNS name is built from its own name and
+        // namespace, and an object that changed either of those would be a different object.
+
+        // Not an extra courtesy: SelectPods runs the new selector, so this is where the endpoints
+        // stop being the previous service's.
+        await RefreshPodsAsync();
+    }
+
     public override string PodsTabLabel => "Endpoints";
 
     protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) =>
@@ -573,4 +729,108 @@ public sealed class ServicePortRow
     public string TargetPort { get; }
     public string NodePort { get; }
     public string Protocol { get; }
+}
+
+/// <summary>
+/// StorageClass detail (KON-445). The list answers "what would provision here and what happens to
+/// the data" in six columns; this is the same six answered in full, plus the YAML and the events a
+/// cluster-scoped object still has, none of which had anywhere to live until now.
+/// </summary>
+public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDetailViewModel
+{
+    private readonly IClusterEngine _cluster;
+    private readonly StorageClass _class;
+    private readonly Action<string>? _onOpenClaim;
+
+    /// <param name="onOpenClaim">Route to the claim bound to one of this class's volumes — same
+    /// route the Volumes list uses for its own CLAIM column.</param>
+    public ClusterStorageClassDetailViewModel(
+        IClusterEngine cluster, StorageClass c, Action<string>? onOpenClaim = null)
+        : base(cluster, new ResourceRef(GroupVersionKind.StorageClass, null, c.Name), onOpenPod: null)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+
+        _cluster = cluster;
+        _class = c;
+        _onOpenClaim = onOpenClaim;
+
+        Provisioner = string.IsNullOrEmpty(c.Provisioner) ? "—" : c.Provisioner;
+        Reclaim = c.ReclaimPolicy.ToString();
+        IsDefault = c.IsDefault;
+        Expansion = c.AllowsExpansion ? "Yes" : "No";
+        Age = Format.Duration(c.Age);
+
+        Binding = c.BindingMode == VolumeBindingMode.WaitForFirstConsumer
+            ? "When a pod needs it"
+            : "As soon as a claim exists";
+        BindingDetail = c.BindingMode == VolumeBindingMode.WaitForFirstConsumer
+            ? "A claim on this class stays Pending until a pod actually mounts it. That is not a fault."
+            : "A claim on this class is provisioned straight away.";
+
+        NoProvisioner = string.IsNullOrEmpty(c.Provisioner) || c.Provisioner == "kubernetes.io/no-provisioner";
+        NoProvisionerDetail =
+            "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
+            + " creates by hand.";
+
+        _ = LoadVolumesAsync();
+    }
+
+    public string Provisioner { get; }
+    public string Reclaim { get; }
+    public bool IsDefault { get; }
+    public string Expansion { get; }
+    public string Binding { get; }
+    public string BindingDetail { get; }
+    public bool NoProvisioner { get; }
+    public string NoProvisionerDetail { get; }
+    public string Age { get; }
+
+    /// <summary>
+    /// The volumes themselves, not a count with a link to them (KON-445) — Rick, on the first cut:
+    /// a click-through to see two rows is a click-through too many when there is room for the two
+    /// rows right here.
+    /// </summary>
+    public ObservableCollection<PersistentVolumeRow> Volumes { get; } = [];
+
+    [ObservableProperty] private bool _volumesLoading = true;
+
+    partial void OnVolumesLoadingChanged(bool value) => OnPropertyChanged(nameof(ShowEmptyVolumesNote));
+
+    public bool HasVolumes => Volumes.Count > 0;
+
+    /// <summary>Distinct from <see cref="HasVolumes"/> being false: while loading there is no answer
+    /// yet, and "no volumes" would be a guess stated as a fact.</summary>
+    public bool ShowEmptyVolumesNote => !VolumesLoading && !HasVolumes;
+
+    public string EmptyVolumesNote { get; } = "No volumes use this class.";
+
+    private async Task LoadVolumesAsync()
+    {
+        VolumesLoading = true;
+        try
+        {
+            var all = await _cluster.ListVolumesAsync();
+
+            Volumes.Clear();
+            foreach (var v in all.Where(v => string.Equals(v.StorageClass, _class.Name, StringComparison.Ordinal)))
+                Volumes.Add(new PersistentVolumeRow(v, _onOpenClaim));
+        }
+        catch (Exception)
+        {
+            // Leave whatever was already showing rather than clearing it — a refresh that failed is
+            // not the same fact as "no volumes use this class".
+        }
+        finally
+        {
+            VolumesLoading = false;
+            OnPropertyChanged(nameof(HasVolumes));
+        }
+    }
+
+    // No pods to a StorageClass — its identity is the provisioning policy, not anything scheduled.
+    // The volumes list above already answers "what does this affect".
+    public override bool ShowPodsTab => false;
+
+    protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) => [];
+    protected override string EmptyPodsReason() => string.Empty;
 }

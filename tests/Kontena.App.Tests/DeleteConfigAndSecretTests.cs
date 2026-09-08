@@ -95,6 +95,6 @@ public sealed class DeleteConfigAndSecretTests
         page.Items.First().DeleteCommand.Execute(null);
         await Task.Delay(20);
 
-        Assert.Equal(3, page.Items.Count);
+        Assert.Equal(4, page.Items.Count);
     }
 }

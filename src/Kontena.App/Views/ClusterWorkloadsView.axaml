@@ -42,7 +42,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:WorkloadRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <Grid ColumnDefinitions="2*,1.2*,Auto,Auto,0.8*,1.3*,0.7*,232">
                                         <!-- Same link affordance the pods grid uses, so the two lists
                                              behave the same way (KON-166). -->

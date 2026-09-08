@@ -78,7 +78,7 @@ public sealed class OnboardingClusterChoiceTests : IDisposable
         // about reaching a socket.
         var vm = new MainWindowViewModel(
             new BackendRegistry([]), store, settings, new FakeUpdateService(),
-            buildCatalog: (_, _, _, _) => []);
+            buildCatalog: (_, _, _, _, _) => []);
 
         await WaitFor(() => vm.IsOnboarding, "the shell never showed the onboarding wizard");
 
@@ -111,7 +111,7 @@ public sealed class OnboardingClusterChoiceTests : IDisposable
 
         var vm = new MainWindowViewModel(
             new BackendRegistry([]), store, settings, new FakeUpdateService(),
-            buildCatalog: (_, _, _, _) => []);
+            buildCatalog: (_, _, _, _, _) => []);
 
         await WaitFor(() => vm.IsOnboarding, "the shell never showed the onboarding wizard");
 
@@ -133,7 +133,7 @@ public sealed class OnboardingClusterChoiceTests : IDisposable
 
         var vm = new MainWindowViewModel(
             new BackendRegistry([]), store, settings, new FakeUpdateService(),
-            buildCatalog: (_, _, _, _) => []);
+            buildCatalog: (_, _, _, _, _) => []);
 
         await WaitFor(() => vm.IsOnboarding, "the shell never showed the onboarding wizard");
 
@@ -188,7 +188,7 @@ public sealed class OnboardingClusterChoiceTests : IDisposable
 
         var vm = new MainWindowViewModel(
             new BackendRegistry([]), store, settings, new FakeUpdateService(),
-            buildCatalog: (_, _, _, shows) => { showsCluster = shows; return []; });
+            buildCatalog: (_, _, _, shows, _) => { showsCluster = shows; return []; });
 
         await WaitFor(() => vm.IsOnboarding, "the shell never showed the onboarding wizard");
 

@@ -308,7 +308,16 @@ public sealed class KubernetesClusterEngine
         }
 
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-        return [.. results.SelectMany(r => r).OrderBy(w => w.Namespace, StringComparer.Ordinal).ThenBy(w => w.Name, StringComparer.Ordinal)];
+        IReadOnlyList<Workload> workloads = [.. results.SelectMany(r => r)];
+
+        // The replica counts cannot tell a workload that is restarting from one that keeps failing;
+        // its pods can (KON-420). Asked afterwards and only when something is off, rather than beside
+        // the five lists above: on a cluster where everything is at its desired count there is no
+        // question to answer, and the pod list is the expensive read on a big one (KON-395).
+        if (workloads.Any(w => w.RolloutStatus == RolloutStatus.Progressing))
+            workloads = K8sMap.WithPodTrouble(workloads, await ListPodsAsync(ns, ct).ConfigureAwait(false));
+
+        return [.. workloads.OrderBy(w => w.Namespace, StringComparer.Ordinal).ThenBy(w => w.Name, StringComparer.Ordinal)];
     }
 
     /// <inheritdoc/>

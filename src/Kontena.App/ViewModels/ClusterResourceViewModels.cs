@@ -72,16 +72,16 @@ public partial class ClusterNodesViewModel : ClusterListPageViewModel<NodeCardRo
     /// <summary>The context the cluster reported, which is what the insecure-kubelet guess reads.</summary>
     private string _context = string.Empty;
 
-    protected override async Task<IReadOnlyList<NodeCardRow>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<NodeCardRow>> LoadRowsAsync(CancellationToken ct)
     {
         // The apiserver version is what a kubelet version means anything against (KON-95): a node is
         // only "behind" relative to its own control plane.
-        var info = await _cluster.GetInfoAsync();
+        var info = await _cluster.GetInfoAsync(ct);
         _context = info is ClusterInfo { Context: { Length: > 0 } context } ? context : string.Empty;
 
         return
         [
-            .. (await _cluster.ListNodesAsync())
+            .. (await _cluster.ListNodesAsync(ct: ct))
                 .Select(n => new NodeCardRow(
                     n, info.Version,
                     canMaintain: _cluster.Capabilities.NodeMaintenance,
@@ -281,8 +281,8 @@ public partial class ClusterNamespacesViewModel : ClusterListPageViewModel<Names
 
     public override string SearchPlaceholder => "Search namespaces…";
 
-    protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListNamespacesAsync()).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
+    protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
 
     protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
 
@@ -303,15 +303,20 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
     private readonly Action<Workload>? _onScale;
     private readonly Action<Workload>? _onRestart;
     private readonly Action<Workload>? _onOpenDetail;
+    private readonly RestartTracker? _restarts;
 
     /// <param name="onOpenDetail">Invoked when a workload row is opened; the shell wires this to the
     /// workload-detail page (KON-166). A constructor parameter rather than an init-property, so it is
     /// set before the fire-and-forget load builds the rows.</param>
     /// <param name="kind">One kind, or null for every kind in one list (KON-169).</param>
+    /// <param name="restarts">The restarts asked for and not yet visible (KON-448). A constructor
+    /// parameter for the same reason as <paramref name="onOpenDetail"/>, and here it is the whole
+    /// point: a restart rebuilds this page, so the very first load is the one that must know.</param>
     public ClusterWorkloadsViewModel(
         IClusterEngine cluster, string? @namespace,
         Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null)
+        Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null,
+        RestartTracker? restarts = null)
         // One kind has a coordinate to follow; the all-kinds page is five kinds at once, and a watch
         // per kind is five streams whose bursts would land out of step with each other.
         : base(
@@ -327,6 +332,7 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         _onRestart = onRestart;
         _onOpenDetail = onOpenDetail;
         _kind = kind;
+        _restarts = restarts;
         _ = LoadAsync();
         StartWatching();
     }
@@ -360,10 +366,15 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         _ => "READY",
     };
 
-    /// <summary>Shown when a kind's page is empty, so it does not look like a failed load.</summary>
-    public string EmptyText => _kind is { } k
-        ? $"No {k}s in this namespace."
-        : "No workloads in this namespace.";
+    /// <summary>
+    /// Shown when a kind's page is empty, so it does not look like a failed load. It names the
+    /// namespace, because a kind keeps its sidebar entry in a namespace that runs none of it
+    /// (KON-414): this line is the only place the user is told that it is the namespace that is empty
+    /// and not the cluster.
+    /// </summary>
+    public string EmptyText =>
+        $"No {_kind?.ToString() ?? "workload"} objects found for "
+        + (_namespace is { } ns ? $"namespace {ns}." : "any namespace.");
 
     /// <summary>Delete a workload, always confirmed (KON-332).</summary>
     private void ConfirmDelete(WorkloadRow row)
@@ -377,9 +388,21 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         });
     }
 
-    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace))
-            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete))];
+    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync(CancellationToken ct)
+    {
+        var workloads = await _cluster.ListWorkloadsAsync(_kind, _namespace, ct);
+
+        // Every load is a fresh reading, so this is where a tracked restart is seen starting and
+        // seen finishing (KON-448). Before the rows, not inside them: a row is a projection, and one
+        // that quietly advanced a state machine while being built would run a different number of
+        // times than there are readings.
+        var now = DateTimeOffset.UtcNow;
+        _restarts?.Observe(workloads, now);
+
+        return [.. workloads.Select(w => new WorkloadRow(
+            w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete,
+            _restarts?.IsRestarting(w.Reference, now) == true))];
+    }
 
     protected override bool Matches(WorkloadRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Kind, term) || Contains(row.Namespace, term);
@@ -437,14 +460,14 @@ public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
 
     protected override bool Include(PodRow row) => PhaseFilter == "All" || row.PhaseRaw.ToString() == PhaseFilter;
 
-    protected override async Task<IReadOnlyList<PodRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListPodsAsync(_namespace)).Select(p => new PodRow(p, _onOpenDetail, _onDelete))];
+    protected override async Task<IReadOnlyList<PodRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListPodsAsync(_namespace, ct)).Select(p => new PodRow(p, _onOpenDetail, _onDelete))];
 
     // Node and status too: "which pods are on worker-2" and "what is CrashLooping" are the two
     // questions a pod list gets asked.
     protected override bool Matches(PodRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
-        || Contains(row.Node, term) || Contains(row.Phase, term);
+        || Contains(row.Node, term) || Contains(row.Phase, term) || Contains(row.StatusLine, term);
 
     protected override IReadOnlyDictionary<string, Func<PodRow, IComparable>> SortColumns { get; } =
         new Dictionary<string, Func<PodRow, IComparable>>(StringComparer.Ordinal)
@@ -452,7 +475,7 @@ public partial class ClusterPodsViewModel : ClusterListPageViewModel<PodRow>
             ["NAME"] = r => r.Name,
             ["NAMESPACE"] = r => r.Namespace,
             ["READY"] = r => r.ReadyRaw,
-            ["STATUS"] = r => r.Phase,
+            ["STATUS"] = r => r.StatusLine,
             ["RESTARTS"] = r => r.RestartsRaw,
             ["NODE"] = r => r.Node,
             ["AGE"] = r => r.AgeSpan,
@@ -495,8 +518,8 @@ public partial class ClusterServicesViewModel : ClusterListPageViewModel<Service
         });
     }
 
-    protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListServicesAsync(_namespace))
+    protected override async Task<IReadOnlyList<ServiceRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListServicesAsync(_namespace, ct))
             .Select(s => new ServiceRow(s, _onForward, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(ServiceRow row, string term) =>
@@ -543,8 +566,8 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
         });
     }
 
-    protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListIngressesAsync(_namespace)).Select(i => new IngressRow(i, ConfirmDelete))];
+    protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete))];
 
     // The host is the thing you know: someone reports that app.example.com is down and the ingress is
     // what you go looking for. The class matters when a cluster runs more than one controller.
@@ -591,8 +614,8 @@ public partial class ClusterPvcsViewModel : ClusterListPageViewModel<PvcRow>
 
     public override string SearchPlaceholder => "Search volume claims…";
 
-    protected override async Task<IReadOnlyList<PvcRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListPvcsAsync(_namespace)).Select(p => new PvcRow(p, _onOpenVolume, _onOpenClass))];
+    protected override async Task<IReadOnlyList<PvcRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListPvcsAsync(_namespace, ct)).Select(p => new PvcRow(p, _onOpenVolume, _onOpenClass))];
 
     // Status and storage class as well: "what is still Pending" and "what is on the slow class" are
     // the two questions a claim list gets asked.
@@ -634,8 +657,8 @@ public partial class ClusterVolumesViewModel : ClusterListPageViewModel<Persiste
 
     public override string SearchPlaceholder => "Search volumes…";
 
-    protected override async Task<IReadOnlyList<PersistentVolumeRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListVolumesAsync()).Select(v => new PersistentVolumeRow(v, _onOpenClaim, _onOpenClass))];
+    protected override async Task<IReadOnlyList<PersistentVolumeRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListVolumesAsync(ct)).Select(v => new PersistentVolumeRow(v, _onOpenClaim, _onOpenClass))];
 
     // The claim as well: you arrive here from a claim far more often than you arrive at a volume by
     // its generated name, which nobody has ever typed on purpose.
@@ -661,19 +684,35 @@ public partial class ClusterVolumesViewModel : ClusterListPageViewModel<Persiste
 public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<StorageClassRow>
 {
     private readonly IClusterEngine _cluster;
+    private readonly Action<string>? _onOpenVolumes;
+    private readonly Action<StorageClass>? _onOpenDetail;
 
-    public ClusterStorageClassesViewModel(IClusterEngine cluster)
+    /// <param name="onOpenVolumes">Route to the volumes provisioned by this class (KON-445) — the
+    /// reverse of <see cref="PersistentVolumeRow.OpenClass"/>.</param>
+    /// <param name="onOpenDetail">Opens the class's own detail page (KON-445).</param>
+    public ClusterStorageClassesViewModel(
+        IClusterEngine cluster, Action<string>? onOpenVolumes = null,
+        Action<StorageClass>? onOpenDetail = null)
         : base(cluster, GroupVersionKind.StorageClass, null)
     {
         _cluster = cluster;
+        _onOpenVolumes = onOpenVolumes;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
         StartWatching();
     }
 
     public override string SearchPlaceholder => "Search storage classes…";
 
-    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync() =>
-        [.. (await _cluster.ListStorageClassesAsync()).Select(c => new StorageClassRow(c))];
+    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync(CancellationToken ct)
+    {
+        var classes = await _cluster.ListStorageClassesAsync(ct);
+        var volumes = await _cluster.ListVolumesAsync(ct);
+        var volumeCounts = volumes.CountBy(v => v.StorageClass).ToDictionary(StringComparer.Ordinal);
+
+        return [.. classes.Select(c =>
+            new StorageClassRow(c, volumeCounts.GetValueOrDefault(c.Name), _onOpenVolumes, _onOpenDetail))];
+    }
 
     protected override bool Matches(StorageClassRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Provisioner, term);
@@ -683,6 +722,7 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
         {
             ["NAME"] = r => r.Name,
             ["PROVISIONER"] = r => r.Provisioner,
+            ["VOLUMES"] = r => r.VolumeCount,
             ["RECLAIM"] = r => r.Reclaim,
             ["AGE"] = r => r.AgeSpan,
         };
@@ -944,11 +984,27 @@ public sealed partial class PersistentVolumeRow
     private void OpenClass() => _onOpenClass?.Invoke(StorageClass);
 }
 
-public sealed class StorageClassRow
+public sealed partial class StorageClassRow
 {
-    public StorageClassRow(StorageClass c)
+    private readonly StorageClass _class;
+    private readonly Action<string>? _onOpenVolumes;
+    private readonly Action<StorageClass>? _onOpenDetail;
+
+    /// <param name="volumeCount">How many PersistentVolumes this class provisioned (KON-445).</param>
+    /// <param name="onOpenVolumes">Route to those volumes, filtered to this class — the reverse of
+    /// <see cref="PersistentVolumeRow.OpenClass"/>.</param>
+    /// <param name="onOpenDetail">Opens the class's own detail page (KON-445) — the list answers "what
+    /// would provision here", the detail answers it in full plus the YAML and events.</param>
+    public StorageClassRow(
+        StorageClass c, int volumeCount, Action<string>? onOpenVolumes = null,
+        Action<StorageClass>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(c);
+
+        _class = c;
+        _onOpenVolumes = onOpenVolumes;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
 
         Name = c.Name;
         Provisioner = string.IsNullOrEmpty(c.Provisioner) ? "—" : c.Provisioner;
@@ -956,6 +1012,10 @@ public sealed class StorageClassRow
         IsDefault = c.IsDefault;
         Expansion = c.AllowsExpansion ? "Yes" : "No";
         Age = Format.Duration(c.Age);
+
+        VolumeCount = volumeCount;
+        VolumeCountLabel = volumeCount == 1 ? "1 volume" : $"{volumeCount} volumes";
+        CanOpenVolumes = onOpenVolumes is not null;
 
         // Said as a sentence rather than as the API's word. "WaitForFirstConsumer" is the single most
         // common reason someone thinks their storage is broken when it is working exactly as designed,
@@ -990,6 +1050,19 @@ public sealed class StorageClassRow
     public string NoProvisionerDetail { get; } =
         "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
         + " creates by hand.";
+
+    public int VolumeCount { get; }
+    public string VolumeCountLabel { get; }
+    public bool CanOpenVolumes { get; }
+
+    [RelayCommand]
+    private void OpenVolumes() => _onOpenVolumes?.Invoke(Name);
+
+    /// <summary>Whether the shell wired a detail page to arrive at (KON-445).</summary>
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_class);
 }
 
 
@@ -1166,9 +1239,13 @@ public sealed partial class WorkloadRow
     private readonly Action<Workload>? _onOpenDetail;
     private readonly Action<WorkloadRow>? _onDelete;
 
+    /// <param name="restarting">Whether a restart was asked for here and the cluster has not shown it
+    /// yet (KON-448) — see <see cref="RestartTracker"/>. The row would otherwise read back the same
+    /// green "Complete" it showed before the click.</param>
     public WorkloadRow(
         Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null)
+        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null,
+        bool restarting = false)
     {
         _workload = w;
         _onScale = onScale;
@@ -1184,18 +1261,19 @@ public sealed partial class WorkloadRow
         Kind = w.Kind.ToString();
         Ready = w.Kind == WorkloadKind.CronJob ? "—" : $"{w.Ready}/{w.Desired}";
         Schedule = w.Schedule.Length == 0 ? "—" : w.Schedule;
-        Status = w.RolloutStatus.ToString();
+        Status = restarting ? RestartTracker.Restarting : w.RolloutStatus.ToString();
         Age = Format.Duration(w.Age);
         AgeSpan = w.Age;
         CanScale = w.IsScalable;
         CanRestart = w.Kind is WorkloadKind.Deployment or WorkloadKind.StatefulSet or WorkloadKind.DaemonSet;
-        StatusBrush = new SolidColorBrush(Color.Parse(w.RolloutStatus switch
-        {
-            RolloutStatus.Complete => "#34D399",
-            RolloutStatus.Progressing => "#F5B14C",
-            RolloutStatus.Degraded => "#F87171",
-            _ => "#5C6675",
-        }));
+        StatusBrush = new SolidColorBrush(Color.Parse(
+            restarting ? RestartTracker.RestartingColour : w.RolloutStatus switch
+            {
+                RolloutStatus.Complete => "#34D399",
+                RolloutStatus.Progressing => "#F5B14C",
+                RolloutStatus.Degraded => "#F87171",
+                _ => "#5C6675",
+            }));
     }
 
     public string Name { get; }
@@ -1262,8 +1340,16 @@ public sealed partial class PodRow
         // pod starting up and one wedged on its first init container (KON-168).
         Phase = p.StatusText;
         PhaseRaw = p.Phase;
+        // What the STATUS cell actually reads. A pod whose container is in CrashLoopBackOff has phase
+        // Running, so the phase alone is the one thing that does not mention the problem (KON-415).
+        Trouble = WorkloadTrouble.DescribePod(p);
+        StatusLine = Trouble ?? Phase;
         Restarts = p.Restarts.ToString(System.Globalization.CultureInfo.InvariantCulture);
         RestartsRaw = p.Restarts;
+        RestartedOften = WorkloadTrouble.RestartedOften(p);
+        // Only when nothing is wrong. A crash-looping pod has restarted plenty too, and telling it it
+        // is "running normally" would contradict the washed red row it is sitting on.
+        RestartsTip = RestartedOften && Trouble is null ? Format.RestartsTip(p) : null;
         ReadyRaw = p.ReadyContainers;
         Node = string.IsNullOrEmpty(p.Node) ? "—" : p.Node;
         Age = Format.Duration(p.Age);
@@ -1287,7 +1373,25 @@ public sealed partial class PodRow
     /// the "Init:0/2" detail this does not need.</summary>
     public PodPhase PhaseRaw { get; }
 
+    /// <summary>What is wrong with this pod, or null when nothing is (KON-415).</summary>
+    public string? Trouble { get; }
+
+    /// <summary>Whether the row should be marked as needing attention — wash, icon and red text
+    /// together, because colour on its own is not a signal everyone gets.</summary>
+    public bool HasTrouble => Trouble is not null;
+
+    /// <summary>The STATUS cell's text: the trouble when there is one, the phase otherwise.</summary>
+    public string StatusLine { get; }
+
     public string Restarts { get; }
+
+    /// <summary>Whether the RESTARTS cell should stand out (KON-442). A count is not trouble — the
+    /// status stays a green dot and "Running" — but eight restarts and one are not the same news.</summary>
+    public bool RestartedOften { get; }
+
+    /// <summary>Says in words what the amber count means, for whoever the colour does not reach.</summary>
+    public string? RestartsTip { get; }
+
     public string Node { get; }
     public string Age { get; }
     public IBrush StatusBrush { get; }
@@ -1298,6 +1402,18 @@ public sealed partial class PodRow
 
     public int RestartsRaw { get; }
     public TimeSpan AgeSpan { get; }
+
+    /// <summary>
+    /// Whether this pod was created moments ago (KON-448) — what makes a rollout legible on the pods
+    /// tab: the replacements arrive marked, so "these are the new ones" is something you can see
+    /// rather than something you work out from six ages in a column.
+    /// <para>
+    /// Read off <see cref="Pod.Age"/>, which the row already carried. No diff against a previous
+    /// listing, no per-row bookkeeping: the pod itself knows how old it is, and a fifteen-second
+    /// window is short enough that nothing but a genuinely new pod falls inside it.
+    /// </para>
+    /// </summary>
+    public bool IsRecentlyCreated => AgeSpan < TimeSpan.FromSeconds(15);
 
     /// <summary>Whether the shell wired a delete handler (KON-69).</summary>
     public bool CanDelete { get; }
@@ -1321,7 +1437,7 @@ public sealed partial class PodRow
     /// </para>
     /// </summary>
     private string Signature =>
-        string.Join('\u001f', Name, Namespace, Ready, Phase, Restarts, Node, Age);
+        string.Join('\u001f', Name, Namespace, Ready, StatusLine, Restarts, Node, Age);
 
     public override bool Equals(object? obj) =>
         obj is PodRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);

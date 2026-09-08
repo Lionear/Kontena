@@ -1,5 +1,9 @@
+using Kontena.App.Services;
 using Kontena.App.ViewModels;
+using Kontena.Core.Models;
 using Kontena.Core.Orchestration.Fakes;
+using Kontena.Engines;
+using Kontena.Sdk;
 using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.Tests;
@@ -16,9 +20,15 @@ namespace Kontena.App.Tests;
 /// </summary>
 public sealed class SearchSurvivesActionTests
 {
-    private static async Task<MainWindowViewModel> ClusterShellAsync(string page)
+    private static async Task<MainWindowViewModel> ClusterShellAsync(string page, SettingsStore? store = null)
     {
-        var shell = new MainWindowViewModel { SearchDebounce = TimeSpan.Zero };
+        var shell = store is null
+            ? new MainWindowViewModel { SearchDebounce = TimeSpan.Zero }
+            : new MainWindowViewModel(new BackendRegistry([]), store, store.Load(), new FakeUpdateService())
+            {
+                SearchDebounce = TimeSpan.Zero,
+            };
+
         Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
 
         shell.NavigateCommand.Execute(page);
@@ -50,9 +60,9 @@ public sealed class SearchSurvivesActionTests
     }
 
     /// <summary>The deployments page, filtered down to the single row named "redis".</summary>
-    private static async Task<MainWindowViewModel> OneDeploymentAsync()
+    private static async Task<MainWindowViewModel> OneDeploymentAsync(SettingsStore? store = null)
     {
-        var shell = await ClusterShellAsync(WorkloadNavGroups.KeyFor(WorkloadKind.Deployment));
+        var shell = await ClusterShellAsync(WorkloadNavGroups.KeyFor(WorkloadKind.Deployment), store);
 
         shell.SearchText = "redis";
 
@@ -134,5 +144,41 @@ public sealed class SearchSurvivesActionTests
 
         Assert.Equal(string.Empty, shell.SearchText);
         Assert.Equal(string.Empty, Assert.IsType<ClusterPodsViewModel>(shell.CurrentPage).SearchText);
+    }
+
+    /// <summary>
+    /// The other side of the setting, and the reason the test above is now an answer about Kontena
+    /// rather than about the machine (KON-433). Both shells here are told what
+    /// <c>ShareSearchAcrossResources</c> is: this one by the store it is handed, the one above by the
+    /// empty temp file <see cref="SettingsSandbox"/> points the default store at.
+    /// </summary>
+    [Fact]
+    public async Task Navigating_somewhere_else_carries_it_when_sharing_is_on()
+    {
+        var store = new SettingsStore(
+            Path.Combine(Path.GetTempPath(), "kontena-share-" + Guid.NewGuid().ToString("N"), "settings.json"));
+        store.Save(new KontenaSettings { ShareSearchAcrossResources = true });
+
+        var shell = await OneDeploymentAsync(store);
+
+        shell.NavigateCommand.Execute("pods");
+        await LoadedAsync(shell);
+
+        Assert.Equal("redis", shell.SearchText);
+        Assert.Equal("redis", Assert.IsType<ClusterPodsViewModel>(shell.CurrentPage).SearchText);
+    }
+
+    /// <summary>
+    /// What the two tests above rest on: a store built the way the shell builds its own is not the
+    /// user's. Read through <see cref="SettingsStore.QuarantinePath"/>, which is the file path plus a
+    /// suffix — no need for a second way in just to check where the first one points.
+    /// </summary>
+    [Fact]
+    public void The_default_store_does_not_point_at_the_real_settings()
+    {
+        var path = new SettingsStore().QuarantinePath;
+
+        Assert.StartsWith(Path.GetTempPath(), path);
+        Assert.DoesNotContain(ProductInfo.DataDirectory, path);
     }
 }

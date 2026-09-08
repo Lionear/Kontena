@@ -55,6 +55,18 @@ public sealed record KontenaSettings
     public bool AutoDetectEngines { get; init; } = true;
 
     /// <summary>
+    /// Whether one search term is shared by every resource type in a connection, instead of each
+    /// keeping its own (KON-426).
+    /// <para>
+    /// Off by default. Remembering per resource type is what a search box on a list is expected to
+    /// do: the term you left on Pods is about pods. Carrying it across is the other useful reading —
+    /// one name, followed through pods, deployments and services — but it is a way of working rather
+    /// than the obvious behaviour, so it is asked for rather than assumed.
+    /// </para>
+    /// </summary>
+    public bool ShareSearchAcrossResources { get; init; }
+
+    /// <summary>
     /// Legacy: the engine to activate on launch, from before clusters existed and before "last
     /// used" was an option. Superseded by <see cref="Startup"/> and <see cref="PinnedBackend"/>,
     /// and only read now to carry an existing choice forward — see <see cref="ResolvedStartup"/>.
@@ -243,6 +255,39 @@ public sealed record KontenaSettings
 
     private static string PluginKey(string id, string version, string sha256) =>
         $"{id}@{version}#{sha256}";
+
+    /// <summary>
+    /// Adapters the user switched off in Settings › Extensions, by adapter id (KON-283). Not everyone
+    /// needs Kubernetes, and an adapter nobody uses still costs a probe on every launch and a group in
+    /// the switcher.
+    /// <para>
+    /// Deviations only, following <see cref="Shortcuts"/> and <see cref="ContainerGrouping"/>: absent
+    /// means on. Writing every adapter out would freeze today's set into every installation, so an
+    /// adapter added in a later release would arrive switched off for everyone who had ever opened this
+    /// page — which is the opposite of what not listing it means.
+    /// </para>
+    /// <para>
+    /// Distinct from <see cref="AllowedPlugins"/>, which answers whether a plugin may run at all. This
+    /// answers whether an adapter the user already trusts should be offered, and the two are not the
+    /// same question: switching Docker off is a preference, and there was never a consent step for it.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> DisabledAdapters { get; init; } = [];
+
+    /// <summary>Whether this adapter should be offered. Unknown ids are enabled — see above.</summary>
+    public bool IsAdapterEnabled(string id) =>
+        !DisabledAdapters.Contains(id, StringComparer.Ordinal);
+
+    /// <summary>Switch an adapter on or off, storing nothing for the on case.</summary>
+    public KontenaSettings WithAdapterEnabled(string id, bool enabled) =>
+        enabled == IsAdapterEnabled(id)
+            ? this
+            : this with
+            {
+                DisabledAdapters = enabled
+                    ? [.. DisabledAdapters.Where(entry => !string.Equals(entry, id, StringComparison.Ordinal))]
+                    : [.. DisabledAdapters, id],
+            };
 
     /// <summary>
     /// Kubeconfig credential commands the user has agreed to run, as <c>"&lt;context&gt;#&lt;command&gt;"</c>

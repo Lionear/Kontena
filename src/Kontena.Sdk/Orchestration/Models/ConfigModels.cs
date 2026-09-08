@@ -47,7 +47,62 @@ public sealed record SecretSummary
 
     public IReadOnlyList<ConfigKey> Keys { get; init; } = [];
 
+    /// <summary>
+    /// The Secret's labels, which are how a controller says it owns this object (KON-422).
+    /// <para>
+    /// Carried on the listing rather than fetched per row: whether a secret can be edited has to be
+    /// answerable without a second call, and it is the same one call that already returns everything
+    /// else the page shows.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Labels { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
     public TimeSpan Age { get; init; }
+}
+
+/// <summary>
+/// Whether something other than a person keeps a Secret's contents up to date (KON-422).
+/// <para>
+/// Editing such a Secret by hand is not forbidden — the apiserver takes the write — it is simply
+/// pointless: the controller reconciles it back, on its own schedule, and the person who typed the
+/// new value is left believing it took. So the editor asks this before offering itself.
+/// </para>
+/// </summary>
+public static class ManagedSecrets
+{
+    /// <summary>
+    /// The label the External Secrets Operator puts on <b>every</b> Secret it manages, whatever the
+    /// ExternalSecret's <c>creationPolicy</c> is.
+    /// <para>
+    /// This, rather than the ownerReference: ESO only sets an owner under <c>creationPolicy: Owner</c>
+    /// — the default, but <c>Orphan</c>, <c>Merge</c> and <c>CreateOrMerge</c> all leave the Secret
+    /// unowned while ESO goes on rewriting its keys. The narrower signal would have called exactly
+    /// the reconciled-but-unowned Secrets editable.
+    /// </para>
+    /// <para>
+    /// Named <c>LabelManaged</c> in ESO's own API package, with the comment "all secrets managed by
+    /// an ExternalSecret will have this label equal to true":
+    /// <c>apis/externalsecrets/v1/externalsecret_types.go</c>.
+    /// </para>
+    /// </summary>
+    public const string ExternalSecretsLabel = "reconcile.external-secrets.io/managed";
+
+    /// <summary>The only value ESO writes for it — <c>LabelManagedValue</c>.</summary>
+    public const string ExternalSecretsLabelValue = "true";
+
+    /// <summary>
+    /// Whether the External Secrets Operator reconciles this Secret.
+    /// <para>
+    /// The value is checked, not just the key: a label someone set to "false" by hand is a statement
+    /// that it is not managed, and reading any value as "yes" would make the label impossible to
+    /// turn off.
+    /// </para>
+    /// </summary>
+    public static bool IsExternallyManaged(IReadOnlyDictionary<string, string>? labels) =>
+        labels is not null
+        && labels.TryGetValue(ExternalSecretsLabel, out var value)
+        && string.Equals(value, ExternalSecretsLabelValue, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

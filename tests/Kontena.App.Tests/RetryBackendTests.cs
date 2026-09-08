@@ -46,7 +46,7 @@ public sealed class RetryBackendTests : IDisposable
 
         var vm = new MainWindowViewModel(
             new BackendRegistry([steady, flaky]), store, settings,
-            new FakeUpdateService(), buildCatalog: (_, _, _, _) => []);
+            new FakeUpdateService(), buildCatalog: (_, _, _, _, _) => []);
 
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (!vm.IsReady && DateTime.UtcNow < deadline)

@@ -137,6 +137,71 @@ public sealed class HostShellTests
         Assert.Contains("alias k=kubectl", plan.SupportFiles["kontena.shrc"], StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The PATH a login shell would have built, for a session started from an app that inherited
+    /// launchd's bare one (KON-423). Asserted against <c>/etc/paths</c> itself rather than a list
+    /// spelled out here: what a login shell gets is whatever that file says, per machine.
+    /// </summary>
+    [Fact]
+    public void On_macos_a_plan_carries_the_path_a_login_shell_would_have_built()
+    {
+        if (!OperatingSystem.IsMacOS())
+            return;
+
+        // What launchd hands a GUI app, which is where this bug starts.
+        var plan = HostShell.Plan(
+            "/bin/zsh", "/tmp/session", NoEnvironment,
+            name => name == "PATH" ? "/usr/bin:/bin:/usr/sbin:/sbin" : null);
+
+        var directories = plan.Environment["PATH"].Split(':');
+
+        foreach (var expected in File.ReadAllLines("/etc/paths").Where(l => l.Trim().Length > 0))
+            Assert.Contains(expected.Trim(), directories);
+
+        // Not in /etc/paths.d on an Apple Silicon install: it arrives through ~/.zprofile instead.
+        Assert.Contains("/opt/homebrew/bin", directories);
+
+        // Whatever the session already had keeps its order — an override the user arranged is one
+        // they meant, and a login shell's own directories are additions, not a replacement.
+        Assert.Equal("/usr/bin", directories[0]);
+    }
+
+    /// <summary>
+    /// Every family gets the PATH, including the unknown one that is started with no arguments at all.
+    /// That is the reason it goes in the environment rather than into each generated rcfile.
+    /// </summary>
+    [Theory]
+    [InlineData("/bin/bash")]
+    [InlineData("/bin/sh")]
+    [InlineData("/usr/bin/zsh")]
+    [InlineData("/usr/bin/fish")]
+    [InlineData("/usr/local/bin/pwsh")]
+    [InlineData("/usr/bin/nushell")]
+    public void On_macos_every_family_gets_it(string executable)
+    {
+        if (!OperatingSystem.IsMacOS())
+            return;
+
+        var plan = HostShell.Plan(executable, "/tmp/session", NoEnvironment, _ => null);
+
+        Assert.Contains("/opt/homebrew/bin", plan.Environment["PATH"].Split(':'));
+    }
+
+    /// <summary>
+    /// Elsewhere PATH is left alone: a Linux or Windows desktop session inherits one that was already
+    /// built for it, and rewriting it would be this fix causing the problem it was meant to solve.
+    /// </summary>
+    [Fact]
+    public void Off_macos_the_path_is_left_as_the_session_found_it()
+    {
+        if (OperatingSystem.IsMacOS())
+            return;
+
+        var plan = HostShell.Plan("/bin/bash", "/tmp/session", NoEnvironment, _ => "/usr/bin:/bin");
+
+        Assert.False(plan.Environment.ContainsKey("PATH"));
+    }
+
     [Fact]
     public void The_shell_comes_from_the_environment()
     {

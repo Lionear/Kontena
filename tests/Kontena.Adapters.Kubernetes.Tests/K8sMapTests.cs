@@ -313,6 +313,44 @@ public class K8sMapTests
     }
 
     [Fact]
+    public void When_the_previous_run_ended_is_the_moment_the_container_restarted()
+    {
+        // The same lastState carries the time, and it is the only restart timing a plain listing has
+        // (KON-443) — which is what lets a row say "most recently 4 min ago" instead of only "8 times".
+        var ended = new DateTime(2026, 9, 2, 10, 15, 0, DateTimeKind.Utc);
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].LastState = new V1ContainerState
+        {
+            Terminated = new V1ContainerStateTerminated { Reason = "Error", FinishedAt = ended },
+        };
+
+        var pod = K8sMap.ToPod(source);
+
+        Assert.Equal(ended, pod.InitContainers[1].LastTerminationTime?.UtcDateTime);
+
+        // And the pod answers for its containers: the row asks the pod, not each container in turn.
+        Assert.Equal(ended, pod.LastRestart?.UtcDateTime);
+    }
+
+    [Fact]
+    public void A_container_that_never_ran_before_has_no_restart_time()
+    {
+        // "Never" arrives from Kubernetes as 0001-01-01, and converting that one directly throws east
+        // of UTC — the crash KON-160 closed. Null is the honest answer, and default(DateTimeOffset)
+        // would be a restart at the beginning of time.
+        var source = InitialisingPod();
+        source.Status.InitContainerStatuses[1].LastState = new V1ContainerState
+        {
+            Terminated = new V1ContainerStateTerminated { Reason = "Error", FinishedAt = default(DateTime) },
+        };
+
+        var pod = K8sMap.ToPod(source);
+
+        Assert.Null(pod.InitContainers[1].LastTerminationTime);
+        Assert.Null(pod.LastRestart);
+    }
+
+    [Fact]
     public void A_declared_memory_limit_reaches_the_container_status()
     {
         var source = InitialisingPod();
@@ -389,6 +427,24 @@ public class K8sMapTests
         Assert.Empty(K8sMap.ToPod(Pod()).ControlledBy);
     }
 
+    [Fact]
+    public void Pod_has_no_cluster_dns_name_without_a_hostname_and_subdomain()
+    {
+        // Most pods are reachable only by IP — this is the common case.
+        Assert.Empty(K8sMap.ToPod(Pod()).ClusterDnsName);
+    }
+
+    [Fact]
+    public void Pod_with_hostname_and_subdomain_resolves_the_statefulset_pattern()
+    {
+        // Kubernetes fills both fields in automatically for a StatefulSet's pods.
+        var source = Pod();
+        source.Spec.Hostname = "db-0";
+        source.Spec.Subdomain = "db-headless";
+
+        Assert.Equal("db-0.db-headless.app.svc.cluster.local", K8sMap.ToPod(source).ClusterDnsName);
+    }
+
     // ── Workloads ────────────────────────────────────────────────────────────
 
     private static V1Deployment Deployment(int desired, int ready, int updated) => new()
@@ -410,12 +466,97 @@ public class K8sMapTests
     [InlineData(3, 3, 3, RolloutStatus.Complete)]
     [InlineData(3, 2, 2, RolloutStatus.Progressing)]
     [InlineData(3, 3, 1, RolloutStatus.Progressing)]
-    [InlineData(3, 0, 0, RolloutStatus.Degraded)]
+    // Zero ready is not degraded, it is not-there-yet (KON-420). A one-replica Deployment reads
+    // exactly like this for the couple of seconds a restart takes, and it used to answer Degraded.
+    [InlineData(3, 0, 0, RolloutStatus.Progressing)]
+    [InlineData(1, 0, 1, RolloutStatus.Progressing)]
     [InlineData(0, 0, 0, RolloutStatus.Paused)]
     public void Deployment_rollout_status_follows_the_replica_counts(
         int desired, int ready, int updated, RolloutStatus expected)
     {
         Assert.Equal(expected, K8sMap.ToWorkload(Deployment(desired, ready, updated)).RolloutStatus);
+    }
+
+    // ── Rollout status, once the pods have their say (KON-420) ───────────────
+
+    /// <summary>A pod of <paramref name="owner"/> with one container waiting on <paramref name="waitingOn"/>.</summary>
+    private static Pod OwnedPod(string owner, string waitingOn, bool init = false)
+    {
+        ContainerStatus[] waiting =
+            [new ContainerStatus { Name = "api", RunState = ContainerRunState.Waiting, Reason = waitingOn }];
+
+        return new Pod
+        {
+            Name = "pod-1",
+            Namespace = "app",
+            Phase = PodPhase.Running,
+            ControlledBy = owner,
+            Containers = init ? [new ContainerStatus { Name = "api" }] : waiting,
+            InitContainers = init ? waiting : [],
+        };
+    }
+
+    [Theory]
+    [InlineData("CrashLoopBackOff")]
+    [InlineData("ImagePullBackOff")]
+    [InlineData("ErrImagePull")]
+    [InlineData("CreateContainerError")]
+    public void A_workload_whose_pod_keeps_failing_is_degraded(string reason)
+    {
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/api", reason)]);
+
+        Assert.Equal(RolloutStatus.Degraded, workloads[0].RolloutStatus);
+    }
+
+    [Fact]
+    public void An_init_container_that_keeps_failing_degrades_the_workload_too()
+    {
+        // The pod reads as Running with its app container merely not started, so the app containers
+        // alone would call this an ordinary wait.
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/api", "CrashLoopBackOff", init: true)]);
+
+        Assert.Equal(RolloutStatus.Degraded, workloads[0].RolloutStatus);
+    }
+
+    [Theory]
+    // A pod restarting: waiting, but on nothing that says it will keep failing.
+    [InlineData("ContainerCreating")]
+    [InlineData("PodInitializing")]
+    public void A_workload_whose_pod_is_merely_coming_up_stays_progressing(string reason)
+    {
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/api", reason)]);
+
+        Assert.Equal(RolloutStatus.Progressing, workloads[0].RolloutStatus);
+    }
+
+    [Fact]
+    public void Someone_elses_failing_pod_does_not_degrade_this_workload()
+    {
+        // Same namespace, same shape of trouble, different owner — the one mistake a looser match
+        // would make, and the one that would put a red row next to the wrong name.
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 0, 1))],
+            [OwnedPod("Deployment/redis", "CrashLoopBackOff")]);
+
+        Assert.Equal(RolloutStatus.Progressing, workloads[0].RolloutStatus);
+    }
+
+    [Fact]
+    public void A_workload_at_its_desired_count_is_never_degraded_by_a_pod()
+    {
+        // Only Progressing is ever upgraded: a leftover pod from the previous revision must not turn
+        // a finished rollout red.
+        var workloads = K8sMap.WithPodTrouble(
+            [K8sMap.ToWorkload(Deployment(1, 1, 1))],
+            [OwnedPod("Deployment/api", "CrashLoopBackOff")]);
+
+        Assert.Equal(RolloutStatus.Complete, workloads[0].RolloutStatus);
     }
 
     [Fact]
@@ -572,6 +713,14 @@ public class K8sMapTests
         Assert.Equal(8080, port.TargetPort);
         Assert.Equal(31080, port.NodePort);
         Assert.Equal("TCP", port.Protocol);
+    }
+
+    [Fact]
+    public void Service_always_gets_a_predictable_cluster_dns_name()
+    {
+        // Every service type resolves the same way, headless included.
+        Assert.Equal("web.app.svc.cluster.local", K8sMap.ToService(Service("ClusterIP", "10.0.0.5")).ClusterDnsName);
+        Assert.Equal("web.app.svc.cluster.local", K8sMap.ToService(Service("ClusterIP", "None")).ClusterDnsName);
     }
 
     // ── Quantities ───────────────────────────────────────────────────────────

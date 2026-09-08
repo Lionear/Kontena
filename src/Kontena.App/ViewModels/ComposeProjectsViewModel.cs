@@ -48,9 +48,9 @@ public partial class ComposeProjectsViewModel : ListPageViewModel<ComposeProject
 
     [ObservableProperty] private string _summary = string.Empty;
 
-    protected override async Task<IReadOnlyList<ComposeProjectViewModel>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<ComposeProjectViewModel>> LoadRowsAsync(CancellationToken ct)
     {
-        var containers = await _engine.ListContainersAsync();
+        var containers = await _engine.ListContainersAsync(ct: ct);
 
         List<ComposeProjectViewModel> projects = [.. containers
             .Where(c => c.Labels.ContainsKey(ProjectLabel))

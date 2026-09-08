@@ -38,6 +38,12 @@ public sealed class NerdctlPlugin(IToolRunner runner) : IEnginePlugin
         // Kept in sync with Directory.Build.props' <Version> by hand: the SDK does not (yet) publish
         // its own version at runtime for a plugin to read (KON-141 built against SDK 0.4.0).
         MinSdkVersion = "0.4.0",
+        Backends = [BackendKind.Engine],
+
+        // The CLI this whole plugin is (KON-438). Declaring it is what gets it onto Settings › Tools
+        // with the host's own detection — until now the only place nerdctl's absence showed up was an
+        // empty backend list, which reads as "nothing here" rather than "install nerdctl".
+        Tools = [NerdctlTool.Definition],
     };
 
     /// <summary>One provider per containerd namespace — see <see cref="NerdctlEngineProvider.DiscoverAll"/>

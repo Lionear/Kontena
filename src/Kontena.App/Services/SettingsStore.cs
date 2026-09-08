@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Core.Models;
 
@@ -17,33 +18,104 @@ public sealed class SettingsStore
 
     private readonly string _path;
 
+    // Null in the app; a temp file for the rest of a test run — see RedirectToTempForTests.
+    private static string? _testPath;
+
     public SettingsStore()
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Lionear", "Kontena");
-        _path = Path.Combine(dir, "settings.json");
+        _path = _testPath ?? Path.Combine(ProductInfo.DataDirectory, "settings.json");
     }
 
     /// <summary>A store over a specific file. For tests, which must not touch the real settings.</summary>
     internal SettingsStore(string path) => _path = path;
 
+    /// <summary>
+    /// Points every store built by the parameterless constructor at a fresh temp file for the rest of
+    /// this process. A test assembly calls this once, from a module initializer (KON-433).
+    /// <para>
+    /// The store already takes a path, but the shell forms the tests reach for most —
+    /// <c>new MainWindowViewModel()</c> and <c>new MainWindowViewModel { … }</c>, some twenty test
+    /// classes — build a store of their own, and so read the settings of whoever runs the suite.
+    /// That made the outcome depend on what that person had once clicked in Settings: with
+    /// <c>ShareSearchAcrossResources</c> on, navigating carries the search term and
+    /// <c>SearchSurvivesActionTests</c> fails on a Release profile while CI, which has no settings
+    /// file at all, stays green. The default is the one place all those forms route through — the
+    /// alternative was a constructor argument in twenty files, with nothing to stop the
+    /// twenty-first.
+    /// </para>
+    /// </summary>
+    internal static void RedirectToTempForTests()
+    {
+        var directory = Directory.CreateTempSubdirectory("kontena-tests-");
+        _testPath = Path.Combine(directory.FullName, "settings.json");
+
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try
+            {
+                directory.Delete(recursive: true);
+            }
+            catch (Exception)
+            {
+                // An empty directory left under the temp dir is not worth failing a test run over.
+            }
+        };
+    }
+
+    /// <summary>Where <see cref="Load"/> puts a copy of a file it could not read.</summary>
+    public string QuarantinePath => _path + ".corrupt";
+
+    /// <summary>
+    /// Why the last <see cref="Load"/> could not read the file, or <c>null</c> if it read fine (KON-432).
+    /// Whoever asks can say so; nothing here does, because the load that matters happens before there is
+    /// a window to say it in.
+    /// </summary>
+    public string? LastLoadError { get; private set; }
+
     public KontenaSettings Load()
     {
+        LastLoadError = null;
+
         try
         {
             if (File.Exists(_path))
             {
                 var json = File.ReadAllText(_path);
-                return JsonSerializer.Deserialize<KontenaSettings>(json, Options) ?? new KontenaSettings();
+                return JsonSerializer.Deserialize<KontenaSettings>(json, Options)
+                    ?? throw new JsonException("The settings file holds no object.");
             }
         }
-        catch
+        catch (Exception e)
         {
-            // Corrupt or unreadable file — fall back to defaults rather than crash.
+            // Defaults rather than crash, as before — but not silently (KON-432). Falling back means the
+            // next preference the user changes writes a whole file of defaults over this one, and their
+            // remotes, registries and kubeconfig paths are gone for good. A power cut mid-write or a
+            // hand-merged file is enough to get here, and such a file is usually still readable by eye,
+            // so the bytes are kept next to the settings before anything replaces them.
+            LastLoadError = e.Message;
+            Diag.Mark($"settings unreadable ({e.GetType().Name}); kept a copy at {QuarantinePath}");
+            Quarantine();
         }
 
         return new KontenaSettings();
+    }
+
+    /// <summary>
+    /// Copies the unreadable file aside. A copy rather than a move: a read that failed because something
+    /// else held the file open is transient, and taking the settings away over it would cause the very
+    /// loss this exists to prevent. Best-effort — a machine that cannot write this still has to start.
+    /// </summary>
+    private void Quarantine()
+    {
+        try
+        {
+            File.Copy(_path, QuarantinePath, overwrite: true);
+            RestrictToOwner(QuarantinePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception)
+        {
+            // Nothing to do about it here, and less than nothing to gain from failing the load.
+        }
     }
 
     /// <summary>
@@ -81,14 +153,31 @@ public sealed class SettingsStore
             if (created)
                 RestrictToOwner(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
+            // Written beside the settings and renamed over them, so the file a reader finds is either
+            // the old one or the new one and never half of either (KON-432). Writing in place meant a
+            // crash, a full disk or a killed process could leave a truncated file — which the next
+            // start cannot parse, and which used to cost the whole configuration. One fixed name rather
+            // than a unique one per write: every writer in the app is on the UI thread, so two saves
+            // cannot be in here at once. A second process would need a name of its own.
+            var pending = _path + ".tmp";
+
             // The mode is set before the content exists, so the fields below are never briefly
-            // world-readable — and a file written by an older version is narrowed on its next save.
-            if (!File.Exists(_path))
-                File.Create(_path).Dispose();
+            // world-readable — and the rename carries it, so a file written by an older version is
+            // narrowed on its next save.
+            File.Create(pending).Dispose();
+            RestrictToOwner(pending, UnixFileMode.UserRead | UnixFileMode.UserWrite);
 
-            RestrictToOwner(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            using (var stream = new FileStream(pending, FileMode.Truncate, FileAccess.Write))
+            {
+                JsonSerializer.Serialize(stream, settings, Options);
 
-            File.WriteAllText(_path, JsonSerializer.Serialize(settings, Options));
+                // Flushed to the platter, not just to the page cache: without this the rename can
+                // reach disk before the bytes do, which is a zero-length settings file after a power
+                // cut — the failure this whole path is here to rule out.
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(pending, _path, overwrite: true);
         }
         catch
         {

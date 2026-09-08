@@ -35,6 +35,41 @@ public sealed record ToolGroup(string Title, string Reason, IReadOnlyList<Extern
         new("Container engines", "kind and minikube can run their nodes on podman instead of Docker.",
             [KnownTools.Podman]),
     ];
+
+    /// <summary>
+    /// A heading per extension that drives a command line of its own (KON-438) — Manifest Studio's
+    /// <c>git</c>, the nerdctl plugin's <c>nerdctl</c>. Appended after <see cref="Default"/>, which stays
+    /// exactly the core app's own list: a tool that belongs to a plugin does not belong in
+    /// <c>KnownTools</c>, and the page is where the two meet rather than the list.
+    /// </summary>
+    /// <param name="extensions">
+    /// The extensions in force — loaded and switched on. Ordering is the caller's; the first extension
+    /// to claim a tool is the one it is listed under.
+    /// </param>
+    /// <remarks>
+    /// A tool is shown once. Two extensions that both drive <c>git</c> would otherwise get a row each
+    /// for one binary, and the two would disagree the moment one of them was handed to Kontena — the
+    /// managed copy and the preference are keyed by the tool, not by who asked for it. A tool the core
+    /// app already lists (a plugin that drives <c>kustomize</c>) is left where it is for the same reason.
+    /// </remarks>
+    public static IEnumerable<ToolGroup> ForExtensions(IEnumerable<AdapterEntry> extensions)
+    {
+        ArgumentNullException.ThrowIfNull(extensions);
+
+        var claimed = Default.SelectMany(g => g.Tools).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var extension in extensions)
+        {
+            // Add returns false for one already claimed, so this filters and records in one pass.
+            var tools = extension.Manifest.Tools.Where(t => claimed.Add(t.Name)).ToList();
+
+            if (tools.Count > 0)
+            {
+                yield return new ToolGroup(
+                    extension.Manifest.Name, "Needed by this extension, not by Kontena itself.", tools);
+            }
+        }
+    }
 }
 
 /// <summary>The rows under one heading. Built once and patched in place, like the rows themselves.</summary>
@@ -84,8 +119,16 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
     /// <summary>Opens a documentation link in the browser; the shell owns that.</summary>
     public Action<string>? RequestOpenUrl { get; set; }
 
-    /// <summary>Which tools this page shows, under which headings. A parameter so a test can narrow it.</summary>
-    public IReadOnlyList<ToolGroup> Catalog { get; init; } = ToolGroup.Default;
+    /// <summary>
+    /// Which tools this page shows, under which headings. A parameter so a test can narrow it.
+    /// <para>
+    /// Settable rather than init-only because the page outlives the settings screen that built it, and
+    /// the extensions it lists come and go underneath it (KON-438): switching one off in Settings &#8250;
+    /// Extensions has to take its heading with it, and a page rebuilt from scratch would throw away a
+    /// download in flight.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ToolGroup> Catalog { get; set; } = ToolGroup.Default;
 
     public ObservableCollection<ToolGroupViewModel> Groups { get; } = [];
 
@@ -154,6 +197,11 @@ public sealed partial class ClusterToolingViewModel : ViewModelBase, IDisposable
                         rows.Tools[i].Update(readiness[i]);
                 }
             }
+
+            // An extension that is gone takes its heading with it. Groups are otherwise only ever added,
+            // which was right while the catalogue was a constant.
+            foreach (var stale in Groups.Where(g => !Catalog.Any(c => c.Title == g.Title)).ToList())
+                Groups.Remove(stale);
 
             HasLoaded = true;
         }

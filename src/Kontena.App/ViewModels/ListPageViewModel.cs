@@ -46,6 +46,9 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
 
     public abstract string SearchPlaceholder { get; }
 
+    /// <summary>The one read this page has out, and the token that ends it (KON-413).</summary>
+    private readonly PageLoad _load = new();
+
     /// <summary>
     /// Virtual so a page can wrap every one of its own refreshes at once (KON-393). Manual refresh,
     /// a watch event and a poll all arrive here, and a page that needs to say something about a
@@ -54,13 +57,19 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
     /// </summary>
     public virtual async Task LoadAsync()
     {
+        var ct = _load.Begin();
+
         var isFirstLoad = !HasLoaded;
         if (isFirstLoad)
             IsLoading = true;
 
         try
         {
-            var rows = await Services.Diag.TimeAsync($"{GetType().Name} fetch", LoadRowsAsync());
+            var rows = await Services.Diag.TimeAsync($"{GetType().Name} fetch", LoadRowsAsync(ct));
+
+            // The read can finish after the page was left or reloaded — a fetch is not cancelled
+            // where it is awaited, only where it is issued.
+            ct.ThrowIfCancellationRequested();
 
             _all.Clear();
             _all.AddRange(rows);
@@ -70,15 +79,35 @@ public abstract partial class ListPageViewModel<TRow> : ViewModelBase, IListPage
             // everything again.
             Services.Diag.Time($"{GetType().Name} rows onto the page", ApplyFilter);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Superseded, or the page is gone. The rows stay as they were: whoever cancelled this
+            // read either owns them now or is about to be collected along with them.
+        }
         finally
         {
-            if (isFirstLoad)
+            // Not on a superseded load: the one that replaced it is still fetching, and clearing the
+            // spinner here would call the page loaded while it is blank.
+            if (isFirstLoad && !ct.IsCancellationRequested)
                 IsLoading = false;
         }
     }
 
-    /// <summary>Fetch this page's rows, in the order they should appear.</summary>
-    protected abstract Task<IReadOnlyList<TRow>> LoadRowsAsync();
+    /// <summary>
+    /// Drop whatever this page has in flight (KON-413). For a page that is thrown away rather than
+    /// reloaded — see <see cref="ClusterListPageViewModel{TRow}.Dispose"/>.
+    /// </summary>
+    protected void CancelLoad() => _load.Cancel();
+
+    /// <summary>
+    /// Fetch this page's rows, in the order they should appear.
+    /// </summary>
+    /// <param name="ct">
+    /// Ends this read when the page is left or reloaded (KON-413). Pass it to every call it makes:
+    /// a token that is taken and not handed on is a fetch that still runs after the page is gone,
+    /// which is the whole of what this parameter is for.
+    /// </param>
+    protected abstract Task<IReadOnlyList<TRow>> LoadRowsAsync(CancellationToken ct);
 
     /// <summary>Whether a row matches the trimmed, non-empty search term.</summary>
     protected abstract bool Matches(TRow row, string term);
@@ -244,5 +273,48 @@ public static class ListSync
         }
 
         return -1;
+    }
+}
+/// <summary>
+/// The one read a page has out, and the token that ends it (KON-413).
+/// <para>
+/// Cluster pages are rebuilt on every visit and reloaded on every settled watch event, and until now
+/// neither of those ended the fetch that was already in flight. Clicking through the sidebar quickly
+/// therefore left one cluster-wide read per click still running, each holding the page it can no
+/// longer draw on: the reads got slower as they queued for the same connection pool, the working set
+/// climbed, and the window stopped answering. The engines have taken a
+/// <see cref="CancellationToken"/> on every list call since the OAL landed — nothing was passing one.
+/// </para>
+/// <para>
+/// Separate from <see cref="ListPageViewModel{TRow}"/> because the pages that are not lists have the
+/// same problem: the overview reads seven things at once and the workloads dashboard two, and both
+/// are rebuilt on every visit. So is the sidebar refresh, which is fired and not awaited behind every
+/// navigation.
+/// </para>
+/// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA1001",
+    Justification = "Deliberately not IDisposable: the source is disposed the moment it is superseded or cancelled, which is every path out of it, and the pages that hold one are not all disposable — a list page is a long-lived field on the shell.")]
+public sealed class PageLoad
+{
+    private CancellationTokenSource? _current;
+
+    /// <summary>
+    /// A token for a read starting now, ending whatever was still out. Callers hold the token rather
+    /// than the source, so the one being superseded keeps a token it can still ask — cancelled — long
+    /// after the source behind it is gone.
+    /// </summary>
+    public CancellationToken Begin()
+    {
+        Cancel();
+        _current = new CancellationTokenSource();
+        return _current.Token;
+    }
+
+    /// <summary>End the read that is out, if any. Safe to call more than once.</summary>
+    public void Cancel()
+    {
+        _current?.Cancel();
+        _current?.Dispose();
+        _current = null;
     }
 }

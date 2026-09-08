@@ -159,6 +159,15 @@ public class DockerEngineTests
         {
             Image = "busybox:latest",
             Name = $"kontena-test-{Guid.NewGuid():N}"[..24],
+
+            // The command is what makes this test deterministic, and it is not decoration (KON-435).
+            // Busybox's own default is `sh`, which without a TTY or stdin exits the instant it starts —
+            // so the container was already gone while Docker had yet to reap its endpoint, and the
+            // assertion below was racing that cleanup. It won on a quiet machine and lost on a loaded CI
+            // runner, which is how this passed for months and then failed once on an unrelated PR.
+            // Something that stays up turns "while it is up" from a few hundred milliseconds into the
+            // whole test.
+            Command = ["sleep", "300"],
             Start = false,
         });
 
@@ -227,9 +236,10 @@ public class DockerEngineTests
 
         try
         {
-            // Arranged with the raw client rather than through CEAL: seeding a volume needs a command,
-            // which CreateContainerRequest deliberately does not carry. The assertion below is the
-            // CEAL call — that is what is under test.
+            // Arranged with the raw client rather than through CEAL, so the arrangement cannot pass by
+            // means of the same code the assertion is testing. (It no longer has to be: this used to say
+            // CreateContainerRequest carries no command, and it does — see the network test above.) The
+            // assertion below is the CEAL call — that is what is under test.
             await WriteIntoVolumeAsync(
                 volume.Name,
                 "mkdir -p /v/nested && echo hello > /v/top.txt && echo deep > /v/nested/inner.txt");

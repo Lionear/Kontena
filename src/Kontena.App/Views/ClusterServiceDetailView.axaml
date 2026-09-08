@@ -46,13 +46,21 @@
                         <TextBlock Text="AGE" Classes="colhead"/>
                         <TextBlock Text="{Binding AgeText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="INTERNAL HOSTNAME" Classes="colhead"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding HostnameText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                            <Button Classes="pill" Click="OnCopyClick" Tag="{Binding HostnameText}"
+                                    ToolTip.Tip="Resolvable only from inside the cluster">Copy</Button>
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                     <Button Classes="tab" Classes.on="{Binding IsOverviewSelected}" Command="{Binding SelectTabCommand}" CommandParameter="overview">
                         <TextBlock Text="Overview" VerticalAlignment="Center"/>
                     </Button>
-                    <Button Classes="tab" Classes.on="{Binding IsPodsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="pods">
+                    <Button Classes="tab" Classes.on="{Binding IsPodsSelected}" IsVisible="{Binding ShowPodsTab}" Command="{Binding SelectTabCommand}" CommandParameter="pods">
                         <TextBlock Text="{Binding PodsTabLabel}" VerticalAlignment="Center"/>
                     </Button>
                     <Button Classes="tab" Classes.on="{Binding IsEventsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="events">
@@ -94,7 +102,7 @@
                             <ItemsControl ItemsSource="{Binding Ports}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ServicePortRow">
-                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                             <Grid ColumnDefinitions="1.4*,1*,1.2*,1*,1*">
                                                 <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Port}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>

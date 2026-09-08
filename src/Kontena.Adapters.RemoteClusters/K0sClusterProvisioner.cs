@@ -84,12 +84,19 @@ public sealed class K0sClusterProvisioner(IToolRunner runner, ManagedToolStore? 
     {
         ArgumentNullException.ThrowIfNull(spec);
 
+        // Before anything touches the disk. The wizard asks the same question, but this is a public
+        // API and a caller that skipped the wizard must not get further than a rejection (KON-431).
+        if (spec.Problem() is { } problem)
+            throw new ArgumentException(problem, nameof(spec));
+
         var config = K0sctlConfig.Write(spec, Ssh(credentials));
         var tool = await ManagedTools.ResolveAsync(KnownTools.K0sctl, runner, _store, ct);
-        var path = await WriteConfigAsync(spec.Name, config, ct);
+        var directory = await WriteConfigAsync(config, ct);
 
         try
         {
+            var path = Path.Combine(directory.FullName, ConfigFileName);
+
             var invocation = new ToolInvocation(tool, Arguments(path))
             {
                 // No timeout: this installs onto several machines over SSH and legitimately takes
@@ -102,7 +109,7 @@ public sealed class K0sClusterProvisioner(IToolRunner runner, ManagedToolStore? 
         }
         finally
         {
-            Discard(path);
+            Discard(directory);
         }
     }
 
@@ -142,25 +149,34 @@ public sealed class K0sClusterProvisioner(IToolRunner runner, ManagedToolStore? 
                    nameof(credentials));
     }
 
-    private static async Task<string> WriteConfigAsync(string name, string config, CancellationToken ct)
+    /// <summary>
+    /// The file inside that directory. A fixed name, not the cluster's: a name is something a caller
+    /// hands us, and one that is rooted or holds <c>..</c> makes <see cref="Path.Combine(string,string)"/>
+    /// drop the directory and point somewhere else entirely — which the cleanup below would then
+    /// delete recursively (KON-431). The directory is unique per run, so the file need not be.
+    /// </summary>
+    private const string ConfigFileName = "k0sctl.yaml";
+
+    /// <summary>
+    /// Writes the config into a directory of its own, and hands that directory back rather than the
+    /// file — so the cleanup deletes what this method created instead of whatever a path happens to
+    /// have as its parent. No secret is in the file — a key path is not a key (KON-234).
+    /// </summary>
+    private static async Task<DirectoryInfo> WriteConfigAsync(string config, CancellationToken ct)
     {
-        // Its own directory per run, with the cluster's name in it, so a file left behind by a crash
-        // says what it was for. No secret is in it — a key path is not a key (KON-234).
         var directory = Directory.CreateDirectory(
             Path.Combine(Path.GetTempPath(), $"kontena-k0sctl-{Guid.NewGuid():N}"));
 
-        var path = Path.Combine(directory.FullName, $"{name}.yaml");
-        await File.WriteAllTextAsync(path, config, ct);
+        await File.WriteAllTextAsync(Path.Combine(directory.FullName, ConfigFileName), config, ct);
 
-        return path;
+        return directory;
     }
 
-    private static void Discard(string path)
+    private static void Discard(DirectoryInfo directory)
     {
         try
         {
-            if (Path.GetDirectoryName(path) is { Length: > 0 } directory)
-                Directory.Delete(directory, recursive: true);
+            directory.Delete(recursive: true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

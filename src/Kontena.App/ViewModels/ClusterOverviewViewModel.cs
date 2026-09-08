@@ -24,6 +24,9 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     private CancellationTokenSource? _usage;
     private bool _started;
 
+    /// <summary>The one read this page has out, and the token that ends it (KON-413).</summary>
+    private readonly PageLoad _load = new();
+
     public ClusterOverviewViewModel(IClusterEngine cluster, VersionSupportCheck? versions = null)
     {
         _cluster = cluster;
@@ -117,6 +120,10 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
         _usage?.Cancel();
         _usage?.Dispose();
         _usage = null;
+
+        // And the seven reads the page opens with (KON-413). This is the most expensive page in the
+        // app to leave running: clicking past the overview used to leave all of them in flight.
+        _load.Cancel();
 
         IsLive = false;
         GC.SuppressFinalize(this);
@@ -232,18 +239,25 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
     /// </summary>
     internal async Task LoadAsync()
     {
+        var ct = _load.Begin();
+
         var isFirstLoad = !_hasLoaded;
         if (isFirstLoad)
             IsLoading = true;
 
         try
         {
-            await Services.Diag.TimeAsync("cluster overview read", ReadAsync());
+            await Services.Diag.TimeAsync("cluster overview read", ReadAsync(ct));
             _hasLoaded = true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Left, or reloaded under this one. What is on screen stays as it was (KON-413).
+            return;
         }
         finally
         {
-            if (isFirstLoad)
+            if (isFirstLoad && !ct.IsCancellationRequested)
                 IsLoading = false;
         }
 
@@ -293,25 +307,29 @@ public partial class ClusterOverviewViewModel : ViewModelBase, IClusterLivePage
         GroupVersionKind.CronJob,
     ];
 
-    private async Task ReadAsync()
+    private async Task ReadAsync(CancellationToken ct)
     {
-        var infoTask = _info is null ? _cluster.GetInfoAsync().AsTask() : Task.FromResult(_info);
+        var infoTask = _info is null ? _cluster.GetInfoAsync(ct).AsTask() : Task.FromResult(_info);
 
         // The node table is the only thing on this page made of objects rather than of a number, and
         // it shows capacity, version and status — not the pods column the nodes grid has. Asking for
         // the pod counts would fetch every pod on the cluster to fill a field nothing here draws
         // (KON-395).
-        var nodesTask = _cluster.ListNodesAsync(withPodCounts: false).AsTask();
+        var nodesTask = _cluster.ListNodesAsync(withPodCounts: false, ct).AsTask();
 
         // Four tiles are four integers. They used to be four full listings — every pod, workload,
         // service and namespace on the cluster, deserialised, mapped, and then counted — repeated on
         // every settled watch burst, which on a big cluster never stops arriving.
-        var namespacesTask = _cluster.CountAsync(GroupVersionKind.Namespace).AsTask();
-        var podsTask = _cluster.CountAsync(GroupVersionKind.Pod).AsTask();
-        var servicesTask = _cluster.CountAsync(GroupVersionKind.Service).AsTask();
-        var workloadTasks = WorkloadKinds.Select(k => _cluster.CountAsync(k).AsTask()).ToArray();
+        var namespacesTask = _cluster.CountAsync(GroupVersionKind.Namespace, ct: ct).AsTask();
+        var podsTask = _cluster.CountAsync(GroupVersionKind.Pod, ct: ct).AsTask();
+        var servicesTask = _cluster.CountAsync(GroupVersionKind.Service, ct: ct).AsTask();
+        var workloadTasks = WorkloadKinds.Select(k => _cluster.CountAsync(k, ct: ct).AsTask()).ToArray();
 
         await Task.WhenAll([infoTask, nodesTask, namespacesTask, podsTask, servicesTask, .. workloadTasks]);
+
+        // Nothing below this line is a read; it is the page being written. A load that lost its page
+        // while the cluster was answering stops here rather than drawing onto it (KON-413).
+        ct.ThrowIfCancellationRequested();
 
         var info = _info = infoTask.Result;
         ClusterName = info.DisplayName;

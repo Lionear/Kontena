@@ -41,7 +41,7 @@ public sealed class PluginCatalogTests : IDisposable
     [Fact]
     public void A_plugin_provider_appears_in_the_catalog()
     {
-        BackendCatalog.SetPluginProviders([new StubProvider("stub")]);
+        BackendCatalog.SetPluginProviders("com.acme.stub", [new StubProvider("stub")]);
 
         Assert.Contains(BackendCatalog.Build(includeDemo: false), p => p.Backend == "stub");
     }
@@ -49,7 +49,7 @@ public sealed class PluginCatalogTests : IDisposable
     [Fact]
     public void Plugin_providers_come_after_the_local_engines()
     {
-        BackendCatalog.SetPluginProviders([new StubProvider("stub")]);
+        BackendCatalog.SetPluginProviders("com.acme.stub", [new StubProvider("stub")]);
 
         var built = BackendCatalog.Build(includeDemo: false);
 
@@ -61,8 +61,8 @@ public sealed class PluginCatalogTests : IDisposable
     [Fact]
     public void Setting_providers_again_adds_rather_than_replaces()
     {
-        BackendCatalog.SetPluginProviders([new StubProvider("first")]);
-        BackendCatalog.SetPluginProviders([new StubProvider("second")]);
+        BackendCatalog.SetPluginProviders("com.acme.first", [new StubProvider("first")]);
+        BackendCatalog.SetPluginProviders("com.acme.second", [new StubProvider("second")]);
 
         var built = BackendCatalog.Build(includeDemo: false);
 
@@ -73,8 +73,8 @@ public sealed class PluginCatalogTests : IDisposable
     [Fact]
     public void The_same_backend_is_not_added_twice()
     {
-        BackendCatalog.SetPluginProviders([new StubProvider("stub")]);
-        BackendCatalog.SetPluginProviders([new StubProvider("stub")]);
+        BackendCatalog.SetPluginProviders("com.acme.stub", [new StubProvider("stub")]);
+        BackendCatalog.SetPluginProviders("com.acme.stub", [new StubProvider("stub")]);
 
         Assert.Single(BackendCatalog.Build(includeDemo: false), p => p.Backend == "stub");
     }

@@ -129,4 +129,60 @@ public class K0sClusterProvisionerTests
             }
         });
     }
+
+    /// <summary>
+    /// KON-431: the config file was named after the cluster, so a rooted name or one holding
+    /// <c>..</c> made Path.Combine drop the temp directory — and the cleanup in the finally deletes
+    /// that path's parent recursively. The name no longer reaches the path at all.
+    /// </summary>
+    [Fact]
+    public async Task The_config_file_is_named_for_the_run_not_for_the_cluster()
+    {
+        var runner = new FakeToolRunner().Install(KnownTools.K0sctl);
+
+        await foreach (var _ in Provisioner(runner).CreateAsync(Spec(), Login))
+        {
+            // Draining the stream is what runs it.
+        }
+
+        var invocation = Assert.Single(runner.Invocations);
+        var arguments = invocation.Arguments.ToList();
+        var path = arguments[arguments.IndexOf("--config") + 1];
+
+        Assert.DoesNotContain("prod-eu-west", path, StringComparison.Ordinal);
+        Assert.Equal("k0sctl.yaml", Path.GetFileName(path));
+
+        // And it lives in a directory of this run's own, under the temp directory — which is the one
+        // the finally deleted, so nothing above it was ever a candidate.
+        Assert.StartsWith(
+            Path.Combine(Path.GetTempPath(), "kontena-k0sctl-"),
+            Path.GetDirectoryName(path),
+            StringComparison.Ordinal);
+
+        Assert.False(Directory.Exists(Path.GetDirectoryName(path)));
+    }
+
+    /// <summary>
+    /// The same name, refused outright. <see cref="K0sctlConfig.Write"/> happens to reject it first
+    /// today, but the sink must not depend on the order of the lines above it.
+    /// </summary>
+    [Fact]
+    public async Task A_name_that_would_walk_out_of_the_temp_directory_is_refused_and_nothing_runs()
+    {
+        var runner = new FakeToolRunner().Install(KnownTools.K0sctl);
+        var provisioner = Provisioner(runner);
+        var spec = new RemoteClusterSpec(
+            "/etc/kontena/cluster",
+            [new RemoteClusterHost("10.10.4.11", ClusterHostRole.Controller)]);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+        {
+            await foreach (var _ in provisioner.CreateAsync(spec, Login))
+            {
+                // Enumerating is what starts it; nothing here should be reached.
+            }
+        });
+
+        Assert.Empty(runner.Invocations);
+    }
 }

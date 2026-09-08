@@ -20,6 +20,7 @@ public sealed class HostilePlugin : IEnginePlugin
         Author = "Kontena",
         Description = "Fixture whose provider throws from an identity getter.",
         MinSdkVersion = "0.1.0",
+        Backends = [BackendKind.Engine],
     };
 
     public IEnumerable<IBackendProvider> GetProviders() => [new HostileProvider()];

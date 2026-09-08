@@ -155,8 +155,13 @@
 
             <FontFamily x:Key="Mono">JetBrains Mono, Cascadia Code, Consolas, monospace</FontFamily>
 
-            <!-- List-row content margin; swapped live by DensityApplier for compact density. -->
+            <!-- List-row spacing; both swapped live by DensityApplier for compact density.
+                 Two keys because the two table styles space their rows differently: the engine
+                 tables put the margin on the row's Grid at 18px in, the cluster tables put the
+                 padding on the row's Border at 16px in (which is what their headers line up on).
+                 Only the vertical half is what density changes. -->
             <Thickness x:Key="RowMargin">18,11</Thickness>
+            <Thickness x:Key="RowPadding">16,11</Thickness>
 
             <!-- The radius scale (KON-220). Three steps, not a collection: small things that sit
                  inside something else, panels, and surfaces that float above the page. Values that
@@ -373,6 +378,64 @@
             <Setter Property="StrokeJoin" Value="Round"/>
             <Setter Property="Stretch" Value="Uniform"/>
             <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
+        </Style>
+
+        <!-- A list row for something that is broken (KON-415). Three signals, because one is not
+             enough for everyone: a wash on the row, a warning glyph where the status dot sits, and
+             the reason itself in red. The reason is the text — "Pod in CrashLoopBackOff" says where
+             to look; a generic "Degraded" badge would only repeat the colour. -->
+        <Style Selector="Border.trouble">
+            <Setter Property="Background" Value="{DynamicResource DangerSoft}"/>
+        </Style>
+        <Style Selector="TextBlock.statuscell">
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <!-- Full-strength ink, not Danger: the reason is body text at body size, and Danger on the
+             wash it now sits on measures 4.35:1 in light — under AA, and this palette corrects a
+             colour rather than excusing it. Text on the wash is 13.2:1 light and 11.9:1 dark, and it
+             still reads as louder than the TextDim of every row around it. The red is carried by the
+             wash and the glyph, where the 3:1 non-text floor applies and both clear it (4.35 and
+             5.2). -->
+        <Style Selector="TextBlock.statuscell.trouble">
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+        <!-- The RESTARTS count (KON-442). A pod that restarted eight times and is now Ready is not in
+             trouble, so it keeps its green dot and its "Running" — but the count still deserves an
+             eye, and every count looking alike is what made the old red warning the only way to see
+             it. Amber, the middle tier of the KON-420 status language, and amber never carries the
+             triangle: that stays red's alone.
+             Measured, not assumed: Warn on Surface is 5.16:1 in light and 9.31:1 in dark, both over
+             the 4.5 floor for body text. Medium weight comes along so the difference survives being
+             read without colour — a lone hue is not a signal everyone gets. -->
+        <Style Selector="TextBlock.restarts">
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+        </Style>
+        <Style Selector="TextBlock.restarts.often">
+            <Setter Property="Foreground" Value="{DynamicResource Warn}"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+
+        <!-- A pod that arrived seconds ago (KON-448). The point of a restart is that the pods are
+             replaced, and on a list of six near-identical names that is otherwise only legible by
+             reading the AGE column downwards. Green, not amber: an arriving replacement is the
+             rollout working, and amber in this palette is reserved for "not there yet" (KON-420).
+             The wash is the whole signal and it removes itself — the pod passes fifteen seconds and
+             the next reading draws it plain — so nothing has to remember to clean it up.
+             Motion is deliberately absent here. KON-220 kept animation off list rows because on a
+             dense grid it reads as lag, and rows on this tab are rebuilt on every refresh, so a
+             fade would replay on a pod that has been sitting there for ten seconds already. -->
+        <!-- :not(.trouble) rather than declaration order: a brand-new pod that is already failing is
+             a broken pod first, and "which setter is written lower" is not a thing to have to know. -->
+        <Style Selector="Border.fresh:not(.trouble)">
+            <Setter Property="Background" Value="{DynamicResource SuccessSoft}"/>
+        </Style>
+
+        <!-- The glyph that replaces the status dot. Same reasoning as the dots above: the reason is
+             spelled out beside it, so announcing the glyph too would only add a nameless element. -->
+        <Style Selector="Path.trouble">
+            <Setter Property="Stroke" Value="{DynamicResource Danger}"/>
+            <Setter Property="AutomationProperties.AccessibilityView" Value="Raw"/>
         </Style>
 
         <!-- Surface card -->

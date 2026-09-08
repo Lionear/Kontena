@@ -57,7 +57,7 @@ public sealed class PlanApplyViewTests(HeadlessSessionFixture headless)
                 window.Show();
                 Settle();
 
-                var plan = view.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Plan"));
+                var plan = view.GetVisualDescendants().OfType<Button>().First(b => b.Name == "PlanButton");
 
                 // A raised Click event only reaches handlers subscribed to it — Button invokes its
                 // bound Command from inside OnClick() itself, which only a real pointer interaction
@@ -72,10 +72,12 @@ public sealed class PlanApplyViewTests(HeadlessSessionFixture headless)
                 await Task.Delay(50);
                 Settle();
 
-                var items = view.GetVisualDescendants().OfType<ListBox>().Single().GetVisualDescendants()
-                    .OfType<TextBlock>().Select(t => t.Text).ToArray();
+                var results = view.GetVisualDescendants().OfType<ItemsControl>().First(c => c.Name == "Results");
+                var items = results.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToArray();
 
-                Assert.Contains("WouldCreate", items);
+                // "Create", not "WouldCreate": since KON-427 the badge says what a plan would do in the
+                // tense a plan speaks — the raw enum name never was a sentence.
+                Assert.Contains("Create", items);
                 Assert.Contains("Deployment", items);
                 Assert.Contains("sample", items);
 

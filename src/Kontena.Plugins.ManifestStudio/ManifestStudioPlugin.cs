@@ -24,7 +24,17 @@ namespace Kontena.Plugins.ManifestStudio;
 /// </summary>
 public sealed class ManifestStudioPlugin : IUiPlugin
 {
+    // The one piece of studio state that outlives the process (KON-434). It belongs here rather than in
+    // the view for the same reason the workspace does: which folders have been opened is a fact about
+    // the session, and the editor page is built and thrown away around it.
+    private readonly RecentWorkspaceStore _recent = new();
+
     private WorkspaceViewModel? _workspace;
+
+    // One git model for the whole session, not one per page: the Source control page and the editor's
+    // file badges are two views of the same `git status`, and two models would let them disagree about
+    // what changed (KON-427).
+    private GitViewModel? _git;
 
     // Kept across navigations, because a fresh SchemaIndex would refetch every OpenAPI document the
     // first time you type in each page. Rebuilt when the cluster changes — schemas are that cluster's.
@@ -39,6 +49,12 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         Author = "Kontena",
         Description = "Write, validate and apply Kubernetes manifests from a folder or Git repository.",
         MinSdkVersion = "0.4.0",
+        ContributesUi = true,
+
+        // What the host puts on Settings › Tools for us (KON-438). kustomize and kubectl are not here:
+        // the studio drives them too, but they are KnownTools — the core app needs them itself and
+        // already lists them, and a second row for one binary is two answers to one question.
+        Tools = [GitTool.Definition],
     };
 
     public IEnumerable<PluginPage> GetPages() =>
@@ -50,13 +66,54 @@ public sealed class ManifestStudioPlugin : IUiPlugin
 
     private WorkspaceView CreateEditor(IPluginHost host)
     {
-        var view = new WorkspaceView { Schemas = SchemasFor(host) };
+        var view = new WorkspaceView
+        {
+            Schemas = SchemasFor(host),
+            SchemasFromCluster = host.Cluster is not null,
+
+            // Only when there is nothing open: the list lives on the empty state, and a workspace in
+            // hand means it is not on screen to read. Cloning is on the same card, so it follows.
+            Recent = _workspace is null ? _recent.Read() : [],
+
+            // ponytail: one per editor page rather than one per session, so a clone still running while
+            // you navigate away finishes on disk but is not opened. Hold it in a field here if that
+            // turns out to matter — but then only one view may be subscribed to it at a time.
+            Clone = _workspace is null ? new CloneViewModel(new GitCli()) : null,
+        };
 
         if (_workspace is not null)
+        {
             view.DataContext = _workspace;
 
-        view.WorkspaceOpened += (_, workspace) => _workspace = workspace;
+            // The folder is on disk and other things write to it, so what git said last time this page
+            // was open is history, not state.
+            _git?.RefreshCommand.Execute(null);
+        }
+
+        view.WorkspaceOpened += (_, workspace) =>
+        {
+            _workspace = workspace;
+            _recent.Add(workspace.Workspace);
+            AttachGit(workspace);
+        };
+
         return view;
+    }
+
+    /// <summary>Points a fresh git model at the new workspace and keeps the file pane's badges following
+    /// it. A folder that is not a repository simply reports an error and leaves the badges off, which is
+    /// the state the tree already renders.</summary>
+    private void AttachGit(WorkspaceViewModel workspace)
+    {
+        var git = new GitViewModel(new GitCli(), workspace.Workspace.RootPath);
+        git.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(GitViewModel.Status))
+                workspace.SetGitStatus(git.Status);
+        };
+
+        _git = git;
+        git.RefreshCommand.Execute(null);
     }
 
     private Control CreatePlan(IPluginHost host)
@@ -84,10 +141,8 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         if (_workspace is not { } workspace)
             return Explain("Open a folder in the Editor first — source control follows the workspace.");
 
-        return new GitView
-        {
-            DataContext = new GitViewModel(new GitCli(), workspace.Workspace.RootPath),
-        };
+        _git ??= new GitViewModel(new GitCli(), workspace.Workspace.RootPath);
+        return new GitView { DataContext = _git };
     }
 
     private SchemaIndex SchemasFor(IPluginHost host)

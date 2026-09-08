@@ -221,6 +221,72 @@ public sealed class PtyShellSessionTests
         Assert.False(Directory.Exists(directory));
     }
 
+    /// <summary>
+    /// A shell started from a session with launchd's bare PATH still sees the directories a login shell
+    /// would have added, Homebrew's among them (KON-423).
+    /// <para>
+    /// The bare PATH is injected rather than taken from the test run, because a test started from a
+    /// terminal inherits a PATH a login shell already built — the one case where the bug cannot happen,
+    /// and so the one that proves nothing. It is also what the session falls back to below, so a plan
+    /// that leaves PATH alone gives the shell the bare one, exactly as the app would.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_shell_started_with_a_bare_path_still_finds_the_login_directories()
+    {
+        if (Unsupported || !OperatingSystem.IsMacOS())
+            return;
+
+        // What launchd hands an app started from Finder.
+        const string BarePath = "/usr/bin:/bin:/usr/sbin:/sbin";
+
+        var directory = Path.Combine(Path.GetTempPath(), $"kontena-pty-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+
+        var plan = HostShell.Plan(
+            "/bin/sh", directory, new Dictionary<string, string>(),
+            name => name == "PATH" ? BarePath : null);
+
+        foreach (var (name, content) in plan.SupportFiles)
+            await File.WriteAllTextAsync(Path.Combine(directory, name), content);
+
+        var environment = new Dictionary<string, string>(plan.Environment, StringComparer.Ordinal);
+        environment.TryAdd("PATH", BarePath);
+
+        var command = new PtyCommand(plan.Executable, plan.Arguments, environment);
+        await using var session = await PtyShellSession.StartAsync(
+            command, Path.GetTempPath(), columns: 80, rows: 24, directory);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var output = new StringBuilder();
+        var reader = Task.Run(async () =>
+        {
+            await foreach (var chunk in session.ReadOutputAsync(cts.Token))
+            {
+                output.Append(Encoding.UTF8.GetString(chunk.Span));
+                if (output.ToString().Contains("brew=1", StringComparison.Ordinal))
+                    return;
+            }
+        }, cts.Token);
+
+        // Written br""ew so the marker cannot arrive in the PTY's echo of the command itself.
+        await session.WriteAsync(
+            Encoding.UTF8.GetBytes(
+                "echo br\"\"ew=$(echo $PATH | tr ':' '\\n' | grep -cx /opt/homebrew/bin)\n"),
+            cts.Token);
+
+        try
+        {
+            await reader.WaitAsync(TimeSpan.FromSeconds(20), CancellationToken.None);
+        }
+        catch (TimeoutException)
+        {
+            // fall through to the assert, which says what was actually seen
+        }
+
+        Assert.Contains("brew=1", output.ToString(), StringComparison.Ordinal);
+    }
+
     private static bool PathHas(string tool) =>
         (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
             .Split(Path.PathSeparator)

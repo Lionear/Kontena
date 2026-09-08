@@ -35,16 +35,23 @@ jobs:
       # into CHANGELOG.md instead of adding one. Two did, on one day, and both went green: KON-372
       # merged that way and KON-374 was caught by hand (KON-376).
       #
-      # Added lines only. Moving an entry out into a fragment, or dropping one, is how a mistake gets
-      # corrected, and that is all removals. A release promotion (develop -> main) carries the roll's
-      # own edit and is skipped whole.
+      # Added lines only, and only inside [Unreleased] — that is the section the release writes, and
+      # the only one a branch can bypass a fragment into. Released sections are explicitly editable
+      # (changelog.d/README.md, "Still edit CHANGELOG.md directly?"): correcting text that already
+      # shipped replaces a line, so a whole-file check refused the one edit the convention allows.
+      # Moving an entry out into a fragment, or dropping one, is how a mistake gets corrected, and
+      # that is all removals. A release promotion (develop -> main) carries the roll's own edit and
+      # is skipped whole.
       - name: CHANGELOG.md is written by the release, not by a branch
         if: github.event_name == 'pull_request' && github.base_ref != 'main'
         env:
           BASE: ${{ github.base_ref }}
         run: |
           git fetch --no-tags origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
-          if git diff "origin/$BASE...HEAD" -- CHANGELOG.md | grep -q '^+[^+]'; then
+          unreleased() {
+            git show "$1:CHANGELOG.md" | awk '/^## \[Unreleased\]/ { f = 1; next } /^## \[/ { f = 0 } f'
+          }
+          if diff <(unreleased "origin/$BASE") <(unreleased HEAD) | grep -q '^>'; then
             echo "::error file=CHANGELOG.md::Entries go in changelog.d/<ticket>.<category>.md, which the release folds in here — see changelog.d/README.md and CONTRIBUTING.md."
             exit 1
           fi

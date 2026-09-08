@@ -59,16 +59,25 @@ public sealed class BackendDownPagesTests : IDisposable
         Assert.False(vm.IsConnecting);
     }
 
+    /// <summary>
+    /// Settings is still reachable with nothing connected (KON-137) — but since KON-437 it does that by
+    /// opening <i>over</i> the card rather than by taking the content area from it, so the card stays
+    /// exactly where it was and is there again when Settings closes.
+    /// </summary>
     [Fact]
-    public async Task Settings_shows_over_the_down_card()
+    public async Task Settings_opens_over_the_down_card()
     {
         var vm = await DownShellAsync();
 
         vm.ShowSettingsCommand.Execute(null);
 
-        Assert.True(vm.IsSettingsSelected);
-        Assert.True(vm.IsPageVisible);
-        Assert.False(vm.IsBackendDownVisible);
+        Assert.True(vm.IsSettingsOpen);
+        Assert.True(vm.IsBackendDownVisible);
+
+        vm.CloseSettingsCommand.Execute(null);
+
+        Assert.False(vm.IsSettingsOpen);
+        Assert.True(vm.IsBackendDownVisible);
     }
 
     [Fact]

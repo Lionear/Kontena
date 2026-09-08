@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:views="using:Kontena.App.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="760"
+             x:Class="Kontena.App.Views.ClusterStorageClassDetailView"
+             x:DataType="vm:ClusterStorageClassDetailViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16,24,0">
+            <StackPanel Spacing="14">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    <!-- Which class a claim gets when it names none — same marker as the list row. -->
+                    <Border IsVisible="{Binding IsDefault}" Background="{DynamicResource SurfaceRaised}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusSm}" Padding="6,1" VerticalAlignment="Center"
+                            ToolTip.Tip="A claim that names no storage class gets this one">
+                        <TextBlock Text="default" FontSize="10.5" FontWeight="Medium" Foreground="{DynamicResource TextDim}"/>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="28">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="PROVISIONER" Classes="colhead"/>
+                        <TextBlock Text="{Binding Provisioner}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="RECLAIM" Classes="colhead"/>
+                        <TextBlock Text="{Binding Reclaim}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="EXPAND" Classes="colhead"/>
+                        <TextBlock Text="{Binding Expansion}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="AGE" Classes="colhead"/>
+                        <TextBlock Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <Button Classes="tab" Classes.on="{Binding IsOverviewSelected}" Command="{Binding SelectTabCommand}" CommandParameter="overview">
+                        <TextBlock Text="Overview" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsPodsSelected}" IsVisible="{Binding ShowPodsTab}" Command="{Binding SelectTabCommand}" CommandParameter="pods">
+                        <TextBlock Text="{Binding PodsTabLabel}" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsEventsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="events">
+                        <TextBlock Text="Events" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsYamlSelected}" Command="{Binding SelectTabCommand}" CommandParameter="yaml">
+                        <TextBlock Text="YAML" VerticalAlignment="Center"/>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Panel Grid.Row="1" Margin="28,20">
+            <ScrollViewer IsVisible="{Binding IsOverviewSelected}">
+                <StackPanel Spacing="16">
+
+                    <!-- The volumes themselves (KON-445) — not a count with a link, the actual rows:
+                         there is room for them right here, and a click-through to see two rows is a
+                         click-through too many. -->
+                    <TextBlock Text="Volumes" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{StaticResource Radius}" ClipToBounds="True" IsVisible="{Binding HasVolumes}">
+                        <StackPanel>
+                            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                                <Grid ColumnDefinitions="1.1*,1.0*,0.75*,1.65*,0.5*">
+                                    <TextBlock Grid.Column="0" Text="NAME" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="1" Text="STATUS" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="2" Text="CAPACITY" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="3" Text="CLAIM" Classes="colhead" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="4" Text="AGE" Classes="colhead" TextTrimming="CharacterEllipsis"/>
+                                </Grid>
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding Volumes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PersistentVolumeRow">
+                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                            <Grid ColumnDefinitions="1.1*,1.0*,0.75*,1.65*,0.5*">
+                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                           Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                                <!-- A Grid, not a horizontal StackPanel: the drawer is narrower than the
+                                                     full Volumes list, and only a Grid column bounds the text enough
+                                                     for TextTrimming to trim it instead of overrunning CAPACITY. -->
+                                                <Grid Grid.Column="1" ColumnDefinitions="Auto,*" Margin="0,0,10,0" VerticalAlignment="Center">
+                                                    <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Status}" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                                </Grid>
+                                                <TextBlock Grid.Column="2" Text="{Binding Capacity}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                           Foreground="{DynamicResource TextDim}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                <Button Grid.Column="3" Classes="link" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="0,0,10,0"
+                                                        Command="{Binding OpenClaimCommand}" IsVisible="{Binding CanOpenClaim}">
+                                                    <TextBlock Text="{Binding Claim}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Left"/>
+                                                </Button>
+                                                <TextBlock Grid.Column="3" Text="{Binding Claim}" IsVisible="{Binding !CanOpenClaim}" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextDim}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="{Binding EmptyVolumesNote}" IsVisible="{Binding ShowEmptyVolumesNote}"
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+
+                    <!-- The API's word is WaitForFirstConsumer; this says what that means, because the
+                         word is what leaves people believing their storage is broken when it is working
+                         as designed. -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,13">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Binding" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                            <TextBlock Text="{Binding Binding}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock Text="{Binding BindingDetail}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border IsVisible="{Binding NoProvisioner}" Background="{DynamicResource Surface}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{StaticResource Radius}" Padding="16,13">
+                        <TextBlock Text="{Binding NoProvisionerDetail}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <views:ObjectEventsView IsVisible="{Binding IsEventsSelected}"/>
+            <views:ObjectYamlView IsVisible="{Binding IsYamlSelected}"/>
+        </Panel>
+    </Grid>
+</UserControl>

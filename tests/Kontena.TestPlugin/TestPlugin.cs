@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Kontena.Sdk;
 using Kontena.Sdk.Models;
+using Kontena.Sdk.Tooling;
 
 namespace Kontena.TestPlugin;
 
@@ -28,6 +29,12 @@ public sealed class TestPlugin : IEnginePlugin, IUiPlugin
         Author = "Kontena",
         Description = "Fixture for the plugin loader tests.",
         MinSdkVersion = "0.1.0",
+        Backends = [BackendKind.Engine],
+        ContributesUi = true,
+
+        // One external tool, so the loader's "plugin.json has to name it" rule (KON-438) has something
+        // to be held against. Nothing ever runs it — what is under test is the declaration.
+        Tools = [new ExternalTool("testtool", "testtool", ["--version"], [])],
     };
 
     public IEnumerable<IBackendProvider> GetProviders() => [new TestProvider()];

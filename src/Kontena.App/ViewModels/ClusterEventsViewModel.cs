@@ -59,9 +59,9 @@ public partial class ClusterEventsViewModel : ClusterListPageViewModel<ClusterEv
     /// <summary>How many of the loaded events are warnings — the number on the toggle.</summary>
     public int WarningCount => All.Count(r => r.IsWarning);
 
-    protected override async Task<IReadOnlyList<ClusterEventRow>> LoadRowsAsync()
+    protected override async Task<IReadOnlyList<ClusterEventRow>> LoadRowsAsync(CancellationToken ct)
     {
-        var events = await _cluster.ListEventsAsync(_namespace);
+        var events = await _cluster.ListEventsAsync(_namespace, ct);
 
         // Newest first. The API returns them in no order worth relying on, and "what just happened"
         // is the entire reason for opening this page.

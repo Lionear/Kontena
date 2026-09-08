@@ -136,6 +136,12 @@ public abstract partial class ClusterListPageViewModel<TRow> : ListPageViewModel
         _watch?.Cancel();
         _watch?.Dispose();
         _watch = null;
+
+        // And the read it has out, for the same reason and a worse symptom (KON-413): a page left
+        // mid-fetch used to keep its cluster-wide list running, so clicking through the sidebar
+        // stacked one per click until the window stopped answering.
+        CancelLoad();
+
         IsLive = false;
         GC.SuppressFinalize(this);
     }

@@ -102,12 +102,15 @@ public sealed class PodConfigOverviewTests
         Assert.All(row.Keys, key => Assert.Null(key.Value));
         Assert.All(row.Keys, key => Assert.False(key.IsRevealed));
 
+        // The tip is the button's accessible name, and it names the row: this page carries eyes in
+        // two sections, and three buttons all called "Show the value" tell a screen reader nothing
+        // (KON-56, KON-416).
         var password = row.Keys.Single(k => k.Name == "password");
-        Assert.Equal("Show the value", password.RevealTip);
+        Assert.Equal("Show the value of password", password.RevealTip);
 
         await password.ToggleCommand.ExecuteAsync(null);
         Assert.Equal("s3cr3t-but-not-really", password.Value);
-        Assert.Equal("Hide the value", password.RevealTip);
+        Assert.Equal("Hide the value of password", password.RevealTip);
 
         // Hiding drops it rather than folding it away — the other key never left the cluster at all.
         await password.ToggleCommand.ExecuteAsync(null);

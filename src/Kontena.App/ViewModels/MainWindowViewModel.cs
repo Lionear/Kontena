@@ -50,6 +50,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     private IContainerEngine? _engine;
     private IClusterEngine? _cluster;
     private string _activeBackend = string.Empty;
+
+    /// <summary>What this shell was told to open, instead of what the settings remember (KON-424).
+    /// Set only on a window spawned from the switcher — see <see cref="OpenInNewWindow"/>.</summary>
+    private readonly string? _openBackend;
     private readonly ActivityLog _activityLog = new();
 
     // Port forwards outlive the modal that starts them and belong to the cluster connection, so the
@@ -97,6 +101,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// says nothing about any version, so a test never reaches the network by accident. A constructor
     /// parameter rather than an init property because <c>InitAsync</c> starts from here and would read
     /// an init property before it was assigned.</param>
+    /// <param name="openBackend">The backend this shell opens, whatever the settings remember
+    /// (KON-424). Null — the default — is the launch window, which opens what was pinned or last
+    /// used; a window spawned from the switcher passes the row it was spawned from.</param>
     public MainWindowViewModel(
         BackendRegistry registry, SettingsStore store, KontenaSettings settings,
         IUpdateService? updateService = null, IToolRunner? toolRunner = null,
@@ -104,9 +111,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
         IReadOnlyList<DiscoveredPlugin>? plugins = null,
         string? pluginRoot = null,
         TimeSpan? probeGrace = null,
-        VersionSupportCheck? versions = null)
+        VersionSupportCheck? versions = null,
+        string? openBackend = null)
     {
         Versions = versions;
+        _openBackend = openBackend;
         _probeGrace = probeGrace ?? ProbeRoundGrace;
         // The shell raises confirms of its own (KON-334), not only on behalf of pages. Wiring its own
         // seam to its own dialog host means those read like every other confirm in the app rather
@@ -168,6 +177,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// <summary>The in-app updater, behind the sidebar entry, the toast and the card (KON-110).</summary>
     public UpdateViewModel Update { get; }
 
+    /// <summary>The "that landed" line for actions whose whole effect is on the cluster (KON-448).</summary>
+    public ActionToastViewModel ActionToast { get; } = new();
+
+    /// <summary>
+    /// The workloads a restart has been asked for and not yet seen happening (KON-448). Here rather
+    /// than on a page: the restart reloads the page it was invoked from, so a tracker owned by that
+    /// page would be collected along with the row it was meant to keep marked.
+    /// </summary>
+    private RestartTracker Restarts => _restarts ??= new RestartTracker(m => ActionToast.Show(m));
+
+    private RestartTracker? _restarts;
+
     // Pages
     [ObservableProperty] private ContainersViewModel? _containers;
     [ObservableProperty] private ImagesViewModel? _images;
@@ -196,19 +217,37 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     [ObservableProperty] private object? _currentPage;
 
     public bool IsActivitySelected => Activity is not null && ReferenceEquals(CurrentPage, Activity);
-    public bool IsSettingsSelected => SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
     public bool IsAboutSelected => ReferenceEquals(CurrentPage, About);
+
+    /// <summary>
+    /// Whether Settings is open over whatever the window was already showing (KON-437).
+    /// <para>
+    /// Settings is a dialog rather than a destination: you go there to change one thing and come back
+    /// to the page you were reading, not to wherever you happened to be before you went there. It is
+    /// its own overlay and not the <see cref="Dialog"/> slot, because Settings puts confirmations in
+    /// that slot itself — switching an adapter off asks first — and a dialog that replaced Settings
+    /// would take away the thing the question was about.
+    /// </para>
+    /// </summary>
+    [ObservableProperty] private bool _isSettingsOpen;
+
+    partial void OnIsSettingsOpenChanged(bool value)
+    {
+        // Escape closes Settings too, so the binding has to be told the answer changed (KON-201).
+        DismissCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>
     /// Whether the page on screen says nothing about a backend (KON-137).
     /// <para>
-    /// These three are the ones you want most when nothing works: Settings is where the engine list,
-    /// a remote or a kubeconfig gets fixed, Activity is where you see what happened just before it
-    /// broke, and About has the version and the link you need to report it. So they show over the
-    /// engine-down card rather than behind it.
+    /// These two are the ones you want most when nothing works: Activity is where you see what
+    /// happened just before it broke, and About has the version and the link you need to report it.
+    /// So they show over the engine-down card rather than behind it. Settings was the third until
+    /// KON-437 made it an overlay — it now shows over anything, including the card, without the
+    /// content area having to yield it.
     /// </para>
     /// </summary>
-    public bool IsBackendIndependentPage => IsActivitySelected || IsSettingsSelected || IsAboutSelected;
+    public bool IsBackendIndependentPage => IsActivitySelected || IsAboutSelected;
 
     /// <summary>Whether the content area shows <see cref="CurrentPage"/> at all.</summary>
     public bool IsPageVisible => IsReady || IsBackendIndependentPage;
@@ -219,7 +258,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     partial void OnCurrentPageChanged(object? value)
     {
         OnPropertyChanged(nameof(IsActivitySelected));
-        OnPropertyChanged(nameof(IsSettingsSelected));
         OnPropertyChanged(nameof(IsAboutSelected));
         OnPropertyChanged(nameof(IsSearchEnabled));
         OnPropertyChanged(nameof(SearchPlaceholder));
@@ -311,13 +349,23 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasBackendCrumb))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private string _engineName = "Connecting…";
+
+    /// <summary>
+    /// What the OS window list calls this window (KON-424). Kontena draws its own title bar, so this
+    /// is only ever read where the system lists windows — and that list is the one place two windows
+    /// on two different backends have to be told apart. Bare product name until something is open:
+    /// "Kontena — Connecting…" in the dock says less than nothing.
+    /// </summary>
+    public string WindowTitle => HasBackendCrumb ? $"{ProductInfo.Name} — {EngineName}" : ProductInfo.Name;
 
     [ObservableProperty] private BackendChipInfo _engineChip = new("?");
 
     /// <summary>Second line of the sidebar pill — the active backend's version/kind.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasBackendCrumb))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private string _engineDetail = string.Empty;
 
     /// <summary>

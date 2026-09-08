@@ -32,9 +32,7 @@ public sealed class ManagedToolStore
     /// Under the platform's application-data directory, beside the settings — not in a temp folder
     /// that gets swept, and not anywhere a shell would find it by accident.
     /// </summary>
-    public static string DefaultRoot() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Lionear", "Kontena", "tools");
+    public static string DefaultRoot() => Path.Combine(ProductInfo.DataDirectory, "tools");
 
     /// <summary>The path a managed copy would live at, whether or not it is there.</summary>
     public string PathFor(ExternalTool tool) => Path.Combine(

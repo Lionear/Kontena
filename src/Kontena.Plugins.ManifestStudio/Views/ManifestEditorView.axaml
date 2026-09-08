@@ -2,7 +2,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ae="using:AvaloniaEdit"
              x:Class="Kontena.Plugins.ManifestStudio.Views.ManifestEditorView">
+  <!-- The code surface, the gutter and the caret line come from the app's tokens rather than from
+       AvaloniaEdit's defaults (KON-427): the editor is the largest single surface in the plugin, and
+       a white-on-grey default box is what made the whole page read as a form. Syntax colours are the
+       one thing tokens cannot carry — see YamlHighlighting. -->
   <ae:TextEditor x:Name="Editor" x:FieldModifier="internal"
-                 FontFamily="Cascadia Code,Consolas,Menlo,monospace"
+                 FontFamily="{DynamicResource Mono}"
+                 FontSize="12.5"
+                 Background="{DynamicResource CodeSurface}"
+                 Foreground="{DynamicResource Text}"
+                 LineNumbersForeground="{DynamicResource TextFaint}"
+                 Padding="4,10"
                  ShowLineNumbers="True" />
 </UserControl>

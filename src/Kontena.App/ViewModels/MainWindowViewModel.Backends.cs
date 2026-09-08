@@ -119,13 +119,25 @@ public partial class MainWindowViewModel
     /// </summary>
     private Task<BackendProbe>? StartupProbe(IReadOnlyList<Task<BackendProbe>> round)
     {
+        // A window spawned on a chosen backend waits for that one and nothing else (KON-424): it is
+        // neither onboarding nor a screenshot run, and what the file remembers is about the launch
+        // window rather than this one.
+        if (_openBackend is { Length: > 0 } chosen)
+            return ProbeFor(chosen, round);
+
         if (!_settings.Onboarded || Environment.GetEnvironmentVariable("KONTENA_SCREENSHOT") == "1")
             return null;
 
         if (_settings.StartupTarget is not { Length: > 0 } target)
             return null;
 
-        var index = _registry.Providers.ToList().FindIndex(p => p.Backend == target);
+        return ProbeFor(target, round);
+    }
+
+    /// <summary>The round's probe for one backend, or null when it is no longer a provider.</summary>
+    private Task<BackendProbe>? ProbeFor(string backend, IReadOnlyList<Task<BackendProbe>> round)
+    {
+        var index = _registry.Providers.ToList().FindIndex(p => p.Backend == backend);
         return index < 0 ? null : round[index];
     }
 
@@ -210,6 +222,12 @@ public partial class MainWindowViewModel
                 // plugin will do. Nothing here enforces them — an in-process plugin can do whatever this
                 // app can — which is why they are shown as a claim, beside who made the claim.
                 .. manifest.Permissions.Select(p => new ConfirmDetail("IconCheck", "Says it will", p)),
+
+                // The command lines it says it runs (KON-438). Beside the sentences above rather than
+                // among them, because this one the loader checks: a plugin whose assembly drives a tool
+                // this list leaves out does not load at all. Still a claim — nothing stops loaded code
+                // running any command — but the one claim here that has to match what shipped.
+                .. manifest.Tools.Select(t => new ConfirmDetail("IconTerminal", "Runs the command", t)),
             ],
             OnConfirm: async () =>
             {
@@ -232,7 +250,9 @@ public partial class MainWindowViewModel
                 // not a fresh scan) does not ask about it again or hand it to another PluginLoadContext.
                 _plugins = loaded;
 
-                BackendCatalog.SetPluginProviders(loaded.SelectMany(p => p.Providers));
+                foreach (var plugin in loaded.Where(p => p.Manifest is not null))
+                    BackendCatalog.SetPluginProviders(plugin.Manifest!.Id, plugin.Providers);
+
                 await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));
             }));
     }
@@ -256,6 +276,30 @@ public partial class MainWindowViewModel
             if (demo is not null) { await ActivateAsync(demo.Provider); return; }
         }
 
+        // Spawned on a chosen backend (KON-424). Its own branch rather than a fallback into the one
+        // below, because that one forgets the remembered backend when its target is gone — and this
+        // window's target says nothing about where the next launch should land.
+        if (_openBackend is { Length: > 0 } chosen)
+        {
+            var picked = _probes.FirstOrDefault(p => p.Provider.Backend == chosen);
+
+            if (picked is { Connected: true })
+            {
+                await ActivateAsync(picked.Provider);
+                return;
+            }
+
+            EnterBackendDown(
+                picked is null ? $"{Pretty(chosen)} is gone" : $"Can't reach {NameOf(picked.Provider)}",
+                picked is null
+                    ? SwitchedOffAdapter(chosen) is { } off
+                        ? $"{Pretty(chosen)} came from the {off} adapter, and you switched that off in Settings › Extensions. Turn it back on there, or pick one below to carry on."
+                        : $"{Pretty(chosen)} was in the switcher a moment ago and is no longer available."
+                    : Unreachable(picked),
+                picked);
+            return;
+        }
+
         if (_settings.StartupTarget is { Length: > 0 } target)
         {
             var wanted = _probes.FirstOrDefault(p => p.Provider.Backend == target);
@@ -271,9 +315,14 @@ public partial class MainWindowViewModel
                 });
                 BuildSettingsPage();
 
+                // One of these reasons is the user's own doing and is fixed in one click; the others
+                // send them looking at their machine. Saying "an engine uninstalled" to someone who
+                // switched the adapter off themselves is the wrong place to send them (KON-283).
                 EnterBackendDown(
                     $"{Pretty(target)} is gone",
-                    $"Kontena last opened {Pretty(target)}, and it is no longer available — a kube-context may have been removed, or an engine uninstalled. Pick one below to carry on.");
+                    SwitchedOffAdapter(target) is { } off
+                        ? $"Kontena last opened {Pretty(target)}, which came from the {off} adapter — and you switched that off in Settings › Extensions. Turn it back on there, or pick one below to carry on."
+                        : $"Kontena last opened {Pretty(target)}, and it is no longer available — a kube-context may have been removed, or an engine uninstalled. Pick one below to carry on.");
                 return;
             }
 
@@ -345,6 +394,20 @@ public partial class MainWindowViewModel
     /// </summary>
     private static string Pretty(string backend) =>
         backend.Split(':') is [_, var context] && context.Length > 0 ? context : backend;
+
+    /// <summary>
+    /// The name of the switched-off adapter this backend came from, or null when it went away for some
+    /// other reason (KON-283).
+    /// <para>
+    /// Asked of the whole catalog rather than of what is currently built, because what is built no
+    /// longer contains the adapter — that is the situation being explained.
+    /// </para>
+    /// </summary>
+    private string? SwitchedOffAdapter(string backend) =>
+        AdapterCatalog.OwnerOf(AdapterCatalog.All(_plugins), backend) is { } owner
+        && !_settings.IsAdapterEnabled(owner.Id)
+            ? owner.Manifest.Name
+            : null;
     /// <param name="autoDetect">
     /// The toggle to open with. Passed on a rescan, which builds a fresh view model: without it the
     /// switch would silently spring back to the stored value every time the user probed again.
@@ -712,7 +775,7 @@ public partial class MainWindowViewModel
             RequestProjectLogs = ShowComposeLogsDialog,
             RequestConfirm = ShowConfirm,
         };
-        SearchText = string.Empty;
+        ForgetSearches();
 
         await Containers.LoadAsync();
 
@@ -807,7 +870,7 @@ public partial class MainWindowViewModel
         await UpdateClusterNavAsync();
         OnPropertyChanged(nameof(SelectedNamespace));
 
-        SearchText = string.Empty;
+        ForgetSearches();
 
         // Same door, same reason (KON-263). This side had the identical gap: the overview was built
         // here rather than navigated to, so a cluster's first Back was missing too. Without the
@@ -842,15 +905,9 @@ public partial class MainWindowViewModel
     }
     private void BuildSettingsPage()
     {
-        // Rebuilding replaces the instance, and CurrentPage holds the old one by reference. Left
-        // alone, someone standing on Settings when a rebuild happens — flipping the demo toggle
-        // does exactly that — would be looking at a page the shell no longer considers shown
-        // (KON-137).
-        var wasShowing = SettingsPage is not null && ReferenceEquals(CurrentPage, SettingsPage);
-
-        // …and the category with it. A rebuild happens for reasons that have nothing to do with where
-        // the user is standing — the demo toggle, a kubeconfig, a cluster being created — and dropping
-        // them back on General each time is the shell losing their place.
+        // The category survives a rebuild. A rebuild happens for reasons that have nothing to do with
+        // where the user is standing — the demo toggle, a kubeconfig, a cluster being created — and
+        // dropping them back on General each time is the shell losing their place.
         var category = SettingsPage?.Category;
 
         // Which of these are remotes the user configured decides whether the row can point at its own
@@ -899,6 +956,28 @@ public partial class MainWindowViewModel
             OnClustersChanged = () =>
                 ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends)),
             Kubeconfigs = Kubeconfigs(),
+
+            // Extensions (KON-283). Switching one off changes which providers exist, so it takes the
+            // same rebuild the demo toggle and the remotes use.
+            Adapters = AdapterCatalog.All(_plugins),
+            ActiveBackend = _activeBackend,
+            OnAdaptersChanged = async () =>
+            {
+                await ReloadBackendsAsync(BackendCatalog.ShouldIncludeDemo(_settings.ShowDemoBackends));
+
+                // A UI plugin contributes pages rather than backends, so the rebuild above would not
+                // notice it: the sidebar has to be built again for its entries to go or come back.
+                // Whichever nav is up — switching an adapter off does not change which mode you are in.
+                if (IsClusterMode)
+                    SetClusterNav();
+                else
+                    SetEngineNav();
+
+                // Nor would it notice a tool the extension brought (KON-438). Settings › Tools re-checks
+                // whenever it is opened, so setting the catalogue is enough — but it has to be set
+                // before that, and nothing else rebuilds this page after a toggle.
+                RefreshToolCatalog();
+            },
         })
         {
             // Local clusters (KON-109 + KON-76) — the one page that outlives its settings page.
@@ -919,12 +998,32 @@ public partial class MainWindowViewModel
         };
 
         SettingsPage.RequestConfirm = ShowConfirm;
+        SettingsPage.RequestClose = CloseSettings;
+
+        // After the initializer, because it needs the page that was just kept or built (KON-438).
+        RefreshToolCatalog();
 
         if (category is not null)
             SettingsPage.Category = category;
+    }
 
-        if (wasShowing)
-            CurrentPage = SettingsPage;
+    /// <summary>
+    /// Tell Settings &#8250; Tools which extensions are in force, so the tools they drive are listed
+    /// beside the ones Kontena drives itself (KON-438).
+    /// <para>
+    /// Switched off means gone, the same as its pages and its backends: an extension that contributes
+    /// nothing has no tool to need. And the list is rebuilt rather than added to, because the page is
+    /// kept across settings rebuilds and would otherwise still be offering to install <c>git</c> for a
+    /// plugin that is no longer running.
+    /// </para>
+    /// </summary>
+    private void RefreshToolCatalog()
+    {
+        if (_tools is null)
+            return;
+
+        var inForce = AdapterCatalog.All(_plugins).Where(a => _settings.IsAdapterEnabled(a.Id));
+        _tools.Catalog = [.. ToolGroup.Default, .. ToolGroup.ForExtensions(inForce)];
     }
 
     /// <summary>
@@ -1029,7 +1128,6 @@ public partial class MainWindowViewModel
     /// </summary>
     private async Task ReloadBackendsAsync(bool includeDemo)
     {
-        _settings = _settings with { ShowDemoBackends = includeDemo };
         var stored = _store.Load();
 
         // Prune here rather than only at startup: removing a kubeconfig takes its clusters with it, and
@@ -1037,6 +1135,18 @@ public partial class MainWindowViewModel
         var known = BackendCatalog.DiscoverClusters(stored.KubeconfigPaths).Select(p => p.Backend).ToList();
         stored = _store.Update(s => s.PruneClusters(known)
             .PruneBackendNames([.. known, .. s.RemoteEngines.Select(r => r.Backend), "docker", "podman"]));
+
+        // Adopt what is on disk instead of patching the copy this view model is holding (KON-430).
+        // Everything that reaches here is a settings page that has already written through — an adapter
+        // switched off, a remote added, a cluster shown — and that page owns its own copy, so the one
+        // up here is a snapshot from before the write. BuildSettingsPage below builds the replacement
+        // page out of it, which is what made a switched-off adapter's toggle spring back to on while
+        // settings.json said otherwise: the switcher was rebuilt from `stored` and was right, the page
+        // was rebuilt from `_settings` and was one write behind.
+        //
+        // This also subsumes the ShowDemoBackends this used to patch in by hand: the demo toggle saves
+        // before it calls back, so the value is already in `stored`.
+        _settings = stored;
 
         await RebuildBackendsAsync(includeDemo, stored);
         BuildSettingsPage();
@@ -1063,7 +1173,8 @@ public partial class MainWindowViewModel
     {
         _registry.Replace(_buildCatalog(
             BackendCatalog.ShouldIncludeDemo(includeDemo),
-            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster));
+            stored.RemoteEngines, stored.KubeconfigPaths, stored.ShowsCluster,
+            stored.IsAdapterEnabled));
         BackendChips.Learn(_registry.Providers);
         _probes = await _registry.ProbeAllAsync();
         RefreshNewClusters();
@@ -1081,6 +1192,28 @@ public partial class MainWindowViewModel
         if (probe is not null)
             await ActivateAsync(probe.Provider);
     }
+
+    /// <summary>
+    /// A second shell over the same catalog, opened on <paramref name="backend"/> (KON-424) — so
+    /// Docker and a cluster can be on screen at once instead of taking turns in one window.
+    /// <para>
+    /// The registry is shared rather than rebuilt: a provider is a factory, every connection comes
+    /// from its own <c>CreateBackend()</c>, and rebuilding would probe every backend a second time to
+    /// arrive at the same list. Settings are re-read instead of shared, because this shell keeps its
+    /// own copy from here on and the launch window's is as old as the launch.
+    /// </para>
+    /// <para>
+    /// Here rather than in the view because it is the shell's dependencies that are being handed on;
+    /// the window around it is the view's business (<c>MainWindow.OnOpenBackendWindowClick</c>).
+    /// </para>
+    /// </summary>
+    internal MainWindowViewModel OpenInNewWindow(string backend) => new(
+        _registry, _store, _store.Load(),
+        // The same instances, not fresh ones: a test or the screenshot harness passes fakes for these,
+        // and a second window built out of the real thing would not be the same app.
+        updateService: _updateService, toolRunner: _toolRunner, buildCatalog: _buildCatalog,
+        plugins: _plugins, pluginRoot: _pluginRoot, probeGrace: _probeGrace, versions: Versions,
+        openBackend: backend);
 
     /// <summary>The backend currently being re-probed, or null — the switcher row that was clicked says
     /// so rather than looking ignored while a remote takes its ten seconds.</summary>

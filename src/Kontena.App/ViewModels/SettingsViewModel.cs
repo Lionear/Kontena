@@ -257,6 +257,21 @@ public sealed record SettingsContext
 
     /// <summary>The kubeconfigs Kontena reads (KON-122).</summary>
     public IReadOnlyList<KubeconfigSource> Kubeconfigs { get; init; } = [];
+
+    /// <summary>
+    /// The extensions to list under Extensions — bundled adapters and loaded plugins (KON-283). Empty
+    /// in design-time and tests, which hides the category rather than showing an empty page.
+    /// </summary>
+    public IReadOnlyList<AdapterEntry> Adapters { get; init; } = [];
+
+    /// <summary>
+    /// The backend that is open, so switching off the adapter behind it can say so first. Null when
+    /// nothing is connected.
+    /// </summary>
+    public string? ActiveBackend { get; init; }
+
+    /// <summary>Invoked when an adapter is switched on or off, so the shell can rebuild the backend set.</summary>
+    public Func<Task>? OnAdaptersChanged { get; init; }
 }
 
 /// <summary>
@@ -273,6 +288,15 @@ public sealed record SettingsContext
 /// </summary>
 public partial class SettingsViewModel : ViewModelBase
 {
+    /// <summary>
+    /// Close Settings again (KON-437). Set by the shell, which owns the overlay — the same way this
+    /// page hands its confirmations back rather than building them itself.
+    /// </summary>
+    public Action? RequestClose { get; set; }
+
+    [RelayCommand]
+    private void Close() => RequestClose?.Invoke();
+
     private readonly SettingsStore _store;
     private readonly List<EngineListItem> _backends;
     private KontenaSettings _settings;
@@ -296,6 +320,9 @@ public partial class SettingsViewModel : ViewModelBase
         _discoveredClusters = context.Clusters;
         Kubeconfigs = [.. context.Kubeconfigs];
         _onClustersChanged = context.OnClustersChanged;
+        _adapters = context.Adapters;
+        _activeBackend = context.ActiveBackend;
+        _onAdaptersChanged = context.OnAdaptersChanged;
         _backends = [.. context.Backends ?? engines];
         _store = store;
         _settings = settings;
@@ -312,6 +339,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
+        _shareSearchAcrossResources = settings.ShareSearchAcrossResources;
         _autoDetect = settings.AutoDetectEngines;
         _diagnosticLogging = settings.DiagnosticLogging;
 
@@ -322,6 +350,7 @@ public partial class SettingsViewModel : ViewModelBase
         RefreshRemotes();
         RefreshBackendNames();
         RefreshClusters();
+        RefreshAdapters();
         _terminalFontFamily = settings.TerminalFontFamily;
         _terminalFontSize = settings.TerminalFontSize;
         _terminalLigatures = settings.TerminalLigatures;
@@ -381,6 +410,8 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsRegistries));
         OnPropertyChanged(nameof(IsClusters));
         OnPropertyChanged(nameof(IsTools));
+        OnPropertyChanged(nameof(IsRemoteClusters));
+        OnPropertyChanged(nameof(IsExtensions));
 
         // Re-check on entry rather than on build: tooling can be installed in a terminal while the
         // page is open, and a stale "not installed" is the kind of wrong that makes people click
@@ -404,6 +435,7 @@ public partial class SettingsViewModel : ViewModelBase
     public bool IsGeneral => Category == "general";
     public bool IsEngines => Category == "engines";
     public bool IsUpdates => Category == "updates";
+    public bool IsExtensions => Category == "extensions";
 
     /// <summary>
     /// Local clusters (KON-109, KON-76). An init property rather than a thirteenth constructor
@@ -466,6 +498,15 @@ public partial class SettingsViewModel : ViewModelBase
         DensityApplier.Apply(value);
         Save();
     }
+
+    /// <summary>
+    /// One search term for the whole connection instead of one per resource type (KON-426). Read by
+    /// the shell when it opens a page, so it applies to the next navigation rather than the next
+    /// launch — there is nothing to apply here.
+    /// </summary>
+    [ObservableProperty] private bool _shareSearchAcrossResources;
+
+    partial void OnShareSearchAcrossResourcesChanged(bool value) => Save();
 
     // ── Diagnostics (KON-389) ───────────────────────────────────────────────
 
@@ -655,6 +696,7 @@ public partial class SettingsViewModel : ViewModelBase
         {
             Theme = Theme,
             CompactDensity = CompactDensity,
+            ShareSearchAcrossResources = ShareSearchAcrossResources,
             AutoDetectEngines = AutoDetect,
             Startup = startup,
             PinnedBackend = startup == StartupBackend.Pinned ? pinned : null,

@@ -48,6 +48,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private readonly List<Channel<ResourceEvent>> _watchers = [];
 
+    /// <summary>Test hook (KON-449): how many watches are open right now. A watch that outlives the page
+    /// that started it is the shape a leaked view model takes against a real cluster — a connection held
+    /// open decoding events nobody reads — and a count is the only part of that a fake can show.</summary>
+    public int OpenWatches
+    {
+        get { lock (_watchers) return _watchers.Count; }
+    }
+
     /// <summary>Test hook (KON-355): run on the thread each post-snapshot watch event is produced on,
     /// so a test can assert whose thread an adapter's per-event work would be costing.</summary>
     public Action? OnWatchEvent { get; set; }
@@ -130,13 +138,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
         _pods =
         [
-            Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
-            Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
-            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses),
+            Pod1("api-7d9c", "app", PodPhase.Running, 2, 0, "gke-prod-worker-1", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses, ApiEnv),
+            Pod1("api-7d9d", "app", PodPhase.Running, 2, 0, "gke-prod-worker-2", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses, ApiEnv),
+            Pod1("api-7d9e", "app", PodPhase.Running, 2, 0, "gke-prod-control", "Deployment/api", "ghcr.io/lionear/api:1.8", ApiUses, ApiEnv),
             Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine", WebUses),
             // web is mid-rollout at 2/3, so two pods and not three — the counts and the list have to
             // tell the same story now that the detail page shows them together.
-            Pod1("web-5f2b", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine", WebUses),
+            // Restarted often and perfectly fine now — the case KON-442 is about, and the one the fake
+            // was missing: every healthy pod here had a restart count of zero, so "healthy, but that
+            // number is worth a look" was a state nothing could show.
+            Pod1("web-5f2b", "app", PodPhase.Running, 1, 6, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine", WebUses),
             new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Labels = App("redis"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
             // A pod wedged on its init container, which is the case the whole of KON-168 is about: the
             // container holding the answer is the one that used to be unreachable. Phase alone reports
@@ -212,6 +223,21 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             new SecretSummary { Name = "postgres-credentials", Namespace = "app", Type = "Opaque", Age = TimeSpan.FromDays(9), Keys = [new ConfigKey("password", 24), new ConfigKey("username", 8)] },
             new SecretSummary { Name = "app-tls", Namespace = "app", Type = "kubernetes.io/tls", Age = TimeSpan.FromDays(2), Keys = [new ConfigKey("tls.crt", 1704), new ConfigKey("tls.key", 1675)] },
             new SecretSummary { Name = "ghcr-pull", Namespace = "app", Type = "kubernetes.io/dockerconfigjson", Age = TimeSpan.FromDays(40), Keys = [new ConfigKey(".dockerconfigjson", 187)] },
+            // A fourth shape (KON-422): one that a controller keeps up to date. Everything about it
+            // reads like the others — that is the point. Only the label says the values come from
+            // somewhere else, and it is the label the editor has to notice.
+            new SecretSummary
+            {
+                Name = "stripe-api",
+                Namespace = "app",
+                Type = "Opaque",
+                Age = TimeSpan.FromDays(6),
+                Keys = [new ConfigKey("secret-key", 32), new ConfigKey("webhook-secret", 32)],
+                Labels = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [ManagedSecrets.ExternalSecretsLabel] = ManagedSecrets.ExternalSecretsLabelValue,
+                },
+            },
             // Minted beside a service account rather than by anyone; same reason as kube-root-ca.crt.
             new SecretSummary { Name = "default-token-x9f2q", Namespace = "kube-system", Type = "kubernetes.io/service-account-token", Age = TimeSpan.FromDays(31), Keys = [new ConfigKey("token", 1024)] },
         ];
@@ -229,11 +255,19 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 new ConfigEntry { Key = "username", Text = "postgres", SizeBytes = 8 },
             ],
             // Text null is what "these bytes are not text" looks like — the case the reveal path has
-            // to handle without rendering a terminal full of noise.
+            // to handle without rendering a terminal full of noise. The bytes are real rather than
+            // absent (KON-422): an editor that writes the whole object back has to carry the keys
+            // nobody looked at, and a seed with no bytes behind them would let that path pass a test
+            // it would fail on a cluster.
             ["Secret/app/app-tls"] =
             [
-                new ConfigEntry { Key = "tls.crt", Text = null, SizeBytes = 1704 },
-                new ConfigEntry { Key = "tls.key", Text = null, SizeBytes = 1675 },
+                new ConfigEntry { Key = "tls.crt", Text = null, Base64 = NotText(1704), SizeBytes = 1704 },
+                new ConfigEntry { Key = "tls.key", Text = null, Base64 = NotText(1675), SizeBytes = 1675 },
+            ],
+            ["Secret/app/stripe-api"] =
+            [
+                new ConfigEntry { Key = "secret-key", Text = "sk_live_51Mx8Qp2eZvKYlo2C0000", SizeBytes = 32 },
+                new ConfigEntry { Key = "webhook-secret", Text = "whsec_9Ht2Kq7Lm4Nr8Ss1Tv3Ww6Xy", SizeBytes = 32 },
             ],
         };
 
@@ -506,6 +540,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         Containers = MergeByName(live.Containers, desired.Containers, c => c.Name),
         Ports = MergeByName(live.Ports, desired.Ports, p => p.Name),
         Raw = desired.Raw ?? live.Raw,
+        SecretType = desired.SecretType ?? live.SecretType,
+
+        // Data replaces rather than merges the way a label map does. A key the document leaves out
+        // is a key the editor removed, and merging would make removal the one edit that silently
+        // does nothing. (kubectl apply reaches the same answer by a longer road: data is not a
+        // strategic-merge list, so the three-way merge prunes what last-applied held and the
+        // document no longer does.)
+        Data = desired.Data ?? live.Data,
     };
 
     private static IReadOnlyDictionary<string, string> MergeMap(
@@ -1102,6 +1144,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             case "PersistentVolumeClaim":
                 return _pvcs.Find(p => p.Name == name && p.Namespace == ns) is { } pvc ? ToDoc(pvc) : null;
 
+            case "ConfigMap":
+            case "Secret":
+                return ToConfigDoc(resource);
+
             default:
                 if (ParseWorkloadKind(resource.Kind.Kind) is { } kind)
                 {
@@ -1112,6 +1158,91 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
                 return _extras.GetValueOrDefault(resource);
         }
+    }
+
+    /// <summary>
+    /// <paramref name="length"/> bytes that are deliberately not valid UTF-8, as base64 — a stand-in
+    /// for a certificate or a key. Continuation bytes with nothing to continue: every decoder
+    /// rejects them, which is exactly the property the binary path is being seeded for.
+    /// </summary>
+    private static string NotText(int length)
+    {
+        var bytes = new byte[length];
+        for (var i = 0; i < length; i++)
+            bytes[i] = (byte)(0x80 + (i % 0x40));
+
+        return Convert.ToBase64String(bytes);
+    }
+
+    /// <summary>
+    /// A ConfigMap or Secret as a manifest, values and all (KON-422).
+    /// <para>
+    /// These two used to fall through to <see cref="_extras"/>, which is only ever filled by an
+    /// apply — so a seeded Secret had no manifest at all and its YAML tab read "not found". Nothing
+    /// noticed while the fields were read-only; a field editor that writes through the manifest
+    /// needs one to write into.
+    /// </para>
+    /// </summary>
+    private ManifestDoc? ToConfigDoc(ResourceRef resource)
+    {
+        var ns = resource.Namespace;
+        var secret = resource.Kind.Kind == "Secret";
+
+        var type = secret
+            ? _secrets.Find(s => s.Name == resource.Name && s.Namespace == ns)?.Type
+            : _configMaps.Exists(c => c.Name == resource.Name && c.Namespace == ns) ? string.Empty : null;
+
+        if (type is null)
+            return null;
+
+        var key = $"{resource.Kind.Kind}/{ns}/{resource.Name}";
+        var entries = _configData.TryGetValue(key, out var found) ? found : [];
+
+        return new ManifestDoc
+        {
+            ApiVersion = "v1",
+            Kind = resource.Kind.Kind,
+            Name = resource.Name,
+            Namespace = ns,
+            SecretType = secret ? type : null,
+            Data = entries.ToDictionary(e => e.Key, ConfigBytes.Base64Of, StringComparer.Ordinal),
+        };
+    }
+
+    /// <summary>Write an applied ConfigMap or Secret back into the listing and the values.</summary>
+    private void StoreConfig(ManifestDoc doc)
+    {
+        var ns = doc.Namespace ?? "default";
+        var secret = doc.Kind == "Secret";
+
+        // No data block means the document did not speak about the values — a patch for labels
+        // alone. Merge has already resolved that against what is live, so a null here is only
+        // possible when neither side had any.
+        var entries = (doc.Data ?? new Dictionary<string, string>(StringComparer.Ordinal))
+            .OrderBy(d => d.Key, StringComparer.Ordinal)
+            .Select(d => ConfigBytes.ToEntry(d.Key, d.Value))
+            .ToList();
+
+        _configData[$"{doc.Kind}/{ns}/{doc.Name}"] = entries;
+
+        var keys = entries.Select(e => new ConfigKey(e.Key, e.SizeBytes)).ToList();
+
+        if (secret)
+        {
+            var i = _secrets.FindIndex(s => s.Name == doc.Name && s.Namespace == ns);
+            if (i >= 0)
+                _secrets[i] = _secrets[i] with { Keys = keys, Type = doc.SecretType ?? _secrets[i].Type };
+            else
+                _secrets.Add(new SecretSummary { Name = doc.Name, Namespace = ns, Type = doc.SecretType ?? "Opaque", Keys = keys, Age = TimeSpan.Zero });
+
+            return;
+        }
+
+        var j = _configMaps.FindIndex(c => c.Name == doc.Name && c.Namespace == ns);
+        if (j >= 0)
+            _configMaps[j] = _configMaps[j] with { Keys = keys };
+        else
+            _configMaps.Add(new ConfigMapSummary { Name = doc.Name, Namespace = ns, Keys = keys, Age = TimeSpan.Zero });
     }
 
     /// <summary>Write an applied manifest back into the seeded world.</summary>
@@ -1156,10 +1287,23 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
             case "Namespace":
             {
-                if (!_namespaces.Exists(n => n.Name == doc.Name))
+                // Apply is declarative for a namespace too: applying one that exists writes its
+                // labels rather than doing nothing. Skipping the update made this the one kind where
+                // a second apply could not change anything, which is not how the real one behaves —
+                // and it left a namespace with no reachable state change at all (KON-450).
+                var i = _namespaces.FindIndex(n => n.Name == doc.Name);
+                if (i >= 0)
+                    _namespaces[i] = _namespaces[i] with { Labels = doc.Labels };
+                else
                     _namespaces.Add(new KubeNamespace { Name = doc.Name, Phase = "Active", Labels = doc.Labels, Age = TimeSpan.Zero });
+
                 break;
             }
+
+            case "ConfigMap":
+            case "Secret":
+                StoreConfig(doc);
+                break;
 
             default:
             {
@@ -1361,6 +1505,19 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         Uses(GroupVersionKind.Secret, "ghcr-pull", ConfigUseKind.ImagePullSecret),
     ];
 
+    /// <summary>
+    /// What the api container runs with (KON-416): one literal, one key of the very
+    /// postgres-credentials secret <see cref="ApiUses"/> already names — so the environment section
+    /// and the config section tell the same story — and one field reference, the shape that has no
+    /// object behind it at all.
+    /// </summary>
+    private static IReadOnlyList<ContainerEnv> ApiEnv =>
+    [
+        new("LOG_LEVEL", "info", EnvSourceKind.Literal),
+        new("PGPASSWORD", string.Empty, EnvSourceKind.Secret, "postgres-credentials", "password"),
+        new("POD_IP", string.Empty, EnvSourceKind.Field, SourceKey: "status.podIP"),
+    ];
+
     private static IReadOnlyList<ConfigUse> WebUses =>
     [
         Uses(GroupVersionKind.ConfigMap, "web-config", ConfigUseKind.Volume),
@@ -1372,9 +1529,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// tab is only worth looking at when something is using something — an empty tab proves nothing
     /// about whether the matching works.
     /// </param>
+    /// <param name="env">
+    /// The environment of the pod's <i>first</i> container (KON-416) — seeded on one container rather
+    /// than all of them so the multi-container pod also exercises the case where only one of them
+    /// declares anything.
+    /// </param>
     private static Pod Pod1(
         string name, string ns, PodPhase phase, int containers, int restarts, string node, string owner,
-        string image, IReadOnlyList<ConfigUse>? uses = null) => new()
+        string image, IReadOnlyList<ConfigUse>? uses = null, IReadOnlyList<ContainerEnv>? env = null) => new()
     {
         ConfigUses = uses ?? [],
         // Pods carry the label their owner selects on, so ownership and selector matching agree —
@@ -1396,7 +1558,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 Image = image,
                 Ready = phase == PodPhase.Running,
                 Restarts = restarts,
+                // A restart has a moment, and without one the tooltip can only say how often and not
+                // how long ago (KON-443). Relative to now so the demo does not age into "2 years ago".
+                LastTerminationTime = restarts > 0 ? DateTimeOffset.UtcNow.AddMinutes(-9) : null,
                 Ports = PortsFor(image),
+                Env = i == 0 ? env ?? [] : [],
                 RunState = phase == PodPhase.Running ? ContainerRunState.Running : ContainerRunState.Waiting,
                 Reason = phase == PodPhase.Running ? string.Empty : phase.ToString(),
             })

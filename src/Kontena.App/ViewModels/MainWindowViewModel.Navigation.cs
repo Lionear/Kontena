@@ -47,8 +47,6 @@ public partial class MainWindowViewModel
     /// </param>
     private void NavigateTo(string key, bool refreshNav = true)
     {
-        Diag.Mark($"navigate to {key}");
-
         // The history step replays as an ordinary visit, refresh and all: coming back to a page later
         // is exactly the moment its sidebar is most likely to be out of date.
         Arrived(NavItems.FirstOrDefault(i => i.Key == key)?.Label ?? key, () => NavigateTo(key));
@@ -57,15 +55,22 @@ public partial class MainWindowViewModel
         // fall through to a page of their own on an unknown key.
         if (_pluginPages.TryGetValue(key, out var pluginPage))
         {
+            Diag.Mark($"navigate to {key}");
             ShowPluginPage(key, pluginPage);
             return;
         }
 
+        // Marked there rather than here, once (KON-413). Cluster navigation also arrives at
+        // NavigateCluster without passing through this method, so a mark in both places logged every
+        // sidebar click twice — which read in the diagnostics like a command firing twice, and cost a
+        // bug report an afternoon chasing a double click that was never happening.
         if (IsClusterMode)
         {
             NavigateCluster(key, refreshNav);
             return;
         }
+
+        Diag.Mark($"navigate to {key}");
 
         IListPage? page = key switch
         {
@@ -84,7 +89,13 @@ public partial class MainWindowViewModel
         foreach (var item in NavItems)
             item.IsSelected = item.Key == key;
 
-        SearchText = page.SearchText;
+        // The page's own term, which is where an engine page keeps it — or the one the shell is
+        // already carrying, when the connection shares a single term (KON-426). Onto the page first:
+        // assigning the shell's SearchText the value it already holds raises nothing, so nothing
+        // would reach the page (KON-377).
+        var term = SharesSearchAcrossResources ? SearchText : page.SearchText;
+        page.SearchText = term;
+        SearchText = term;
 
         if (!page.HasLoaded)
             _ = page.LoadAsync();
@@ -122,7 +133,13 @@ public partial class MainWindowViewModel
 
         var items = new List<NavItem>();
 
-        foreach (var plugin in _plugins.Where(p => p.Status == PluginStatus.Loaded && p.Manifest is not null))
+        // A plugin the user switched off in Settings › Extensions contributes nothing, pages included
+        // (KON-283). Filtered here rather than at the call sites: this is the one place plugin pages
+        // reach the sidebar, and both navs come through it.
+        foreach (var plugin in _plugins.Where(p =>
+            p.Status == PluginStatus.Loaded
+            && p.Manifest is not null
+            && _settings.IsAdapterEnabled(p.Manifest.Id)))
         {
             foreach (var page in plugin.Pages)
             {
@@ -235,6 +252,11 @@ public partial class MainWindowViewModel
 
         Diag.Mark($"navigate to {key}");
         var built = System.Diagnostics.Stopwatch.StartNew();
+
+        // Before anything is replaced: the page about to go is the only one that can still say what
+        // it was searching for (KON-426).
+        RememberClusterSearch();
+
         CloseDetail();
         // Any page that holds something running — a port-forward registry, a watch stream (KON-250).
         // By interface rather than by type: the list of page types that own a resource has grown
@@ -277,7 +299,9 @@ public partial class MainWindowViewModel
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing
             // between a click and a workload that is gone (KON-332).
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
-                new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind)
+                new ClusterWorkloadsViewModel(
+                    _cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail,
+                    kind, Restarts)
                 { RequestConfirm = ShowConfirm },
             // The dashboard only where there is something to summarise. With one kind the sidebar has
             // no submenu either, and a dashboard of a single card is a page that says less than the
@@ -288,7 +312,9 @@ public partial class MainWindowViewModel
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
                     onOpenWorkload: ShowWorkloadDetail,
                     onOpenPods: () => NavigateCluster("pods")),
-            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail)
+            "workloads" => new ClusterWorkloadsViewModel(
+                _cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail,
+                restarts: Restarts)
                 { RequestConfirm = ShowConfirm },
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail)
@@ -305,7 +331,10 @@ public partial class MainWindowViewModel
                 _cluster,
                 onOpenClaim: name => OpenStorage("pvcs", name),
                 onOpenClass: name => OpenStorage("storageclasses", name)),
-            "storageclasses" => new ClusterStorageClassesViewModel(_cluster),
+            "storageclasses" => new ClusterStorageClassesViewModel(
+                _cluster,
+                onOpenVolumes: name => OpenStorage("volumes", name),
+                onOpenDetail: ShowStorageClassDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
             "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace)
@@ -361,20 +390,23 @@ public partial class MainWindowViewModel
         if (refreshNav)
             _ = RefreshClusterNavAsync();
 
-        // The search term does not survive navigating away, and that is the honest behaviour while
-        // cluster pages are rebuilt on every visit: the page it filtered no longer exists. The engine
-        // pages keep theirs because they are long-lived fields. Restoring a term onto a fresh page
-        // would show a filtered list with no way to tell it had been filtered (KON-164).
+        // The term the page being opened should be searching for: what a reload in place was holding
+        // (KON-377), else what this resource type was left searching for (KON-426).
         //
-        // A reload in place is the exception, and the one case where clearing is the dishonest answer
-        // (KON-377): the user never left. They clicked Restart or Scale on the one row their search
-        // had left standing, and the list they were working in came back showing everything. Put on
-        // the page rather than left to the shell's own SearchText, which still holds the term and so
-        // raises nothing to push down — a filled box over an unfiltered list.
-        if (keepSearch is { Length: > 0 } && CurrentPage is IListPage { SupportsSearch: true } page)
-            page.SearchText = keepSearch;
+        // A term used to be cleared by every navigation, because cluster pages are rebuilt on every
+        // visit and the page a term filtered no longer exists. What KON-164 was actually about is a
+        // filtered list with nothing to say it had been filtered — so the answer is to put the term
+        // back in the box as well, not to throw it away. Which is what the engine pages have always
+        // done: they are long-lived fields and carry their own term across a visit.
+        //
+        // Put on the page rather than left to the shell's own SearchText, which may still hold the
+        // term and so raise nothing to push down — a filled box over an unfiltered list (KON-377).
+        var term = keepSearch ?? RecallClusterSearch(key);
 
-        SearchText = keepSearch ?? string.Empty;
+        if (term.Length > 0 && CurrentPage is IListPage { SupportsSearch: true } page)
+            page.SearchText = term;
+
+        SearchText = term;
     }
     /// <summary>
     /// Follow the cluster after the open page saw it change (KON-339). Failure is silent on purpose:
@@ -383,15 +415,24 @@ public partial class MainWindowViewModel
     /// </summary>
     private async Task RefreshClusterNavAsync()
     {
+        // One in flight at a time (KON-413). Nothing awaits this, and it is fired behind every
+        // navigation and every watch event of the open page — so clicking through the sidebar stacked
+        // one cluster read per click, each of them answering into a sidebar the next click had already
+        // replaced. The last one asked is the only one whose answer is still true.
+        var ct = _navRefresh.Begin();
+
         try
         {
-            await Diag.TimeAsync("refresh the sidebar", UpdateClusterNavAsync());
+            await Diag.TimeAsync("refresh the sidebar", UpdateClusterNavAsync(ct));
         }
         catch (Exception)
         {
             // Left as they were, which is the same answer a refresh that never ran would give.
         }
     }
+
+    /// <summary>The one sidebar refresh that is out, and the token that ends it (KON-413).</summary>
+    private readonly PageLoad _navRefresh = new();
 
     /// <summary>
     /// Rebuild the currently-selected cluster page (e.g. after an action mutates it), keeping the
@@ -409,14 +450,15 @@ public partial class MainWindowViewModel
     /// Read the workload kinds first, then build the page (KON-200).
     /// <para>
     /// Which page Workloads is — the dashboard or the plain list — depends on how many kinds exist,
-    /// and that answer arrives with that read. Navigating first meant deciding on the namespace you
-    /// had just left: one kind to several gave the list, several to one gave the dashboard. Both
-    /// directions were reported. The same order applies after an apply, which can add the first
-    /// DaemonSet or remove the last.
+    /// and that answer arrives with that read. Navigating first meant deciding on what the previous
+    /// read had found: one kind to several gave the list, several to one gave the dashboard. Both
+    /// directions were reported. The kinds are the cluster's rather than the namespace's since
+    /// KON-414, so what this is still ahead of is an apply that adds the first DaemonSet or removes
+    /// the last.
     /// </para>
     /// <para>
     /// That read failing must not cost the navigation — a page built from a stale answer is still
-    /// better than no page at all — so the await is guarded and the key resolved either way.
+    /// better than no page at all — so the await is guarded and the page opened either way.
     /// </para>
     /// </summary>
     /// <param name="keepSearch"><inheritdoc cref="NavigateCluster" path="/param[@name='keepSearch']"/></param>
@@ -437,8 +479,12 @@ public partial class MainWindowViewModel
             IsReadingCluster = false;
         }
 
+        // The key as asked for, never a substitute. A per-kind page used to fall back to Workloads
+        // when the new namespace had none of that kind (KON-200), because the sidebar entry it
+        // belonged to was about to be removed. The entry stays now (KON-414), so the page it points at
+        // has to stay too — it says "no objects here" itself rather than being navigated away from.
         if (IsClusterMode)
-            NavigateCluster(WorkloadNavGroups.ResolveKey(key, _workloadKinds), refreshNav: false, keepSearch);
+            NavigateCluster(key, refreshNav: false, keepSearch);
     }
 
     /// <summary>
@@ -476,24 +522,32 @@ public partial class MainWindowViewModel
     /// left here is one cheap read.
     /// </para>
     /// </summary>
-    private async Task UpdateClusterNavAsync()
+    /// <param name="ct">
+    /// Ends this read where a later one has already superseded it (KON-413). Default where the caller
+    /// awaits it — an awaited refresh cannot be overtaken by itself.
+    /// </param>
+    private async Task UpdateClusterNavAsync(CancellationToken ct = default)
     {
         if (_cluster is null)
             return;
 
-        var ns = SelectedNamespace == AllNamespaces ? null : SelectedNamespace;
-
         // Only where the cluster cannot watch, in which case a re-read per navigation is the only way
         // the picker hears about a namespace that was created (KON-343).
         if (_namespaceWatch is null)
-            await ReadNamespacesAsync();
+            await ReadNamespacesAsync(ct);
 
         // One call, grouped there, rather than one per kind: five answers arriving separately is five
         // chances for the submenu to disagree with itself and with the list it labels (KON-169).
-        SyncWorkloadKindNav(await _cluster.ListWorkloadKindsAsync(ns));
+        //
+        // Cluster-wide, not for the picked namespace (KON-414): the sidebar is the same shape whichever
+        // namespace you are in. Asking per namespace is what made entries vanish under the pointer on a
+        // switch and reappear on the way back.
+        var kinds = await _cluster.ListWorkloadKindsAsync(ct: ct);
+        ct.ThrowIfCancellationRequested();
+        SyncWorkloadKindNav(kinds);
 
         UpdatePortForwardCount();
-        await UpdateAlertCountAsync();
+        await UpdateAlertCountAsync(ct);
     }
 
     /// <summary>
@@ -505,10 +559,14 @@ public partial class MainWindowViewModel
     /// are standing still, which is the half of KON-343 that polling on navigation never covered.
     /// </para>
     /// </summary>
-    private async Task ReadNamespacesAsync()
+    private async Task ReadNamespacesAsync(CancellationToken ct = default)
     {
-        if (_cluster is not null)
-            SyncNamespacePicker(await _cluster.ListNamespacesAsync());
+        if (_cluster is null)
+            return;
+
+        var namespaces = await _cluster.ListNamespacesAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        SyncNamespacePicker(namespaces);
     }
 
     /// <summary>Live while the picker follows the cluster; null when this cluster cannot watch.</summary>
@@ -532,7 +590,7 @@ public partial class MainWindowViewModel
         // dropping the stream is what re-arms the per-navigation read in UpdateClusterNavAsync, and
         // the saving is given up before the freshness is.
         _namespaceWatch = ClusterWatch.Follow(
-            _cluster, [GroupVersionKind.Namespace], null, ReadNamespacesAsync,
+            _cluster, [GroupVersionKind.Namespace], null, () => ReadNamespacesAsync(),
             (live, _) =>
             {
                 if (!live)
@@ -559,7 +617,8 @@ public partial class MainWindowViewModel
     /// namespace picker, and an alert firing outside your current namespace is still your problem.
     /// </para>
     /// </summary>
-    private async Task UpdateAlertCountAsync()
+    /// <param name="ct"><inheritdoc cref="UpdateClusterNavAsync" path="/param[@name='ct']"/></param>
+    private async Task UpdateAlertCountAsync(CancellationToken ct = default)
     {
         if (NavItems.FirstOrDefault(i => i.Key == "alerts") is not { } item)
             return;
@@ -574,7 +633,7 @@ public partial class MainWindowViewModel
 
         try
         {
-            var firing = ClusterAlertsViewModel.BadgeCount(await source.ListAlertsAsync());
+            var firing = ClusterAlertsViewModel.BadgeCount(await source.ListAlertsAsync(ct));
 
             // No badge at zero rather than a "0": every other entry in this sidebar is silent when
             // it has nothing to say, and an all-clear is not news (KON-219).
@@ -584,7 +643,9 @@ public partial class MainWindowViewModel
                 ? string.Empty
                 : $"{firing} firing {(firing == 1 ? "alert" : "alerts")}, not silenced";
         }
-        catch (Exception)
+        // Not on a superseded refresh (KON-413): a read this shell itself cancelled says nothing
+        // about Alertmanager, and blanking the badge for it would clear a number that is still right.
+        catch (Exception) when (!ct.IsCancellationRequested)
         {
             // An Alertmanager that stopped answering is the page's story to tell, not the sidebar's.
             // A stale number here would be the one thing worse than no number.
@@ -697,6 +758,48 @@ public partial class MainWindowViewModel
     /// <summary>Which cluster page is open, including a per-kind workloads page.</summary>
     private string _clusterPageKey = "overview";
 
+    /// <summary>
+    /// The term each cluster page was last searching for, keyed by nav key, for as long as this
+    /// connection lasts (KON-426).
+    /// <para>
+    /// Cluster pages are rebuilt on every visit, so unlike the engine pages — long-lived fields that
+    /// carry their own <c>SearchText</c> — they have nowhere of their own to keep it. The shell is
+    /// that place, and one shell is one connection since KON-424, which is the scope the term belongs
+    /// to: a search for "api" means nothing on the next cluster.
+    /// </para>
+    /// </summary>
+    private readonly Dictionary<string, string> _clusterSearch = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether one term is shared by every resource type instead of each keeping its own (KON-426).
+    /// Read off the store rather than the cached settings, for the reason
+    /// <see cref="CurrentTerminalFont"/> gives: a change made in Settings should reach the next page
+    /// you open, not the next launch.
+    /// </summary>
+    private bool SharesSearchAcrossResources => _store.Load().ShareSearchAcrossResources;
+
+    /// <summary>Put the open cluster page's term away before its page is replaced (KON-426).</summary>
+    private void RememberClusterSearch()
+    {
+        if (CurrentPage is IListPage { SupportsSearch: true })
+            _clusterSearch[_clusterPageKey] = SearchText;
+    }
+
+    /// <summary>
+    /// What the cluster page being opened should be searching for (KON-426) — the term it was left
+    /// with, or the one term the whole connection shares.
+    /// </summary>
+    private string RecallClusterSearch(string key) => SharesSearchAcrossResources
+        ? SearchText
+        : _clusterSearch.GetValueOrDefault(key, string.Empty);
+
+    /// <summary>Forget every remembered term. A new connection is a new set of objects (KON-426).</summary>
+    private void ForgetSearches()
+    {
+        _clusterSearch.Clear();
+        SearchText = string.Empty;
+    }
+
     /// <summary>The workload kinds the last read found, which is what decides the Workloads page.</summary>
     private IReadOnlyList<WorkloadKind> _workloadKinds = [];
 
@@ -704,6 +807,12 @@ public partial class MainWindowViewModel
     /// <summary>
     /// Rebuild the per-kind sub-entries under Workloads (KON-169). Which entries and in what order is
     /// the cluster's answer; this only reconciles the nav collection with it.
+    /// <para>
+    /// A rebuild that would produce the same entries is skipped (KON-414). It runs before every
+    /// cluster navigation and on every watch event of the open page, and the answer is cluster-wide
+    /// now, so the same rows were being torn down and put back several times a click — rows that blink
+    /// out and back under the pointer, for a list that had not changed.
+    /// </para>
     /// </summary>
     private void SyncWorkloadKindNav(IReadOnlyList<WorkloadKind> kinds)
     {
@@ -713,9 +822,15 @@ public partial class MainWindowViewModel
         if (items is null)
             return;
 
+        // On the collection rather than on _workloadKinds alone: opening a second cluster with the
+        // same kinds gets a freshly built sidebar with no children in it yet, and a field that still
+        // remembers the previous cluster would leave it that way.
+        if (items.Any(i => i.IsChild) && kinds.SequenceEqual(_workloadKinds))
+            return;
+
         var parentIndex = items.ToList().FindIndex(i => i.Key == "workloads");
 
-        // Drop the current children before rebuilding; the set changes as objects come and go.
+        // Drop the current children before rebuilding; the set changes as kinds come and go.
         for (var i = items.Count - 1; i > parentIndex; i--)
         {
             if (items[i].IsChild)
@@ -754,9 +869,10 @@ public partial class MainWindowViewModel
     /// Put Pods directly under Deployments (Rick, 2026-08-03). The pods you go looking for are nearly
     /// always a Deployment's, and Pods sat at the foot of the kinds with everything else between them.
     /// <para>
-    /// With no Deployments in this namespace it stays where it was, at the end: the entry it belongs
+    /// With no Deployments in this cluster it stays where it was, at the end: the entry it belongs
     /// under is not there to belong under. Redone on every rebuild rather than fixed at construction,
-    /// because the kind above it comes and goes with the namespace.
+    /// because the kind above it comes and goes with the cluster's objects — no longer with the
+    /// picked namespace (KON-414).
     /// </para>
     /// </summary>
     private static void MovePodsUnderDeployments(ObservableCollection<NavItem> items)
@@ -838,20 +954,22 @@ public partial class MainWindowViewModel
         CurrentPage = Containers;
         SearchText = Containers.SearchText;
     }
+    /// <summary>
+    /// Open Settings over the app (KON-437). Nothing about where the user is standing changes: it is
+    /// not a history step, it does not close the drawer and it does not clear the search — all three
+    /// are still there when Settings closes again, which is the point of it being a dialog.
+    /// </summary>
     [RelayCommand]
     private void ShowSettings()
     {
-        CloseDetail();
-        CloseDialog();
         if (SettingsPage is null)
             return;
 
-        Arrived("Settings", ShowSettings);
-        CurrentPage = SettingsPage;
-        SearchText = string.Empty;
-        foreach (var item in NavItems)
-            item.IsSelected = false;
+        IsSettingsOpen = true;
     }
+
+    [RelayCommand]
+    private void CloseSettings() => IsSettingsOpen = false;
     [RelayCommand]
     private void ShowAbout()
     {

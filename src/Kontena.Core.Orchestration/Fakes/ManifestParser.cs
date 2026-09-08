@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace Kontena.Core.Orchestration.Fakes;
 
@@ -69,12 +70,16 @@ internal static class ManifestParser
         var ns = metadata is null ? null : Scalar(metadata, "namespace", metadata[0].Indent);
         var labels = metadata is null ? [] : Map(metadata, "labels", metadata[0].Indent);
 
+        var data = ReadData(lines);
+        var secretType = kind == "Secret" ? Scalar(lines, "type", 0) : null;
+
         var spec = Block(lines, "spec", 0);
         if (spec is null)
         {
             return new ManifestDoc
             {
                 ApiVersion = apiVersion, Kind = kind, Name = name, Namespace = ns, Labels = labels,
+                Data = data, SecretType = secretType,
             };
         }
 
@@ -100,6 +105,8 @@ internal static class ManifestParser
             Selector = selector,
             Ports = ReadPorts(spec),
             Containers = ReadContainers(spec),
+            Data = data,
+            SecretType = secretType,
         };
     }
 
@@ -107,6 +114,29 @@ internal static class ManifestParser
     {
         Kind = "Unknown", Name = "?", Raw = raw.Trim(), Error = reason,
     };
+
+    /// <summary>
+    /// A ConfigMap's or Secret's data, as the API would hold it: base64 (KON-422).
+    /// <para>
+    /// <c>stringData</c> is folded in the way the apiserver folds it — encoded, and winning over a
+    /// <c>data</c> entry for the same key — so a manifest that uses the convenient half writes the
+    /// same object as one that spells the bytes out.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, string>? ReadData(List<Line> lines)
+    {
+        var hasData = IndexOf(lines, "data", 0) >= 0;
+        var hasStringData = IndexOf(lines, "stringData", 0) >= 0;
+        if (!hasData && !hasStringData)
+            return null;
+
+        var data = Map(lines, "data", 0);
+
+        foreach (var (key, text) in Map(lines, "stringData", 0))
+            data[key] = Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+
+        return data;
+    }
 
     // ── Tokenizing ───────────────────────────────────────────────────────────
 

@@ -26,6 +26,22 @@ public sealed partial class PlanApplyViewModel(IApplyTarget target) : Observable
     [ObservableProperty]
     private string? _error;
 
+    /// <summary>Whether the results on screen came from a dry run. The notice above the list says
+    /// "nothing has been applied" on the strength of this, so it has to be a fact about the run that
+    /// produced these rows — not about the button last pressed.</summary>
+    [ObservableProperty]
+    private bool _wasDryRun;
+
+    /// <summary>"1 create · 1 update · 1 unchanged", for the strip under the list. Counted from the
+    /// results rather than predicted, the same reason <c>GitViewModel</c> re-reads status after every
+    /// command.</summary>
+    [ObservableProperty]
+    private string _summary = string.Empty;
+
+    /// <summary>Whether there is anything to show yet, so the page can say so instead of rendering an
+    /// empty box.</summary>
+    public bool HasResults => Results.Count > 0;
+
     [RelayCommand]
     private Task Plan(OpenDocument? document) => RunAsync(document, dryRun: true);
 
@@ -40,6 +56,8 @@ public sealed partial class PlanApplyViewModel(IApplyTarget target) : Observable
         IsRunning = true;
         Error = null;
         Results.Clear();
+        Summary = string.Empty;
+        WasDryRun = dryRun;
 
         try
         {
@@ -47,6 +65,8 @@ public sealed partial class PlanApplyViewModel(IApplyTarget target) : Observable
 
             await foreach (var progress in target.ApplyAsync(bundle))
                 Results.Add(progress);
+
+            Summary = Summarise();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -55,6 +75,27 @@ public sealed partial class PlanApplyViewModel(IApplyTarget target) : Observable
         finally
         {
             IsRunning = false;
+            OnPropertyChanged(nameof(HasResults));
         }
     }
+
+    private string Summarise()
+    {
+        var counts = Results
+            .GroupBy(r => r.Action)
+            .Select(g => $"{g.Count()} {Describe(g.Key)}")
+            .ToArray();
+
+        return counts.Length == 0 ? "Nothing in this document" : string.Join(" · ", counts);
+    }
+
+    private static string Describe(ApplyAction action) => action switch
+    {
+        ApplyAction.Created or ApplyAction.WouldCreate => "create",
+        ApplyAction.Configured or ApplyAction.WouldChange => "update",
+        ApplyAction.Unchanged => "unchanged",
+        ApplyAction.Deferred => "deferred",
+        ApplyAction.Failed => "failed",
+        _ => action.ToString().ToLowerInvariant(),
+    };
 }

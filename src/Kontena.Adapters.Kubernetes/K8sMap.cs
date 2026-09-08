@@ -76,11 +76,13 @@ internal static class K8sMap
         // joined by container name. Building the lookup once keeps that join in one place.
         var ports = PortsByContainer(p.Spec);
         var limits = MemoryLimitsByContainer(p.Spec);
+        var env = EnvByContainer(p.Spec);
+        var ns = p.Metadata?.NamespaceProperty ?? "default";
 
         return new Pod
         {
             Name = p.Metadata?.Name ?? "?",
-            Namespace = p.Metadata?.NamespaceProperty ?? "default",
+            Namespace = ns,
             Phase = p.Status?.Phase switch
             {
                 "Running" => PodPhase.Running,
@@ -89,9 +91,9 @@ internal static class K8sMap
                 "Failed" => PodPhase.Failed,
                 _ => PodPhase.Unknown,
             },
-            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports, limits))],
-            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports, limits))],
-            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports, limits))],
+            Containers = [.. statuses.Select(c => ToContainerStatus(c, ContainerKind.App, ports, limits, env))],
+            InitContainers = [.. initStatuses.Select(c => ToContainerStatus(c, ContainerKind.Init, ports, limits, env))],
+            EphemeralContainers = [.. ephemeralStatuses.Select(c => ToContainerStatus(c, ContainerKind.Ephemeral, ports, limits, env))],
             // Init restarts are counted too: a pod that has retried its init container seven times has
             // restarted seven times, and reporting 0 there is the reading that hides the problem.
             Restarts = statuses.Sum(c => c.RestartCount) + initStatuses.Sum(c => c.RestartCount),
@@ -107,6 +109,12 @@ internal static class K8sMap
             Labels = Labels(p.Metadata?.Labels),
             Age = AgeOf(p.Metadata),
             ConfigUses = ConfigUsesOf(p.Spec),
+            // Only resolvable when the pod is part of a headless Service (the StatefulSet pattern) or
+            // sets hostname/subdomain explicitly — Kubernetes fills both in automatically for the
+            // former, so reading just these two spec fields covers both cases.
+            ClusterDnsName = p.Spec?.Hostname is { Length: > 0 } hostname && p.Spec?.Subdomain is { Length: > 0 } subdomain
+                ? $"{hostname}.{subdomain}.{ns}.svc.cluster.local"
+                : string.Empty,
         };
     }
 
@@ -173,7 +181,8 @@ internal static class K8sMap
     private static Kontena.Sdk.Orchestration.Models.ContainerStatus ToContainerStatus(
         V1ContainerStatus c, ContainerKind kind,
         Dictionary<string, IReadOnlyList<ContainerPort>> ports,
-        Dictionary<string, long> memoryLimits) => new()
+        Dictionary<string, long> memoryLimits,
+        Dictionary<string, IReadOnlyList<ContainerEnv>> env) => new()
     {
         Name = c.Name,
         Image = c.Image ?? string.Empty,
@@ -181,6 +190,7 @@ internal static class K8sMap
         Restarts = c.RestartCount,
         Kind = kind,
         Ports = ports.TryGetValue(c.Name, out var declared) ? declared : [],
+        Env = env.TryGetValue(c.Name, out var declaredEnv) ? declaredEnv : [],
         RunState = RunStateOf(c.State),
         Reason = ReasonOf(c.State),
         ExitCode = c.State?.Terminated?.ExitCode,
@@ -188,6 +198,10 @@ internal static class K8sMap
         // lastState is the only place that says whether it was killed or exited on its own (KON-150).
         LastTerminationReason = c.LastState?.Terminated?.Reason ?? string.Empty,
         LastExitCode = c.LastState?.Terminated?.ExitCode,
+        // …and when it died, which is the same instant as the restart that followed (KON-443). Through
+        // EngineTimestamp because "never" arrives here as 0001-01-01, and converting that one directly
+        // throws east of UTC — the crash KON-160 closed.
+        LastTerminationTime = EngineTimestamp.FromOptional(c.LastState?.Terminated?.FinishedAt),
         MemoryLimitBytes = memoryLimits.TryGetValue(c.Name, out var limit) ? limit : null,
     };
 
@@ -239,6 +253,42 @@ internal static class K8sMap
 
         return map;
     }
+
+    /// <summary>
+    /// Declared environment variables per container name, init and ephemeral containers included —
+    /// a pod wedged in its init container is exactly when its environment is worth reading.
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<ContainerEnv>> EnvByContainer(V1PodSpec? spec)
+    {
+        var map = new Dictionary<string, IReadOnlyList<ContainerEnv>>(StringComparer.Ordinal);
+
+        foreach (var c in (spec?.InitContainers ?? []).Concat(spec?.Containers ?? []))
+            if (c.Env is { Count: > 0 })
+                map[c.Name] = [.. c.Env.Select(ToContainerEnv)];
+
+        foreach (var c in spec?.EphemeralContainers ?? [])
+            if (c.Env is { Count: > 0 })
+                map[c.Name] = [.. c.Env.Select(ToContainerEnv)];
+
+        return map;
+    }
+
+    /// <summary>
+    /// The declaration, not the value. Only a literal <c>value:</c> is in the spec at all; a
+    /// <c>valueFrom</c> is a reference the kubelet resolves at start-up, so what comes across is
+    /// where to look. Carrying it as an empty value instead would read as "set to nothing", which is
+    /// a different and wrong answer.
+    /// </summary>
+    private static ContainerEnv ToContainerEnv(V1EnvVar e) => e.ValueFrom switch
+    {
+        { SecretKeyRef: { } s } => new(e.Name, string.Empty, EnvSourceKind.Secret, s.Name, s.Key),
+        { ConfigMapKeyRef: { } c } => new(e.Name, string.Empty, EnvSourceKind.ConfigMap, c.Name, c.Key),
+        { FieldRef: { } f } => new(e.Name, string.Empty, EnvSourceKind.Field, string.Empty, f.FieldPath),
+        // The container name is optional and means "this one" when it is left out, which the row can
+        // say better than a dangling "of".
+        { ResourceFieldRef: { } r } => new(e.Name, string.Empty, EnvSourceKind.Resource, r.ContainerName ?? string.Empty, r.Resource),
+        _ => new(e.Name, e.Value ?? string.Empty, EnvSourceKind.Literal),
+    };
 
     private static ContainerPort ToContainerPort(V1ContainerPort p) =>
         new(p.Name ?? string.Empty, p.ContainerPort, p.Protocol ?? "TCP");
@@ -363,6 +413,13 @@ internal static class K8sMap
     /// <summary>
     /// Summarise rollout health from the replica counts — the same reading <c>kubectl rollout
     /// status</c> gives, minus the conditions detail.
+    /// <para>
+    /// The counts cannot say <c>Degraded</c>, and used to try (KON-420): zero ready replicas is what a
+    /// single-replica Deployment looks like for the couple of seconds it takes to restart, and calling
+    /// that degraded painted an ordinary restart red. Not being at the desired count is
+    /// <c>Progressing</c> whatever the count is; whether it is stuck there is a question only the pods
+    /// can answer, and <see cref="WithPodTrouble"/> asks them.
+    /// </para>
     /// </summary>
     private static RolloutStatus Rollout(WorkloadKind kind, int desired, int ready, int upToDate, bool suspended)
     {
@@ -375,12 +432,44 @@ internal static class K8sMap
 
         if (desired == 0)
             return RolloutStatus.Paused;
-        if (ready == 0)
-            return RolloutStatus.Degraded;
         if (ready < desired || upToDate < desired)
             return RolloutStatus.Progressing;
 
         return RolloutStatus.Complete;
+    }
+
+    /// <summary>
+    /// Settle the one thing the replica counts left open: a workload that is not at its desired count
+    /// is <c>Degraded</c> rather than <c>Progressing</c> when one of its own pods has a container that
+    /// keeps trying and keeps failing (KON-420).
+    /// <para>
+    /// Only <c>Progressing</c> is ever upgraded. A workload at its desired count has no container to
+    /// be looping — a looping one is not ready — and one scaled to zero is <c>Paused</c> on purpose,
+    /// which a pod still winding down does not undo.
+    /// </para>
+    /// <para>
+    /// Ownership is matched the way <c>PodMatching.OwnedBy</c> matches it, on the owner this same
+    /// mapper writes into <c>Pod.ControlledBy</c> — where a ReplicaSet is already rolled up to its
+    /// Deployment, so a Deployment finds its pods across revisions.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<Workload> WithPodTrouble(IReadOnlyList<Workload> workloads, IEnumerable<Pod> pods)
+    {
+        var stuck = new HashSet<string>(
+            pods.Where(p => p.AllContainers.Any(c => c.IsLooping))
+                .Select(p => $"{p.Namespace}/{p.ControlledBy}"),
+            StringComparer.Ordinal);
+
+        if (stuck.Count == 0)
+            return workloads;
+
+        return
+        [
+            .. workloads.Select(w =>
+                w.RolloutStatus == RolloutStatus.Progressing && stuck.Contains($"{w.Namespace}/{w.Kind}/{w.Name}")
+                    ? w with { RolloutStatus = RolloutStatus.Degraded }
+                    : w),
+        ];
     }
 
     private static IReadOnlyList<string> ImagesOf(V1PodTemplateSpec? template) =>
@@ -411,16 +500,21 @@ internal static class K8sMap
         if (type == ServiceType.ClusterIp && spec?.ClusterIP == "None")
             type = ServiceType.Headless;
 
+        var name = s.Metadata?.Name ?? "?";
+        var ns = s.Metadata?.NamespaceProperty ?? "default";
+
         return new Service
         {
-            Name = s.Metadata?.Name ?? "?",
-            Namespace = s.Metadata?.NamespaceProperty ?? "default",
+            Name = name,
+            Namespace = ns,
             Type = type,
             ClusterIp = spec?.ClusterIP ?? string.Empty,
             ExternalIp = ExternalIpOf(s),
             Ports = [.. (spec?.Ports ?? []).Select(ToServicePort)],
             Selector = ReadOnly(spec?.Selector),
             Age = AgeOf(s.Metadata),
+            // Kubernetes always assigns a service this name, regardless of type.
+            ClusterDnsName = $"{name}.{ns}.svc.cluster.local",
         };
     }
 
@@ -649,6 +743,13 @@ internal static class K8sMap
             .. Keys(s.Data, v => v?.LongLength ?? 0)
                 .OrderBy(k => k.Name, StringComparer.Ordinal),
         ],
+
+        // Carried so the editor can see a controller's claim on this object before offering to
+        // write it (KON-422).
+        Labels = s.Metadata?.Labels is { } labels
+            ? new Dictionary<string, string>(labels, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal),
+
         Age = AgeOf(s.Metadata),
     };
 

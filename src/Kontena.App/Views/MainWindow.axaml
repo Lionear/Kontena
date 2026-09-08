@@ -13,7 +13,7 @@
         Background="{DynamicResource Bg}"
         TransparencyLevelHint="None"
         Icon="/Assets/icon.ico"
-        Title="Kontena"
+        Title="{Binding WindowTitle, FallbackValue=Kontena}"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="38"
         WindowDecorations="BorderOnly">
@@ -39,7 +39,7 @@
             <Button Classes="engineitem" Classes.active="{Binding IsActive}"
                     Click="OnSwitcherItemClick"
                     Command="{Binding SwitchCommand}" CommandParameter="{Binding Backend}">
-                <Grid ColumnDefinitions="Auto,*,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="30" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -78,6 +78,21 @@
                     </StackPanel>
                     <Path Grid.Column="2" Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
                           Data="{StaticResource IconCheck}" VerticalAlignment="Center" IsVisible="{Binding IsActive}"/>
+                    <!--
+                        KON-424: open this connection in a window of its own, so Docker and a cluster
+                        can be on screen together instead of taking turns in this one. Same icon and
+                        wording as the detail drawer's detach (KON-308) — it is the same gesture.
+                        Only on a backend that answered: a window opened on one that did not would
+                        show nothing but the down card, and retrying is what its row already does.
+                        Click, not Command, for the reason given at that button: making windows is
+                        the view's work.
+                    -->
+                    <Button Grid.Column="3" Classes="ghost" Click="OnOpenBackendWindowClick" Padding="7"
+                            Margin="4,0,0,0" VerticalAlignment="Center" IsVisible="{Binding IsConnected}"
+                            ToolTip.Tip="Open in a new window">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{DynamicResource TextDim}"
+                              Data="{StaticResource IconExternalLink}"/>
+                    </Button>
                 </Grid>
             </Button>
         </DataTemplate>
@@ -408,7 +423,7 @@
                             <TextBlock Grid.Column="1" Text="Activity" Margin="11,0,0,0" VerticalAlignment="Center"/>
                         </Grid>
                     </Button>
-                    <Button Classes="nav" Classes.selected="{Binding IsSettingsSelected}" Command="{Binding ShowSettingsCommand}">
+                    <Button Classes="nav" Classes.selected="{Binding IsSettingsOpen}" Command="{Binding ShowSettingsCommand}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Path Grid.Column="0" Classes="icon" Width="17" Height="17"
                                   Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconSettings}"/>
@@ -506,9 +521,11 @@
             <!-- Command bar -->
             <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                 <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto">
-                    <!-- Back, and the only one there is: Settings, Activity and About had no way back
-                         at all before this (KON-173). Hidden rather than disabled when there is no
-                         history, because an always-present greyed arrow is chrome nobody reads. -->
+                    <!-- Back, and the only one there is: Activity and About had no way back at all
+                         before this (KON-173). Settings is no longer among them — since KON-437 it
+                         opens over the page instead of replacing it, so there is nothing to go back
+                         from. Hidden rather than disabled when there is no history, because an
+                         always-present greyed arrow is chrome nobody reads. -->
                     <Button Grid.Column="0" Classes="qa" Width="30" Height="30" Margin="0,0,12,0"
                             IsVisible="{Binding CanGoBack}" Command="{Binding GoBackCommand}"
                             ToolTip.Tip="{Binding BackTooltipWithHint}">
@@ -750,6 +767,22 @@
             </Border>
         </Panel>
 
+        <!-- Settings, over whatever you were reading rather than instead of it (KON-437). Its own
+             layer under the modal slot below, because Settings raises confirmations into that slot
+             and one that replaced Settings would take away the thing it was asking about. -->
+        <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsSettingsOpen}" Background="#B4060810">
+            <!-- One size for every section (KON-440). Stretch takes the whole overlay up to the cap,
+                 so the dialog is as big as the window allows rather than as big as the section that
+                 happens to be open — picking a shorter one no longer resizes it under you. Avalonia
+                 centres a stretched child that hits its Max, so this still sits in the middle, and
+                 anything taller scrolls in SettingsView's own ScrollViewer. No floor: the smallest
+                 window this app allows is 900x560, which after the title bar and these margins
+                 leaves 836x458, so there is not always a fixed minimum to give. -->
+            <ContentControl Content="{Binding SettingsPage}" HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch" Margin="32"
+                            MaxWidth="1000" MaxHeight="720"/>
+        </Panel>
+
         <!-- Modal overlay (Run container, …). Row 1 only: the title bar stays draggable behind it. -->
         <Panel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsDialogOpen}" Background="#B4060810">
             <ContentControl Content="{Binding Dialog}" HorizontalAlignment="Center"
@@ -776,6 +809,21 @@
                     <Button Classes="primary" Command="{Binding Update.OpenCardCommand}" Content="See what's new"/>
                 </StackPanel>
             </StackPanel>
+        </Border>
+
+        <!-- Action toast: same corner as the update one, and never both — this one is a sentence that
+             takes itself away after a few seconds, so the two cannot queue up against each other
+             (KON-448). Above the update toast in the tree so a restart confirmed while an update is
+             on offer is the thing you see; the update keeps its sidebar entry either way. -->
+        <Border Grid.Row="1" Grid.Column="1" IsVisible="{Binding ActionToast.IsVisible}" MaxWidth="360"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,24"
+                Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,12" BoxShadow="0 12 40 0 #66000000">
+            <!-- No buttons and no icon: this reports, it does not ask. The update toast has two
+                 buttons because it is an offer; a line that leaves on its own in four seconds is not
+                 something to answer, and a dismiss you have four seconds to hit is not a control. -->
+            <TextBlock Text="{Binding ActionToast.Message}" FontSize="13" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
         </Border>
 
         <!-- First-run onboarding: opaque, covers the whole shell below the title bar -->

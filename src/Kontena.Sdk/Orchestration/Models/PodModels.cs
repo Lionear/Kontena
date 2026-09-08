@@ -45,6 +45,42 @@ public enum ContainerRunState
 /// </summary>
 public readonly record struct ContainerPort(string Name, int Number, string Protocol);
 
+/// <summary>Where an environment variable's value comes from (KON-416).</summary>
+public enum EnvSourceKind
+{
+    /// <summary>A literal value, written out in the pod spec.</summary>
+    Literal,
+
+    /// <summary>One key of a Secret — <c>valueFrom.secretKeyRef</c>.</summary>
+    Secret,
+
+    /// <summary>One key of a ConfigMap — <c>valueFrom.configMapKeyRef</c>.</summary>
+    ConfigMap,
+
+    /// <summary>A field of the pod itself — <c>valueFrom.fieldRef</c>, e.g. <c>status.podIP</c>.</summary>
+    Field,
+
+    /// <summary>A container's own resource request or limit — <c>valueFrom.resourceFieldRef</c>.</summary>
+    Resource,
+}
+
+/// <summary>
+/// One environment variable a container declares (KON-416).
+/// <para>
+/// Only a <see cref="EnvSourceKind.Literal"/> carries a <paramref name="Value"/>. Every other kind is
+/// a reference the kubelet resolves at start-up, so the spec holds where to look and never the value
+/// itself: <paramref name="SourceName"/> is the object it points at — or, for a resource field, the
+/// container — and <paramref name="SourceKey"/> the key, field path or resource inside it.
+/// </para>
+/// <para>
+/// <c>envFrom</c> is deliberately not modelled here: it names a whole object rather than variables,
+/// and which names it produces is only knowable by reading that object. It is carried as a
+/// <see cref="ConfigUse"/> instead.
+/// </para>
+/// </summary>
+public readonly record struct ContainerEnv(
+    string Name, string Value, EnvSourceKind Source, string SourceName = "", string SourceKey = "");
+
 /// <summary>Per-container status inside a pod — drives the pod-detail container list.</summary>
 public sealed record ContainerStatus
 {
@@ -64,6 +100,12 @@ public sealed record ContainerStatus
 
     /// <summary>Ports the container declares, for the port-forward dialog to offer (KON-170).</summary>
     public IReadOnlyList<ContainerPort> Ports { get; init; } = [];
+
+    /// <summary>
+    /// Environment variables the container declares (KON-416). Read off the spec that came with the
+    /// listing, so the pod-detail section that shows them costs no call of its own.
+    /// </summary>
+    public IReadOnlyList<ContainerEnv> Env { get; init; } = [];
 
     public ContainerRunState RunState { get; init; } = ContainerRunState.Unknown;
 
@@ -85,6 +127,17 @@ public sealed record ContainerStatus
     public int? LastExitCode { get; init; }
 
     /// <summary>
+    /// When the previous run ended — the kubelet's <c>lastState.terminated.finishedAt</c>, which is
+    /// the moment this container last restarted (KON-443). Null when it never has.
+    /// <para>
+    /// The only restart timing that arrives with a plain listing, so it is the only one a list row can
+    /// have. It says when the last restart was and nothing about the ones before it: "8 restarts" and
+    /// "8 restarts in the last hour" still differ only in this one field.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? LastTerminationTime { get; init; }
+
+    /// <summary>
     /// Memory limit from the pod spec in bytes, when one is declared. Null means unlimited, which is
     /// a different answer than zero and changes what an OOM kill means.
     /// </summary>
@@ -101,6 +154,20 @@ public sealed record ContainerStatus
         ContainerRunState.Terminated => Reason.Length == 0 ? "Terminated" : $"Terminated: {Reason}",
         _ => string.Empty,
     };
+
+    /// <summary>
+    /// Whether this container keeps trying and keeps failing, as opposed to merely not being up yet.
+    /// The four kubelet reasons that mean it: a container waiting on any of them is not going to fix
+    /// itself, while one waiting on <c>ContainerCreating</c> or on nothing at all is simply starting.
+    /// <para>
+    /// The one place that list lives (KON-420). It decides both what a workload's rollout status says
+    /// and what a pod row calls trouble, and those two answers being written twice is exactly how
+    /// they would come to disagree.
+    /// </para>
+    /// </summary>
+    public bool IsLooping =>
+        RunState == ContainerRunState.Waiting
+        && Reason is "CrashLoopBackOff" or "ImagePullBackOff" or "ErrImagePull" or "CreateContainerError";
 
     /// <summary>An init container that finished as it should — the only success it has.</summary>
     public bool CompletedSuccessfully => RunState == ContainerRunState.Terminated && ExitCode is null or 0;
@@ -141,6 +208,20 @@ public sealed record Pod
     /// <summary>Total restarts across all containers.</summary>
     public int Restarts { get; init; }
 
+    /// <summary>
+    /// The most recent restart across every container, or null when nothing here has restarted
+    /// (KON-443). The counterpart to <see cref="Restarts"/>: the count says a pod has a history, this
+    /// says whether that history is still happening.
+    /// <para>
+    /// Only containers that actually restarted are considered. A container can carry a terminated
+    /// last state without the count agreeing, and a moment taken from one of those would be a restart
+    /// time for a restart that never occurred.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? LastRestart => AllContainers
+        .Where(c => c.Restarts > 0 && c.LastTerminationTime is not null)
+        .Max(c => c.LastTerminationTime);
+
     /// <summary>Node the pod is scheduled on.</summary>
     public string Node { get; init; } = string.Empty;
 
@@ -152,6 +233,14 @@ public sealed record Pod
 
     /// <summary>Owning controller, e.g. "Deployment/api" — empty for bare pods.</summary>
     public string ControlledBy { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The pod's cluster-internal DNS name, or empty when it doesn't have one — most pods are reachable
+    /// only by IP. Left to the adapter to fill in: whether (and how) a pod gets a stable name is a
+    /// backend-specific rule (for Kubernetes: part of a headless Service, or explicit
+    /// <c>hostname</c>/<c>subdomain</c>), not something this orchestrator-neutral model should assume.
+    /// </summary>
+    public string ClusterDnsName { get; init; } = string.Empty;
 
     /// <summary>
     /// The pod's labels. Needed to answer the question a Service detail exists for: which pods does

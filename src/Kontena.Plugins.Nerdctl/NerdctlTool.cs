@@ -22,5 +22,8 @@ public static class NerdctlTool
         // Only Homebrew is certain enough to name — see KnownTools' remarks on guessed packages
         // costing more than no hint. nerdctl's own releases are the honest answer everywhere else.
         DocumentationUrl = "https://github.com/containerd/nerdctl",
+
+        // Read on Settings › Tools since KON-438, where the row needs a line saying what it is for.
+        Purpose = "The nerdctl plugin's containers: without it the plugin has no backend to offer.",
     };
 }

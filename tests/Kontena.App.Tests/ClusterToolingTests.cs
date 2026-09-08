@@ -1,4 +1,5 @@
 using Kontena.App.ViewModels;
+using Kontena.Sdk;
 using Kontena.Sdk.Tooling;
 using Kontena.Sdk.Tooling.Fakes;
 
@@ -207,5 +208,98 @@ public sealed class ClusterToolingTests : IDisposable
 
         Assert.Same(row, page.Tools.First(t => t.Name == "kind"));
         Assert.True(row.IsReady);
+    }
+
+    // ---- What the extensions drive, beside what Kontena drives (KON-438) --------------------------
+
+    /// <summary>An extension as the catalogue sees it: only its manifest matters here.</summary>
+    private static AdapterEntry Extension(string name, params ExternalTool[] tools) =>
+        new(
+            new EngineManifest { Id = "com.test." + name, Name = name, Version = "1.0.0", Tools = tools },
+            AdapterContribution.Tool,
+            Chip: null,
+            IsBundled: false,
+            Owns: _ => false);
+
+    private static ExternalTool Tool(string name) =>
+        new(name, name, ["--version"], []) { Purpose = $"What {name} is for." };
+
+    private static IReadOnlyList<ToolGroup> WithExtensions(params AdapterEntry[] extensions) =>
+        [.. ToolGroup.Default, .. ToolGroup.ForExtensions(extensions)];
+
+    /// <summary>
+    /// The point of the whole thing: a tool that belongs to a plugin is checked, versioned and offered
+    /// exactly like kubectl, without ever entering the core app's own <c>KnownTools</c> list.
+    /// </summary>
+    [Fact]
+    public async Task An_extensions_own_tool_is_checked_like_the_core_tools()
+    {
+        var clam = Tool("clam");
+        var page = Subject(new FakeToolRunner().Install(clam, "clam version 2.9.1"));
+        page.Catalog = WithExtensions(Extension("Clam Studio", clam));
+
+        await page.LoadAsync();
+
+        var group = page.Groups.First(g => g.Title == "Clam Studio");
+        var row = Assert.Single(group.Tools);
+
+        Assert.Equal("clam", row.Name);
+        Assert.True(row.IsReady);
+        Assert.Equal("Detected · 2.9.1", row.StateText);
+    }
+
+    /// <summary>
+    /// One row per binary. The managed copy and the "let Kontena manage it" preference are keyed by the
+    /// tool, so two rows for one <c>git</c> would disagree the moment either was used.
+    /// </summary>
+    [Fact]
+    public async Task A_tool_two_extensions_both_need_is_listed_once()
+    {
+        var git = Tool("git");
+        var page = Subject(new FakeToolRunner());
+        page.Catalog = WithExtensions(Extension("Studio", git), Extension("Other", git));
+
+        await page.LoadAsync();
+
+        Assert.Equal(["git"], page.Tools.Where(t => t.Name == "git").Select(t => t.Name));
+        Assert.Equal("Studio", page.Groups.Single(g => g.Tools.Any(t => t.Name == "git")).Title);
+    }
+
+    /// <summary>
+    /// A plugin that drives kustomize does not get a second kustomize row: the core app needs it too and
+    /// already lists it under the heading that explains why.
+    /// </summary>
+    [Fact]
+    public async Task An_extension_does_not_duplicate_a_tool_the_core_app_already_lists()
+    {
+        var page = Subject(new FakeToolRunner());
+        page.Catalog = WithExtensions(Extension("Studio", KnownTools.Kustomize));
+
+        await page.LoadAsync();
+
+        Assert.Single(page.Tools, t => t.Name == "kustomize");
+        Assert.DoesNotContain(page.Groups, g => g.Title == "Studio");
+    }
+
+    /// <summary>
+    /// Switching an extension off in Settings › Extensions takes its tools away with it. The page is kept
+    /// across settings rebuilds, so its headings used to be add-only — which would leave it offering to
+    /// install a tool for a plugin that is no longer running.
+    /// </summary>
+    [Fact]
+    public async Task An_extension_that_is_switched_off_takes_its_heading_with_it()
+    {
+        var clam = Tool("clam");
+        var page = Subject(new FakeToolRunner());
+        page.Catalog = WithExtensions(Extension("Clam Studio", clam));
+        await page.LoadAsync();
+
+        Assert.Contains(page.Groups, g => g.Title == "Clam Studio");
+
+        page.Catalog = ToolGroup.Default;
+        await page.LoadAsync();
+
+        Assert.DoesNotContain(page.Groups, g => g.Title == "Clam Studio");
+        Assert.DoesNotContain(page.Tools, t => t.Name == "clam");
     }
 }

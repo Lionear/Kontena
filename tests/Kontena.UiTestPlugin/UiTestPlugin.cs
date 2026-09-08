@@ -17,6 +17,7 @@ public sealed class UiTestPlugin : IUiPlugin
         Author = "Kontena",
         Description = "Fixture for the UI-contribution seam.",
         MinSdkVersion = "0.1.0",
+        ContributesUi = true,
     };
 
     public IEnumerable<PluginPage> GetPages() =>

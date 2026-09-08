@@ -24,6 +24,7 @@ using Kontena.Engines.Fakes;
 using HostApp = Kontena.App.App;
 using Kontena.Core.Models;
 using Kontena.Core.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Engines;
 
 namespace Kontena.Screenshots;
@@ -47,14 +48,24 @@ namespace Kontena.Screenshots;
 //         update-{toast,card,downloading,ready,failed} (the in-app updater, driven through the real
 //         state machine against a fake update source), settings-updates and
 //         settings-updates-unmanaged (the Updates category, managed and not),
-//         cluster / cluster-{nodes,namespaces,workloads,pods,services} (the cluster browsers),
+//         cluster / cluster-{nodes,namespaces,workloads,pods,services,storageclasses,volumes} (the
+//         cluster browsers),
+//         storageclass-volumes (KON-445 — a storage class's own PROVISIONS/RECLAIM/EXPAND/AGE columns
+//         plus its VOLUMES count, then the click-through to the Volumes page filtered to that class,
+//         reached through the row's own OpenVolumes command),
+//         workload-restarting (KON-448 — what Restart leaves behind: the toast that answers the
+//         click, driven through the row's own Restart and the confirm's own Confirm),
 //         alerts (KON-393 — the Alerts page, with the notice that says how it keeps up),
 //         cluster-portforwards (all four port-forward states: active, dropped, remembered, paused —
 //         reached by really switching backend and back, so it exercises the save/restore path),
-//         cluster-node-drawer / cluster-namespace-drawer (the detail drawer over its list, KON-307),
+//         cluster-node-drawer / cluster-namespace-drawer / cluster-storageclass-drawer (the detail
+//         drawer over its list, KON-307; the storage-class one is KON-445 — Overview/Events/YAML,
+//         no Pods tab),
 //         pod / pod-logs / pod-yaml (pod detail),
 //         pod-config (KON-390 — the Overview tab as a full page, with a Secret row of
 //         Config & secrets open and one of its values revealed),
+//         pod-env (KON-416 — the same page, with the Environment variables section's own eye
+//         pressed, so the shot carries both a reference and the value behind it),
 //         tag-push-image (KON-387 — the Tag-and-push modal over the Images page),
 //         backend-down (the state when the remembered backend is gone — the one scene
 //         that deliberately does not take the demo-engine shortcut),
@@ -69,6 +80,10 @@ namespace Kontena.Screenshots;
 //         the page's own command),
 //         settings-tools (KON-266 — the external tools, grouped by what you need them for; reads this
 //         machine for the same reason settings-clusters does),
+//         settings-extensions (KON-283 — the adapters this build ships and whether each is switched
+//         on; Apple's runtime is absent off macOS by design, so this shot differs per box),
+//         confirm-turn-off-adapter (KON-283 — the question asked before switching off an adapter the
+//         shell has something open on, reached by really moving the row's switch),
 //         confirm-delete-volume and confirm-remove-kubeconfig (KON-126 — the destructive
 //         confirmation and the deliberately non-destructive one, both reached by running the
 //         row's own command so the shot cannot show a dialog the button does not raise).
@@ -78,6 +93,7 @@ internal static class Program
     // letter badge would show a chip the app no longer draws for a real engine.
     private static readonly BackendChipStyle Kubernetes =
         new(KubernetesBrand.Glyph, KubernetesBrand.Accent);
+
 
     [STAThread]
     public static int Main(string[] args)
@@ -428,6 +444,8 @@ internal static class Program
             case "settings-clusters":
             case "settings-clusters-new":
             case "settings-tools":
+            case "settings-extensions":
+            case "confirm-turn-off-adapter":
             case "settings-engines-kubeconfigs":
                 vm.ShowSettingsCommand.Execute(null);
                 if (vm.SettingsPage is Kontena.App.ViewModels.SettingsViewModel s)
@@ -439,6 +457,7 @@ internal static class Program
                         "settings" or "settings-keyboard" => "general",
                         "settings-clusters" or "settings-clusters-new" => "clusters",
                         "settings-tools" => "tools",
+                        "settings-extensions" or "confirm-turn-off-adapter" => "extensions",
                         _ => "engines",
                     });
 
@@ -488,6 +507,16 @@ internal static class Program
 
                             Settle(rounds: 20);
                         }
+                    }
+
+                    // Switching off an adapter the shell has something open on asks first (KON-283).
+                    // Driven by really moving the row's switch, so the shot cannot show a dialog the
+                    // toggle does not raise.
+                    if (scene == "confirm-turn-off-adapter"
+                        && s.Adapters.FirstOrDefault(a => a.InUse.Count > 0) is { } inUse)
+                    {
+                        inUse.IsEnabled = false;
+                        Settle(rounds: 20);
                     }
 
                     // The TCP form is where the security decision lives, so it gets its own shot.
@@ -721,6 +750,8 @@ internal static class Program
             case "cluster-workloads":
             case "cluster-pods":
             case "cluster-services":
+            case "cluster-storageclasses":
+            case "cluster-volumes":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -737,18 +768,61 @@ internal static class Program
 
                 break;
 
+            // KON-445: a storage class routes forward to the volumes it provisioned, reached through
+            // the row's own OpenVolumes command — same reasoning as cluster-node-drawer, so the shot
+            // cannot show a route the button does not really take.
+            case "storageclass-volumes":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("storageclasses");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterStorageClassesViewModel classes)
+                    classes.Items.FirstOrDefault(c => c.Name == "standard-rwo")?.OpenVolumesCommand.Execute(null);
+                Settle(rounds: 30);
+                break;
+
+            // KON-448: the moment after Restart is confirmed. Driven all the way through the row's
+            // Restart command and the confirm dialog's own Confirm, because the whole ticket is about
+            // what that path leaves behind — a scene that set the toast by hand could not tell a
+            // wired-up one from a dead binding.
+            //
+            // The row here reads Progressing and not "Restarting…", and that is correct: this fake's
+            // apiserver moves the rollout status inside the call, so the reload that follows already
+            // has the real answer and the placeholder rightly steps aside. "Restarting…" covers the
+            // window a real cluster has and this one does not — the tests drive that directly.
+            case "workload-restarting":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute(WorkloadNavGroups.KeyFor(WorkloadKind.Deployment));
+                SettleUntil(() => vm.CurrentPage is ClusterWorkloadsViewModel { HasItems: true }, maxRounds: 120);
+                if (vm.CurrentPage is ClusterWorkloadsViewModel deployments)
+                    deployments.Items.FirstOrDefault(w => w.Name == "api")?.RestartCommand.Execute(null);
+                Settle(rounds: 10);
+                if (vm.Dialog is ConfirmViewModel restartConfirm)
+                    restartConfirm.ConfirmCommand.Execute(null);
+                Settle(rounds: 40);
+                break;
+
             case "cluster-node-drawer":
             case "cluster-namespace-drawer":
+            case "cluster-storageclass-drawer":
                 // The detail drawer over the list it was opened from (KON-307). Reached through the
                 // row's own Open command, so the shot cannot show a drawer the card does not raise.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
-                vm.NavigateCommand.Execute(scene == "cluster-node-drawer" ? "nodes" : "namespaces");
+                vm.NavigateCommand.Execute(scene switch
+                {
+                    "cluster-node-drawer" => "nodes",
+                    "cluster-namespace-drawer" => "namespaces",
+                    _ => "storageclasses",
+                });
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNodesViewModel drawerNodes)
                     drawerNodes.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                 else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNamespacesViewModel drawerNs)
                     drawerNs.Items.FirstOrDefault()?.OpenCommand.Execute(null);
+                else if (vm.CurrentPage is Kontena.App.ViewModels.ClusterStorageClassesViewModel drawerClasses)
+                    drawerClasses.Items.FirstOrDefault()?.OpenCommand.Execute(null);
                 Settle(rounds: 30);
                 break;
 
@@ -785,11 +859,86 @@ internal static class Program
 
                 break;
 
+            // KON-418 — the Data tab as fields. Reached the way the app reaches it: open the
+            // secret's detail in the drawer, then run the page's own Edit command, so a shot cannot
+            // show a state the buttons do not really produce.
+            case "secret-edit":
+            case "secret-edit-revealed":
+            case "secret-edit-add":
+            case "secret-edit-binary":
+            case "secret-edit-applied":
+            case "secret-edit-cancelled":
+            case "secret-managed":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("secrets");
+                Settle(rounds: 30);
+
+                // app-tls is the one whose keys are bytes, which is the state a field cannot serve;
+                // stripe-api is the one a controller keeps up to date, which is the state no field
+                // can serve at all (KON-422).
+                var subject = scene switch
+                {
+                    "secret-edit-binary" => "app-tls",
+                    "secret-managed" => "stripe-api",
+                    _ => "postgres-credentials",
+                };
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterSecretsViewModel editable)
+                    editable.Items.FirstOrDefault(r => r.Name == subject)?.OpenCommand.Execute(null);
+
+                Settle(rounds: 30);
+
+                // The managed one is shown as it opens: Edit is off and the tab says why, so there
+                // is nothing to drive.
+                if (scene == "secret-managed")
+                    break;
+
+                if (vm.Detail is Kontena.App.ViewModels.ClusterConfigDetailViewModel editing)
+                {
+                    editing.BeginEditCommand.Execute(null);
+                    SettleUntil(() => editing.IsEditing && editing.Keys.All(k => !k.IsBusy), maxRounds: 120);
+
+                    if (scene == "secret-edit-revealed")
+                    {
+                        // One key read and rewritten, so the eye's two states, the "changed" mark,
+                        // the per-row undo and a live Apply all stand in the same frame.
+                        var password = editing.Keys[0];
+                        password.ToggleCommand.Execute(null);
+                        password.Value = "9f2c-rotated-2026-08-20";
+                    }
+
+                    if (scene == "secret-edit-add")
+                    {
+                        editing.AddKeyCommand.Execute(null);
+                        editing.Keys[^1].Name = "PGSSLMODE";
+                        editing.Keys[^1].Value = "verify-full";
+                    }
+
+                    // A real apply and what it leaves behind (KON-422): the fields become a
+                    // reading of the written object, so there is nothing left to cancel.
+                    if (scene is "secret-edit-applied" or "secret-edit-cancelled")
+                    {
+                        editing.Keys[0].ToggleCommand.Execute(null);
+                        editing.Keys[0].Value = "9f2c-rotated-2026-08-20";
+                        editing.ApplyCommand.Execute(null);
+                        SettleUntil(() => !editing.IsBusy, maxRounds: 200);
+                    }
+
+                    // Cancel from a clean edit, which is the discard half rather than the save one.
+                    if (scene == "secret-edit-cancelled")
+                        editing.CancelEditCommand.Execute(null);
+
+                    Settle(rounds: 30);
+                }
+
+                break;
+
             case "pod":
             case "pod-logs":
             case "pod-logs-tail":
             case "pod-yaml":
             case "pod-config":
+            case "pod-env":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 vm.NavigateCommand.Execute("pods");
@@ -803,7 +952,7 @@ internal static class Program
                 // Config & secrets sits below the container table, which the drawer cannot show at
                 // once — so this one scene takes the detail's own "open as a page" command (KON-307)
                 // rather than a wider drawer the app has no button for.
-                if (scene == "pod-config")
+                if (scene is "pod-config" or "pod-env")
                 {
                     vm.OpenDetailAsPageCommand.Execute(null);
                     Settle(rounds: 20);
@@ -857,6 +1006,21 @@ internal static class Program
                         var key = config.Keys.FirstOrDefault();
                         key?.ToggleCommand.Execute(null);
                         SettleUntil(() => key is null or { IsRevealed: true, IsBusy: false }, maxRounds: 120);
+                        Settle(rounds: 20);
+                    }
+                    else if (scene == "pod-env")
+                    {
+                        // Pressed through the row's own reveal, so the shot cannot show a value the
+                        // eye does not really fetch. One of the three is opened and the other two are
+                        // left alone, because the section's subject is the pair: a reference that
+                        // names where the value lives, and the value once you ask for it (KON-416).
+                        var secret = detailVm.EnvGroups
+                            .SelectMany(g => g.Rows)
+                            .First(r => r.Secret is not null)
+                            .Secret!;
+
+                        secret.ToggleCommand.Execute(null);
+                        SettleUntil(() => secret is { IsRevealed: true, IsBusy: false }, maxRounds: 120);
                         Settle(rounds: 20);
                     }
                 }

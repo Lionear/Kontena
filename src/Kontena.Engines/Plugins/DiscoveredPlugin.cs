@@ -1,4 +1,5 @@
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
 
 namespace Kontena.Engines.Plugins;
 
@@ -54,6 +55,13 @@ public sealed record DiscoveredPlugin(
     /// each of those says nothing a reader did not know.
     /// </summary>
     public IReadOnlyList<PluginPage> Pages { get; init; } = [];
+
+    /// <summary>
+    /// The external tools it declared, when it loaded (KON-438) — what Settings &#8250; Tools adds to its
+    /// own list, so a plugin's <c>git</c> gets the detection and version check kubectl gets. Only the
+    /// ones <c>plugin.json</c> also names; the loader rejects the plugin outright over the rest.
+    /// </summary>
+    public IReadOnlyList<ExternalTool> Tools { get; init; } = [];
 
     /// <summary>
     /// The digest the consent question was asked about, so the answer can be recorded against the
