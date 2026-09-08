@@ -177,6 +177,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
     /// <summary>The in-app updater, behind the sidebar entry, the toast and the card (KON-110).</summary>
     public UpdateViewModel Update { get; }
 
+    /// <summary>The "that landed" line for actions whose whole effect is on the cluster (KON-448).</summary>
+    public ActionToastViewModel ActionToast { get; } = new();
+
+    /// <summary>
+    /// The workloads a restart has been asked for and not yet seen happening (KON-448). Here rather
+    /// than on a page: the restart reloads the page it was invoked from, so a tracker owned by that
+    /// page would be collected along with the row it was meant to keep marked.
+    /// </summary>
+    private RestartTracker Restarts => _restarts ??= new RestartTracker(m => ActionToast.Show(m));
+
+    private RestartTracker? _restarts;
+
     // Pages
     [ObservableProperty] private ContainersViewModel? _containers;
     [ObservableProperty] private ImagesViewModel? _images;

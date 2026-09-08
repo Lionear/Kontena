@@ -53,6 +53,9 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
         }
     }
 
+    /// <summary>The cluster this page reads from, for a subclass that re-reads its own object.</summary>
+    protected IClusterEngine Cluster => _cluster;
+
     /// <summary>
     /// Whether this object is known to be gone (KON-308) — a Deleted event for it on the same watch
     /// the list pages already follow (KON-250), or that watch ending on its own. A cluster this fake
@@ -74,6 +77,20 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
                     IsSourceGone = true;
                     return;
                 }
+
+                // Everything else about this object was read once, in the constructor, and never
+                // again (KON-448): the loop watched only for the object disappearing, so a rollout
+                // could run from start to finish with the header still showing the reading from
+                // before it began. The pods tab was refreshed by hand after a restart, which is why
+                // the staleness was easy to miss — the half of the page that was watched was the
+                // half nobody was looking at.
+                // Re-read rather than read the event: a ResourceEvent carries a reference and not a
+                // manifest on purpose (KON-355), so "something moved" is all it can tell anyone.
+                // ponytail: one read per event, uncoalesced. Only this object's events get here, so a
+                // rollout is a handful of reads over its lifetime; if that ever shows up, ClusterWatch
+                // already settles a burst into one redraw and is the thing to reuse.
+                if (e.Type == WatchEventType.Modified)
+                    await OnResourceModifiedAsync();
             }
 
             // The stream ended without being cancelled. An apiserver closes a watch on its own
@@ -91,6 +108,13 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
                 IsSourceGone = true;
         }
     }
+
+    /// <summary>
+    /// The watched object changed (KON-448). Does nothing by default: a page that shows only fields
+    /// which cannot change without the object being replaced has nothing to re-read, and a blanket
+    /// re-fetch on every kind would put one read per event on pages that never needed it.
+    /// </summary>
+    protected virtual Task OnResourceModifiedAsync() => Task.CompletedTask;
 
     /// <summary>Stop following. Cluster pages are rebuilt on every visit, so a watch that outlived its
     /// page would be a stream nobody reads holding a connection open for the life of the app.
@@ -381,17 +405,22 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
 /// </summary>
 public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetailViewModel
 {
-    private readonly Workload _workload;
+    private readonly RestartTracker? _restarts;
+    private Workload _workload;
 
+    /// <param name="restarts">Lets the header say "Restarting…" over a status the cluster has not
+    /// moved yet (KON-448). Null on the detached detail window and in tests, which then simply show
+    /// the cluster's own reading.</param>
     public ClusterWorkloadDetailViewModel(
         IClusterEngine cluster, Workload workload,
         Action<Pod>? onOpenPod = null, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action? onDelete = null)
+        Action? onDelete = null, RestartTracker? restarts = null)
         : base(cluster, workload.Reference, onOpenPod, onDelete)
     {
         _workload = workload;
         _onScale = onScale;
         _onRestart = onRestart;
+        _restarts = restarts;
 
         // Live is the sum over the pods this workload has right now; history traces them through
         // kube_pod_owner, so a rollout's replaced pods still count (KON-347).
@@ -431,7 +460,11 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     public string SelectorText => FormatLabels(_workload.Selector);
     public string StrategyText => _workload.Strategy.Length == 0 ? "—" : _workload.Strategy;
     public string AgeText => Format.Duration(_workload.Age);
-    public string RolloutText => _workload.RolloutStatus.ToString();
+
+    /// <summary>Whether the restart asked for here has yet to show up in what the cluster reports.</summary>
+    private bool IsRestarting => _restarts?.IsRestarting(Reference, DateTimeOffset.UtcNow) == true;
+
+    public string RolloutText => IsRestarting ? RestartTracker.Restarting : _workload.RolloutStatus.ToString();
 
     /// <summary>A CronJob has a schedule where the others have replicas.</summary>
     public bool IsCronJob => _workload.Kind == WorkloadKind.CronJob;
@@ -452,19 +485,67 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     /// four: Progressing was info blue and Paused was amber, so the one status this page is opened for
     /// mid-rollout looked like a notice on the row and like a warning here.
     /// </summary>
-    public IBrush RolloutBrush => new SolidColorBrush(Color.Parse(_workload.RolloutStatus switch
-    {
-        RolloutStatus.Complete => "#34D399",
-        RolloutStatus.Progressing => "#F5B14C",
-        RolloutStatus.Degraded => "#F87171",
-        _ => "#5C6675",
-    }));
+    public IBrush RolloutBrush => new SolidColorBrush(Color.Parse(
+        IsRestarting ? RestartTracker.RestartingColour : _workload.RolloutStatus switch
+        {
+            RolloutStatus.Complete => "#34D399",
+            RolloutStatus.Progressing => "#F5B14C",
+            RolloutStatus.Degraded => "#F87171",
+            _ => "#5C6675",
+        }));
 
     public bool CanScale => _onScale is not null && _workload.IsScalable;
     public bool CanRestart => _onRestart is not null && !IsCronJob;
 
     [RelayCommand] private void Scale() => _onScale?.Invoke(_workload);
     [RelayCommand] private void Restart() => _onRestart?.Invoke(_workload);
+
+    /// <summary>
+    /// Re-read this workload after the watch said it changed (KON-448), and redraw the fields that
+    /// can differ. Everything else in the header is identity — a Deployment does not change
+    /// namespace or kind — so only the rollout reading and the replica counts are raised.
+    /// <para>
+    /// Via <c>ListWorkloadsAsync</c> filtered by kind and namespace because that is the only read
+    /// there is: <see cref="IClusterEngine"/> has no get-one-workload, and the list is what fills the
+    /// grid this page was opened from anyway. A workload that is not in the answer is one that has
+    /// just been deleted, and the same watch is already about to say so.
+    /// </para>
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    /// <remarks>Also called straight after a restart is requested from this page, so the header
+    /// answers the click without waiting for the first watch event.</remarks>
+    public async Task RefreshAsync()
+    {
+        IReadOnlyList<Workload> all;
+        try
+        {
+            all = await Cluster.ListWorkloadsAsync(_workload.Kind, _workload.Namespace);
+        }
+        catch
+        {
+            // A read that failed says nothing about the workload; the next event tries again.
+            return;
+        }
+
+        var fresh = all.FirstOrDefault(w => w.Name == _workload.Name);
+        if (fresh is null)
+            return;
+
+        _workload = fresh;
+        _restarts?.Observe([fresh], DateTimeOffset.UtcNow);
+
+        OnPropertyChanged(nameof(RolloutText));
+        OnPropertyChanged(nameof(RolloutBrush));
+        OnPropertyChanged(nameof(DesiredText));
+        OnPropertyChanged(nameof(ReadyText));
+        OnPropertyChanged(nameof(UpToDateText));
+        OnPropertyChanged(nameof(AvailableText));
+
+        // The pods are the other half of what a rollout changes, and this page's tab holds them.
+        await RefreshPodsAsync();
+    }
 
     public override string PodsTabLabel => IsCronJob ? "Jobs" : "Pods";
 

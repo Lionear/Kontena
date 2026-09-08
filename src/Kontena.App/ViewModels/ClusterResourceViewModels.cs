@@ -303,15 +303,20 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
     private readonly Action<Workload>? _onScale;
     private readonly Action<Workload>? _onRestart;
     private readonly Action<Workload>? _onOpenDetail;
+    private readonly RestartTracker? _restarts;
 
     /// <param name="onOpenDetail">Invoked when a workload row is opened; the shell wires this to the
     /// workload-detail page (KON-166). A constructor parameter rather than an init-property, so it is
     /// set before the fire-and-forget load builds the rows.</param>
     /// <param name="kind">One kind, or null for every kind in one list (KON-169).</param>
+    /// <param name="restarts">The restarts asked for and not yet visible (KON-448). A constructor
+    /// parameter for the same reason as <paramref name="onOpenDetail"/>, and here it is the whole
+    /// point: a restart rebuilds this page, so the very first load is the one that must know.</param>
     public ClusterWorkloadsViewModel(
         IClusterEngine cluster, string? @namespace,
         Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null)
+        Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null,
+        RestartTracker? restarts = null)
         // One kind has a coordinate to follow; the all-kinds page is five kinds at once, and a watch
         // per kind is five streams whose bursts would land out of step with each other.
         : base(
@@ -327,6 +332,7 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         _onRestart = onRestart;
         _onOpenDetail = onOpenDetail;
         _kind = kind;
+        _restarts = restarts;
         _ = LoadAsync();
         StartWatching();
     }
@@ -382,9 +388,21 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         });
     }
 
-    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace, ct))
-            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete))];
+    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync(CancellationToken ct)
+    {
+        var workloads = await _cluster.ListWorkloadsAsync(_kind, _namespace, ct);
+
+        // Every load is a fresh reading, so this is where a tracked restart is seen starting and
+        // seen finishing (KON-448). Before the rows, not inside them: a row is a projection, and one
+        // that quietly advanced a state machine while being built would run a different number of
+        // times than there are readings.
+        var now = DateTimeOffset.UtcNow;
+        _restarts?.Observe(workloads, now);
+
+        return [.. workloads.Select(w => new WorkloadRow(
+            w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete,
+            _restarts?.IsRestarting(w.Reference, now) == true))];
+    }
 
     protected override bool Matches(WorkloadRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Kind, term) || Contains(row.Namespace, term);
@@ -1221,9 +1239,13 @@ public sealed partial class WorkloadRow
     private readonly Action<Workload>? _onOpenDetail;
     private readonly Action<WorkloadRow>? _onDelete;
 
+    /// <param name="restarting">Whether a restart was asked for here and the cluster has not shown it
+    /// yet (KON-448) — see <see cref="RestartTracker"/>. The row would otherwise read back the same
+    /// green "Complete" it showed before the click.</param>
     public WorkloadRow(
         Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null)
+        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null,
+        bool restarting = false)
     {
         _workload = w;
         _onScale = onScale;
@@ -1239,18 +1261,19 @@ public sealed partial class WorkloadRow
         Kind = w.Kind.ToString();
         Ready = w.Kind == WorkloadKind.CronJob ? "—" : $"{w.Ready}/{w.Desired}";
         Schedule = w.Schedule.Length == 0 ? "—" : w.Schedule;
-        Status = w.RolloutStatus.ToString();
+        Status = restarting ? RestartTracker.Restarting : w.RolloutStatus.ToString();
         Age = Format.Duration(w.Age);
         AgeSpan = w.Age;
         CanScale = w.IsScalable;
         CanRestart = w.Kind is WorkloadKind.Deployment or WorkloadKind.StatefulSet or WorkloadKind.DaemonSet;
-        StatusBrush = new SolidColorBrush(Color.Parse(w.RolloutStatus switch
-        {
-            RolloutStatus.Complete => "#34D399",
-            RolloutStatus.Progressing => "#F5B14C",
-            RolloutStatus.Degraded => "#F87171",
-            _ => "#5C6675",
-        }));
+        StatusBrush = new SolidColorBrush(Color.Parse(
+            restarting ? RestartTracker.RestartingColour : w.RolloutStatus switch
+            {
+                RolloutStatus.Complete => "#34D399",
+                RolloutStatus.Progressing => "#F5B14C",
+                RolloutStatus.Degraded => "#F87171",
+                _ => "#5C6675",
+            }));
     }
 
     public string Name { get; }
@@ -1379,6 +1402,18 @@ public sealed partial class PodRow
 
     public int RestartsRaw { get; }
     public TimeSpan AgeSpan { get; }
+
+    /// <summary>
+    /// Whether this pod was created moments ago (KON-448) — what makes a rollout legible on the pods
+    /// tab: the replacements arrive marked, so "these are the new ones" is something you can see
+    /// rather than something you work out from six ages in a column.
+    /// <para>
+    /// Read off <see cref="Pod.Age"/>, which the row already carried. No diff against a previous
+    /// listing, no per-row bookkeeping: the pod itself knows how old it is, and a fifteen-second
+    /// window is short enough that nothing but a genuinely new pod falls inside it.
+    /// </para>
+    /// </summary>
+    public bool IsRecentlyCreated => AgeSpan < TimeSpan.FromSeconds(15);
 
     /// <summary>Whether the shell wired a delete handler (KON-69).</summary>
     public bool CanDelete { get; }
