@@ -48,6 +48,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private readonly List<Channel<ResourceEvent>> _watchers = [];
 
+    /// <summary>Test hook (KON-449): how many watches are open right now. A watch that outlives the page
+    /// that started it is the shape a leaked view model takes against a real cluster — a connection held
+    /// open decoding events nobody reads — and a count is the only part of that a fake can show.</summary>
+    public int OpenWatches
+    {
+        get { lock (_watchers) return _watchers.Count; }
+    }
+
     /// <summary>Test hook (KON-355): run on the thread each post-snapshot watch event is produced on,
     /// so a test can assert whose thread an adapter's per-event work would be costing.</summary>
     public Action? OnWatchEvent { get; set; }

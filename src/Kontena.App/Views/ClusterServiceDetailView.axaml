@@ -46,6 +46,14 @@
                         <TextBlock Text="AGE" Classes="colhead"/>
                         <TextBlock Text="{Binding AgeText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="INTERNAL HOSTNAME" Classes="colhead"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding HostnameText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                            <Button Classes="pill" Click="OnCopyClick" Tag="{Binding HostnameText}"
+                                    ToolTip.Tip="Resolvable only from inside the cluster">Copy</Button>
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">

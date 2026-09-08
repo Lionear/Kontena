@@ -235,6 +235,14 @@ public sealed record Pod
     public string ControlledBy { get; init; } = string.Empty;
 
     /// <summary>
+    /// The pod's cluster-internal DNS name, or empty when it doesn't have one — most pods are reachable
+    /// only by IP. Left to the adapter to fill in: whether (and how) a pod gets a stable name is a
+    /// backend-specific rule (for Kubernetes: part of a headless Service, or explicit
+    /// <c>hostname</c>/<c>subdomain</c>), not something this orchestrator-neutral model should assume.
+    /// </summary>
+    public string ClusterDnsName { get; init; } = string.Empty;
+
+    /// <summary>
     /// The pod's labels. Needed to answer the question a Service detail exists for: which pods does
     /// this selector actually reach right now (KON-167).
     /// </summary>

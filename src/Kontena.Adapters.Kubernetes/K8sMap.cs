@@ -77,11 +77,12 @@ internal static class K8sMap
         var ports = PortsByContainer(p.Spec);
         var limits = MemoryLimitsByContainer(p.Spec);
         var env = EnvByContainer(p.Spec);
+        var ns = p.Metadata?.NamespaceProperty ?? "default";
 
         return new Pod
         {
             Name = p.Metadata?.Name ?? "?",
-            Namespace = p.Metadata?.NamespaceProperty ?? "default",
+            Namespace = ns,
             Phase = p.Status?.Phase switch
             {
                 "Running" => PodPhase.Running,
@@ -108,6 +109,12 @@ internal static class K8sMap
             Labels = Labels(p.Metadata?.Labels),
             Age = AgeOf(p.Metadata),
             ConfigUses = ConfigUsesOf(p.Spec),
+            // Only resolvable when the pod is part of a headless Service (the StatefulSet pattern) or
+            // sets hostname/subdomain explicitly — Kubernetes fills both in automatically for the
+            // former, so reading just these two spec fields covers both cases.
+            ClusterDnsName = p.Spec?.Hostname is { Length: > 0 } hostname && p.Spec?.Subdomain is { Length: > 0 } subdomain
+                ? $"{hostname}.{subdomain}.{ns}.svc.cluster.local"
+                : string.Empty,
         };
     }
 
@@ -493,16 +500,21 @@ internal static class K8sMap
         if (type == ServiceType.ClusterIp && spec?.ClusterIP == "None")
             type = ServiceType.Headless;
 
+        var name = s.Metadata?.Name ?? "?";
+        var ns = s.Metadata?.NamespaceProperty ?? "default";
+
         return new Service
         {
-            Name = s.Metadata?.Name ?? "?",
-            Namespace = s.Metadata?.NamespaceProperty ?? "default",
+            Name = name,
+            Namespace = ns,
             Type = type,
             ClusterIp = spec?.ClusterIP ?? string.Empty,
             ExternalIp = ExternalIpOf(s),
             Ports = [.. (spec?.Ports ?? []).Select(ToServicePort)],
             Selector = ReadOnly(spec?.Selector),
             Age = AgeOf(s.Metadata),
+            // Kubernetes always assigns a service this name, regardless of type.
+            ClusterDnsName = $"{name}.{ns}.svc.cluster.local",
         };
     }
 
