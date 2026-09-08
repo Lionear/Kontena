@@ -114,6 +114,24 @@ public interface IClusterEngine : IBackend
     async ValueTask<int> CountAsync(GroupVersionKind kind, string? ns = null, CancellationToken ct = default) =>
         (await ListTableAsync(kind, ns, ct).ConfigureAwait(false)).Rows.Count;
 
+    /// <summary>
+    /// The workloads that use, or were created by, one object (KON-455).
+    /// <para>
+    /// Generic on purpose. The tools that solve this per resource type all stop at the types they were
+    /// taught, which is why none of them answers it for a custom resource — nobody controls what a CRD
+    /// author will reference. This asks the cluster for signals that hold for any kind: what carries an
+    /// ownerReference to it, what mounts a ConfigMap or Secret it owns, and what names it in an
+    /// annotation under its own API group.
+    /// </para>
+    /// <para>
+    /// Empty by default rather than abstract: an engine that cannot answer this should cost nothing,
+    /// and an empty list is the truthful answer for one that does not look.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<ResourceUsage>>([]);
+
     // ── Typed listers (over the grids) ───────────────────────────────────────
 
     ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default);
