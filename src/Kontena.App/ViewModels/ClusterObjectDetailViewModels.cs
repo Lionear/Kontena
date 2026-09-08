@@ -692,6 +692,9 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
         OnPropertyChanged(nameof(AgeText));
         OnPropertyChanged(nameof(HasPorts));
 
+        // Not HostnameText (KON-447): a service's cluster DNS name is built from its own name and
+        // namespace, and an object that changed either of those would be a different object.
+
         // Not an extra courtesy: SelectPods runs the new selector, so this is where the endpoints
         // stop being the previous service's.
         await RefreshPodsAsync();
