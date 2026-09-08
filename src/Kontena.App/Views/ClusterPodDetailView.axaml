@@ -72,6 +72,15 @@
                         <TextBlock Text="{Binding Ip}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
                     <StackPanel Spacing="2">
+                        <TextBlock Text="INTERNAL HOSTNAME" Classes="colhead"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding HostnameText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                                       VerticalAlignment="Center" ToolTip.Tip="{Binding HostnameTip}"/>
+                            <Button Classes="pill" Click="OnCopyClick" Tag="{Binding HostnameText}" IsVisible="{Binding HasHostname}"
+                                    ToolTip.Tip="Resolvable only from inside the cluster">Copy</Button>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
                         <TextBlock Text="RESTARTS" Classes="colhead"/>
                         <TextBlock Text="{Binding RestartsText}" FontFamily="{StaticResource Mono}" FontSize="12.5"
                                    Classes="restarts" Classes.often="{Binding RestartedOften}" ToolTip.Tip="{Binding RestartsTip}"/>
