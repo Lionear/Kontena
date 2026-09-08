@@ -195,4 +195,46 @@ public sealed class ConfigAndSecretTests
 
         await Assert.ThrowsAsync<NotSupportedException>(async () => await engine.GetConfigDataAsync(pod));
     }
+
+    /// <summary>
+    /// These two were the last cluster tables without sortable headers (KON-454). Age is the case that
+    /// matters: it is displayed as "5d"/"12h", and sorting that text puts them the wrong way round.
+    /// </summary>
+    [Fact]
+    public async Task Config_maps_sort_by_age_on_the_span_rather_than_its_label()
+    {
+        var page = new ClusterConfigMapsViewModel(new FakeClusterEngine(), null);
+        await page.LoadAsync();
+
+        page.SortByCommand.Execute("AGE");
+
+        Assert.Equal("AGE", page.SortColumn);
+        var ages = page.Items.Select(r => r.AgeSpan).ToArray();
+        Assert.Equal([.. ages.OrderBy(a => a)], ages);
+    }
+
+    [Fact]
+    public async Task Secrets_sort_by_key_count_as_a_number()
+    {
+        var cluster = new FakeClusterEngine();
+        var page = Secrets(cluster);
+        await page.LoadAsync();
+
+        page.SortByCommand.Execute("KEYS");
+
+        var counts = page.Items.Select(r => r.Keys.Count).ToArray();
+        Assert.Equal([.. counts.OrderBy(c => c)], counts);
+    }
+
+    /// <summary>ConfigMaps have no type column, so the key its header would send sorts nothing.</summary>
+    [Fact]
+    public async Task Config_maps_do_not_offer_the_type_column_secrets_have()
+    {
+        var page = new ClusterConfigMapsViewModel(new FakeClusterEngine(), null);
+        await page.LoadAsync();
+
+        page.SortByCommand.Execute("TYPE");
+
+        Assert.Null(page.SortColumn);
+    }
 }

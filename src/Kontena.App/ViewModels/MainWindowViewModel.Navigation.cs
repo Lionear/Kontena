@@ -320,7 +320,7 @@ public partial class MainWindowViewModel
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail)
                 { RequestConfirm = ShowConfirm },
-            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace, ShowIngressDetail) { RequestConfirm = ShowConfirm },
             // The three storage pages point at each other: a claim to its volume and its class, a
             // volume back to its claim (KON-254). Routing by search term rather than by a filter the
             // page owns keeps one way of saying "show me this one".
@@ -357,7 +357,14 @@ public partial class MainWindowViewModel
             {
                 RequestOpen = target => _ = OpenEventObjectAsync(target),
             },
-            "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace)
+            {
+                RequestConfirm = ShowConfirm,
+
+                // The same path the events page uses to open what a row points at (KON-455): one
+                // reference in, the right detail page out, and no second way to open a workload.
+                RequestOpen = target => _ = OpenEventObjectAsync(target),
+            },
             // A shell on this machine, already on this cluster (KON-171). Falls back to the
             // overview when the active backend is not a kubeconfig context, so the page can never
             // open onto a cluster it cannot name.

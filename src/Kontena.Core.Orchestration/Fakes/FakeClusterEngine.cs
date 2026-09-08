@@ -181,7 +181,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
         _ingresses =
         [
-            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], TlsHosts = ["app.example.com"], Age = TimeSpan.FromHours(30) },
+            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], Tls = [new IngressTls("web-tls", ["app.example.com"])], DefaultBackend = new IngressBackend("web", 80), Age = TimeSpan.FromHours(30) },
         ];
 
         _pvcs =
@@ -832,9 +832,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private static readonly ApiResource[] Resources =
         [
-            new() { Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"] },
+            new()
+            {
+                Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"],
+                ShortNames = ["po"], Categories = ["all"],
+            },
+            new()
+            {
+                Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true,
+                Verbs = ["list", "delete"], ShortNames = ["svc"], Categories = ["all"],
+            },
+            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"], ShortNames = ["no"] },
             new()
             {
                 Kind = new GroupVersionKind(string.Empty, "v1", "ConfigMap"),
@@ -849,12 +857,39 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             {
                 Kind = new GroupVersionKind("cert-manager.io", "v1", "Certificate"),
                 Plural = "certificates", Namespaced = true, Verbs = ["list", "delete"], IsCustom = true,
+                ShortNames = ["cert", "certs"], Categories = ["cert-manager"],
+                Description = "A TLS certificate cert-manager requests and keeps renewed.",
+                Source = "cert-manager",
             },
         ];
 
     /// <inheritdoc/>
     public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
+
+    /// <summary>
+    /// One of each rung of the ladder, for the certificate the fake serves: a Deployment that mounts
+    /// the Secret the certificate owns, and the Secret's own owner relationship pointed back.
+    /// Anything else has no users, which is the answer that has to render too.
+    /// </summary>
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        IReadOnlyList<ResourceUsage> usages = resource.Name switch
+        {
+            "kontena-app-tls" =>
+            [
+                new(new ResourceRef(GroupVersionKind.Deployment, resource.Namespace, "kontena-web"),
+                    UsageEvidence.Mount, "Secret kontena-app-tls"),
+                new(new ResourceRef(GroupVersionKind.StatefulSet, resource.Namespace, "kontena-api"),
+                    UsageEvidence.OwnerReference, "ownerReference", OwnedByTarget: true),
+            ],
+            _ => [],
+        };
+
+        return ValueTask.FromResult(usages);
+    }
 
     /// <summary>
     /// Null, honestly: this fake models typed resources for the UI, not raw OpenAPI documents. A

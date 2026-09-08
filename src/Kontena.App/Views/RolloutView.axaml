@@ -87,9 +87,9 @@
                     <ItemsControl ItemsSource="{Binding Output}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="x:String">
-                                <TextBlock Text="{Binding}" FontSize="11.5" TextWrapping="Wrap"
-                                           FontFamily="{StaticResource Mono}"
-                                           Foreground="{DynamicResource TextDim}"/>
+                                <SelectableTextBlock Text="{Binding}" FontSize="11.5" TextWrapping="Wrap"
+                                                     FontFamily="{StaticResource Mono}"
+                                                     Foreground="{DynamicResource TextDim}"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

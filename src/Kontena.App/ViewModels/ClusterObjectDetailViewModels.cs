@@ -834,3 +834,128 @@ public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDe
     protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) => [];
     protected override string EmptyPodsReason() => string.Empty;
 }
+
+/// <summary>
+/// Ingress detail (KON-453). The list row was the only thing an ingress had: no way to its YAML, and
+/// the rules only as a tooltip on a trimmed cell — so "which path goes where" was unreadable exactly
+/// when it mattered, and the manifest was unreachable from the kind whose manifest is most often the
+/// thing that is wrong.
+/// </summary>
+public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailViewModel
+{
+    private Ingress _ingress;
+
+    public ClusterIngressDetailViewModel(IClusterEngine cluster, Ingress ingress, Action? onDelete = null)
+        : base(
+            cluster, new ResourceRef(GroupVersionKind.Ingress, ingress.Namespace, ingress.Name),
+            onOpenPod: null, onDelete)
+    {
+        ArgumentNullException.ThrowIfNull(ingress);
+
+        _ingress = ingress;
+        Fill(ingress);
+    }
+
+    public string ClassText => _ingress.Class.Length == 0 ? "—" : _ingress.Class;
+
+    /// <summary>Every address, not the first one: an ingress behind two load balancers is reachable
+    /// at both, and the list cell already trims to whichever fits.</summary>
+    public string AddressText => _ingress.Addresses.Count == 0 ? "—" : string.Join("  ", _ingress.Addresses);
+
+    public string AgeText => Format.Duration(_ingress.Age);
+
+    /// <summary>The rules in full — the list row has them only as a tooltip on a trimmed cell.</summary>
+    public ObservableCollection<IngressRuleRow> Rules { get; } = [];
+
+    public bool HasRules => Rules.Count > 0;
+
+    /// <summary>Every TLS block with the certificate it uses.</summary>
+    public ObservableCollection<IngressTlsRow> Tls { get; } = [];
+
+    public bool HasTls => Tls.Count > 0;
+
+    /// <summary>Where unmatched traffic goes, or null when the ingress names no default backend —
+    /// in which case unmatched traffic is the controller's 404 and there is nothing to show.</summary>
+    public string? DefaultBackendText => _ingress.DefaultBackend is { } b
+        ? $"{b.ServiceName}:{b.ServicePort}"
+        : null;
+
+    public bool HasDefaultBackend => DefaultBackendText is not null;
+
+    private void Fill(Ingress i)
+    {
+        Rules.Clear();
+        foreach (var r in i.Rules)
+            Rules.Add(new IngressRuleRow(r));
+
+        Tls.Clear();
+        foreach (var t in i.Tls)
+            Tls.Add(new IngressTlsRow(t));
+    }
+
+    /// <summary>
+    /// Follow this ingress (KON-450, KON-453). The address is the field worth the read: it is blank
+    /// until the controller assigns one, and that arrival is exactly a Modified event.
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListIngressesAsync(_ingress.Namespace),
+            i => i.Name == _ingress.Name);
+
+        if (fresh is null)
+            return;
+
+        _ingress = fresh;
+        Fill(fresh);
+
+        OnPropertyChanged(nameof(ClassText));
+        OnPropertyChanged(nameof(AddressText));
+        OnPropertyChanged(nameof(AgeText));
+        OnPropertyChanged(nameof(HasRules));
+        OnPropertyChanged(nameof(HasTls));
+        OnPropertyChanged(nameof(DefaultBackendText));
+        OnPropertyChanged(nameof(HasDefaultBackend));
+    }
+
+    // No pods: an ingress routes to services, and which pods are behind those is the service page's
+    // question. The rules table names the service, which is the honest end of this page's answer.
+    public override bool ShowPodsTab => false;
+
+    protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) => [];
+    protected override string EmptyPodsReason() => string.Empty;
+}
+
+/// <summary>One row of an ingress's routing table.</summary>
+public sealed class IngressRuleRow
+{
+    public IngressRuleRow(IngressRule r)
+    {
+        // Same substitutions the list row makes, so the two never read differently for one rule.
+        Host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
+        Path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
+        Backend = $"{r.ServiceName}:{r.ServicePort}";
+    }
+
+    public string Host { get; }
+    public string Path { get; }
+    public string Backend { get; }
+}
+
+/// <summary>One TLS block: the secret holding the certificate, and the hosts it is presented for.</summary>
+public sealed class IngressTlsRow
+{
+    public IngressTlsRow(IngressTls t)
+    {
+        // A TLS block with no secretName is legal and means "the controller's default certificate" —
+        // worth saying rather than leaving the cell blank.
+        Secret = string.IsNullOrEmpty(t.SecretName) ? "(controller default)" : t.SecretName;
+        Hosts = t.Hosts.Count == 0 ? "—" : string.Join("  ", t.Hosts);
+    }
+
+    public string Secret { get; }
+    public string Hosts { get; }
+}

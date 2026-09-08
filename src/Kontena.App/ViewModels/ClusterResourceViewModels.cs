@@ -542,12 +542,15 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
+    private readonly Action<Ingress>? _onOpenDetail;
 
-    public ClusterIngressesViewModel(IClusterEngine cluster, string? @namespace)
+    public ClusterIngressesViewModel(
+        IClusterEngine cluster, string? @namespace, Action<Ingress>? onOpenDetail = null)
         : base(cluster, GroupVersionKind.Ingress, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
         StartWatching();
     }
@@ -567,7 +570,7 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
     }
 
     protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete))];
+        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete, _onOpenDetail))];
 
     // The host is the thing you know: someone reports that app.example.com is down and the ingress is
     // what you go looking for. The class matters when a cluster runs more than one controller.
@@ -1068,14 +1071,19 @@ public sealed partial class StorageClassRow
 
 public sealed partial class IngressRow
 {
+    private readonly Ingress _ingress;
     private readonly Action<IngressRow>? _onDelete;
+    private readonly Action<Ingress>? _onOpenDetail;
 
-    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null)
+    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null, Action<Ingress>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(i);
 
+        _ingress = i;
         _onDelete = onDelete;
+        _onOpenDetail = onOpenDetail;
         CanDelete = onDelete is not null;
+        CanOpen = onOpenDetail is not null;
         Reference = new ResourceRef(GroupVersionKind.Ingress, i.Namespace, i.Name);
 
         Name = i.Name;
@@ -1144,8 +1152,14 @@ public sealed partial class IngressRow
     /// <summary>Whether the page wired a delete handler (KON-332).</summary>
     public bool CanDelete { get; }
 
+    /// <summary>Whether the shell wired a detail page to arrive at (KON-453).</summary>
+    public bool CanOpen { get; }
+
     [RelayCommand]
     private void Delete() => _onDelete?.Invoke(this);
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_ingress);
 }
 
 public sealed partial class PvcRow

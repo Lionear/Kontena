@@ -789,4 +789,93 @@ public class K8sMapTests
         Assert.Equal("app", mapped.InvolvedObject.Namespace);
         Assert.Equal("redis-0", mapped.InvolvedObject.Name);
     }
+
+    [Fact]
+    public void An_ingress_carries_its_rules_default_backend_and_certificates()
+    {
+        // The three fields the detail page reads (KON-453). Rules flatten to one entry per path,
+        // because a host with three paths is three routes and not one.
+        var mapped = K8sMap.ToIngress(new V1Ingress
+        {
+            Metadata = new V1ObjectMeta { Name = "web", NamespaceProperty = "app", CreationTimestamp = DateTime.UtcNow },
+            Spec = new V1IngressSpec
+            {
+                IngressClassName = "nginx",
+                DefaultBackend = new V1IngressBackend
+                {
+                    Service = new V1IngressServiceBackend
+                    {
+                        Name = "fallback",
+                        Port = new V1ServiceBackendPort { Number = 8080 },
+                    },
+                },
+                Rules =
+                [
+                    new V1IngressRule
+                    {
+                        Host = "app.example.com",
+                        Http = new V1HTTPIngressRuleValue
+                        {
+                            Paths =
+                            [
+                                new V1HTTPIngressPath
+                                {
+                                    Path = "/",
+                                    Backend = new V1IngressBackend
+                                    {
+                                        Service = new V1IngressServiceBackend
+                                        {
+                                            Name = "web",
+                                            Port = new V1ServiceBackendPort { Number = 80 },
+                                        },
+                                    },
+                                },
+                                new V1HTTPIngressPath
+                                {
+                                    Path = "/api",
+                                    Backend = new V1IngressBackend
+                                    {
+                                        Service = new V1IngressServiceBackend
+                                        {
+                                            Name = "api",
+                                            Port = new V1ServiceBackendPort { Number = 8080 },
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                Tls = [new V1IngressTLS { SecretName = "web-tls", Hosts = ["app.example.com"] }],
+            },
+        });
+
+        Assert.Equal("nginx", mapped.Class);
+        Assert.Equal(new IngressBackend("fallback", 8080), mapped.DefaultBackend);
+        Assert.Equal(
+            [("app.example.com", "/", "web", 80), ("app.example.com", "/api", "api", 8080)],
+            mapped.Rules.Select(r => (r.Host, r.Path, r.ServiceName, r.ServicePort)));
+
+        var tls = Assert.Single(mapped.Tls);
+        Assert.Equal("web-tls", tls.SecretName);
+        Assert.Equal(["app.example.com"], tls.Hosts);
+
+        // Derived from Tls, so the two cannot disagree.
+        Assert.Equal(["app.example.com"], mapped.TlsHosts);
+    }
+
+    [Fact]
+    public void An_ingress_without_a_default_backend_maps_to_none()
+    {
+        // Distinct from one pointing at nothing: unmatched traffic gets the controller's own 404.
+        var mapped = K8sMap.ToIngress(new V1Ingress
+        {
+            Metadata = new V1ObjectMeta { Name = "web", NamespaceProperty = "app" },
+            Spec = new V1IngressSpec(),
+        });
+
+        Assert.Null(mapped.DefaultBackend);
+        Assert.Empty(mapped.Tls);
+        Assert.Empty(mapped.TlsHosts);
+    }
 }

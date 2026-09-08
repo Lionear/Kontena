@@ -23,7 +23,7 @@ public sealed class IngressAndPvcRowTests
             Class = @class,
             Rules = rules ?? [],
             Addresses = addresses ?? [],
-            TlsHosts = tlsHosts ?? [],
+            Tls = tlsHosts is null ? [] : [new IngressTls("web-tls", tlsHosts)],
         });
 
     [Fact]
