@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
+using Kontena.App.Controls;
 using Kontena.App.ViewModels;
 using Kontena.Sdk.Orchestration.Models;
 
@@ -45,7 +46,9 @@ public partial class ClusterResourcesView : UserControl
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ClusterResourcesViewModel.Table))
+        // Rows, not Table: the listing on screen is the filtered and sorted one, and it changes on
+        // every keystroke and every header click without the table underneath it moving.
+        if (e.PropertyName == nameof(ClusterResourcesViewModel.Rows))
             Rebuild();
     }
 
@@ -76,7 +79,7 @@ public partial class ClusterResourcesView : UserControl
 
         var columns = shown.Select(s => s.column).ToArray();
         var indexes = shown.Select(s => s.index).ToArray();
-        var rows = table.Rows.Take(ClusterResourcesViewModel.RowLimit).ToArray();
+        var rows = _vm.Rows;
 
         foreach (var _ in columns)
             TableGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
@@ -91,7 +94,7 @@ public partial class ClusterResourcesView : UserControl
         for (var c = 0; c < columns.Length; c++)
             TableGrid.Children.Add(Header(columns[c].Name, c));
 
-        for (var r = 0; r < rows.Length; r++)
+        for (var r = 0; r < rows.Count; r++)
         {
             for (var c = 0; c < columns.Length; c++)
             {
@@ -105,20 +108,26 @@ public partial class ClusterResourcesView : UserControl
         }
     }
 
-    private static TextBlock Header(string text, int column)
+    /// <summary>
+    /// The same clickable header the cluster lists have had since KON-318, rather than a second kind
+    /// of column header that happens to look alike. Its state is set rather than bound because the
+    /// whole grid is rebuilt whenever the sort changes.
+    /// </summary>
+    private SortableHeader Header(string name, int column)
     {
-        var block = new TextBlock
+        var header = new SortableHeader
         {
-            Text = text.ToUpperInvariant(),
-            FontSize = 10.5,
-            FontWeight = FontWeight.SemiBold,
+            Text = name.ToUpperInvariant(),
+            Key = name,
+            SortColumn = _vm?.SortColumn,
+            SortDescending = _vm?.SortDescending ?? false,
+            SortCommand = _vm?.SortByCommand,
             Margin = new Thickness(0, 0, 22, 8),
-            [!TextBlock.ForegroundProperty] = new DynamicResourceExtension("TextFaint"),
         };
 
-        Grid.SetColumn(block, column);
-        Grid.SetRow(block, 0);
-        return block;
+        Grid.SetColumn(header, column);
+        Grid.SetRow(header, 0);
+        return header;
     }
 
     private static TextBlock Cell(string text, int column, int row, bool mono)

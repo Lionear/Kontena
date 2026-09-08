@@ -105,6 +105,16 @@
                            FontSize="12.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
             </StackPanel>
 
+            <!-- Told apart from the empty kind above: a search that matched nothing is a different
+                 answer from a kind with nothing in it, and an unexplained empty grid reads as a fault. -->
+            <StackPanel Grid.Row="1" IsVisible="{Binding HasNoMatches}" VerticalAlignment="Center"
+                        HorizontalAlignment="Center" Spacing="8">
+                <TextBlock Text="Nothing matches your search" FontSize="15" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                <TextBlock Text="Searched every column this kind declares."
+                           FontSize="12.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+            </StackPanel>
+
             <StackPanel Grid.Row="2" Margin="0,10,0,0" Spacing="8">
                 <Border IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                         Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource Danger}"

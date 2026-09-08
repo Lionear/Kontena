@@ -39,7 +39,7 @@ public sealed class ApiResourceGroup(string title, IReadOnlyList<ApiResourceItem
 /// Secrets, RBAC, and every CRD an operator installed — without a screen each.
 /// </para>
 /// </summary>
-public sealed partial class ClusterResourcesViewModel : ViewModelBase
+public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
 {
     /// <summary>
     /// Rows are laid out one grid cell at a time, so a namespace with thousands of objects would build
@@ -63,6 +63,14 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase
     public ObservableCollection<ApiResourceGroup> Groups { get; } = [];
 
     [ObservableProperty] private string _kindSearch = string.Empty;
+
+    /// <summary>
+    /// Filters the objects in the listing, as opposed to <see cref="KindSearch"/> which filters the
+    /// kinds in the picker (KON-454). Bound to the shared command-bar box like every other list page:
+    /// this page was the one that left it greyed out, because it did not implement
+    /// <see cref="IListPage"/> — the box was not missing, it was disabled.
+    /// </summary>
+    [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private ApiResourceItem? _selected;
     [ObservableProperty] private ResourceTable? _table;
     [ObservableProperty] private bool _isLoading;
@@ -71,15 +79,45 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase
     [ObservableProperty] private string? _manifest;
     [ObservableProperty] private string? _manifestTitle;
 
-    /// <summary>How many rows were left off the screen, so the page can say so.</summary>
-    public int Hidden => Math.Max(0, (Table?.Rows.Count ?? 0) - RowLimit);
+    /// <summary>The column currently sorted by, or null for the order the server sent.</summary>
+    [ObservableProperty] private string? _sortColumn;
+
+    [ObservableProperty] private bool _sortDescending;
+
+    /// <summary>
+    /// The rows on screen: what matches the search, in the sorted order, cut off at
+    /// <see cref="RowLimit"/>. The view draws these rather than <see cref="Table"/>'s own rows.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<ResourceRow> _rows = [];
+
+    /// <summary>How many rows matched before the cut-off — what the truncation note counts.</summary>
+    private int _matches;
+
+    /// <summary>How many matching rows were left off the screen, so the page can say so.</summary>
+    public int Hidden => Math.Max(0, _matches - RowLimit);
 
     public bool IsTruncated => Hidden > 0;
 
     public string TruncatedNote =>
         $"Showing the first {RowLimit.ToString(CultureInfo.InvariantCulture)} of "
-        + (Table?.Rows.Count ?? 0).ToString(CultureInfo.InvariantCulture)
-        + ". Narrow it down with the namespace picker.";
+        + _matches.ToString(CultureInfo.InvariantCulture)
+        + ". Narrow it down with the search box or the namespace picker.";
+
+    /// <summary>
+    /// Nothing matched a search that was actually typed — a different situation from a kind with no
+    /// objects in it, and one the page has to say out loud rather than showing an empty grid.
+    /// </summary>
+    public bool HasNoMatches =>
+        !IsLoading && Error is null && Rows.Count == 0 && Table is { Rows.Count: > 0 };
+
+    /// <inheritdoc/>
+    public bool HasLoaded => Table is not null;
+
+    /// <inheritdoc/>
+    public string SearchPlaceholder => "Search this listing…";
+
+    /// <inheritdoc/>
+    public Task LoadAsync() => LoadTableAsync();
 
     public bool CanDeleteSelected => Selected?.Resource.CanDelete == true;
 
@@ -87,6 +125,102 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase
     public bool IsEmpty => !IsLoading && Table is { Rows.Count: 0 } && Error is null;
 
     partial void OnKindSearchChanged(string value) => Regroup();
+
+    partial void OnSearchTextChanged(string value) => RefreshRows();
+
+    partial void OnTableChanged(ResourceTable? value) => RefreshRows();
+
+    /// <summary>
+    /// Sort by a column, or flip the direction if it is already the active one, then let go of the
+    /// sort entirely on the third click — the same three states the cluster list pages have had since
+    /// KON-318, so a header behaves the same wherever it is clicked.
+    /// </summary>
+    [RelayCommand]
+    private void SortBy(string column)
+    {
+        if (IndexOf(column) < 0)
+            return;
+
+        if (SortColumn != column)
+        {
+            SortColumn = column;
+            SortDescending = false;
+        }
+        else if (!SortDescending)
+            SortDescending = true;
+        else
+        {
+            SortColumn = null;
+            SortDescending = false;
+        }
+
+        RefreshRows();
+    }
+
+    /// <summary>Where a column sits in the server's table, or -1 if this listing has no such column.</summary>
+    private int IndexOf(string? column)
+    {
+        if (column is null || Table is not { } table)
+            return -1;
+
+        for (var i = 0; i < table.Columns.Count; i++)
+        {
+            if (string.Equals(table.Columns[i].Name, column, StringComparison.Ordinal))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static string CellAt(ResourceRow row, int index) =>
+        index >= 0 && index < row.Cells.Count ? row.Cells[index] : string.Empty;
+
+    /// <summary>
+    /// Recompute what is on screen: filter, then sort, then cut off. In that order — sorting the whole
+    /// listing to then throw most of it away is work nobody sees, and cutting off before sorting would
+    /// sort the wrong five hundred rows.
+    /// </summary>
+    private void RefreshRows()
+    {
+        if (Table is not { } table)
+        {
+            _matches = 0;
+            Rows = [];
+            RaiseRowCounts();
+            return;
+        }
+
+        var term = SearchText.Trim();
+        IEnumerable<ResourceRow> matching = table.Rows;
+
+        // Across every cell, not only the name: the columns a custom resource declares are the ones
+        // worth searching, and this page cannot know which of them is the interesting one.
+        if (term.Length > 0)
+            matching = matching.Where(row => row.Cells.Any(cell => Contains(cell, term)));
+
+        if (IndexOf(SortColumn) is var index && index >= 0)
+        {
+            matching = SortDescending
+                ? matching.OrderByDescending(row => ResourceCellOrder.Of(CellAt(row, index)))
+                : matching.OrderBy(row => ResourceCellOrder.Of(CellAt(row, index)));
+        }
+
+        var matches = matching.ToArray();
+        _matches = matches.Length;
+        Rows = matches.Length > RowLimit ? matches[..RowLimit] : matches;
+        RaiseRowCounts();
+    }
+
+    private void RaiseRowCounts()
+    {
+        OnPropertyChanged(nameof(Hidden));
+        OnPropertyChanged(nameof(IsTruncated));
+        OnPropertyChanged(nameof(TruncatedNote));
+        OnPropertyChanged(nameof(HasNoMatches));
+    }
+
+    private static bool Contains(string? value, string term) =>
+        value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
     partial void OnSelectedChanged(ApiResourceItem? value)
     {
@@ -168,10 +302,9 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase
         finally
         {
             IsLoading = false;
-            OnPropertyChanged(nameof(Hidden));
-            OnPropertyChanged(nameof(IsTruncated));
-            OnPropertyChanged(nameof(TruncatedNote));
+            OnPropertyChanged(nameof(HasLoaded));
             OnPropertyChanged(nameof(IsEmpty));
+            RaiseRowCounts();
         }
     }
 
