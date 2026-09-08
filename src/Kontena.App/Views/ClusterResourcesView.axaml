@@ -57,6 +57,14 @@
                                                         <TextBlock Text="{Binding Group}" FontSize="10.5"
                                                                    FontFamily="{StaticResource Mono}"
                                                                    Foreground="{DynamicResource TextFaint}"/>
+                                                        <!-- The names you can search by, shown because a
+                                                             name you can find with but cannot see reads
+                                                             as a search that failed (KON-455). -->
+                                                        <TextBlock Text="{Binding Aliases}" FontSize="10"
+                                                                   FontFamily="{StaticResource Mono}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   IsVisible="{Binding Aliases, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                   Foreground="{DynamicResource TextFaint}" Opacity="0.75"/>
                                                     </StackPanel>
                                                 </Button>
                                             </DataTemplate>

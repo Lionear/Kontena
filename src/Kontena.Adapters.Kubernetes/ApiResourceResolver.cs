@@ -95,6 +95,8 @@ internal sealed class ApiResourceResolver(IKubernetes client)
                     Plural = resource.Name,
                     Namespaced = resource.Namespaced,
                     Verbs = [.. resource.Verbs],
+                    ShortNames = [.. resource.ShortNames ?? []],
+                    Categories = [.. resource.Categories ?? []],
                     IsCustom = IsCustom(group),
                 });
             }

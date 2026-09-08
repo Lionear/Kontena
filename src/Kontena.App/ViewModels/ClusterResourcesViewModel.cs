@@ -17,6 +17,28 @@ public sealed partial class ApiResourceItem(ApiResource resource) : ObservableOb
     /// <summary>The group, shown under the kind so two kinds of the same name stay apart.</summary>
     public string Group => Resource.Kind.Group.Length == 0 ? "core" : Resource.Kind.Group;
 
+    /// <summary>
+    /// The other names this kind answers to: its plural, its short names, and the categories it
+    /// declares itself part of (KON-455). Shown under the kind because they are what someone who
+    /// half-remembers a custom resource actually remembers — <c>cert</c>, not <c>Certificate</c> —
+    /// and because a name you can search for but cannot see reads as a search that failed.
+    /// </summary>
+    public string Aliases => string.Join(" · ", Names(Resource).Skip(1));
+
+    /// <summary>Everything this kind can be found by, the kind itself first.</summary>
+    internal static IEnumerable<string> Names(ApiResource resource) =>
+        new[] { resource.Kind.Kind, resource.Plural }
+            .Concat(resource.ShortNames)
+            .Concat(resource.Categories)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether this kind is worth showing for a search term.</summary>
+    internal static bool Matches(ApiResource resource, string term) =>
+        term.Length == 0
+        || Names(resource).Any(n => n.Contains(term, StringComparison.OrdinalIgnoreCase))
+        || resource.Kind.Group.Contains(term, StringComparison.OrdinalIgnoreCase);
+
     [ObservableProperty]
     private bool _isSelected;
 }
@@ -256,11 +278,14 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
 
     private void Regroup()
     {
+        // Against every name the kind answers to, not only the Kind and the group. Someone who knows
+        // the object is in a custom resource but not what the type is called is exactly who this page
+        // is for, and Kind-only matching is what made them scroll (KON-455).
+        var term = KindSearch.Trim();
+
         var matching = _resources
             .Where(r => r.CanList)
-            .Where(r => KindSearch.Length == 0
-                        || r.Kind.Kind.Contains(KindSearch, StringComparison.OrdinalIgnoreCase)
-                        || r.Kind.Group.Contains(KindSearch, StringComparison.OrdinalIgnoreCase))
+            .Where(r => ApiResourceItem.Matches(r, term))
             .OrderBy(r => r.Kind.Kind, StringComparer.OrdinalIgnoreCase)
             .Select(r => new ApiResourceItem(r))
             .ToArray();

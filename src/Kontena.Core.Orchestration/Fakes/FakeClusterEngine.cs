@@ -832,9 +832,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private static readonly ApiResource[] Resources =
         [
-            new() { Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"] },
+            new()
+            {
+                Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"],
+                ShortNames = ["po"], Categories = ["all"],
+            },
+            new()
+            {
+                Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true,
+                Verbs = ["list", "delete"], ShortNames = ["svc"], Categories = ["all"],
+            },
+            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"], ShortNames = ["no"] },
             new()
             {
                 Kind = new GroupVersionKind(string.Empty, "v1", "ConfigMap"),
@@ -849,6 +857,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             {
                 Kind = new GroupVersionKind("cert-manager.io", "v1", "Certificate"),
                 Plural = "certificates", Namespaced = true, Verbs = ["list", "delete"], IsCustom = true,
+                ShortNames = ["cert", "certs"], Categories = ["cert-manager"],
             },
         ];
 

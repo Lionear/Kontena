@@ -192,4 +192,46 @@ public sealed class ClusterResourcesViewModelTests
 
         return page;
     }
+
+    /// <summary>
+    /// The complaint behind KON-455: you know the object is in a custom resource, you do not know what
+    /// the type is called. Kind-only matching cannot answer that; the names kubectl accepts can.
+    /// </summary>
+    [Theory]
+    [InlineData("cert")]          // short name
+    [InlineData("certificates")]  // plural
+    [InlineData("cert-manager")]  // category, and the group
+    [InlineData("CERT")]          // and none of it is case-sensitive
+    public async Task A_kind_is_found_by_every_name_it_answers_to(string term)
+    {
+        var page = await PageAsync();
+
+        page.KindSearch = term;
+
+        Assert.Contains(page.Groups.SelectMany(g => g.Items), i => i.Kind == "Certificate");
+    }
+
+    /// <summary>A name you can search by but cannot see reads as a search that failed.</summary>
+    [Fact]
+    public async Task The_names_a_kind_answers_to_are_shown_under_it()
+    {
+        var page = await PageAsync();
+        var certificate = page.Groups.SelectMany(g => g.Items).Single(i => i.Kind == "Certificate");
+
+        Assert.Contains("cert", certificate.Aliases, StringComparison.Ordinal);
+        Assert.Contains("certificates", certificate.Aliases, StringComparison.Ordinal);
+
+        // The kind itself is already the line above; repeating it there is noise.
+        Assert.DoesNotContain("Certificate", certificate.Aliases, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_term_that_names_nothing_still_matches_nothing()
+    {
+        var page = await PageAsync();
+
+        page.KindSearch = "zzz-no-such-kind";
+
+        Assert.Empty(page.Groups);
+    }
 }
