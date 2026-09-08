@@ -235,26 +235,12 @@ public sealed record Pod
     public string ControlledBy { get; init; } = string.Empty;
 
     /// <summary>
-    /// <c>spec.hostname</c>, when set. Kubernetes fills this automatically for a StatefulSet's pods;
-    /// otherwise it is normally empty and the pod has no stable DNS name, only an IP.
+    /// The pod's cluster-internal DNS name, or empty when it doesn't have one — most pods are reachable
+    /// only by IP. Left to the adapter to fill in: whether (and how) a pod gets a stable name is a
+    /// backend-specific rule (for Kubernetes: part of a headless Service, or explicit
+    /// <c>hostname</c>/<c>subdomain</c>), not something this orchestrator-neutral model should assume.
     /// </summary>
-    public string Hostname { get; init; } = string.Empty;
-
-    /// <summary>
-    /// <c>spec.subdomain</c>, when set — must name a headless Service in the same namespace for
-    /// <see cref="ClusterDnsName"/> to actually resolve.
-    /// </summary>
-    public string Subdomain { get; init; } = string.Empty;
-
-    /// <summary>
-    /// The pod's cluster-internal DNS name, or empty when it doesn't have one. Only pods that are part
-    /// of a headless Service (the StatefulSet pattern) or that set <c>hostname</c>/<c>subdomain</c>
-    /// explicitly get a resolvable name — every other pod is reachable only by IP.
-    /// </summary>
-    public string ClusterDnsName =>
-        Hostname.Length > 0 && Subdomain.Length > 0
-            ? $"{Hostname}.{Subdomain}.{Namespace}.svc.cluster.local"
-            : string.Empty;
+    public string ClusterDnsName { get; init; } = string.Empty;
 
     /// <summary>
     /// The pod's labels. Needed to answer the question a Service detail exists for: which pods does

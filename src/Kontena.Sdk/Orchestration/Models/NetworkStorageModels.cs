@@ -35,8 +35,12 @@ public sealed record Service
 
     public TimeSpan Age { get; init; }
 
-    /// <summary>Cluster-internal DNS name Kubernetes always assigns a service (any type).</summary>
-    public string ClusterDnsName => $"{Name}.{Namespace}.svc.cluster.local";
+    /// <summary>
+    /// The service's cluster-internal DNS name, or empty if the backend has no such concept. Left to
+    /// the adapter to fill in — the naming scheme (e.g. Kubernetes' <c>svc.cluster.local</c>) is
+    /// backend-specific and doesn't belong in this orchestrator-neutral model.
+    /// </summary>
+    public string ClusterDnsName { get; init; } = string.Empty;
 }
 
 /// <summary>One host/path routing rule of an Ingress.</summary>
