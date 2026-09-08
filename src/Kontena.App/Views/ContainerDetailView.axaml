@@ -286,14 +286,14 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:LogLineViewModel">
                                 <StackPanel Orientation="Horizontal" Spacing="14">
-                                    <TextBlock Text="{Binding Timestamp}" FontFamily="{StaticResource Mono}" FontSize="12.5"
-                                               LineHeight="21" Foreground="{DynamicResource TextFaint}"
-                                               IsVisible="{Binding #Root.((vm:ContainerDetailViewModel)DataContext).ShowTimestamps}"/>
-                                    <TextBlock Text="{Binding Level}" FontFamily="{StaticResource Mono}" FontSize="12.5" FontWeight="Bold"
-                                               LineHeight="21" Foreground="{Binding LevelBrush}" IsVisible="{Binding HasLevel}"/>
-                                    <TextBlock Text="{Binding Message}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="21"
-                                               Foreground="{Binding MessageBrush}"
-                                               TextWrapping="{Binding #Root.((vm:ContainerDetailViewModel)DataContext).LogWrapping}"/>
+                                    <SelectableTextBlock Text="{Binding Timestamp}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                         LineHeight="21" Foreground="{DynamicResource TextFaint}"
+                                                         IsVisible="{Binding #Root.((vm:ContainerDetailViewModel)DataContext).ShowTimestamps}"/>
+                                    <SelectableTextBlock Text="{Binding Level}" FontFamily="{StaticResource Mono}" FontSize="12.5" FontWeight="Bold"
+                                                         LineHeight="21" Foreground="{Binding LevelBrush}" IsVisible="{Binding HasLevel}"/>
+                                    <SelectableTextBlock Text="{Binding Message}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="21"
+                                                         Foreground="{Binding MessageBrush}"
+                                                         TextWrapping="{Binding #Root.((vm:ContainerDetailViewModel)DataContext).LogWrapping}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

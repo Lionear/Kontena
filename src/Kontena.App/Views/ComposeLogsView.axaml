@@ -94,11 +94,11 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:ComposeLogLine">
                             <Grid ColumnDefinitions="130,*">
-                                <TextBlock Grid.Column="0" Text="{Binding Service}" FontFamily="{StaticResource Mono}" FontSize="12"
-                                           LineHeight="19" Foreground="{Binding ServiceBrush}" TextTrimming="CharacterEllipsis"
-                                           Margin="0,0,12,0"/>
-                                <TextBlock Grid.Column="1" Text="{Binding Text}" FontFamily="{StaticResource Mono}" FontSize="12"
-                                           LineHeight="19" Foreground="{DynamicResource TextDim}"/>
+                                <SelectableTextBlock Grid.Column="0" Text="{Binding Service}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                     LineHeight="19" Foreground="{Binding ServiceBrush}" TextTrimming="CharacterEllipsis"
+                                                     Margin="0,0,12,0"/>
+                                <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                     LineHeight="19" Foreground="{DynamicResource TextDim}"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
