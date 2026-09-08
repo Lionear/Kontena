@@ -380,6 +380,15 @@
             <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
         </Style>
 
+        <!-- Text can only be selected where the pointer can reach it (KON-452). A text block with no
+             background is invisible to hit testing, so the press falls through to whatever is behind
+             it — inside a list, to the row, which takes the click and leaves the text unselected.
+             Transparent is a background: it takes the pointer and paints nothing. One rule here rather
+             than an attribute per console, because every log surface in the app has the same problem. -->
+        <Style Selector="SelectableTextBlock">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
         <!-- A list row for something that is broken (KON-415). Three signals, because one is not
              enough for everyone: a wash on the row, a warning glyph where the status dot sits, and
              the reason itself in red. The reason is the text — "Pod in CrashLoopBackOff" says where

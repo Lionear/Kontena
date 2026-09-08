@@ -422,8 +422,8 @@
                         <ItemsControl ItemsSource="{Binding Output}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                    <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
-                                               Foreground="#C9D3DF" TextWrapping="Wrap"/>
+                                    <SelectableTextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                                         Foreground="#C9D3DF" TextWrapping="Wrap"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -452,8 +452,8 @@
                         <ItemsControl ItemsSource="{Binding Output}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                    <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
-                                               Foreground="#C9D3DF" TextWrapping="Wrap"/>
+                                    <SelectableTextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
+                                                         Foreground="#C9D3DF" TextWrapping="Wrap"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
