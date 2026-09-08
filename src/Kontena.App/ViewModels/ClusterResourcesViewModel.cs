@@ -62,6 +62,43 @@ public sealed partial class ApiResourceItem(ApiResource resource) : ObservableOb
     private bool _isSelected;
 }
 
+/// <summary>
+/// One workload that uses, or was created by, the object being shown (KON-455). Clicking it opens
+/// that workload — the same click-through a related pod row has had since the workload detail
+/// existed, pointed the other way.
+/// </summary>
+public sealed partial class ResourceUsageRow(ResourceUsage usage, Action<ResourceRef>? onOpen)
+{
+    public ResourceRef Reference { get; } = usage.User;
+
+    public string Name => Reference.Name;
+
+    /// <summary>Kind and namespace, the way every other row in the app spells a location.</summary>
+    public string Where => Reference.Namespace is { Length: > 0 } ns
+        ? $"{Reference.Kind.Kind} · namespace {ns}"
+        : Reference.Kind.Kind;
+
+    /// <summary>
+    /// Which way the relation runs. "Created by this" and "uses this" end up in the same list and are
+    /// not the same fact — an operator's own StatefulSet is not a consumer of the object.
+    /// </summary>
+    public string Direction => usage.OwnedByTarget ? "created by this" : "uses this";
+
+    /// <summary>
+    /// How the link was found, in the cluster's own words. On the row because a relation whose basis
+    /// is not on screen cannot be checked — and these bases are not equally strong.
+    /// </summary>
+    public string Evidence => usage.Evidence switch
+    {
+        UsageEvidence.OwnerReference => "ownerReference",
+        UsageEvidence.Mount => $"mounts {usage.Detail}",
+        _ => $"annotation {usage.Detail}",
+    };
+
+    [RelayCommand]
+    private void Open() => onOpen?.Invoke(Reference);
+}
+
 /// <summary>A heading in the picker and the kinds under it.</summary>
 public sealed class ApiResourceGroup(string title, IReadOnlyList<ApiResourceItem> items)
 {
@@ -120,6 +157,21 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     [ObservableProperty] private string? _manifest;
     [ObservableProperty] private string? _manifestTitle;
 
+    /// <summary>
+    /// The workloads that use the object whose manifest is open, or that it created (KON-455).
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<ResourceUsageRow> _users = [];
+
+    /// <summary>
+    /// True once the question has been asked and answered, however it came out. Without it the empty
+    /// state cannot tell "nothing uses this" from "not looked yet", and would flash the first while
+    /// the second is still true.
+    /// </summary>
+    [ObservableProperty] private bool _usersChecked;
+
+    /// <summary>Opens the workload behind a relation row. The shell owns navigation.</summary>
+    public Action<ResourceRef>? RequestOpen { get; set; }
+
     /// <summary>The column currently sorted by, or null for the order the server sent.</summary>
     [ObservableProperty] private string? _sortColumn;
 
@@ -161,6 +213,15 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     public Task LoadAsync() => LoadTableAsync();
 
     public bool CanDeleteSelected => Selected?.Resource.CanDelete == true;
+
+    public bool HasUsers => Users.Count > 0;
+
+    /// <summary>
+    /// Nothing found, and what was looked at. Every comparable tool leaves this silent, which cannot
+    /// be told apart from "nothing uses this" — and a generic ladder will sometimes miss a custom
+    /// resource that links itself in a way none of the three rungs covers.
+    /// </summary>
+    public bool NothingUsesIt => UsersChecked && Users.Count == 0;
 
     /// <summary>True once there is nothing to show and nothing on its way.</summary>
     public bool IsEmpty => !IsLoading && Table is { Rows.Count: 0 } && Error is null;
@@ -361,6 +422,11 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     {
         ManifestTitle = row.Reference.Name;
         Manifest = "Loading…";
+        Users = [];
+        UsersChecked = false;
+        RaiseUsers();
+
+        _ = LoadUsersAsync(row.Reference);
 
         try
         {
@@ -372,9 +438,48 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
         }
     }
 
+    /// <summary>
+    /// Ask the cluster what uses this object. Separate from the manifest read and not awaited with it:
+    /// the manifest is one GET and this is several lists, and the YAML should not wait for them.
+    /// </summary>
+    private async Task LoadUsersAsync(ResourceRef reference)
+    {
+        IReadOnlyList<ResourceUsage> usages;
+
+        try
+        {
+            usages = await _cluster.FindUsersAsync(reference);
+        }
+        catch (Exception)
+        {
+            // An engine that cannot answer leaves the section closed rather than the page broken.
+            usages = [];
+        }
+
+        // The panel may have been closed, or moved to another object, while this was out.
+        if (!string.Equals(ManifestTitle, reference.Name, StringComparison.Ordinal))
+            return;
+
+        Users = [.. usages.Select(u => new ResourceUsageRow(u, RequestOpen))];
+        UsersChecked = true;
+        RaiseUsers();
+    }
+
+    private void RaiseUsers()
+    {
+        OnPropertyChanged(nameof(HasUsers));
+        OnPropertyChanged(nameof(NothingUsesIt));
+    }
+
     /// <summary>Close the manifest panel.</summary>
     [RelayCommand]
-    public void CloseManifest() => Manifest = null;
+    public void CloseManifest()
+    {
+        Manifest = null;
+        Users = [];
+        UsersChecked = false;
+        RaiseUsers();
+    }
 
     /// <summary>
     /// Delete an object, through the shell's confirm like every other destructive action (KON-126).

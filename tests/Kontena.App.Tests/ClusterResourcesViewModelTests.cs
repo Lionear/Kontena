@@ -1,5 +1,6 @@
 using Kontena.App.ViewModels;
 using Kontena.Core.Orchestration.Fakes;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.Tests;
 
@@ -269,5 +270,94 @@ public sealed class ClusterResourcesViewModelTests
 
         Assert.False(pod.HasDescription);
         Assert.Equal("core", pod.Origin);
+    }
+
+    /// <summary>
+    /// The cross-link (KON-455): opening an object says which workloads use it, and clicking one hands
+    /// the shell the reference so it opens that workload's own page.
+    /// </summary>
+    [Fact]
+    public async Task Opening_an_object_says_which_workloads_use_it()
+    {
+        var page = await CertificatesAsync();
+        var row = page.Rows.Single(r => r.Reference.Name == "kontena-app-tls");
+
+        await page.ShowManifestAsync(row);
+        for (var i = 0; i < 100 && !page.UsersChecked; i++)
+            await Task.Delay(10);
+
+        Assert.True(page.HasUsers);
+        Assert.False(page.NothingUsesIt);
+        Assert.Equal(["kontena-web", "kontena-api"], page.Users.Select(u => u.Name));
+    }
+
+    /// <summary>Both directions in one list, and they do not say the same thing.</summary>
+    [Fact]
+    public async Task A_row_says_how_the_link_was_found_and_which_way_it_runs()
+    {
+        var page = await UsersOfTlsAsync();
+
+        var mounts = page.Users.Single(u => u.Name == "kontena-web");
+        Assert.Equal("mounts Secret kontena-app-tls", mounts.Evidence);
+        Assert.Equal("uses this", mounts.Direction);
+        Assert.Equal("Deployment · namespace default", mounts.Where);
+
+        var owned = page.Users.Single(u => u.Name == "kontena-api");
+        Assert.Equal("ownerReference", owned.Evidence);
+        Assert.Equal("created by this", owned.Direction);
+    }
+
+    [Fact]
+    public async Task Clicking_a_row_hands_the_shell_the_workload_to_open()
+    {
+        ResourceRef? opened = null;
+        var page = await UsersOfTlsAsync(target => opened = target);
+
+        page.Users.Single(u => u.Name == "kontena-web").OpenCommand.Execute(null);
+
+        Assert.Equal("kontena-web", opened?.Name);
+        Assert.Equal(GroupVersionKind.Deployment, opened?.Kind);
+    }
+
+    /// <summary>
+    /// Nothing found is stated, not left blank: a generic ladder will miss a custom resource that links
+    /// itself some other way, and silence cannot be told apart from "nothing uses this".
+    /// </summary>
+    [Fact]
+    public async Task An_object_nothing_uses_says_so()
+    {
+        var page = await CertificatesAsync();
+        var row = page.Rows.First(r => r.Reference.Name != "kontena-app-tls");
+
+        await page.ShowManifestAsync(row);
+        for (var i = 0; i < 100 && !page.UsersChecked; i++)
+            await Task.Delay(10);
+
+        Assert.False(page.HasUsers);
+        Assert.True(page.NothingUsesIt);
+    }
+
+    /// <summary>Closing the panel drops the answer with it, so the next object starts from nothing.</summary>
+    [Fact]
+    public async Task Closing_the_panel_forgets_what_used_the_object()
+    {
+        var page = await UsersOfTlsAsync();
+
+        page.CloseManifestCommand.Execute(null);
+
+        Assert.Empty(page.Users);
+        Assert.False(page.NothingUsesIt);
+    }
+
+    private static async Task<ClusterResourcesViewModel> UsersOfTlsAsync(Action<ResourceRef>? onOpen = null)
+    {
+        var page = await CertificatesAsync();
+        page.RequestOpen = onOpen;
+
+        await page.ShowManifestAsync(page.Rows.Single(r => r.Reference.Name == "kontena-app-tls"));
+        for (var i = 0; i < 100 && !page.UsersChecked; i++)
+            await Task.Delay(10);
+
+        return page;
     }
 }

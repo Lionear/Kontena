@@ -868,6 +868,30 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
 
     /// <summary>
+    /// One of each rung of the ladder, for the certificate the fake serves: a Deployment that mounts
+    /// the Secret the certificate owns, and the Secret's own owner relationship pointed back.
+    /// Anything else has no users, which is the answer that has to render too.
+    /// </summary>
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        IReadOnlyList<ResourceUsage> usages = resource.Name switch
+        {
+            "kontena-app-tls" =>
+            [
+                new(new ResourceRef(GroupVersionKind.Deployment, resource.Namespace, "kontena-web"),
+                    UsageEvidence.Mount, "Secret kontena-app-tls"),
+                new(new ResourceRef(GroupVersionKind.StatefulSet, resource.Namespace, "kontena-api"),
+                    UsageEvidence.OwnerReference, "ownerReference", OwnedByTarget: true),
+            ],
+            _ => [],
+        };
+
+        return ValueTask.FromResult(usages);
+    }
+
+    /// <summary>
     /// Null, honestly: this fake models typed resources for the UI, not raw OpenAPI documents. A
     /// schema-index built against it should see "unverifiable" (KON-288), the same state a real
     /// cluster reports for a group/version it does not serve — not a made-up schema.
