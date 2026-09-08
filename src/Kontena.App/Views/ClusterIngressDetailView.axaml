@@ -23,6 +23,41 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <!-- Open the rule in the system browser (KON-461), the way ArgoCD does: one
+                             button for a single host/path, a flyout of all of them when there are more. -->
+                        <Button Classes="pill" IsVisible="{Binding HasOneLink}"
+                                Command="{Binding OnlyLink.OpenCommand}"
+                                ToolTip.Tip="{Binding OnlyLink.Url}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="13" Height="13" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconExternalLink}"/>
+                                <TextBlock Text="Open" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Classes="pill" IsVisible="{Binding HasManyLinks}"
+                                ToolTip.Tip="Open one of this ingress's hosts in the browser">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Classes="icon" Width="13" Height="13" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconExternalLink}"/>
+                                <TextBlock Text="Open" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#x25BE;" VerticalAlignment="Center" Foreground="{DynamicResource TextDim}"/>
+                            </StackPanel>
+                            <Button.Flyout>
+                                <Flyout>
+                                    <ItemsControl ItemsSource="{Binding Links}" MaxWidth="460">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:IngressRuleRow">
+                                                <Button Classes="link" Padding="6,5" HorizontalAlignment="Stretch"
+                                                        Command="{Binding OpenCommand}" ToolTip.Tip="{Binding Url}">
+                                                    <TextBlock Text="{Binding LinkText}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                               Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+
                         <Button Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
                     </StackPanel>
                 </Grid>

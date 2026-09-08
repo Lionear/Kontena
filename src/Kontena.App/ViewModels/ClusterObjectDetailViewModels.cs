@@ -4,6 +4,7 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Controls;
+using Kontena.App.Services;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
@@ -874,6 +875,17 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
 
     public bool HasTls => Tls.Count > 0;
 
+    /// <summary>The rules that have an address worth opening (KON-461), in rule order. A rule
+    /// without a host matches whatever the controller answers on, so it has none.</summary>
+    public ObservableCollection<IngressRuleRow> Links { get; } = [];
+
+    public bool HasOneLink => Links.Count == 1;
+    public bool HasManyLinks => Links.Count > 1;
+
+    /// <summary>The single link, when there is exactly one — the header shows a plain button for it
+    /// rather than a flyout with one entry.</summary>
+    public IngressRuleRow? OnlyLink => Links.Count == 1 ? Links[0] : null;
+
     /// <summary>Where unmatched traffic goes, or null when the ingress names no default backend —
     /// in which case unmatched traffic is the controller's 404 and there is nothing to show.</summary>
     public string? DefaultBackendText => _ingress.DefaultBackend is { } b
@@ -884,13 +896,24 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
 
     private void Fill(Ingress i)
     {
-        Rules.Clear();
-        foreach (var r in i.Rules)
-            Rules.Add(new IngressRuleRow(r));
-
         Tls.Clear();
         foreach (var t in i.Tls)
             Tls.Add(new IngressTlsRow(t));
+
+        // TLS first: a rule's scheme is decided by whether this ingress presents a certificate for
+        // that host, and the hosts are the block's, not a separate setting (KON-461).
+        var tlsHosts = i.TlsHosts;
+
+        Rules.Clear();
+        Links.Clear();
+        foreach (var r in i.Rules)
+        {
+            var row = new IngressRuleRow(r, tlsHosts);
+            Rules.Add(row);
+
+            if (row.CanOpen)
+                Links.Add(row);
+        }
     }
 
     /// <summary>
@@ -917,6 +940,9 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
         OnPropertyChanged(nameof(AgeText));
         OnPropertyChanged(nameof(HasRules));
         OnPropertyChanged(nameof(HasTls));
+        OnPropertyChanged(nameof(HasOneLink));
+        OnPropertyChanged(nameof(HasManyLinks));
+        OnPropertyChanged(nameof(OnlyLink));
         OnPropertyChanged(nameof(DefaultBackendText));
         OnPropertyChanged(nameof(HasDefaultBackend));
     }
@@ -930,19 +956,71 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
 }
 
 /// <summary>One row of an ingress's routing table.</summary>
-public sealed class IngressRuleRow
+public sealed partial class IngressRuleRow
 {
-    public IngressRuleRow(IngressRule r)
+    public IngressRuleRow(IngressRule r, IReadOnlyList<string> tlsHosts)
     {
         // Same substitutions the list row makes, so the two never read differently for one rule.
         Host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
         Path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
         Backend = $"{r.ServiceName}:{r.ServicePort}";
+
+        // A rule with no host matches every host its controller answers on, so there is no one
+        // address to open and the button stays away rather than inventing one.
+        Url = string.IsNullOrEmpty(r.Host)
+            ? null
+            : $"{(CoveredByTls(r.Host, tlsHosts) ? "https" : "http")}://{r.Host}{Path}";
     }
 
     public string Host { get; }
     public string Path { get; }
     public string Backend { get; }
+
+    /// <summary>What this rule's host and path resolve to, or null when the rule names no host.</summary>
+    public string? Url { get; }
+
+    public bool CanOpen => Url is not null;
+
+    /// <summary>Host and path as one line, for the flyout that lists every combination.</summary>
+    public string LinkText => $"{Host}{Path}";
+
+    /// <summary>
+    /// Open this rule in the system browser (KON-461), the way ArgoCD does. Deliberately not a
+    /// reachability check: an ingress host is routinely a cluster-internal name or another
+    /// environment's domain that this machine cannot resolve, and the shortcut is still the useful
+    /// thing to offer. <see cref="Browser.OpenUrl"/> is best-effort for the same reason.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanOpen))]
+    private void Open()
+    {
+        if (Url is { } url)
+            Browser.OpenUrl(url);
+    }
+
+    /// <summary>
+    /// https when this ingress presents a certificate for the host. Wildcards count: a TLS host of
+    /// <c>*.example.com</c> covers <c>app.example.com</c> and is what cert-manager issues by
+    /// default, so matching only exact names would call the common case http.
+    /// </summary>
+    private static bool CoveredByTls(string host, IReadOnlyList<string> tlsHosts)
+    {
+        foreach (var t in tlsHosts)
+        {
+            if (string.Equals(t, host, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // One label only, as in the TLS spec: *.example.com matches app.example.com but not
+            // a.b.example.com.
+            if (!t.StartsWith("*.", StringComparison.Ordinal))
+                continue;
+
+            var dot = host.IndexOf('.');
+            if (dot > 0 && string.Equals(host[(dot + 1)..], t[2..], StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
 }
 
 /// <summary>One TLS block: the secret holding the certificate, and the hosts it is presented for.</summary>
