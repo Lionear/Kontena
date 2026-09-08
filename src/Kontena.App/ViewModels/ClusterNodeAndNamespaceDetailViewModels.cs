@@ -22,6 +22,8 @@ public sealed partial class ClusterNodeDetailViewModel : ClusterObjectDetailView
 {
     private readonly Action<string>? _onDrain;
     private readonly Func<string, bool, Task>? _onCordon;
+    private readonly string? _apiServerVersion;
+    private Node _node;
 
     public ClusterNodeDetailViewModel(
         IClusterEngine cluster, Node node, string? apiServerVersion,
@@ -33,39 +35,20 @@ public sealed partial class ClusterNodeDetailViewModel : ClusterObjectDetailView
 
         _onCordon = onCordon;
         _onDrain = onDrain;
-
-        Roles = node.Roles.Count > 0 ? string.Join(", ", node.Roles) : "—";
-        Status = node.Status;
+        _apiServerVersion = apiServerVersion;
+        _node = node;
         _cordoned = node.Unschedulable;
-        KubeletVersion = node.KubeletVersion;
-        OsImage = string.IsNullOrEmpty(node.OsImage) ? "—" : node.OsImage;
-        InternalIp = string.IsNullOrEmpty(node.InternalIp) ? "—" : node.InternalIp;
-        Age = Format.Duration(node.Age);
-
-        var cap = node.Capacity;
-        var use = node.Usage;
-        Cpu = use is null
-            ? $"{cap.CpuMillicores}m allocatable"
-            : $"{use.CpuMillicores}m of {cap.CpuMillicores}m";
-        Memory = use is null
-            ? $"{Format.Size(cap.MemoryBytes)} allocatable"
-            : $"{Format.Size(use.MemoryBytes)} of {Format.Size(cap.MemoryBytes)}";
-        PodCapacity = $"{node.ScheduledPods} of {cap.Pods}";
-
-        // Every condition, not only the failing ones. The card shows the problems because a card has
-        // room for what is wrong; this page is where you come to read what the kubelet actually says,
-        // and a healthy MemoryPressure is a fact you sometimes need to see stated.
-        Conditions = [.. node.Conditions.Select(c => new NodeConditionRow(c))];
 
         CanMaintain = cluster.Capabilities.NodeMaintenance && onCordon is not null;
-
-        Skew = VersionSkewPolicy.Evaluate(apiServerVersion, node.KubeletVersion);
 
         // Disk gets a chart here and nowhere else: the kubelet is the only source that reports it,
         // and a node is the only thing it is reported for. No history metric for any of the three —
         // node-exporter keys its series by scrape address, not by node name (KON-347).
         // Allocatable is the ceiling a node is read against, and the one number that turns "8.1
-        // cores" into "8.1 of 16".
+        // cores" into "8.1 of 16". Read once, unlike the header fields: a chart's axis is fixed when
+        // the track is built, and a node's allocatable capacity does not move under a running page.
+        var cap = node.Capacity;
+
         List<UsageChartSpec> charts =
         [
             new("CPU", UsageChartUnit.Millicores, "Primary", UsageMetric.Cpu, "millicores",
@@ -102,22 +85,39 @@ public sealed partial class ClusterNodeDetailViewModel : ClusterObjectDetailView
         _ = LoadPodsAsync();
     }
 
-    public string Roles { get; }
-    public string Status { get; }
-    public string KubeletVersion { get; }
-    public string OsImage { get; }
-    public string InternalIp { get; }
-    public string Age { get; }
-    public string Cpu { get; }
-    public string Memory { get; }
-    /// <summary>Scheduled against allocatable — named apart from the base's pod list.</summary>
-    public string PodCapacity { get; }
+    // Computed off the node rather than copied out of it in the constructor (KON-450), so that
+    // re-reading the node is enough to redraw the page. Every one of these is a field the kubelet
+    // moves on its own: a node going NotReady while you are looking at it is the exact reason this
+    // page is open.
+    public string Roles => _node.Roles.Count > 0 ? string.Join(", ", _node.Roles) : "—";
+    public string Status => _node.Status;
+    public string KubeletVersion => _node.KubeletVersion;
+    public string OsImage => string.IsNullOrEmpty(_node.OsImage) ? "—" : _node.OsImage;
+    public string InternalIp => string.IsNullOrEmpty(_node.InternalIp) ? "—" : _node.InternalIp;
+    public string Age => Format.Duration(_node.Age);
 
-    public IReadOnlyList<NodeConditionRow> Conditions { get; }
+    public string Cpu => _node.Usage is null
+        ? $"{_node.Capacity.CpuMillicores}m allocatable"
+        : $"{_node.Usage.CpuMillicores}m of {_node.Capacity.CpuMillicores}m";
+
+    public string Memory => _node.Usage is null
+        ? $"{Format.Size(_node.Capacity.MemoryBytes)} allocatable"
+        : $"{Format.Size(_node.Usage.MemoryBytes)} of {Format.Size(_node.Capacity.MemoryBytes)}";
+
+    /// <summary>Scheduled against allocatable — named apart from the base's pod list.</summary>
+    public string PodCapacity => $"{_node.ScheduledPods} of {_node.Capacity.Pods}";
+
+    /// <summary>
+    /// Every condition, not only the failing ones. The card shows the problems because a card has
+    /// room for what is wrong; this page is where you come to read what the kubelet actually says,
+    /// and a healthy MemoryPressure is a fact you sometimes need to see stated.
+    /// </summary>
+    public IReadOnlyList<NodeConditionRow> Conditions =>
+        [.. _node.Conditions.Select(c => new NodeConditionRow(c))];
 
     public IBrush StatusBrush => new SolidColorBrush(Color.Parse(Status == "Ready" ? "#34D399" : "#F87171"));
 
-    public NodeVersionSkew Skew { get; }
+    public NodeVersionSkew Skew => VersionSkewPolicy.Evaluate(_apiServerVersion, _node.KubeletVersion);
     public bool HasVersionWarning => Skew.IsProblem;
     public string VersionWarning => Skew.Summary;
     public string VersionWarningDetail => Skew.Detail;
@@ -160,6 +160,52 @@ public sealed partial class ClusterNodeDetailViewModel : ClusterObjectDetailView
 
     // ── The base's hooks ────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Follow this node (KON-450). Its status, its conditions and its kubelet version are all things
+    /// the cluster changes without anyone here asking, and the page showed whichever of them were
+    /// true when it was opened.
+    /// <para>
+    /// Read <b>without</b> pod counts. On Kubernetes that flag is a second, cluster-wide read — every
+    /// pod on the cluster, for one integer (KON-395) — and a Node event says the node changed, not
+    /// that pods moved. The count already on the page is carried across rather than re-bought on
+    /// every kubelet heartbeat; it goes stale, and that is the cheaper of the two wrong answers.
+    /// </para>
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListNodesAsync(withPodCounts: false),
+            n => n.Name == Name);
+
+        if (fresh is null)
+            return;
+
+        _node = fresh with { ScheduledPods = _node.ScheduledPods };
+
+        OnPropertyChanged(nameof(Roles));
+        OnPropertyChanged(nameof(Status));
+        OnPropertyChanged(nameof(StatusBrush));
+        OnPropertyChanged(nameof(KubeletVersion));
+        OnPropertyChanged(nameof(OsImage));
+        OnPropertyChanged(nameof(InternalIp));
+        OnPropertyChanged(nameof(Age));
+        OnPropertyChanged(nameof(Cpu));
+        OnPropertyChanged(nameof(Memory));
+        OnPropertyChanged(nameof(PodCapacity));
+        OnPropertyChanged(nameof(Conditions));
+        OnPropertyChanged(nameof(Skew));
+        OnPropertyChanged(nameof(HasVersionWarning));
+        OnPropertyChanged(nameof(VersionWarning));
+        OnPropertyChanged(nameof(VersionWarningDetail));
+
+        // The page's own Cordon button already sets this; this is the other way it changes — someone
+        // else, or kubectl, cordoning the node while this page is open.
+        Cordoned = fresh.Unschedulable;
+    }
+
     /// <summary>A node's pods are spread across every namespace there is.</summary>
     protected override string? Scope => null;
 
@@ -201,6 +247,7 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
 {
     private readonly IClusterEngine _cluster;
     private readonly Action<string, string>? _onOpenKind;
+    private KubeNamespace _ns;
 
     /// <param name="onOpenKind">Navigates to a list page, scoped to this namespace.</param>
     public ClusterNamespaceDetailViewModel(
@@ -212,6 +259,7 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
 
         _cluster = cluster;
         _onOpenKind = onOpenKind;
+        _ns = ns;
 
         // Everything in the namespace, summed. Live from the pod snapshot the metrics source
         // already answers with, and from Prometheus for the longer ranges (KON-347).
@@ -232,22 +280,22 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
                     : [pods.Sum(p => (double)p.CpuMillicores), pods.Sum(p => (double)p.MemoryBytes)];
             });
 
-        Phase = ns.Phase;
-        Age = Format.Duration(ns.Age);
-        Labels = FormatLabels(ns.Labels);
-
-        // Terminating is not a state you wait out cheerfully: a namespace stuck there is nearly
-        // always a finalizer on something inside it, and that is worth saying where it is seen.
-        IsTerminating = string.Equals(ns.Phase, "Terminating", StringComparison.Ordinal);
-
         _ = LoadContentsAsync();
         _ = LoadPodsAsync();
     }
 
-    public string Phase { get; }
-    public string Age { get; }
-    public string Labels { get; }
-    public bool IsTerminating { get; }
+    // Computed off the namespace rather than copied out of it (KON-450), so re-reading it redraws
+    // the page. Phase is the whole reason: a namespace has exactly one interesting state change, and
+    // it is this one.
+    public string Phase => _ns.Phase;
+    public string Age => Format.Duration(_ns.Age);
+    public string Labels => FormatLabels(_ns.Labels);
+
+    /// <summary>
+    /// Terminating is not a state you wait out cheerfully: a namespace stuck there is nearly always
+    /// a finalizer on something inside it, and that is worth saying where it is seen.
+    /// </summary>
+    public bool IsTerminating => string.Equals(_ns.Phase, "Terminating", StringComparison.Ordinal);
 
     public string TerminatingNote { get; } =
         "This namespace is being deleted and has not finished. A namespace that stays here is almost"
@@ -343,6 +391,33 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
 
     private void Add(string label, int count, string navKey) =>
         Contents.Add(new NamespaceContentRow(label, count, navKey, _onOpenKind, Name));
+
+    /// <summary>
+    /// Follow this namespace (KON-450). Only its own fields: a Namespace event means the namespace
+    /// object changed, and the contents tally below is a different question with seven reads behind
+    /// it — re-running that here would bill a namespace's own phase change for a survey of everything
+    /// inside it. The tally moves when the things in it move, which is not this event.
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListNamespacesAsync(),
+            n => n.Name == Name);
+
+        if (fresh is null)
+            return;
+
+        _ns = fresh;
+
+        OnPropertyChanged(nameof(Phase));
+        OnPropertyChanged(nameof(PhaseBrush));
+        OnPropertyChanged(nameof(Age));
+        OnPropertyChanged(nameof(Labels));
+        OnPropertyChanged(nameof(IsTerminating));
+    }
 
     protected override string? Scope => Name;
 

@@ -1287,8 +1287,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
             case "Namespace":
             {
-                if (!_namespaces.Exists(n => n.Name == doc.Name))
+                // Apply is declarative for a namespace too: applying one that exists writes its
+                // labels rather than doing nothing. Skipping the update made this the one kind where
+                // a second apply could not change anything, which is not how the real one behaves —
+                // and it left a namespace with no reachable state change at all (KON-450).
+                var i = _namespaces.FindIndex(n => n.Name == doc.Name);
+                if (i >= 0)
+                    _namespaces[i] = _namespaces[i] with { Labels = doc.Labels };
+                else
                     _namespaces.Add(new KubeNamespace { Name = doc.Name, Phase = "Active", Labels = doc.Labels, Age = TimeSpan.Zero });
+
                 break;
             }
 
