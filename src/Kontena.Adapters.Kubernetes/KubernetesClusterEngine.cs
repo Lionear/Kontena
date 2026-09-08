@@ -388,6 +388,109 @@ public sealed class KubernetesClusterEngine
         return [.. (list.Items ?? []).Select(map)];
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        var ns = resource.Namespace;
+
+        // The ConfigMaps and Secrets this object created, so a workload mounting one of them counts as
+        // using the object. Both hops are exact: the ownerReference here, the name in the pod spec
+        // below. Best-effort — without rights to read them the ladder simply loses its middle rung.
+        var ownedConfig = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        try
+        {
+            var secrets = ns is { Length: > 0 }
+                ? await _client.CoreV1.ListNamespacedSecretAsync(ns, cancellationToken: ct).ConfigureAwait(false)
+                : await _client.CoreV1.ListSecretForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
+
+            foreach (var secret in secrets?.Items ?? [])
+            {
+                if (ResourceUsers.OwnedBy(secret.Metadata?.OwnerReferences, resource))
+                    ownedConfig[$"Secret/{secret.Metadata!.Name}"] = $"Secret {secret.Metadata.Name}";
+            }
+
+            var maps = ns is { Length: > 0 }
+                ? await _client.CoreV1.ListNamespacedConfigMapAsync(ns, cancellationToken: ct).ConfigureAwait(false)
+                : await _client.CoreV1.ListConfigMapForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
+
+            foreach (var map in maps?.Items ?? [])
+            {
+                if (ResourceUsers.OwnedBy(map.Metadata?.OwnerReferences, resource))
+                    ownedConfig[$"ConfigMap/{map.Metadata!.Name}"] = $"ConfigMap {map.Metadata.Name}";
+            }
+        }
+        catch (Exception)
+        {
+            // No rights to the config objects: the other two rungs still stand.
+        }
+
+        var usages = new List<ResourceUsage>();
+
+        foreach (var (kind, workloads) in await WorkloadsForUsageAsync(ns, ct).ConfigureAwait(false))
+        {
+            foreach (var (meta, spec) in workloads)
+            {
+                if (meta?.Name is not { Length: > 0 } name)
+                    continue;
+
+                var reference = new ResourceRef(kind, meta.NamespaceProperty, name);
+
+                if (ResourceUsers.Link(reference, meta.OwnerReferences, meta.Annotations, spec, resource, ownedConfig)
+                    is { } usage)
+                {
+                    usages.Add(usage);
+                }
+            }
+        }
+
+        // Strongest evidence first, then by name, so the list reads the same on every refresh.
+        return [.. usages
+            .OrderBy(u => u.Evidence)
+            .ThenBy(u => u.User.Name, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Deployments, StatefulSets and DaemonSets with the two things the ladder reads: their metadata
+    /// and their pod template. One listing per kind, in the namespace when there is one.
+    /// </summary>
+    private async Task<IReadOnlyList<(GroupVersionKind Kind, IReadOnlyList<(V1ObjectMeta? Meta, V1PodSpec? Spec)> Items)>>
+        WorkloadsForUsageAsync(string? ns, CancellationToken ct)
+    {
+        var all = new List<(GroupVersionKind, IReadOnlyList<(V1ObjectMeta?, V1PodSpec?)>)>();
+
+        try
+        {
+            var deployments = ns is { Length: > 0 }
+                ? (await _client.AppsV1.ListNamespacedDeploymentAsync(ns, cancellationToken: ct).ConfigureAwait(false)).Items
+                : (await _client.AppsV1.ListDeploymentForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)).Items;
+
+            all.Add((GroupVersionKind.Deployment,
+                [.. (deployments ?? []).Select(d => ((V1ObjectMeta?)d.Metadata, (V1PodSpec?)d.Spec?.Template?.Spec))]));
+
+            var statefulSets = ns is { Length: > 0 }
+                ? (await _client.AppsV1.ListNamespacedStatefulSetAsync(ns, cancellationToken: ct).ConfigureAwait(false)).Items
+                : (await _client.AppsV1.ListStatefulSetForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)).Items;
+
+            all.Add((GroupVersionKind.StatefulSet,
+                [.. (statefulSets ?? []).Select(w => ((V1ObjectMeta?)w.Metadata, (V1PodSpec?)w.Spec?.Template?.Spec))]));
+
+            var daemonSets = ns is { Length: > 0 }
+                ? (await _client.AppsV1.ListNamespacedDaemonSetAsync(ns, cancellationToken: ct).ConfigureAwait(false)).Items
+                : (await _client.AppsV1.ListDaemonSetForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)).Items;
+
+            all.Add((GroupVersionKind.DaemonSet,
+                [.. (daemonSets ?? []).Select(w => ((V1ObjectMeta?)w.Metadata, (V1PodSpec?)w.Spec?.Template?.Spec))]));
+        }
+        catch (Exception)
+        {
+            // Whatever came back before the refusal is still a true answer; the rest is not listed.
+        }
+
+        return all;
+    }
+
     public async ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default)
     {
         var list = ns is null

@@ -53,6 +53,9 @@ public partial class ClusterConfigMapsViewModel : ClusterListPageViewModel<Confi
     // answer, and it is the one you actually have.
     protected override bool Matches(ConfigObjectRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term) || row.MatchesKey(term);
+
+    protected override IReadOnlyDictionary<string, Func<ConfigObjectRow, IComparable>> SortColumns { get; } =
+        ConfigObjectRow.SortableColumns(withType: false);
 }
 
 /// <summary>Secrets — keys and sizes, with the values behind a deliberate act.</summary>
@@ -100,6 +103,9 @@ public partial class ClusterSecretsViewModel : ClusterListPageViewModel<ConfigOb
     protected override bool Matches(ConfigObjectRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Namespace, term)
         || Contains(row.Type, term) || row.MatchesKey(term);
+
+    protected override IReadOnlyDictionary<string, Func<ConfigObjectRow, IComparable>> SortColumns { get; } =
+        ConfigObjectRow.SortableColumns(withType: true);
 }
 
 /// <summary>One ConfigMap or Secret in the list: what it is, and the way in to its detail.</summary>
@@ -135,6 +141,7 @@ public sealed partial class ConfigObjectRow : ObservableObject
         Namespace = reference.Namespace ?? "default";
         Type = string.IsNullOrEmpty(type) ? "—" : type;
         Age = Format.Duration(age);
+        AgeSpan = age;
         Keys = keys;
 
         KeyCount = keys.Count switch
@@ -145,11 +152,39 @@ public sealed partial class ConfigObjectRow : ObservableObject
         };
     }
 
+    /// <summary>
+    /// The columns both config pages can be sorted by (KON-454). On the row rather than on either
+    /// page because they draw the same row and differ by one column — two copies would be two places
+    /// for a key to stop matching the header that sends it.
+    /// </summary>
+    public static IReadOnlyDictionary<string, Func<ConfigObjectRow, IComparable>> SortableColumns(bool withType)
+    {
+        var columns = new Dictionary<string, Func<ConfigObjectRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["KEYS"] = r => r.Keys.Count,
+            ["AGE"] = r => r.AgeSpan,
+        };
+
+        if (withType)
+            columns["TYPE"] = r => r.Type;
+
+        return columns;
+    }
+
     public ResourceRef Reference { get; }
     public string Name { get; }
     public string Namespace { get; }
     public string Type { get; }
     public string Age { get; }
+
+    /// <summary>
+    /// The age before it was formatted, for sorting (KON-454). "5d" and "12h" as text order the wrong
+    /// way round, and the column is one of the two people sort a config listing by.
+    /// </summary>
+    public TimeSpan AgeSpan { get; }
+
     public string KeyCount { get; }
     public bool IsSecret { get; }
 

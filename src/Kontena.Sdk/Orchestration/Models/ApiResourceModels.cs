@@ -22,8 +22,42 @@ public sealed record ApiResource
     /// <summary>Whether instances live in a namespace.</summary>
     public bool Namespaced { get; init; }
 
+    /// <summary>
+    /// The abbreviations the API server accepts for this kind, e.g. <c>cert</c> for a cert-manager
+    /// Certificate (KON-455). Discovery has always carried these; nothing was reading them.
+    /// <para>
+    /// They matter for finding a kind rather than for addressing one: someone who half-remembers a
+    /// custom resource often remembers what they type at kubectl, not the Kind the CRD declares.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> ShortNames { get; init; } = [];
+
+    /// <summary>
+    /// The buckets the kind declares itself part of, e.g. <c>all</c>, or the name an operator groups
+    /// its kinds under. Also from discovery, and also unread until now.
+    /// </summary>
+    public IReadOnlyList<string> Categories { get; init; } = [];
+
     /// <summary>What may be done with it, as the API server reports: <c>list</c>, <c>delete</c>, …</summary>
     public IReadOnlyList<string> Verbs { get; init; } = [];
+
+    /// <summary>
+    /// What this kind is for, in the CRD author's own words (KON-455). Empty for a built-in kind, and
+    /// empty for a custom one whose author wrote no description or whose definition this user may not
+    /// read — the picker shows the line only when there is one.
+    /// <para>
+    /// The one field here that is not free: it comes from the CustomResourceDefinition rather than from
+    /// discovery. It is worth the call because it is the only thing on the row written for a human who
+    /// does not already know the kind — which is the whole of what KON-455 reported.
+    /// </para>
+    /// </summary>
+    public string Description { get; init; } = string.Empty;
+
+    /// <summary>
+    /// What installed this kind — an operator's name or a Helm release, from the definition's own
+    /// labels. Empty when the definition says nothing about where it came from.
+    /// </summary>
+    public string Source { get; init; } = string.Empty;
 
     /// <summary>
     /// Whether it came from outside Kubernetes itself. Not a judgement about quality — it is how the
