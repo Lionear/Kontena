@@ -96,6 +96,16 @@ public partial class MainWindowViewModel
             service, title, message);
     }
 
+    /// <summary>Delete an ingress from its detail page (KON-334, KON-453).</summary>
+    private void ConfirmDeleteIngress(Ingress ingress)
+    {
+        var (title, message) = ClusterDeleteWording.Ingress(ingress.Name, ingress.Namespace);
+
+        ConfirmDeleteObject(
+            new ResourceRef(GroupVersionKind.Ingress, ingress.Namespace, ingress.Name),
+            ingress, title, message);
+    }
+
     /// <summary>Delete a config map or secret from its detail page (KON-334).</summary>
     private void ConfirmDeleteConfigObject(ConfigObjectRow row)
     {
@@ -609,6 +619,20 @@ public partial class MainWindowViewModel
     }
 
     /// <summary>
+    /// Open the ingress-detail page (KON-453). The list row was a dead end: its rules lived in a
+    /// tooltip over a trimmed cell and its manifest had nowhere to be read at all.
+    /// </summary>
+    private void ShowIngressDetail(Ingress ingress)
+    {
+        if (_cluster is null)
+            return;
+
+        ShowDetail(new ClusterIngressDetailViewModel(
+            _cluster, ingress, onDelete: () => ConfirmDeleteIngress(ingress)),
+            $"ingress {ingress.Name}", ingress);
+    }
+
+    /// <summary>
     /// Open whatever an event is about (KON-248) — the events feed's one way out.
     /// <para>
     /// An event carries a <see cref="ResourceRef"/>, and the detail pages take the object itself, so
@@ -638,6 +662,13 @@ public partial class MainWindowViewModel
                     return false;
 
                 ShowServiceDetail(service);
+                return true;
+
+            case "Ingress":
+                if ((await _cluster.ListIngressesAsync(ns)).FirstOrDefault(i => i.Name == target.Name) is not { } ingress)
+                    return false;
+
+                ShowIngressDetail(ingress);
                 return true;
 
             case var kind when Enum.TryParse<WorkloadKind>(kind, out var workloadKind):

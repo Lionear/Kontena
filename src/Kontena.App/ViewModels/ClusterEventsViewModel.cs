@@ -185,7 +185,7 @@ public sealed partial class ClusterEventRow
     private static readonly HashSet<string> Navigable =
         new(StringComparer.Ordinal)
         {
-            "Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob", "Service",
+            "Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob", "Service", "Ingress",
         };
 
     public string Severity { get; }

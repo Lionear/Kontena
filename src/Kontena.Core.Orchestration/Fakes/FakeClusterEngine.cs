@@ -181,7 +181,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
         _ingresses =
         [
-            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], TlsHosts = ["app.example.com"], Age = TimeSpan.FromHours(30) },
+            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], Tls = [new IngressTls("web-tls", ["app.example.com"])], DefaultBackend = new IngressBackend("web", 80), Age = TimeSpan.FromHours(30) },
         ];
 
         _pvcs =

@@ -38,8 +38,10 @@
                             <DataTemplate x:DataType="vm:IngressRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <Grid ColumnDefinitions="1.5*,1*,0.9*,2*,1.2*,0.7*,88">
-                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}"
-                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}"
+                                                IsEnabled="{Binding CanOpen}" VerticalAlignment="Center" Margin="0,0,14,0">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
                                         <TextBlock Grid.Column="1" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="2" Text="{Binding Class}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                         <!-- Hosts trim like the Services PORTS cell: the full set of rules, each with its
