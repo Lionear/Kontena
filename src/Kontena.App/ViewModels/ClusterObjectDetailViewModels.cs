@@ -116,6 +116,30 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     /// </summary>
     protected virtual Task OnResourceModifiedAsync() => Task.CompletedTask;
 
+    /// <summary>
+    /// Read this object again out of the only read there is (KON-450). <see cref="IClusterEngine"/>
+    /// has no get-one-object for any of these kinds, so every page re-reads through the same lister
+    /// that filled the grid it was opened from and picks itself out by name.
+    /// <para>
+    /// Null means "no answer", never "gone": a read that threw says nothing about the object, and an
+    /// object missing from the answer is one the same watch is about to report as Deleted. Either way
+    /// the page keeps what it has rather than blanking fields it can no longer vouch for — a detail
+    /// page full of em-dashes is a worse lie than one that is a few seconds behind.
+    /// </para>
+    /// </summary>
+    protected static async Task<T?> RefetchAsync<T>(
+        Func<ValueTask<IReadOnlyList<T>>> read, Func<T, bool> isThisOne) where T : class
+    {
+        try
+        {
+            return (await read()).FirstOrDefault(isThisOne);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Stop following. Cluster pages are rebuilt on every visit, so a watch that outlived its
     /// page would be a stream nobody reads holding a connection open for the life of the app.
     /// Virtual so <see cref="ClusterServiceDetailViewModel"/> can drop its own subscription first
@@ -505,10 +529,8 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     /// can differ. Everything else in the header is identity — a Deployment does not change
     /// namespace or kind — so only the rollout reading and the replica counts are raised.
     /// <para>
-    /// Via <c>ListWorkloadsAsync</c> filtered by kind and namespace because that is the only read
-    /// there is: <see cref="IClusterEngine"/> has no get-one-workload, and the list is what fills the
-    /// grid this page was opened from anyway. A workload that is not in the answer is one that has
-    /// just been deleted, and the same watch is already about to say so.
+    /// Filtered by kind and namespace so the re-read is the narrowest one this lister offers. See
+    /// <see cref="RefetchAsync{T}"/> for why a missing or failed answer changes nothing on the page.
     /// </para>
     /// </summary>
     protected override Task OnResourceModifiedAsync() => RefreshAsync();
@@ -518,18 +540,10 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     /// answers the click without waiting for the first watch event.</remarks>
     public async Task RefreshAsync()
     {
-        IReadOnlyList<Workload> all;
-        try
-        {
-            all = await Cluster.ListWorkloadsAsync(_workload.Kind, _workload.Namespace);
-        }
-        catch
-        {
-            // A read that failed says nothing about the workload; the next event tries again.
-            return;
-        }
+        var fresh = await RefetchAsync(
+            () => Cluster.ListWorkloadsAsync(_workload.Kind, _workload.Namespace),
+            w => w.Name == _workload.Name);
 
-        var fresh = all.FirstOrDefault(w => w.Name == _workload.Name);
         if (fresh is null)
             return;
 
@@ -567,7 +581,7 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
 /// </summary>
 public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailViewModel
 {
-    private readonly Service _service;
+    private Service _service;
     private readonly Action<Service>? _onForward;
     private readonly PortForwardRegistry? _portForwards;
 
@@ -636,6 +650,50 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
             _portForwards.Changed -= OnPortForwardsChanged;
 
         base.Dispose();
+    }
+
+    /// <summary>
+    /// Follow this service (KON-450). The page read it once and then watched only for it being
+    /// deleted, so a service edited while you had it open kept showing what it looked like when you
+    /// opened it.
+    /// <para>
+    /// The Endpoints tab is the reason this matters more here than anywhere else on this page shape:
+    /// it is not a stored list but a live derivation from the selector, so a changed selector points
+    /// the service at a different set of pods and the old list stops being an answer to anything.
+    /// The other field worth the read is the external IP, which on a LoadBalancer is blank until the
+    /// provider fills it in — and that arrival is exactly a Modified event.
+    /// </para>
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListServicesAsync(_service.Namespace),
+            s => s.Name == _service.Name);
+
+        if (fresh is null)
+            return;
+
+        _service = fresh;
+
+        Ports.Clear();
+        foreach (var p in fresh.Ports)
+        {
+            Ports.Add(new ServicePortRow(p));
+        }
+
+        OnPropertyChanged(nameof(TypeText));
+        OnPropertyChanged(nameof(ClusterIpText));
+        OnPropertyChanged(nameof(ExternalIpText));
+        OnPropertyChanged(nameof(SelectorText));
+        OnPropertyChanged(nameof(AgeText));
+        OnPropertyChanged(nameof(HasPorts));
+
+        // Not an extra courtesy: SelectPods runs the new selector, so this is where the endpoints
+        // stop being the previous service's.
+        await RefreshPodsAsync();
     }
 
     public override string PodsTabLabel => "Endpoints";
