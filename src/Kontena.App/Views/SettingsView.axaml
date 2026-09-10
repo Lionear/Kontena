@@ -936,28 +936,31 @@
                             <DataTemplate x:DataType="vm:AdapterRow">
                                 <Border Classes="card" Margin="0,0,14,14">
                                     <StackPanel Spacing="11">
-                                        <Grid ColumnDefinitions="Auto,*">
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
                                             <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="44" VerticalAlignment="Center"/>
                                             <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
-                                                <TextBlock Text="{Binding Name}" FontSize="14.5" FontWeight="Bold" Foreground="{DynamicResource Text}"/>
-                                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                                    <TextBlock Text="{Binding AuthorLabel}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
-                                                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                                        <Path Classes="icon" Width="11" Height="11" Stroke="{DynamicResource Success}" Data="{StaticResource IconCheck}" VerticalAlignment="Center"/>
-                                                        <TextBlock Text="{Binding SourceLabel}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
-                                                    </StackPanel>
-                                                </StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="14.5" FontWeight="Bold" TextWrapping="Wrap" Foreground="{DynamicResource Text}"/>
+                                                <TextBlock Text="{Binding AuthorLabel}" FontSize="11.5" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFaint}"/>
                                             </StackPanel>
+                                            <!-- Beside the title rather than down with the kind and version
+                                                 (KON-471): the switch is what this card is for, and the
+                                                 metadata row it used to share was the last thing read. The
+                                                 source badge moved the other way, down to that row, because
+                                                 two cards share the content column: name, author, source and
+                                                 switch on one line overlap each other at the narrowest this
+                                                 dialog opens. -->
+                                            <ToggleSwitch Grid.Column="2" Classes="pill" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                          IsEnabled="{Binding CanToggle}"
+                                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"/>
                                         </Grid>
 
-                                        <TextBlock Text="{Binding Description}" FontSize="12.5" LineHeight="19"
-                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
-
-                                        <!-- Why the switch below is dead (KON-468). Its own line rather
-                                             than beside the switch: two cards share the content column,
-                                             so at the smallest window that row has no room left and the
-                                             sentence would ellipsise to nothing. Shown rather than put in
-                                             a tooltip, which a disabled control never raises. -->
+                                        <!-- Why the switch above is dead (KON-468). Directly under it, so the
+                                             sentence is read with the grey switch it explains rather than
+                                             floating between the description and the version (KON-471). Its
+                                             own line rather than beside the switch: two cards share the
+                                             content column, so at the smallest window that row has no room
+                                             left and the sentence would ellipsise to nothing. Shown rather
+                                             than put in a tooltip, which a disabled control never raises. -->
                                         <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsUnavailable}">
                                             <Path Classes="icon" Width="12" Height="12" Data="{StaticResource IconInfo}"
                                                   Stroke="{DynamicResource TextFaint}" VerticalAlignment="Top" Margin="0,3,0,0"/>
@@ -965,15 +968,19 @@
                                                        TextWrapping="Wrap" Foreground="{DynamicResource TextFaint}"/>
                                         </StackPanel>
 
+                                        <TextBlock Text="{Binding Description}" FontSize="12.5" LineHeight="19"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
+
                                         <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,8,0,0">
                                             <Border Grid.Column="0" Background="{DynamicResource Surface2}" CornerRadius="20" Padding="10,3" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding KindLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                                             </Border>
                                             <TextBlock Grid.Column="1" Text="{Binding Version}" Margin="10,0,0,0" FontSize="11.5"
                                                        Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                            <ToggleSwitch Grid.Column="3" Classes="pill" VerticalAlignment="Center"
-                                                          IsEnabled="{Binding CanToggle}"
-                                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"/>
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                <Path Classes="icon" Width="11" Height="11" Stroke="{DynamicResource Success}" Data="{StaticResource IconCheck}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding SourceLabel}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                                            </StackPanel>
                                         </Grid>
                                     </StackPanel>
                                 </Border>

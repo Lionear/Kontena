@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -184,6 +185,79 @@ public sealed class ExtensionsPageRenderTests(HeadlessSessionFixture headless)
                 // that fits on one row and one that needed two both have to have arrived somewhere.
                 Assert.True(b.Bounds.Width > 100, $"the reason was drawn {b.Bounds.Width}px wide.");
                 Assert.True(b.Bounds.Height > 0, "the reason was drawn with no height.");
+            });
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+
+        return Task.CompletedTask;
+    }, CancellationToken.None);
+
+    /// <summary>
+    /// The switch sits on the card's title row, not down with the kind and version (KON-471) — and it
+    /// gets there without landing on top of the name.
+    /// <para>
+    /// Both halves are the layout, not a binding, so only a rendered card can speak for them. Drawn at
+    /// the narrowest this dialog opens (KON-440): the title row is where the card runs out of width
+    /// first, and a horizontal <c>StackPanel</c> that overflows its column draws over its neighbour
+    /// rather than reporting anything, so the overlap is asserted rather than eyeballed.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public Task The_switch_sits_on_the_title_row_clear_of_the_name() => Session.Dispatch(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kontena-extensions-ui-{Guid.NewGuid():N}.json");
+
+        try
+        {
+            var store = new SettingsStore(path);
+            var settings = new KontenaSettings();
+            store.Save(settings);
+
+            var page = Page(store, settings);
+            var window = Show(page, width: 836, height: 458);
+
+            var cards = window.GetVisualDescendants()
+                .OfType<ToggleSwitch>()
+                .Where(t => t.DataContext is AdapterRow)
+                .ToList();
+
+            Point At(Control c) =>
+                c.TranslatePoint(default, window) ?? throw new InvalidOperationException(
+                    $"{c.DataContext} drew no {c.GetType().Name}.");
+
+            Assert.NotEmpty(cards);
+            Assert.All(cards, t =>
+            {
+                var row = (AdapterRow)t.DataContext!;
+
+                var name = window.GetVisualDescendants()
+                    .OfType<TextBlock>()
+                    .Single(b => ReferenceEquals(b.DataContext, row) && b.Text == row.Name);
+
+                var kind = window.GetVisualDescendants()
+                    .OfType<TextBlock>()
+                    .Single(b => ReferenceEquals(b.DataContext, row) && b.Text == row.KindLabel);
+
+                var (switchAt, nameAt, kindAt) = (At(t), At(name), At(kind));
+
+                // Beside the title, above the metadata row it used to share.
+                Assert.True(
+                    switchAt.Y < kindAt.Y,
+                    $"{row.Name}: the switch was drawn at y={switchAt.Y}, below the kind label at y={kindAt.Y}.");
+
+                Assert.True(
+                    switchAt.Y < nameAt.Y + name.Bounds.Height,
+                    $"{row.Name}: the switch was drawn clear below the name, not on its row.");
+
+                // Right of the name, and not over it.
+                Assert.True(
+                    switchAt.X >= nameAt.X + name.Bounds.Width,
+                    $"{row.Name}: the switch starts at x={switchAt.X}, inside the name ending at "
+                    + $"x={nameAt.X + name.Bounds.Width}.");
             });
         }
         finally
