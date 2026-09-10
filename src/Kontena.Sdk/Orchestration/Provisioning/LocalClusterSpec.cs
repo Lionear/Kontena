@@ -43,6 +43,18 @@ public sealed record LocalClusterSpec(string Name)
     public LocalClusterRuntime Runtime { get; init; } = LocalClusterRuntime.Default;
 
     /// <summary>
+    /// Which CNI to put on the cluster, by the provisioner's own name for it, or null for the one it
+    /// wires in itself. The same field as <see cref="RemoteClusterSpec.Cni"/> and read the same way:
+    /// only where <see cref="ProvisionerCapabilities.ChoosesCni"/> says the CNI is a choice at all,
+    /// with <see cref="ProvisionerCapabilities.Cnis"/> saying which names are understood.
+    /// <para>
+    /// For a local tool this is more than a setting — a kind cluster given Calico or Cilium is told not
+    /// to install kindnet, so nothing wires the pod network until the chosen one is applied (KON-465).
+    /// </para>
+    /// </summary>
+    public string? Cni { get; init; }
+
+    /// <summary>
     /// CPUs for the cluster, or null for the tool's default. Only meaningful where the nodes are a VM
     /// with a fixed size — a container takes what the host has.
     /// </summary>

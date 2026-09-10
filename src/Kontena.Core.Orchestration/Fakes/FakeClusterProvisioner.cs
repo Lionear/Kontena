@@ -63,6 +63,9 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
     /// <summary>Make the next create fail after streaming its lines, to exercise the error path.</summary>
     public int CreateExitCode { get; init; }
 
+    /// <summary>What the create leaves to be applied afterwards (KON-465). Nothing, unless a test says so.</summary>
+    public IReadOnlyList<ClusterManifest> PostCreate { get; init; } = [];
+
     /// <summary>Seed clusters that already exist.</summary>
     public FakeClusterProvisioner WithCluster(string name, LocalClusterState state = LocalClusterState.Unknown)
     {
@@ -101,6 +104,8 @@ public sealed class FakeClusterProvisioner : IClusterProvisioner
 
         _clusters.Add(new LocalCluster(spec.Name, Provisioner, $"{Provisioner}-{spec.Name}"));
     }
+
+    public IReadOnlyList<ClusterManifest> PostCreateManifests(LocalClusterSpec spec) => PostCreate;
 
     public ValueTask DeleteAsync(string name, CancellationToken ct = default)
     {

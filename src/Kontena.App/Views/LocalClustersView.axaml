@@ -248,6 +248,15 @@
                                    FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
                     </StackPanel>
 
+                    <StackPanel Spacing="6" IsVisible="{Binding ShowCni}">
+                        <TextBlock Text="Pod network (CNI)" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextDim}"/>
+                        <ComboBox ItemsSource="{Binding Cnis}" SelectedItem="{Binding Cni, Mode=TwoWay}"
+                                  HorizontalAlignment="Left" MinWidth="220"/>
+                        <TextBlock Text="kindnet is the one kind wires in itself. Picking Calico or Cilium tells it to install none, and Kontena applies that project's own pinned install manifest as soon as the cluster answers — so you can work against the network your production cluster runs, policy CRDs and all. Cilium is rendered from its Helm chart, which is the only form it ships in, so it needs helm (Settings › Tools). Either way the nodes stay NotReady for the half minute it takes the network's pods to come up."
+                                   FontSize="12" Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
                         <StackPanel Grid.Column="0" Spacing="6" IsVisible="{Binding ShowHighAvailability}">
                             <TextBlock Text="Control-plane nodes" FontSize="12.5" FontWeight="SemiBold"

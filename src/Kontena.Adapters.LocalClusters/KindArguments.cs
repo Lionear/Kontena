@@ -33,7 +33,11 @@ public static class KindArguments
             arguments.Add(configPath);
         }
 
-        if (spec.ReadyTimeout is { } timeout)
+        // No wait when the CNI is still to come. `--wait` waits for the nodes to report Ready, and a
+        // cluster with kindnet disabled never will until something wires the pod network — so asking
+        // would buy a guaranteed timeout, and a create that failed on a cluster that is fine. The waiting
+        // moves to after the post-create apply, where there is something to wait for.
+        if (spec.ReadyTimeout is { } timeout && !KindCnis.ReplacesDefault(spec.Cni))
         {
             arguments.Add("--wait");
             arguments.Add($"{((int)timeout.TotalSeconds).ToString(CultureInfo.InvariantCulture)}s");
