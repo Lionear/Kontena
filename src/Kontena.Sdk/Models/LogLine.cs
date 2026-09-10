@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Kontena.Sdk.Models;
 
@@ -16,7 +17,7 @@ namespace Kontena.Sdk.Models;
 /// this replaces.
 /// </para>
 /// </summary>
-public static class LogLine
+public static partial class LogLine
 {
     /// <summary>
     /// The entry a raw line describes. <paramref name="readAt"/> is used only when the line carries no
@@ -27,12 +28,42 @@ public static class LogLine
     {
         ArgumentNullException.ThrowIfNull(line);
 
+        line = StripAnsi(line);
+
         var space = line.IndexOf(' ', StringComparison.Ordinal);
         if (space > 0 && TryParseStamp(line[..space], out var stamp))
             return new LogEntry(stamp, source, line[(space + 1)..]);
 
         return new LogEntry(readAt, source, line);
     }
+
+    /// <summary>
+    /// The line without its colour (KON-469).
+    /// <para>
+    /// A container writes to what it believes is a terminal, so plenty of them colour their output —
+    /// the systemd boot log inside a kindest/node is the one that gets noticed, painting every
+    /// <c>[ OK ]</c> green. The console shows text, not a terminal, so those bytes were drawn
+    /// literally: <c>[0;32m OK [0m Finished ...</c>. Stripping here rather than in the viewers means
+    /// the row, its text filter and what Ctrl+C puts on the clipboard (KON-452/463) all read the same
+    /// clean line, because all three are that one string.
+    /// </para>
+    /// <para>
+    /// Unlike a tool this app starts itself, a running container cannot be told <c>NO_COLOR</c> after
+    /// the fact, so the stripping has to happen on this side.
+    /// </para>
+    /// </summary>
+    private static string StripAnsi(string line) =>
+        line.Contains('\e', StringComparison.Ordinal) ? Csi().Replace(line, string.Empty) : line;
+
+    /// <summary>
+    /// A CSI escape sequence, by its actual grammar rather than the digits-and-semicolons shorthand:
+    /// systemd alone sends <c>\e[?25l</c> and <c>\e[K</c> as well as <c>\e[0;32m</c>, and the private
+    /// <c>?</c> and the bare form are not digits.
+    /// </summary>
+    // ponytail: CSI only. OSC (window titles) and the two-character sequences would each want their
+    // own pattern; no log we have seen carries them, and a leftover lone \e draws as nothing anyway.
+    [GeneratedRegex(@"\e\[[0-?]*[ -/]*[@-~]")]
+    private static partial Regex Csi();
 
     /// <summary>
     /// An RFC3339 stamp, or not. Nanoseconds are truncated to what <see cref="DateTimeOffset"/> can

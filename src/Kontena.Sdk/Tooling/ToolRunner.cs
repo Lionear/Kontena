@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Channels;
 
 namespace Kontena.Sdk.Tooling;
@@ -155,6 +156,12 @@ public sealed class ToolRunner : IToolRunner
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
+
+            // These tools write UTF-8 — kind and minikube spend it on emoji (KON-469). Left unset,
+            // .NET decodes a redirected stream with the OS console codepage, which is UTF-8 on Linux
+            // and macOS and is not on Windows, so the same run reads clean there and as mojibake here.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
 
         if (!string.IsNullOrEmpty(workingDirectory))
