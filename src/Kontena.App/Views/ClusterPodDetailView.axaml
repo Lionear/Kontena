@@ -502,8 +502,8 @@
                     <Button Grid.Column="5" Classes="pill" Margin="8,0,0,0" Command="{Binding ClearLogsCommand}">Clear</Button>
                 </Grid>
                 <Border Grid.Row="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
-                    <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
-                             SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                    <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:LogSelection.Enabled="True" behaviors:LogSelection.Timestamps="{Binding ShowTimestamps}" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
+                             SelectionMode="Multiple" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <ListBox.Styles>
                             <Style Selector="ListBoxItem">
                                 <Setter Property="Padding" Value="0"/>
@@ -511,8 +511,11 @@
                                 <Setter Property="MinHeight" Value="0"/>
                                 <Setter Property="Background" Value="Transparent"/>
                             </Style>
+                            <!-- Rows can be selected in bulk since KON-463, so a selected one has to read as
+                                 selected. Both themes draw this console on near-black, hence a fixed wash
+                                 rather than a theme brush — and a heavier one than :pointerover above. -->
                             <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Background" Value="#28FFFFFF"/>
                             </Style>
                         </ListBox.Styles>
                         <ListBox.ItemTemplate>
