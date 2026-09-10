@@ -210,8 +210,9 @@ public class KindClusterProvisionerTests
 
         // The create form reads these to decide which spec it is filling in (KON-232). kind never
         // declared them, so the defaults have to be the local answer or its form changes underneath it.
+        // ChoosesCni is the one that has since crossed over: it is not about hosts, and kind can be told
+        // to install no network of its own (KON-465) — see KindCniTests.
         Assert.False(capabilities.NeedsHosts);
-        Assert.False(capabilities.ChoosesCni);
         Assert.False(capabilities.SupportsPreflight);
         Assert.Equal(ProvisionerTransport.Local, capabilities.Transport);
     }

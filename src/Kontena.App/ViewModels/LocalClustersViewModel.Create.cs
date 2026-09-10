@@ -1,6 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kontena.Adapters.Kubernetes;
+using Kontena.Core.Orchestration.Provisioning;
+using Kontena.Sdk.Orchestration;
+using Kontena.Sdk.Orchestration.Models;
 using Kontena.Sdk.Orchestration.Provisioning;
 using Kontena.Sdk.Tooling;
 
@@ -29,6 +33,13 @@ public sealed partial class LocalClustersViewModel
 
     /// <summary>The cluster that was just created, so the page can offer to switch to it.</summary>
     [ObservableProperty] private LocalClusterRowViewModel? _created;
+
+    /// <summary>
+    /// How to reach a cluster that has just been made, by kubeconfig context. Its own hook because the
+    /// post-create apply needs an engine before the shell has switched to anything — and so a test can
+    /// hand over a fake instead of a real API server.
+    /// </summary>
+    public Func<string, IClusterEngine>? EngineFor { get; init; }
 
     public bool HasCreated => Created is not null;
 
@@ -78,7 +89,7 @@ public sealed partial class LocalClustersViewModel
             return;
         }
 
-        await RunAsync(spec.Name, starting: false, ct => provisioner.CreateAsync(spec, ct), spec);
+        await RunAsync(spec.Name, starting: false, ct => provisioner.CreateAsync(spec, ct), spec, provisioner);
     }
 
     /// <summary>
@@ -135,7 +146,8 @@ public sealed partial class LocalClustersViewModel
         string name,
         bool starting,
         Func<CancellationToken, IAsyncEnumerable<ToolLine>> run,
-        LocalClusterSpec? spec)
+        LocalClusterSpec? spec,
+        IClusterProvisioner? provisioner = null)
     {
         Output.Clear();
         Error = null;
@@ -154,9 +166,16 @@ public sealed partial class LocalClustersViewModel
                 Output.Add(line.Text);
 
             if (spec is not null)
+            {
+                if (provisioner is not null)
+                    await ApplyPostCreateAsync(provisioner, spec, _running.Token);
+
                 await FinishAsync(spec);
+            }
             else
+            {
                 await FinishStartAsync(name);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -178,11 +197,98 @@ public sealed partial class LocalClustersViewModel
             Error = ex.Message;
             FailureHint = "The tool is gone since this page was opened. Re-check under Settings › Tools.";
         }
+        catch (InvalidOperationException ex)
+        {
+            // The tool did its half and something after it did not — today that is the post-create apply
+            // (KON-465). Worth its own wording: the cluster exists, so "try again" is the wrong advice.
+            Stage = LocalClustersStage.Failed;
+            Error = ex.Message;
+            FailureHint =
+                $"The cluster \"{name}\" was created, but what had to go on it did not. Its nodes stay " +
+                "NotReady until a network is installed — delete it and try again, or apply the manifest " +
+                "yourself.";
+        }
         finally
         {
             _running?.Dispose();
             _running = null;
         }
+    }
+
+    /// <summary>
+    /// What the provisioner asked for after the create — today the CNI a kind cluster was told not to
+    /// install itself (KON-465), an add-on chosen at create time after that.
+    /// <para>
+    /// Through the same declarative core as any other manifest (KON-86), rather than shelling out to
+    /// kubectl: server-side apply is what makes a bundle this size land in one pass, and a failure comes
+    /// back per resource with the server's own words rather than as a wall of output to read.
+    /// </para>
+    /// </summary>
+    private async Task ApplyPostCreateAsync(
+        IClusterProvisioner provisioner, LocalClusterSpec spec, CancellationToken ct)
+    {
+        var manifests = provisioner.PostCreateManifests(spec);
+        if (manifests.Count == 0)
+            return;
+
+        // Ask the tool which context it wrote rather than deriving one from the name — the same rule
+        // FinishAsync follows, and the reason a provisioner never registers anything itself.
+        await RefreshClustersAsync();
+
+        var context = Clusters
+            .FirstOrDefault(c => string.Equals(c.Name, spec.Name, StringComparison.Ordinal))?.Context;
+
+        if (string.IsNullOrEmpty(context))
+        {
+            throw new InvalidOperationException(
+                $"\"{spec.Name}\" is not in the kubeconfig yet, so there was nothing to apply to.");
+        }
+
+        var engine = (EngineFor ?? Connect)(context);
+        try
+        {
+            foreach (var manifest in manifests)
+                await ApplyOneAsync(engine, manifest, ct);
+        }
+        finally
+        {
+            (engine as IDisposable)?.Dispose();
+        }
+    }
+
+    private static KubernetesClusterEngine Connect(string context) => new(context);
+
+    /// <summary>
+    /// One manifest, fetched or rendered and then applied, with every resource echoed into the same
+    /// console the tool's own output went to. A resource the server rejected fails the whole run: a CNI
+    /// that only half arrived is a cluster nobody can use, and saying so is the point.
+    /// </summary>
+    private async Task ApplyOneAsync(IClusterEngine engine, ClusterManifest manifest, CancellationToken ct)
+    {
+        Output.Add($"Applying {manifest.DisplayName}…");
+
+        var bundle = await ClusterManifests.ResolveAsync(manifest, ct);
+        var failures = new List<string>();
+
+        await foreach (var step in engine.ApplyAsync(bundle, ct: ct))
+        {
+            Output.Add($"  {step.Resource} {step.Action.ToString().ToLowerInvariant()}");
+
+            if (step.Action == ApplyAction.Failed)
+                failures.Add($"{step.Resource}: {step.Error}");
+        }
+
+        if (failures.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"{manifest.DisplayName} did not apply cleanly:{System.Environment.NewLine}" +
+                string.Join(System.Environment.NewLine, failures));
+        }
+
+        // ponytail: no wait for Ready here — the nodes come up as the network's pods do, and the page
+        // already handles a cluster that is not connectable yet by offering it in a banner. Poll the node
+        // conditions here if that turns out to be worth the wait.
+        Output.Add($"{manifest.DisplayName} applied. The nodes report Ready once its pods are up.");
     }
 
     /// <summary>
