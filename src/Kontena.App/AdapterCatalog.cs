@@ -97,20 +97,37 @@ public static class AdapterCatalog
     /// <para>
     /// One place, and it is deliberately the only one: the answer comes from
     /// <see cref="EngineManifest.Platforms"/> (KON-280), the same field the loader reads for a plugin,
-    /// so a bundled adapter and an installed one are judged by one rule. An adapter that cannot run here
-    /// is not listed at all rather than listed and disabled — a Windows machine has no decision to make
-    /// about Apple's runtime, and offering one implies it does.
+    /// so a bundled adapter and an installed one are judged by one rule. The declaration is what does
+    /// the work — an empty list means "anywhere", so an adapter that only runs on one operating system
+    /// is held to it by its manifest saying so and by nothing else (KON-429).
     /// </para>
     /// <para>
-    /// The declaration is what does the work: an empty list means "anywhere", so an adapter that only
-    /// runs on one operating system is kept out by its manifest saying so and by nothing else (KON-429).
+    /// This answers "can it run", not "should it be listed" (KON-468). Those were the same question
+    /// while <see cref="All"/> filtered on it, and they are not: a bundled adapter is part of what
+    /// Kontena is whether or not this machine can use it, so Settings shows the card and this decides
+    /// whether its switch may be moved — and whether <c>BackendCatalog</c> builds anything for it.
     /// </para>
     /// </summary>
     public static bool RunsOnThisOs(AdapterEntry adapter) =>
         PluginPlatform.SupportsHost(adapter.Manifest.Platforms);
 
     /// <summary>
-    /// Everything to show, bundled first, with what cannot run here left out.
+    /// The same question asked of a backend's adapter id, for callers that have one rather than an
+    /// entry. An id that is not a bundled adapter's — a plugin's — is left alone: the loader has
+    /// already refused a plugin that does not run here (<c>PluginLoader</c>), so nothing it contributed
+    /// could be in hand to ask about.
+    /// </summary>
+    public static bool RunsOnThisOs(string adapterId) =>
+        Bundled.FirstOrDefault(a => a.Id == adapterId) is not { } adapter || RunsOnThisOs(adapter);
+
+    /// <summary>
+    /// Everything to show, bundled first.
+    /// <para>
+    /// Bundled adapters are all listed, including ones this machine cannot run (KON-468). Kontena ships
+    /// them, so "Kontena does not do Apple's runtime" and "your machine cannot" are different answers,
+    /// and hiding the card gave the first one. What the platform decides is whether the switch moves —
+    /// see <see cref="RunsOnThisOs(AdapterEntry)"/>.
+    /// </para>
     /// </summary>
     /// <param name="plugins">
     /// What the loader found. Only plugins that loaded are listed: one awaiting consent or rejected has
@@ -119,7 +136,7 @@ public static class AdapterCatalog
     /// </param>
     public static IReadOnlyList<AdapterEntry> All(IReadOnlyList<DiscoveredPlugin> plugins) =>
     [
-        .. Bundled.Where(RunsOnThisOs),
+        .. Bundled,
         .. plugins.Where(p => p.Status == PluginStatus.Loaded && p.Manifest is not null).Select(FromPlugin),
     ];
 

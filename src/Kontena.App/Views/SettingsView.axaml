@@ -953,6 +953,18 @@
                                         <TextBlock Text="{Binding Description}" FontSize="12.5" LineHeight="19"
                                                    TextWrapping="Wrap" Foreground="{DynamicResource TextDim}"/>
 
+                                        <!-- Why the switch below is dead (KON-468). Its own line rather
+                                             than beside the switch: two cards share the content column,
+                                             so at the smallest window that row has no room left and the
+                                             sentence would ellipsise to nothing. Shown rather than put in
+                                             a tooltip, which a disabled control never raises. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsUnavailable}">
+                                            <Path Classes="icon" Width="12" Height="12" Data="{StaticResource IconInfo}"
+                                                  Stroke="{DynamicResource TextFaint}" VerticalAlignment="Top" Margin="0,3,0,0"/>
+                                            <TextBlock Text="{Binding UnavailableReason}" FontSize="12" LineHeight="18"
+                                                       TextWrapping="Wrap" Foreground="{DynamicResource TextFaint}"/>
+                                        </StackPanel>
+
                                         <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,8,0,0">
                                             <Border Grid.Column="0" Background="{DynamicResource Surface2}" CornerRadius="20" Padding="10,3" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding KindLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
@@ -960,6 +972,7 @@
                                             <TextBlock Grid.Column="1" Text="{Binding Version}" Margin="10,0,0,0" FontSize="11.5"
                                                        Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                             <ToggleSwitch Grid.Column="3" Classes="pill" VerticalAlignment="Center"
+                                                          IsEnabled="{Binding CanToggle}"
                                                           IsChecked="{Binding IsEnabled, Mode=TwoWay}"/>
                                         </Grid>
                                     </StackPanel>
