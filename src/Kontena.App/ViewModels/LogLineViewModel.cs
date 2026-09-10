@@ -6,7 +6,7 @@ using Kontena.Core.Orchestration;
 namespace Kontena.App.ViewModels;
 
 /// <summary>Display wrapper around a single <see cref="LogEntry"/> in the log console.</summary>
-public sealed class LogLineViewModel
+public sealed class LogLineViewModel : ILogLine
 {
     private static readonly string[] KnownLevels =
         ["FATAL", "ERROR", "ERR", "WARN", "WARNING", "INFO", "DEBUG", "TRACE", "READY", "OK"];
@@ -36,6 +36,15 @@ public sealed class LogLineViewModel
 
     /// <summary>The full untouched line; used by the text filter.</summary>
     public string Raw { get; }
+
+    /// <summary>
+    /// The line as one string for a multi-row copy (KON-463). <see cref="Raw"/> rather than
+    /// <see cref="Level"/> plus <see cref="Message"/>, because those two are a split of it and
+    /// pasting the original back is what someone chasing a stack trace wants.
+    /// </summary>
+    // ponytail: the timestamp always comes along, even with the Timestamps toggle off. Bind the
+    // toggle through to the behaviour if that turns out to matter.
+    public string ForClipboard => $"{Timestamp} {Raw}";
 
     public IBrush LevelBrush { get; }
     public IBrush MessageBrush { get; }

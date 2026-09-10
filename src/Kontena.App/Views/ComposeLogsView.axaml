@@ -79,16 +79,18 @@
 
             <!-- Log stream -->
             <Border Grid.Row="2" Background="{DynamicResource Console}">
-                <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="16,12"
-                         SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:LogSelection.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="16,12"
+                         SelectionMode="Multiple" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                     <ListBox.Styles>
                         <Style Selector="ListBoxItem">
                             <Setter Property="Padding" Value="0"/>
                             <Setter Property="MinHeight" Value="0"/>
                             <Setter Property="Background" Value="Transparent"/>
                         </Style>
+                        <!-- Rows can be selected in bulk since KON-463, so a selected one has to read as
+                             selected. Both themes draw this console on near-black, hence a fixed wash. -->
                         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Background" Value="#28FFFFFF"/>
                         </Style>
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>

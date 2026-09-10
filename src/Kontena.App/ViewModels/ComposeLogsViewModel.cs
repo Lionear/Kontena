@@ -139,7 +139,11 @@ public partial class ComposeLogsViewModel : ViewModelBase, IDisposable
 public sealed record ComposeLogSource(string Service, string ContainerId);
 
 /// <summary>One aggregated log line, tagged with its originating service and colour.</summary>
-public sealed record ComposeLogLine(string Service, IBrush ServiceBrush, string Text);
+public sealed record ComposeLogLine(string Service, IBrush ServiceBrush, string Text) : ILogLine
+{
+    /// <summary>Service and line, the two columns the row draws (KON-463).</summary>
+    public string ForClipboard => $"{Service}  {Text}";
+}
 
 /// <summary>A legend entry mapping a service to its colour.</summary>
 public sealed record ComposeServiceLegend(string Service, IBrush Brush);
