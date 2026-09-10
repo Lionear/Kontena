@@ -39,6 +39,22 @@ public static class LogSelection
 
     public static void SetEnabled(ListBox listBox, bool value) => listBox.SetValue(EnabledProperty, value);
 
+    /// <summary>
+    /// Whether a copied line leads with its timestamp — bind it to the console's own Timestamps
+    /// toggle, so what is pasted is what was on screen.
+    /// <para>
+    /// Read when the copy happens rather than watched, so unlike <see cref="AutoScroll.FollowProperty"/>
+    /// it does not matter that binding a view model which also starts true is not a change. Defaults to
+    /// true for a console with no toggle of its own.
+    /// </para>
+    /// </summary>
+    public static readonly AttachedProperty<bool> TimestampsProperty =
+        AvaloniaProperty.RegisterAttached<ListBox, bool>("Timestamps", typeof(LogSelection), defaultValue: true);
+
+    public static bool GetTimestamps(ListBox listBox) => listBox.GetValue(TimestampsProperty);
+
+    public static void SetTimestamps(ListBox listBox, bool value) => listBox.SetValue(TimestampsProperty, value);
+
     private static readonly ConditionalWeakTable<ListBox, Rows> Attached = [];
 
     static LogSelection()
@@ -197,13 +213,15 @@ public static class LogSelection
             if (TopLevel.GetTopLevel(_listBox)?.Clipboard is not { } clipboard)
                 return;
 
+            var timestamps = GetTimestamps(_listBox);
+
             var text = _listBox.Selection.Count > 0
                 // By index, not by the order they were clicked: a Ctrl-click picking up a line above one
                 // already selected still pastes in the order it is read on screen.
                 ? string.Join(
                     '\n',
                     _listBox.Selection.SelectedIndexes.Order()
-                        .Select(i => (_listBox.Items[i] as ILogLine)?.ForClipboard)
+                        .Select(i => (_listBox.Items[i] as ILogLine)?.ForClipboard(timestamps))
                         .OfType<string>())
                 : _rightClicked?.SelectedText ?? string.Empty;
 

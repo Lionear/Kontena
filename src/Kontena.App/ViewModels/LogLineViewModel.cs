@@ -42,9 +42,7 @@ public sealed class LogLineViewModel : ILogLine
     /// <see cref="Level"/> plus <see cref="Message"/>, because those two are a split of it and
     /// pasting the original back is what someone chasing a stack trace wants.
     /// </summary>
-    // ponytail: the timestamp always comes along, even with the Timestamps toggle off. Bind the
-    // toggle through to the behaviour if that turns out to matter.
-    public string ForClipboard => $"{Timestamp} {Raw}";
+    public string ForClipboard(bool withTimestamp) => withTimestamp ? $"{Timestamp} {Raw}" : Raw;
 
     public IBrush LevelBrush { get; }
     public IBrush MessageBrush { get; }

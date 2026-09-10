@@ -10,6 +10,12 @@ namespace Kontena.App.ViewModels;
 /// </summary>
 public interface ILogLine
 {
-    /// <summary>The whole line as one line of text, in the order it is drawn.</summary>
-    string ForClipboard { get; }
+    /// <summary>
+    /// The whole line as one line of text, in the order it is drawn.
+    /// </summary>
+    /// <param name="withTimestamp">
+    /// Whether to lead with the timestamp — the console's own Timestamps toggle, so a copy says what
+    /// the screen says. A line with no timestamp of its own ignores it.
+    /// </param>
+    string ForClipboard(bool withTimestamp);
 }

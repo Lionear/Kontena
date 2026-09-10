@@ -38,7 +38,7 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
     public Task Ctrl_clicking_pod_log_rows_copies_them_joined_by_newlines() =>
         Session.Dispatch(async () =>
         {
-            var (window, lines, list) = await OpenPodLogsAsync();
+            var (window, page, lines, list) = await OpenPodLogsAsync();
 
             CtrlClick(window, Row(window, lines[2].Message));
             CtrlClick(window, Row(window, lines[0].Message));
@@ -49,9 +49,35 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
 
             // And the line itself is the whole line: the timestamp on screen plus the untouched text,
             // level included — a pasted stack trace has to read the way the console does.
-            Assert.Equal($"{lines[0].Timestamp} INFO  starting c0 in api-7d9c", lines[0].ForClipboard);
+            Assert.True(page.ShowTimestamps);
+            Assert.Equal($"{lines[0].Timestamp} INFO  starting c0 in api-7d9c", lines[0].ForClipboard(true));
             Assert.Equal(
-                $"{lines[0].ForClipboard}\n{lines[2].ForClipboard}", await CopiedAsync(window));
+                $"{lines[0].ForClipboard(true)}\n{lines[2].ForClipboard(true)}", await CopiedAsync(window));
+        }, CancellationToken.None).Unwrap();
+
+    /// <summary>
+    /// What is pasted is what was on screen: with the console's Timestamps toggle off the copy leads
+    /// with the message, not the time. The toggle reaches the copy through the behaviour's own attached
+    /// property, so a viewer that forgot to bind it would quietly hand back a column the user turned
+    /// off — which is why this drives the real toggle rather than the property.
+    /// </summary>
+    [Fact]
+    public Task Turning_timestamps_off_leaves_them_out_of_the_copy() =>
+        Session.Dispatch(async () =>
+        {
+            var (window, page, lines, list) = await OpenPodLogsAsync();
+
+            page.ToggleTimestampsCommand.Execute(null);
+            Settle(window);
+            Assert.False(page.ShowTimestamps);
+
+            CtrlClick(window, Row(window, lines[0].Message));
+            CtrlClick(window, Row(window, lines[1].Message));
+            Assert.Equal(2, list.Selection.Count);
+
+            InvokeCopyMenu(list);
+
+            Assert.Equal("INFO  starting c0 in api-7d9c\nINFO  listening on :8080", await CopiedAsync(window));
         }, CancellationToken.None).Unwrap();
 
     /// <summary>
@@ -63,7 +89,8 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
     public Task Shift_clicking_container_log_rows_copies_the_whole_range() =>
         Session.Dispatch(async () =>
         {
-            var (window, lines, list) = await OpenContainerLogsAsync();
+            var (window, page, lines, list) = await OpenContainerLogsAsync();
+            Assert.True(page.ShowTimestamps);
 
             // A plain click leaves the row alone but sets where the range grows from.
             Click(window, Row(window, lines[0].Message), RawInputModifiers.None);
@@ -89,7 +116,7 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
             InvokeCopyMenu(list);
 
             Assert.Equal(
-                string.Join('\n', lines.Select(l => l.ForClipboard)), await CopiedAsync(window));
+                string.Join('\n', lines.Select(l => l.ForClipboard(true))), await CopiedAsync(window));
         }, CancellationToken.None).Unwrap();
 
     /// <summary>Compose logs carry their service name into the paste — the column is half the line.</summary>
@@ -104,7 +131,7 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
 
             InvokeCopyMenu(list);
 
-            Assert.Equal("web  boot", page.Lines[0].ForClipboard);
+            Assert.Equal("web  boot", page.Lines[0].ForClipboard(true));
             Assert.Equal("web  boot\ndb  ready", await CopiedAsync(window));
         }, CancellationToken.None).Unwrap();
 
@@ -117,7 +144,7 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
     public Task A_plain_drag_still_selects_text_inside_one_line_and_clears_the_rows() =>
         Session.Dispatch(async () =>
         {
-            var (window, lines, list) = await OpenPodLogsAsync();
+            var (window, _, lines, list) = await OpenPodLogsAsync();
             var line = Row(window, lines[1].Message);
 
             CtrlClick(window, Row(window, lines[0].Message));
@@ -150,8 +177,8 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
 
     // ── Opening the three viewers ─────────────────────────────────────────────
 
-    private static async Task<(Window Window, IReadOnlyList<LogLineViewModel> Lines, ListBox List)>
-        OpenPodLogsAsync()
+    private static async Task<(Window Window, ClusterPodDetailViewModel Page,
+        IReadOnlyList<LogLineViewModel> Lines, ListBox List)> OpenPodLogsAsync()
     {
         var cluster = new FakeClusterEngine();
         var pods = await cluster.ListPodsAsync("app");
@@ -162,11 +189,11 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
         var window = Open(new ClusterPodDetailView { DataContext = page });
         await SettleUntilAsync(window, () => page.Lines.Count >= 4);
 
-        return (window, page.Lines.ToList(), ListOf(window, page.Lines));
+        return (window, page, page.Lines.ToList(), ListOf(window, page.Lines));
     }
 
-    private static async Task<(Window Window, IReadOnlyList<LogLineViewModel> Lines, ListBox List)>
-        OpenContainerLogsAsync()
+    private static async Task<(Window Window, ContainerDetailViewModel Page,
+        IReadOnlyList<LogLineViewModel> Lines, ListBox List)> OpenContainerLogsAsync()
     {
         var engine = new FakeEngine();
         var container = (await engine.ListContainersAsync(all: true)).First(c => c.State == ContainerState.Running);
@@ -178,7 +205,7 @@ public sealed class LogMultiSelectRenderTests(HeadlessSessionFixture headless)
 
         // A follow stream keeps adding; freeze it so the range asserted is the range clicked.
         var lines = page.Lines.ToList();
-        return (window, lines, ListOf(window, page.Lines));
+        return (window, page, lines, ListOf(window, page.Lines));
     }
 
     private static async Task<(Window Window, ComposeLogsViewModel Page, ListBox List)> OpenComposeLogsAsync()
