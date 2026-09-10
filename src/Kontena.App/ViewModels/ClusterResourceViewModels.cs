@@ -281,8 +281,30 @@ public partial class ClusterNamespacesViewModel : ClusterListPageViewModel<Names
 
     public override string SearchPlaceholder => "Search namespaces…";
 
+    /// <summary>
+    /// How the page asks the shell for the "New namespace" modal (KON-464) — the same shape as the
+    /// volumes and networks pages, and for the same reason: the page knows a namespace should be
+    /// created, not where the modal lives.
+    /// </summary>
+    public Action? RequestCreateNamespace { get; set; }
+
+    [RelayCommand]
+    private void CreateNamespace() => RequestCreateNamespace?.Invoke();
+
+    /// <summary>Delete a namespace, always confirmed (KON-464).</summary>
+    private void ConfirmDelete(NamespaceRow row)
+    {
+        var (title, message) = ClusterDeleteWording.Namespace(row.Name);
+
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
+    }
+
     protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
+        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
 
@@ -876,14 +898,22 @@ public sealed partial class NamespaceRow
 {
     private readonly KubeNamespace _namespace;
     private readonly Action<KubeNamespace>? _onOpenDetail;
+    private readonly Action<NamespaceRow>? _onDelete;
 
-    public NamespaceRow(KubeNamespace ns, Action<KubeNamespace>? onOpenDetail = null)
+    public NamespaceRow(
+        KubeNamespace ns, Action<KubeNamespace>? onOpenDetail = null, Action<NamespaceRow>? onDelete = null)
     {
         ArgumentNullException.ThrowIfNull(ns);
 
         _namespace = ns;
         _onOpenDetail = onOpenDetail;
+        _onDelete = onDelete;
         CanOpen = onOpenDetail is not null;
+
+        // Not offered on the four Kubernetes runs on: deleting kube-system takes the cluster with it,
+        // and default cannot be deleted at all. A button that is always refused is worse than none.
+        CanDelete = onDelete is not null && !ProtectedNamespaces.Contains(ns.Name);
+        Reference = new ResourceRef(GroupVersionKind.Namespace, null, ns.Name);
 
         Name = ns.Name;
         Status = ns.Phase;
@@ -899,9 +929,24 @@ public sealed partial class NamespaceRow
     public TimeSpan AgeSpan { get; }
 
     public bool CanOpen { get; }
+    public bool CanDelete { get; }
+
+    /// <summary>Cluster-scoped, so no namespace of its own — what the delete addresses.</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>
+    /// The namespaces Kubernetes creates and needs. <c>default</c> and <c>kube-system</c> are refused
+    /// outright by the API server; <c>kube-public</c> and <c>kube-node-lease</c> are not, but deleting
+    /// either breaks the cluster quietly, which is worse than being told no.
+    /// </summary>
+    private static readonly HashSet<string> ProtectedNamespaces =
+        new(StringComparer.Ordinal) { "default", "kube-system", "kube-public", "kube-node-lease" };
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_namespace);
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 }
 
 public sealed partial class PersistentVolumeRow
@@ -1601,4 +1646,18 @@ internal static class ClusterDeleteWording
             $"Delete ingress \"{name}\" in {@namespace}? The service and its pods keep running — what"
             + " goes is the route in from outside, so the hosts it routes stop reaching them as soon as"
             + " the controller drops the rule.");
+
+    /// <summary>
+    /// The largest blast radius in the app, and the one that looks smallest on screen: the row says a
+    /// name and an age, and the delete takes everything that was ever put in it (KON-464). So the
+    /// message is about the contents rather than the object — the same thing <c>kubectl</c> means by
+    /// "all resources in the namespace", said before the click instead of after.
+    /// </summary>
+    public static (string Title, string Message) Namespace(string name) =>
+        ("Delete namespace",
+            $"Delete namespace \"{name}\"? Everything in it goes with it — its workloads, pods,"
+            + " services, ingresses, config maps, secrets and volume claims are all deleted, and the"
+            + " data in those claims with them. Kontena keeps no copy, and nothing recreates any of it."
+            + " The namespace stays in Terminating until the cluster has finished removing its"
+            + " contents.");
 }

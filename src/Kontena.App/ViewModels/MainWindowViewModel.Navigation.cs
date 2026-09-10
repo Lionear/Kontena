@@ -296,7 +296,10 @@ public partial class MainWindowViewModel
             // called "New rule" would be a page you can be on without having asked for it (KON-210).
             "alert-rule" => new RuleEditorViewModel(_cluster, ApplyAuthoredRule),
             "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
-            "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
+            // RequestConfirm because deleting one is the widest delete in the app, and the confirm is
+            // the only thing between a click and everything that was in it (KON-464).
+            "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail)
+                { RequestConfirm = ShowConfirm, RequestCreateNamespace = ShowCreateNamespaceDialog },
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing
             // between a click and a workload that is gone (KON-332).
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
