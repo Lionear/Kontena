@@ -669,6 +669,82 @@ internal static class K8sMap
         _ => string.Empty,
     };
 
+    // ── Autoscaling and disruption (KON-477) ─────────────────────────────────
+
+    public static HorizontalPodAutoscaler ToAutoscaler(V2HorizontalPodAutoscaler h)
+    {
+        var current = h.Status?.CurrentMetrics ?? [];
+
+        return new HorizontalPodAutoscaler
+        {
+            Name = h.Metadata?.Name ?? "?",
+            Namespace = h.Metadata?.NamespaceProperty ?? "default",
+            TargetKind = h.Spec?.ScaleTargetRef?.Kind ?? string.Empty,
+            TargetName = h.Spec?.ScaleTargetRef?.Name ?? string.Empty,
+            MinReplicas = h.Spec?.MinReplicas ?? 1,
+            MaxReplicas = h.Spec?.MaxReplicas ?? 0,
+            CurrentReplicas = h.Status?.CurrentReplicas ?? 0,
+            DesiredReplicas = h.Status?.DesiredReplicas ?? 0,
+            Metrics = [.. (h.Spec?.Metrics ?? []).Select(m => ToMetric(m, current))],
+            Age = AgeOf(h.Metadata),
+        };
+    }
+
+    /// <summary>"cpu: 45% / 70%" — the metric's name, then the status reading that has the same name.</summary>
+    private static string ToMetric(V2MetricSpec m, IList<V2MetricStatus> current)
+    {
+        (string? name, V2MetricTarget? target) = m.Type switch
+        {
+            "Resource" => (m.Resource?.Name, m.Resource?.Target),
+            "ContainerResource" => ($"{m.ContainerResource?.Name} ({m.ContainerResource?.Container})", m.ContainerResource?.Target),
+            "Pods" => (m.Pods?.Metric?.Name, m.Pods?.Target),
+            "Object" => (m.ObjectProperty?.Metric?.Name, m.ObjectProperty?.Target),
+            "External" => (m.External?.Metric?.Name, m.External?.Target),
+            _ => (m.Type, null),
+        };
+
+        var now = current.FirstOrDefault(c => c.Type == m.Type && m.Type switch
+        {
+            "Resource" => c.Resource?.Name == m.Resource?.Name,
+            "ContainerResource" => c.ContainerResource?.Name == m.ContainerResource?.Name
+                && c.ContainerResource?.Container == m.ContainerResource?.Container,
+            "Pods" => c.Pods?.Metric?.Name == m.Pods?.Metric?.Name,
+            "Object" => c.ObjectProperty?.Metric?.Name == m.ObjectProperty?.Metric?.Name,
+            "External" => c.External?.Metric?.Name == m.External?.Metric?.Name,
+            _ => false,
+        });
+
+        var value = now?.Type switch
+        {
+            "Resource" => now.Resource?.Current,
+            "ContainerResource" => now.ContainerResource?.Current,
+            "Pods" => now.Pods?.Current,
+            "Object" => now.ObjectProperty?.Current,
+            "External" => now.External?.Current,
+            _ => null,
+        };
+
+        return $"{name ?? "?"}: {MetricValue(value?.AverageUtilization, value?.AverageValue, value?.Value)} / "
+            + MetricValue(target?.AverageUtilization, target?.AverageValue, target?.Value);
+    }
+
+    private static string MetricValue(int? utilization, ResourceQuantity? average, ResourceQuantity? value) =>
+        utilization is { } u ? $"{u}%" : average?.ToString() ?? value?.ToString() ?? "?";
+
+    public static PodDisruptionBudget ToDisruptionBudget(V1PodDisruptionBudget b) => new()
+    {
+        Name = b.Metadata?.Name ?? "?",
+        Namespace = b.Metadata?.NamespaceProperty ?? "default",
+        MinAvailable = b.Spec?.MinAvailable?.Value,
+        MaxUnavailable = b.Spec?.MaxUnavailable?.Value,
+        Selector = ToSelector(b.Spec?.Selector),
+        CurrentHealthy = b.Status?.CurrentHealthy ?? 0,
+        DesiredHealthy = b.Status?.DesiredHealthy ?? 0,
+        ExpectedPods = b.Status?.ExpectedPods ?? 0,
+        DisruptionsAllowed = b.Status?.DisruptionsAllowed ?? 0,
+        Age = AgeOf(b.Metadata),
+    };
+
     public static StorageClass ToStorageClass(V1StorageClass c) => new()
     {
         Name = c.Metadata?.Name ?? "?",

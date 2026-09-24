@@ -621,6 +621,26 @@ public sealed class KubernetesClusterEngine
             .. (validating.Items ?? []).SelectMany(K8sMap.ToWebhooks)];
     }
 
+    public async ValueTask<IReadOnlyList<HorizontalPodAutoscaler>> ListAutoscalersAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.AutoscalingV2.ListHorizontalPodAutoscalerForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.AutoscalingV2.ListNamespacedHorizontalPodAutoscalerAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToAutoscaler)];
+    }
+
+    public async ValueTask<IReadOnlyList<PodDisruptionBudget>> ListDisruptionBudgetsAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.PolicyV1.ListPodDisruptionBudgetForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.PolicyV1.ListNamespacedPodDisruptionBudgetAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToDisruptionBudget)];
+    }
+
     /// <inheritdoc/>
     public async ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default)
     {
