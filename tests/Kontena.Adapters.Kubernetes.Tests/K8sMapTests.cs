@@ -902,4 +902,62 @@ public class K8sMapTests
         Assert.Empty(mapped.Tls);
         Assert.Empty(mapped.TlsHosts);
     }
+
+    [Fact]
+    public void Autoscaler_maps_bounds_status_and_each_metric_against_its_target()
+    {
+        var mapped = K8sMap.ToAutoscaler(new V2HorizontalPodAutoscaler
+        {
+            Metadata = new V1ObjectMeta { Name = "api", NamespaceProperty = "app" },
+            Spec = new V2HorizontalPodAutoscalerSpec
+            {
+                ScaleTargetRef = new V2CrossVersionObjectReference { Kind = "Deployment", Name = "api" },
+                MaxReplicas = 10,
+                Metrics =
+                [
+                    new V2MetricSpec { Type = "Resource", Resource = new V2ResourceMetricSource { Name = "cpu", Target = new V2MetricTarget { Type = "Utilization", AverageUtilization = 70 } } },
+                    new V2MetricSpec { Type = "Pods", Pods = new V2PodsMetricSource { Metric = new V2MetricIdentifier { Name = "rps" }, Target = new V2MetricTarget { Type = "AverageValue", AverageValue = new ResourceQuantity("100") } } },
+                ],
+            },
+            Status = new V2HorizontalPodAutoscalerStatus
+            {
+                CurrentReplicas = 3,
+                DesiredReplicas = 4,
+                CurrentMetrics =
+                [
+                    new V2MetricStatus { Type = "Resource", Resource = new V2ResourceMetricStatus { Name = "cpu", Current = new V2MetricValueStatus { AverageUtilization = 85 } } },
+                ],
+            },
+        });
+
+        // No minReplicas in the spec is Kubernetes' default of 1; a metric with no reading yet is "?".
+        Assert.Equal(("Deployment", "api", 1, 10, 3, 4), (mapped.TargetKind, mapped.TargetName, mapped.MinReplicas, mapped.MaxReplicas, mapped.CurrentReplicas, mapped.DesiredReplicas));
+        Assert.Equal(["cpu: 85% / 70%", "rps: ? / 100"], mapped.Metrics);
+    }
+
+    [Fact]
+    public void Disruption_budget_maps_its_budget_selector_and_what_is_left()
+    {
+        var mapped = K8sMap.ToDisruptionBudget(new V1PodDisruptionBudget
+        {
+            Metadata = new V1ObjectMeta { Name = "web", NamespaceProperty = "app" },
+            Spec = new V1PodDisruptionBudgetSpec
+            {
+                MaxUnavailable = "25%",
+                Selector = new V1LabelSelector
+                {
+                    MatchLabels = new Dictionary<string, string> { ["app"] = "web" },
+                    MatchExpressions = [new V1LabelSelectorRequirement { Key = "tier", OperatorProperty = "In", Values = ["frontend"] }],
+                },
+            },
+            Status = new V1PodDisruptionBudgetStatus { CurrentHealthy = 3, DesiredHealthy = 2, ExpectedPods = 3, DisruptionsAllowed = 1 },
+        });
+
+        Assert.Null(mapped.MinAvailable);
+        Assert.Equal("25%", mapped.MaxUnavailable);
+        Assert.Equal("web", mapped.Selector!["app"]);
+        var requirement = Assert.Single(mapped.SelectorExpressions);
+        Assert.Equal(("tier", "In", "frontend"), (requirement.Key, requirement.Operator, Assert.Single(requirement.Values)));
+        Assert.Equal((3, 2, 3, 1), (mapped.CurrentHealthy, mapped.DesiredHealthy, mapped.ExpectedPods, mapped.DisruptionsAllowed));
+    }
 }

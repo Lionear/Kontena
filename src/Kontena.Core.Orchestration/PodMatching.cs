@@ -56,6 +56,32 @@ public static class PodMatching
     }
 
     /// <summary>
+    /// Whether a disruption budget covers this workload's pods (KON-477).
+    /// <para>
+    /// Tested against the workload's own selector, which every one of its pods carries — that is what a
+    /// budget is normally written against.
+    /// </para>
+    /// </summary>
+    // ponytail: a budget keyed on a pod-template label outside the workload's selector is missed;
+    // match against the listed pods' labels if that turns up in practice.
+    public static bool Covers(PodDisruptionBudget budget, Workload workload)
+    {
+        // policy/v1: no selector selects nothing; an empty one selects the whole namespace.
+        if (budget.Selector is null || !string.Equals(budget.Namespace, workload.Namespace, StringComparison.Ordinal))
+            return false;
+
+        var labels = workload.Selector;
+        return Matches(labels, budget.Selector) && budget.SelectorExpressions.All(r => r.Operator switch
+        {
+            "In" => labels.TryGetValue(r.Key, out var v) && r.Values.Contains(v),
+            "NotIn" => !labels.TryGetValue(r.Key, out var v) || !r.Values.Contains(v),
+            "Exists" => labels.ContainsKey(r.Key),
+            "DoesNotExist" => !labels.ContainsKey(r.Key),
+            _ => false,
+        });
+    }
+
+    /// <summary>
     /// Whether a set of labels satisfies a selector: every selector entry must be present with the
     /// same value. Extra labels on the pod are irrelevant — that is what makes a selector a filter
     /// rather than an equality test.

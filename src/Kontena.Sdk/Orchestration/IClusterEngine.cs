@@ -182,6 +182,19 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default);
     ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// List HorizontalPodAutoscalers (KON-477) — for a workload page to say what scales it. Empty by
+    /// default, like <see cref="FindUsersAsync"/>: an engine without autoscalers has none to report.
+    /// </summary>
+    ValueTask<IReadOnlyList<HorizontalPodAutoscaler>> ListAutoscalersAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<HorizontalPodAutoscaler>>([]);
+
+    /// <summary>List PodDisruptionBudgets (KON-477). Empty by default, as above.</summary>
+    ValueTask<IReadOnlyList<PodDisruptionBudget>> ListDisruptionBudgetsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PodDisruptionBudget>>([]);
+
     /// <summary>List ConfigMaps — keys and sizes, not values (KON-249).</summary>
     ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(string? ns = null, CancellationToken ct = default);
 

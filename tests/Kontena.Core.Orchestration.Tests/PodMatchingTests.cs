@@ -166,4 +166,36 @@ public sealed class PodMatchingTests
 
         Assert.Empty(PodMatching.SelectedBy(pods, Service("api", Labels(("app", "api")))));
     }
+
+    [Theory]
+    [InlineData("matchLabels app=api", true)]
+    [InlineData("matchLabels app=web", false)]
+    [InlineData("In tier [backend,web]", true)]
+    [InlineData("NotIn tier [backend]", false)]
+    [InlineData("DoesNotExist tier", false)]
+    [InlineData("empty", true)]
+    [InlineData("null", false)]
+    [InlineData("other namespace", false)]
+    public void A_budget_covers_a_workload_when_its_selector_matches_the_workloads(string budget, bool covers)
+    {
+        var workload = new Workload
+        {
+            Name = "api", Namespace = "app", Kind = WorkloadKind.Deployment,
+            Selector = Labels(("app", "api"), ("tier", "backend")),
+        };
+
+        var pdb = new PodDisruptionBudget { Name = "pdb", Namespace = budget == "other namespace" ? "prod" : "app", Selector = Labels(("app", "api")) };
+        pdb = budget switch
+        {
+            "matchLabels app=web" => pdb with { Selector = Labels(("app", "web")) },
+            "In tier [backend,web]" => pdb with { SelectorExpressions = [new("tier", "In", ["backend", "web"])] },
+            "NotIn tier [backend]" => pdb with { SelectorExpressions = [new("tier", "NotIn", ["backend"])] },
+            "DoesNotExist tier" => pdb with { SelectorExpressions = [new("tier", "DoesNotExist", [])] },
+            "empty" => pdb with { Selector = Labels() },
+            "null" => pdb with { Selector = null },
+            _ => pdb,
+        };
+
+        Assert.Equal(covers, PodMatching.Covers(pdb, workload));
+    }
 }
