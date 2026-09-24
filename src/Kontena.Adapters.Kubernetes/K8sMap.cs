@@ -561,6 +561,55 @@ internal static class K8sMap
         Age = AgeOf(i.Metadata),
     };
 
+    public static NetworkPolicy ToNetworkPolicy(V1NetworkPolicy n)
+    {
+        var spec = n.Spec;
+        var types = spec?.PolicyTypes ?? [];
+
+        return new NetworkPolicy
+        {
+            Name = n.Metadata?.Name ?? "?",
+            Namespace = n.Metadata?.NamespaceProperty ?? "default",
+            PodSelector = ToSelector(spec?.PodSelector) ?? new LabelSelector(),
+            // The apiserver fills policyTypes in on write, so an empty list only comes from an object
+            // that predates that. Its documented default: Ingress always, Egress when egress rules exist.
+            AffectsIngress = types.Count == 0 || types.Contains("Ingress"),
+            AffectsEgress = types.Count == 0 ? spec?.Egress is { Count: > 0 } : types.Contains("Egress"),
+            Ingress = [.. (spec?.Ingress ?? []).Select(r => ToPolicyRule(r.FromProperty, r.Ports))],
+            Egress = [.. (spec?.Egress ?? []).Select(r => ToPolicyRule(r.To, r.Ports))],
+            Age = AgeOf(n.Metadata),
+        };
+    }
+
+    private static NetworkPolicyRule ToPolicyRule(
+        IList<V1NetworkPolicyPeer>? peers, IList<V1NetworkPolicyPort>? ports) => new()
+    {
+        Peers =
+        [
+            .. (peers ?? []).Select(p => new NetworkPolicyPeer
+            {
+                PodSelector = ToSelector(p.PodSelector),
+                NamespaceSelector = ToSelector(p.NamespaceSelector),
+                Cidr = p.IpBlock?.Cidr ?? string.Empty,
+                Except = [.. p.IpBlock?.Except ?? []],
+            }),
+        ],
+        Ports = [.. (ports ?? []).Select(p => new NetworkPolicyPort(p.Protocol ?? "TCP", p.Port?.Value ?? string.Empty, p.EndPort))],
+    };
+
+    /// <summary>Null stays null: on a peer, "no pod selector" and "an empty one" mean different things.</summary>
+    private static LabelSelector? ToSelector(V1LabelSelector? s) => s is null ? null : new LabelSelector
+    {
+        MatchLabels = Labels(s.MatchLabels),
+        MatchExpressions =
+        [
+            .. (s.MatchExpressions ?? []).Select(e => new LabelSelectorRequirement(
+                e.Key,
+                Enum.TryParse<LabelSelectorOperator>(e.OperatorProperty, out var op) ? op : LabelSelectorOperator.In,
+                [.. e.Values ?? []])),
+        ],
+    };
+
     public static PersistentVolumeClaim ToPvc(V1PersistentVolumeClaim p) => new()
     {
         Name = p.Metadata?.Name ?? "?",
@@ -574,7 +623,7 @@ internal static class K8sMap
         Volume = p.Spec?.VolumeName ?? string.Empty,
         CapacityBytes = Bytes(p.Status?.Capacity, "storage"),
         StorageClass = p.Spec?.StorageClassName ?? string.Empty,
-        AccessModes = [.. p.Spec?.AccessModes ?? []],
+        AccessModes = [.. (p.Spec?.AccessModes ?? []).Select(AccessMode)],
         Age = AgeOf(p.Metadata),
     };
 
@@ -590,7 +639,7 @@ internal static class K8sMap
             _ => VolumePhase.Pending,
         },
         CapacityBytes = Bytes(v.Spec?.Capacity, "storage"),
-        AccessModes = [.. v.Spec?.AccessModes ?? []],
+        AccessModes = [.. (v.Spec?.AccessModes ?? []).Select(AccessMode)],
         ReclaimPolicy = Reclaim(v.Spec?.PersistentVolumeReclaimPolicy),
         StorageClass = v.Spec?.StorageClassName ?? string.Empty,
 
@@ -699,6 +748,19 @@ internal static class K8sMap
         _ => ReclaimPolicy.Delete,
     };
 
+    /// <summary>
+    /// kubectl's short form, which is what the models promise and what fits a list column (KON-475).
+    /// A mode without one is passed through as the API spells it.
+    /// </summary>
+    private static string AccessMode(string mode) => mode switch
+    {
+        "ReadWriteOnce" => "RWO",
+        "ReadOnlyMany" => "ROX",
+        "ReadWriteMany" => "RWX",
+        "ReadWriteOncePod" => "RWOP",
+        _ => mode,
+    };
+
     public static ClusterEvent ToEvent(Corev1Event e) => new()
     {
         Reason = e.Reason ?? string.Empty,
@@ -724,6 +786,56 @@ internal static class K8sMap
 
         return new ResourceRef(gvk, o.NamespaceProperty, o.Name ?? "?");
     }
+
+    // ── RBAC (KON-474) ───────────────────────────────────────────────────────
+
+    public static AccessRole ToAccessRole(V1Role r) => new()
+    {
+        Name = r.Metadata?.Name ?? "?",
+        Namespace = r.Metadata?.NamespaceProperty ?? string.Empty,
+        Rules = [.. (r.Rules ?? []).Select(ToAccessRule)],
+        Age = AgeOf(r.Metadata),
+    };
+
+    public static AccessRole ToAccessRole(V1ClusterRole r) => new()
+    {
+        Name = r.Metadata?.Name ?? "?",
+        Rules = [.. (r.Rules ?? []).Select(ToAccessRule)],
+        Age = AgeOf(r.Metadata),
+    };
+
+    public static AccessBinding ToAccessBinding(V1RoleBinding b) => new()
+    {
+        Name = b.Metadata?.Name ?? "?",
+        Namespace = b.Metadata?.NamespaceProperty ?? string.Empty,
+        RoleKind = b.RoleRef?.Kind ?? "Role",
+        RoleName = b.RoleRef?.Name ?? "?",
+        Subjects = [.. (b.Subjects ?? []).Select(ToAccessSubject)],
+        Age = AgeOf(b.Metadata),
+    };
+
+    public static AccessBinding ToAccessBinding(V1ClusterRoleBinding b) => new()
+    {
+        Name = b.Metadata?.Name ?? "?",
+        RoleKind = b.RoleRef?.Kind ?? "ClusterRole",
+        RoleName = b.RoleRef?.Name ?? "?",
+        Subjects = [.. (b.Subjects ?? []).Select(ToAccessSubject)],
+        Age = AgeOf(b.Metadata),
+    };
+
+    private static AccessRule ToAccessRule(V1PolicyRule r) => new()
+    {
+        Verbs = [.. r.Verbs ?? []],
+        ApiGroups = [.. r.ApiGroups ?? []],
+        Resources = [.. r.Resources ?? []],
+        ResourceNames = [.. r.ResourceNames ?? []],
+        NonResourceUrls = [.. r.NonResourceURLs ?? []],
+    };
+
+    // A subject with no namespace is fine for a User or Group; for a ServiceAccount it means the
+    // manifest is wrong, and the API server rejects that, so nothing is guessed here.
+    private static AccessSubject ToAccessSubject(Rbacv1Subject s) =>
+        new(s.Kind ?? "?", s.Name ?? "?", string.IsNullOrEmpty(s.NamespaceProperty) ? null : s.NamespaceProperty);
 
     // ── Metrics ──────────────────────────────────────────────────────────────
 

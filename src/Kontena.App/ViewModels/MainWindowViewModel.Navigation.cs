@@ -221,6 +221,7 @@ public partial class MainWindowViewModel
         NavGroups.Add(Group("Network",
             new NavItem("services", "Services", "IconNetwork"),
             new NavItem("ingresses", "Ingresses", "IconGlobe"),
+            new NavItem("networkpolicies", "Network policies", "IconEye"),
             new NavItem("portforwards", "Port forwards", "IconPlug")));
         NavGroups.Add(Group("Storage",
             new NavItem("pvcs", "Volume claims", "IconDatabase"),
@@ -228,7 +229,9 @@ public partial class MainWindowViewModel
             new NavItem("storageclasses", "Storage classes", "IconTag")));
         NavGroups.Add(Group("Config",
             new NavItem("configmaps", "Config maps", "IconFolder"),
-            new NavItem("secrets", "Secrets", "IconHash")));
+            new NavItem("secrets", "Secrets", "IconHash"),
+            // Who may do what (KON-474): bindings joined to the roles they grant.
+            new NavItem("access", "Access control", "IconShield")));
         NavGroups.Add(Group("System",
             new NavItem("events", "Events", "IconActivity"),
             new NavItem("webhooks", "Admission webhooks", "IconCheck"),
@@ -325,6 +328,7 @@ public partial class MainWindowViewModel
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail)
                 { RequestConfirm = ShowConfirm },
             "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace, ShowIngressDetail) { RequestConfirm = ShowConfirm },
+            "networkpolicies" => new ClusterNetworkPoliciesViewModel(_cluster, ActiveNamespace, ShowNetworkPolicyDetail),
             // The three storage pages point at each other: a claim to its volume and its class, a
             // volume back to its claim (KON-254). Routing by search term rather than by a filter the
             // page owns keeps one way of saying "show me this one".
@@ -355,6 +359,7 @@ public partial class MainWindowViewModel
                 RequestConfirm = ShowConfirm, RequestEdit = ShowManifestEditor,
                 RequestOpenDetail = ShowConfigDetail,
             },
+            "access" => new ClusterAccessViewModel(_cluster, ActiveNamespace),
             // The feed you open when you do not yet know which object is the broken one (KON-248).
             "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm

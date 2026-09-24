@@ -132,6 +132,18 @@ public interface IClusterEngine : IBackend
         ResourceRef resource, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ResourceUsage>>([]);
 
+    /// <summary>
+    /// The RBAC objects that decide who may do what (KON-474): Roles and RoleBindings in
+    /// <paramref name="ns"/> (every namespace when null), plus every ClusterRole and
+    /// ClusterRoleBinding — a ClusterRoleBinding grants in every namespace, and a RoleBinding may
+    /// point at a ClusterRole, so neither can be left out of a namespace's answer.
+    /// <para>
+    /// Empty by default, like <see cref="FindUsersAsync"/>: an engine without RBAC has nothing to say.
+    /// </para>
+    /// </summary>
+    ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(AccessControl.Empty);
+
     // ── Typed listers (over the grids) ───────────────────────────────────────
 
     ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default);
@@ -168,6 +180,14 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List NetworkPolicies (KON-476). Empty by default rather than abstract: an orchestrator with no
+    /// such concept should cost nothing, and "no policies" is the truthful answer for it.
+    /// </summary>
+    ValueTask<IReadOnlyList<NetworkPolicy>> ListNetworkPoliciesAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<NetworkPolicy>>([]);
+
     ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default);
 
     /// <summary>

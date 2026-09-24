@@ -166,4 +166,61 @@ public sealed class PodMatchingTests
 
         Assert.Empty(PodMatching.SelectedBy(pods, Service("api", Labels(("app", "api")))));
     }
+
+    // ── NetworkPolicy selectors (KON-476) ─────────────────────────────────────
+
+    private static NetworkPolicy Policy(LabelSelector selector, string ns = "app") => new()
+    {
+        Name = "p",
+        Namespace = ns,
+        PodSelector = selector,
+    };
+
+    [Fact]
+    public void An_empty_policy_selector_selects_every_pod_in_its_namespace_and_no_other()
+    {
+        // The opposite of a service: podSelector {} is the everyday default-deny.
+        var pods = new[] { Pod("a"), Pod("b", labels: Labels(("app", "x"))), Pod("c", ns: "other") };
+
+        var picked = PodMatching.SelectedBy(pods, Policy(new LabelSelector()));
+
+        Assert.Equal(["a", "b"], picked.Select(p => p.Name));
+    }
+
+    [Theory]
+    [InlineData(LabelSelectorOperator.In, new[] { "api", "web" }, new[] { "api", "web" })]
+    // NotIn also matches a pod that has no such label at all.
+    [InlineData(LabelSelectorOperator.NotIn, new[] { "api" }, new[] { "web", "bare" })]
+    [InlineData(LabelSelectorOperator.Exists, new string[0], new[] { "api", "web" })]
+    [InlineData(LabelSelectorOperator.DoesNotExist, new string[0], new[] { "bare" })]
+    public void Match_expressions_follow_kubernetes_semantics(
+        LabelSelectorOperator op, string[] values, string[] expected)
+    {
+        var pods = new[]
+        {
+            Pod("api", labels: Labels(("app", "api"))),
+            Pod("web", labels: Labels(("app", "web"))),
+            Pod("bare"),
+        };
+        var selector = new LabelSelector { MatchExpressions = [new LabelSelectorRequirement("app", op, values)] };
+
+        Assert.Equal(expected, PodMatching.SelectedBy(pods, Policy(selector)).Select(p => p.Name));
+    }
+
+    [Fact]
+    public void Match_labels_and_expressions_must_both_hold()
+    {
+        var pods = new[]
+        {
+            Pod("both", labels: Labels(("app", "db"), ("tier", "backend"))),
+            Pod("labels-only", labels: Labels(("app", "db"), ("tier", "frontend"))),
+        };
+        var selector = new LabelSelector
+        {
+            MatchLabels = Labels(("app", "db")),
+            MatchExpressions = [new LabelSelectorRequirement("tier", LabelSelectorOperator.In, ["backend"])],
+        };
+
+        Assert.Equal(["both"], PodMatching.SelectedBy(pods, Policy(selector)).Select(p => p.Name));
+    }
 }

@@ -612,6 +612,44 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
         };
 }
 
+/// <summary>NetworkPolicies view — which pods are isolated, and in which direction (KON-476).</summary>
+public partial class ClusterNetworkPoliciesViewModel : ClusterListPageViewModel<NetworkPolicyRow>
+{
+    private readonly IClusterEngine _cluster;
+    private readonly string? _namespace;
+    private readonly Action<NetworkPolicy>? _onOpenDetail;
+
+    public ClusterNetworkPoliciesViewModel(
+        IClusterEngine cluster, string? @namespace, Action<NetworkPolicy>? onOpenDetail = null)
+        : base(cluster, GroupVersionKind.NetworkPolicy, @namespace)
+    {
+        _cluster = cluster;
+        _namespace = @namespace;
+        _onOpenDetail = onOpenDetail;
+        _ = LoadAsync();
+        StartWatching();
+    }
+
+    public override string SearchPlaceholder => "Search network policies…";
+
+    protected override async Task<IReadOnlyList<NetworkPolicyRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListNetworkPoliciesAsync(_namespace, ct)).Select(n => new NetworkPolicyRow(n, _onOpenDetail))];
+
+    // The selector too: "which policy covers app=postgres" is the question you arrive with.
+    protected override bool Matches(NetworkPolicyRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Namespace, term) || Contains(row.AppliesTo, term);
+
+    protected override IReadOnlyDictionary<string, Func<NetworkPolicyRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<NetworkPolicyRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["APPLIES TO"] = r => r.AppliesTo,
+            ["ISOLATES"] = r => r.Isolates,
+            ["AGE"] = r => r.AgeSpan,
+        };
+}
+
 /// <summary>PersistentVolumeClaims view — what asked for storage, and whether it got any (KON-247).</summary>
 public partial class ClusterPvcsViewModel : ClusterListPageViewModel<PvcRow>
 {
@@ -1313,6 +1351,47 @@ public sealed partial class IngressRow
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_ingress);
+}
+
+public sealed partial class NetworkPolicyRow
+{
+    private readonly NetworkPolicy _policy;
+    private readonly Action<NetworkPolicy>? _onOpenDetail;
+
+    public NetworkPolicyRow(NetworkPolicy n, Action<NetworkPolicy>? onOpenDetail = null)
+    {
+        ArgumentNullException.ThrowIfNull(n);
+
+        _policy = n;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
+
+        Name = n.Name;
+        Namespace = n.Namespace;
+        AppliesTo = NetworkPolicyText.Selector(n.PodSelector, "all pods");
+        Isolates = NetworkPolicyText.Isolates(n);
+        Age = Format.Duration(n.Age);
+        AgeSpan = n.Age;
+    }
+
+    public string Name { get; }
+    public string Namespace { get; }
+
+    /// <summary>The pod selector as Kubernetes writes one, or "all pods" for <c>{}</c>.</summary>
+    public string AppliesTo { get; }
+
+    /// <summary>Which directions it isolates, e.g. "Ingress, Egress".</summary>
+    public string Isolates { get; }
+
+    public string Age { get; }
+
+    /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by.</summary>
+    public TimeSpan AgeSpan { get; }
+
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_policy);
 }
 
 public sealed partial class PvcRow
