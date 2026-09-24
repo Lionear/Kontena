@@ -959,6 +959,36 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     public ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<StorageClass>>(_storageClasses);
 
+    // A policy engine that fails closed next to a cert-manager webhook that does not (KON-478): the
+    // pair a real cluster tends to have, and the difference the page exists to show.
+    private static readonly AdmissionWebhook[] Webhooks =
+    [
+        new AdmissionWebhook
+        {
+            Name = "mutate.kyverno.svc-fail", Configuration = "kyverno-resource-mutating-webhook-cfg",
+            Kind = AdmissionWebhookKind.Mutating, FailurePolicy = WebhookFailurePolicy.Fail,
+            Rules = [new WebhookRule { Operations = ["CREATE", "UPDATE"], ApiGroups = ["*"], Resources = ["*"] }],
+            Target = "kyverno/kyverno-svc", TimeoutSeconds = 10, Age = TimeSpan.FromDays(30),
+        },
+        new AdmissionWebhook
+        {
+            Name = "validate.kyverno.svc-fail", Configuration = "kyverno-resource-validating-webhook-cfg",
+            Kind = AdmissionWebhookKind.Validating, FailurePolicy = WebhookFailurePolicy.Fail,
+            Rules = [new WebhookRule { Operations = ["CREATE", "UPDATE", "DELETE", "CONNECT"], ApiGroups = ["*"], Resources = ["*"] }],
+            Target = "kyverno/kyverno-svc", TimeoutSeconds = 10, Age = TimeSpan.FromDays(30),
+        },
+        new AdmissionWebhook
+        {
+            Name = "webhook.cert-manager.io", Configuration = "cert-manager-webhook",
+            Kind = AdmissionWebhookKind.Validating, FailurePolicy = WebhookFailurePolicy.Ignore,
+            Rules = [new WebhookRule { Operations = ["CREATE", "UPDATE"], ApiGroups = ["cert-manager.io", "acme.cert-manager.io"], Resources = ["*/*"] }],
+            Target = "cert-manager/cert-manager-webhook", TimeoutSeconds = 30, Age = TimeSpan.FromDays(90),
+        },
+    ];
+
+    public ValueTask<IReadOnlyList<AdmissionWebhook>> ListAdmissionWebhooksAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<AdmissionWebhook>>(Webhooks);
+
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(
             _events.Where(e => Match(ns, e.InvolvedObject.Namespace)).ToList());

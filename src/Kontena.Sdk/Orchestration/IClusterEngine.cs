@@ -180,6 +180,18 @@ public interface IClusterEngine : IBackend
     /// with no provisioner, a class that does not exist, or a binding mode that is waiting on a pod.
     /// </summary>
     ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Every admission webhook, mutating and validating, one entry per webhook rather than per
+    /// configuration (KON-478). Cluster-scoped. This is where "why won't my apply go through" often
+    /// ends: a webhook that rejects, or one that cannot be reached and fails closed.
+    /// <para>
+    /// Empty by default, like <see cref="FindUsersAsync"/>: an engine without admission control has
+    /// no webhooks to list, and a plugin engine should not have to implement this to keep compiling.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<AdmissionWebhook>> ListAdmissionWebhooksAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<AdmissionWebhook>>([]);
     ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default);
 
     /// <summary>List ConfigMaps — keys and sizes, not values (KON-249).</summary>

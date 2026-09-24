@@ -231,6 +231,7 @@ public partial class MainWindowViewModel
             new NavItem("secrets", "Secrets", "IconHash")));
         NavGroups.Add(Group("System",
             new NavItem("events", "Events", "IconActivity"),
+            new NavItem("webhooks", "Admission webhooks", "IconCheck"),
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("find", "Find", "IconSearch"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
@@ -340,6 +341,8 @@ public partial class MainWindowViewModel
                 onOpenVolumes: name => OpenStorage("volumes", name),
                 onOpenDetail: ShowStorageClassDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
+            // What gets a say before anything is stored, and whether an outage of it blocks you (KON-478).
+            "webhooks" => new ClusterWebhooksViewModel(_cluster),
             // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
             "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace)
             {

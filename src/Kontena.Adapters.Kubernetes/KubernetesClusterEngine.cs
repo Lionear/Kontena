@@ -600,6 +600,18 @@ public sealed class KubernetesClusterEngine
         return [.. (list.Items ?? []).Select(K8sMap.ToStorageClass)];
     }
 
+    public async ValueTask<IReadOnlyList<AdmissionWebhook>> ListAdmissionWebhooksAsync(CancellationToken ct = default)
+    {
+        var mutating = await _client.AdmissionregistrationV1
+            .ListMutatingWebhookConfigurationAsync(cancellationToken: ct).ConfigureAwait(false);
+        var validating = await _client.AdmissionregistrationV1
+            .ListValidatingWebhookConfigurationAsync(cancellationToken: ct).ConfigureAwait(false);
+
+        // Mutating first: that is the order the API server calls them in.
+        return [.. (mutating.Items ?? []).SelectMany(K8sMap.ToWebhooks),
+            .. (validating.Items ?? []).SelectMany(K8sMap.ToWebhooks)];
+    }
+
     public async ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(
         string? ns = null, CancellationToken ct = default)
     {

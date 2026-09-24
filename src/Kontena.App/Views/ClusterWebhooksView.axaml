@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:controls="using:Kontena.App.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterWebhooksView"
+             x:DataType="vm:ClusterWebhooksViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Admission webhooks" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="1.8*,0.8*,2*,0.7*,1.4*,0.5*">
+                            <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="1" Text="TYPE" Key="TYPE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <TextBlock Grid.Column="2" Text="CALLED FOR" Classes="colhead"/>
+                            <controls:SortableHeader Grid.Column="3" Text="ON FAILURE" Key="FAILURE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="4" Text="CALLS" Key="CALLS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="5" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AdmissionWebhookRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                    <Grid ColumnDefinitions="1.8*,0.8*,2*,0.7*,1.4*,0.5*">
+                                        <!-- The webhook, and under it the configuration it lives in — which
+                                             is usually what names the policy engine behind it. -->
+                                        <StackPanel Grid.Column="0" Margin="0,0,14,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Configuration}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding Kind}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Rules}" Foreground="{DynamicResource TextDim}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"
+                                                   ToolTip.Tip="{Binding RulesDetail}"/>
+                                        <!-- Fail is marked: when the webhook is down it is what stands between
+                                             an apply and the cluster, and the tooltip says so in those words. -->
+                                        <Border Grid.Column="3" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                CornerRadius="{StaticResource RadiusSm}" Padding="6,1" BorderThickness="1"
+                                                Classes.fail="{Binding FailsClosed}" ToolTip.Tip="{Binding FailureDetail}">
+                                            <Border.Styles>
+                                                <Style Selector="Border">
+                                                    <Setter Property="Background" Value="{DynamicResource SurfaceRaised}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+                                                </Style>
+                                                <Style Selector="Border.fail">
+                                                    <Setter Property="Background" Value="{DynamicResource WarnSoft}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource WarnSoftBorder}"/>
+                                                </Style>
+                                            </Border.Styles>
+                                            <TextBlock Text="{Binding FailurePolicy}" FontSize="11.5" FontWeight="Medium" Foreground="{DynamicResource TextDim}"/>
+                                        </Border>
+                                        <TextBlock Grid.Column="4" Text="{Binding Target}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                   Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="This cluster has no admission webhooks, so nothing but the API server itself decides what gets applied." FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No webhooks match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

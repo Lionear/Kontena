@@ -753,6 +753,46 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
         };
 }
 
+/// <summary>
+/// Admission webhooks, mutating and validating (KON-478) — the page for "why won't my apply go
+/// through" when the answer is a policy engine rather than the manifest.
+/// </summary>
+public partial class ClusterWebhooksViewModel : ClusterListPageViewModel<AdmissionWebhookRow>
+{
+    private readonly IClusterEngine _cluster;
+
+    // Two kinds at once, like the all-workloads page, and for the same reason no watch: two streams
+    // whose bursts land out of step. Webhook configurations change when something is installed, not
+    // while you are looking.
+    public ClusterWebhooksViewModel(IClusterEngine cluster)
+        : base(cluster, kind: null, ns: null,
+            unwatchable: "This page shows mutating and validating webhooks together and updates when you refresh it.")
+    {
+        _cluster = cluster;
+        _ = LoadAsync();
+        StartWatching();
+    }
+
+    public override string SearchPlaceholder => "Search webhooks…";
+
+    protected override async Task<IReadOnlyList<AdmissionWebhookRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListAdmissionWebhooksAsync(ct)).Select(w => new AdmissionWebhookRow(w))];
+
+    protected override bool Matches(AdmissionWebhookRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Configuration, term)
+        || Contains(row.Target, term) || Contains(row.RulesDetail, term);
+
+    protected override IReadOnlyDictionary<string, Func<AdmissionWebhookRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<AdmissionWebhookRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["TYPE"] = r => r.Kind,
+            ["FAILURE"] = r => r.FailurePolicy,
+            ["CALLS"] = r => r.Target,
+            ["AGE"] = r => r.AgeSpan,
+        };
+}
+
 // ── Row view-models ─────────────────────────────────────────────────────────
 
 public sealed partial class NodeCardRow
@@ -1030,6 +1070,74 @@ public sealed partial class PersistentVolumeRow
 
     [RelayCommand]
     private void OpenClass() => _onOpenClass?.Invoke(StorageClass);
+}
+
+public sealed class AdmissionWebhookRow
+{
+    public AdmissionWebhookRow(AdmissionWebhook w)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+
+        Name = w.Name;
+        Configuration = w.Configuration;
+        Kind = w.Kind.ToString();
+        FailurePolicy = w.FailurePolicy.ToString();
+        FailsClosed = w.FailurePolicy == WebhookFailurePolicy.Fail;
+        Target = w.Target.Length > 0 ? w.Target : "—";
+        Age = Format.Duration(w.Age);
+        AgeSpan = w.Age;
+
+        var rules = w.Rules.Select(Describe).ToList();
+        Rules = rules.Count == 0 ? "No rules — never called" : string.Join("; ", rules);
+        RulesDetail = string.Join(Environment.NewLine, rules);
+
+        // The crux of the ticket: which way an outage of the webhook itself goes. Said as what happens
+        // to your apply, because "Fail" on its own reads like a status rather than a policy.
+        FailureDetail = FailsClosed
+            ? $"If {Target} is down or takes longer than {w.TimeoutSeconds}s, every request this webhook"
+                + " matches is rejected."
+            : $"If {Target} is down or takes longer than {w.TimeoutSeconds}s, matching requests go"
+                + " through unchecked.";
+    }
+
+    public string Name { get; }
+    public string Configuration { get; }
+    public string Kind { get; }
+    public string FailurePolicy { get; }
+    public bool FailsClosed { get; }
+    public string FailureDetail { get; }
+    public string Target { get; }
+
+    /// <summary>One line per rule, for the row.</summary>
+    public string Rules { get; }
+
+    /// <summary>The same rules one per line, for the tooltip and the search.</summary>
+    public string RulesDetail { get; }
+
+    public string Age { get; }
+    public TimeSpan AgeSpan { get; }
+
+    /// <summary>"CREATE, UPDATE on deployments.apps, pods" — the operations, then what they apply to.</summary>
+    internal static string Describe(WebhookRule r)
+    {
+        var ops = r.Operations.Contains("*") ? "Any operation" : string.Join(", ", r.Operations);
+
+        var targets = r.ApiGroups.SelectMany(g => r.Resources.Select(res => Qualify(g, res)))
+            .Distinct(StringComparer.Ordinal);
+
+        return $"{ops} on {string.Join(", ", targets)}";
+    }
+
+    // A resource is only unambiguous with its group; core ("") and "every group" are left bare, the
+    // way kubectl prints them. "*/*" is every resource plus its subresources — said in words.
+    private static string Qualify(string group, string resource) => resource is "*" or "*/*"
+        ? group switch
+        {
+            "*" => "every resource",
+            "" => "every core resource",
+            _ => $"everything in {group}",
+        }
+        : group is "" or "*" ? resource : $"{resource}.{group}";
 }
 
 public sealed partial class StorageClassRow
