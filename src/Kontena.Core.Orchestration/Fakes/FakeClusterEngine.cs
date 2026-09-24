@@ -28,6 +28,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private readonly List<SecretSummary> _secrets;
     private readonly List<PersistentVolume> _volumes;
     private readonly List<StorageClass> _storageClasses;
+    private readonly List<HorizontalPodAutoscaler> _autoscalers;
+    private readonly List<PodDisruptionBudget> _budgets;
     private readonly List<AccessRole> _roles;
     private readonly List<AccessBinding> _bindings;
     private readonly List<ClusterEvent> _events;
@@ -239,6 +241,18 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             new StorageClass { Name = "standard-rwo", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, IsDefault = true, AllowsExpansion = true, Age = TimeSpan.FromDays(120) },
             new StorageClass { Name = "local-path", Provisioner = "rancher.io/local-path", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, AllowsExpansion = false, Age = TimeSpan.FromDays(120) },
             new StorageClass { Name = "retain-ssd", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Retain, BindingMode = VolumeBindingMode.Immediate, AllowsExpansion = true, Age = TimeSpan.FromDays(60) },
+        ];
+
+        // KON-477. The api is autoscaled; postgres has the budget the fake drain already refuses on,
+        // with nothing left to give — the one reading that explains a blocked drain.
+        _autoscalers =
+        [
+            new HorizontalPodAutoscaler { Name = "api", Namespace = "app", TargetKind = "Deployment", TargetName = "api", MinReplicas = 2, MaxReplicas = 10, CurrentReplicas = 3, DesiredReplicas = 3, Metrics = ["cpu: 45% / 70%", "memory: 310Mi / 512Mi"], Age = TimeSpan.FromHours(30) },
+        ];
+
+        _budgets =
+        [
+            new PodDisruptionBudget { Name = "postgres-pdb", Namespace = "app", MinAvailable = "1", Selector = new LabelSelector { MatchLabels = App("postgres") }, CurrentHealthy = 1, DesiredHealthy = 1, ExpectedPods = 1, DisruptionsAllowed = 0, Age = TimeSpan.FromDays(9) },
         ];
 
         // RBAC (KON-474): a RoleBinding that points at a ClusterRole, one that points at a Role, a
@@ -1016,6 +1030,12 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     public ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<StorageClass>>(_storageClasses);
+
+    public ValueTask<IReadOnlyList<HorizontalPodAutoscaler>> ListAutoscalersAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<HorizontalPodAutoscaler>>(_autoscalers.Where(h => Match(ns, h.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<PodDisruptionBudget>> ListDisruptionBudgetsAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PodDisruptionBudget>>(_budgets.Where(b => Match(ns, b.Namespace)).ToList());
 
     public ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult(new AccessControl(

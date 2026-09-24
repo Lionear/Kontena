@@ -167,6 +167,40 @@ public sealed class PodMatchingTests
         Assert.Empty(PodMatching.SelectedBy(pods, Service("api", Labels(("app", "api")))));
     }
 
+    [Theory]
+    [InlineData("matchLabels app=api", true)]
+    [InlineData("matchLabels app=web", false)]
+    [InlineData("In tier [backend,web]", true)]
+    [InlineData("empty", true)]
+    [InlineData("null", false)]
+    [InlineData("other namespace", false)]
+    public void A_budget_covers_a_workload_when_its_selector_matches_the_workloads(string budget, bool covers)
+    {
+        // The operators themselves are pinned with the NetworkPolicy tests below — one shared matcher.
+        // This is what is the budget's own: namespace, and null (nothing) against empty (everything).
+        var workload = new Workload
+        {
+            Name = "api", Namespace = "app", Kind = WorkloadKind.Deployment,
+            Selector = Labels(("app", "api"), ("tier", "backend")),
+        };
+
+        var pdb = new PodDisruptionBudget
+        {
+            Name = "pdb", Namespace = budget == "other namespace" ? "prod" : "app",
+            Selector = new LabelSelector { MatchLabels = Labels(("app", "api")) },
+        };
+        pdb = budget switch
+        {
+            "matchLabels app=web" => pdb with { Selector = new LabelSelector { MatchLabels = Labels(("app", "web")) } },
+            "In tier [backend,web]" => pdb with { Selector = new LabelSelector { MatchExpressions = [new("tier", LabelSelectorOperator.In, ["backend", "web"])] } },
+            "empty" => pdb with { Selector = new LabelSelector() },
+            "null" => pdb with { Selector = null },
+            _ => pdb,
+        };
+
+        Assert.Equal(covers, PodMatching.Covers(pdb, workload));
+    }
+
     // ── NetworkPolicy selectors (KON-476) ─────────────────────────────────────
 
     private static NetworkPolicy Policy(LabelSelector selector, string ns = "app") => new()

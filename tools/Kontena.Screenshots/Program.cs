@@ -65,6 +65,8 @@ namespace Kontena.Screenshots;
 //         drawer over its list, KON-307; the storage-class one is KON-445 — Overview/Events/YAML,
 //         no Pods tab),
 //         node-detail (KON-472 — a cordoned node's detail page, where its taints are listed),
+//         workload-autoscaler / workload-budget (KON-477 — a workload page's Autoscaling and
+//         Disruption budget section: the api's HPA, postgres's budget with nothing left to give),
 //         pod / pod-logs / pod-yaml (pod detail),
 //         pod-config (KON-390 — the Overview tab as a full page, with a Secret row of
 //         Config & secrets open and one of its values revealed),
@@ -854,6 +856,26 @@ internal static class Program
             // apiserver moves the rollout status inside the call, so the reload that follows already
             // has the real answer and the placeholder rightly steps aside. "Restarting…" covers the
             // window a real cluster has and this one does not — the tests drive that directly.
+            case "workload-autoscaler":
+            case "workload-budget":
+                // KON-477: the workload page's Autoscaling / Disruption budget section, as a page for
+                // the same reason as node-detail. The api carries the seeded HPA, postgres the budget
+                // that blocks the fake drain — so between them both halves are in frame.
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                var scaledKind = scene == "workload-autoscaler" ? WorkloadKind.Deployment : WorkloadKind.StatefulSet;
+                vm.NavigateCommand.Execute(WorkloadNavGroups.KeyFor(scaledKind));
+                SettleUntil(() => vm.CurrentPage is ClusterWorkloadsViewModel { HasItems: true }, maxRounds: 120);
+                if (vm.CurrentPage is ClusterWorkloadsViewModel scaled)
+                {
+                    scaled.Items.FirstOrDefault(w => w.Name == (scene == "workload-autoscaler" ? "api" : "postgres"))?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+
+                break;
+
             case "workload-restarting":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);

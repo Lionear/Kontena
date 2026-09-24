@@ -474,6 +474,7 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
             });
 
         _ = LoadPodsAsync();
+        _ = LoadScalingAsync();
     }
 
     private readonly Action<Workload>? _onScale;
@@ -560,6 +561,60 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
 
         // The pods are the other half of what a rollout changes, and this page's tab holds them.
         await RefreshPodsAsync();
+        await LoadScalingAsync();
+    }
+
+    // ── Autoscaling and disruption (KON-477) ─────────────────────────────────
+
+    /// <summary>
+    /// What scales this workload and what protects its pods. Both used to live only in the Resources
+    /// browser, a page away from the one question they answer: why is this at 7 replicas, and why
+    /// does a drain stop here.
+    /// </summary>
+    public bool ShowScaling => _workload.IsScalable;
+
+    public ObservableCollection<AutoscalerRow> Autoscalers { get; } = [];
+    public ObservableCollection<DisruptionBudgetRow> DisruptionBudgets { get; } = [];
+
+    /// <summary>False until the first read answers — "none" before that would be a guess.</summary>
+    private bool _scalingLoaded;
+
+    public string? NoAutoscalerNote => _scalingLoaded && Autoscalers.Count == 0
+        ? "No HorizontalPodAutoscaler targets this workload." : null;
+
+    public string? NoDisruptionBudgetNote => _scalingLoaded && DisruptionBudgets.Count == 0
+        ? "No PodDisruptionBudget covers its pods." : null;
+
+    private async Task LoadScalingAsync()
+    {
+        if (!ShowScaling)
+            return;
+
+        // Each on its own: a cluster that refuses one (RBAC, or no autoscaling/v2 on an old server)
+        // still answers the other. A failed read leaves what was showing — not the same fact as "none".
+        if (await Try(Cluster.ListAutoscalersAsync(_workload.Namespace)) is { } hpas)
+        {
+            Autoscalers.Clear();
+            foreach (var h in hpas.Where(h => h.TargetKind == _workload.Kind.ToString() && h.TargetName == _workload.Name))
+                Autoscalers.Add(new AutoscalerRow(h));
+        }
+
+        if (await Try(Cluster.ListDisruptionBudgetsAsync(_workload.Namespace)) is { } pdbs)
+        {
+            DisruptionBudgets.Clear();
+            foreach (var b in pdbs.Where(b => PodMatching.Covers(b, _workload)))
+                DisruptionBudgets.Add(new DisruptionBudgetRow(b));
+        }
+
+        _scalingLoaded = true;
+        OnPropertyChanged(nameof(NoAutoscalerNote));
+        OnPropertyChanged(nameof(NoDisruptionBudgetNote));
+
+        static async Task<IReadOnlyList<T>?> Try<T>(ValueTask<IReadOnlyList<T>> read)
+        {
+            try { return await read; }
+            catch (Exception) { return null; }
+        }
     }
 
     public override string PodsTabLabel => IsCronJob ? "Jobs" : "Pods";
@@ -574,6 +629,34 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
         : _workload.Desired == 0
             ? "Scaled to zero, so there are no pods to show."
             : "No pods are running for this workload yet.";
+}
+
+/// <summary>One autoscaler on a workload's page (KON-477).</summary>
+public sealed class AutoscalerRow(HorizontalPodAutoscaler h)
+{
+    public string Name => h.Name;
+    public string Current => h.CurrentReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Desired => h.DesiredReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Min => h.MinReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Max => h.MaxReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Metrics => h.Metrics.Count == 0 ? "—" : string.Join("\n", h.Metrics);
+}
+
+/// <summary>One disruption budget on a workload's page (KON-477).</summary>
+public sealed class DisruptionBudgetRow(PodDisruptionBudget b)
+{
+    public string Name => b.Name;
+
+    /// <summary>A budget sets one of the two; the column says which.</summary>
+    public string BudgetLabel => b.MinAvailable is not null ? "MIN AVAILABLE" : "MAX UNAVAILABLE";
+    public string Budget => b.MinAvailable ?? b.MaxUnavailable ?? "—";
+
+    public string Healthy => $"{b.CurrentHealthy} / {b.DesiredHealthy}";
+
+    /// <summary>Zero is the reading that explains a drain that will not finish.</summary>
+    public string Allowed => b.DisruptionsAllowed == 0
+        ? "0 — evictions wait"
+        : b.DisruptionsAllowed.ToString(CultureInfo.InvariantCulture);
 }
 
 /// <summary>

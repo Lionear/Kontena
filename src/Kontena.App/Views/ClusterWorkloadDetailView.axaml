@@ -119,6 +119,76 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+
+                    <!-- Autoscaling and disruption (KON-477): what sets the replica count, and what a
+                         drain has to respect. Absence is stated too — "is there a PDB?" is the question. -->
+                    <StackPanel Spacing="10" Margin="0,8,0,0" IsVisible="{Binding ShowScaling}">
+                        <TextBlock Text="Autoscaling" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <TextBlock Text="{Binding NoAutoscalerNote}" IsVisible="{Binding NoAutoscalerNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                        <ItemsControl ItemsSource="{Binding Autoscalers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AutoscalerRow">
+                                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16" Margin="0,0,0,8">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource Text}"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="28">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="CURRENT" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Current}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="DESIRED" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Desired}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="MIN" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Min}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="MAX" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Max}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="METRICS (CURRENT / TARGET)" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Metrics}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Text="Disruption budget" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <TextBlock Text="{Binding NoDisruptionBudgetNote}" IsVisible="{Binding NoDisruptionBudgetNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                        <ItemsControl ItemsSource="{Binding DisruptionBudgets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DisruptionBudgetRow">
+                                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16" Margin="0,0,0,8">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource Text}"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="28">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="{Binding BudgetLabel}" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Budget}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="HEALTHY / DESIRED" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Healthy}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="DISRUPTIONS ALLOWED" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Allowed}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
 
