@@ -60,15 +60,16 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:NodeCardRow">
-                        <Border Width="340" Margin="0,0,14,14" Background="{DynamicResource Surface}"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                        <!-- The whole card opens the node (KON-479), not just its name. Button.kindcard is
+                             the house clickable card: hover and keyboard for free. Cordon and Drain are
+                             buttons of their own and take their clicks before the card sees them. -->
+                        <Button Classes="kindcard" Width="340" Margin="0,0,14,14" Padding="18,16"
+                                VerticalAlignment="Stretch" VerticalContentAlignment="Top"
+                                Command="{Binding OpenCommand}">
                             <StackPanel Spacing="14">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0" Spacing="3">
-                                        <Button Classes="link" Padding="0" HorizontalAlignment="Left"
-                                                Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
-                                        </Button>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Text="{Binding Roles}" FontSize="11.5" Foreground="{DynamicResource TextFaint}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
@@ -77,7 +78,7 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <!-- Failing conditions (DiskPressure, MemoryPressure, …); absent when healthy -->
+                                <!-- Cordon, failing conditions (DiskPressure, …) and taints; absent when there are none -->
                                 <ItemsControl ItemsSource="{Binding Problems}" IsVisible="{Binding HasProblems}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -159,7 +160,7 @@
                                             ToolTip.Tip="Cordon, then move the pods off — DaemonSet pods stay, and a disruption budget may refuse">Drain</Button>
                                 </StackPanel>
                             </StackPanel>
-                        </Border>
+                        </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
