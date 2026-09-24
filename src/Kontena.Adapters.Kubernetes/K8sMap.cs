@@ -764,6 +764,50 @@ internal static class K8sMap
         Age = AgeOf(c.Metadata),
     };
 
+    // ── Admission webhooks (KON-478) ─────────────────────────────────────────
+
+    public static IEnumerable<AdmissionWebhook> ToWebhooks(V1ValidatingWebhookConfiguration c) =>
+        (c.Webhooks ?? []).Select(w => ToWebhook(
+            c.Metadata, AdmissionWebhookKind.Validating, w.Name, w.FailurePolicy, w.Rules, w.ClientConfig, w.TimeoutSeconds));
+
+    public static IEnumerable<AdmissionWebhook> ToWebhooks(V1MutatingWebhookConfiguration c) =>
+        (c.Webhooks ?? []).Select(w => ToWebhook(
+            c.Metadata, AdmissionWebhookKind.Mutating, w.Name, w.FailurePolicy, w.Rules, w.ClientConfig, w.TimeoutSeconds));
+
+    // The two webhook types are the same shape declared twice, so they meet here rather than in two
+    // mappers that drift apart.
+    private static AdmissionWebhook ToWebhook(
+        V1ObjectMeta? meta, AdmissionWebhookKind kind, string? name, string? failurePolicy,
+        IList<V1RuleWithOperations>? rules, Admissionregistrationv1WebhookClientConfig? client, int? timeout) => new()
+    {
+        Name = name ?? "?",
+        Configuration = meta?.Name ?? "?",
+        Kind = kind,
+
+        // Unset means Fail in v1. Reading it as Ignore would show the one webhook that is blocking
+        // every apply as the harmless kind.
+        FailurePolicy = string.Equals(failurePolicy, "Ignore", StringComparison.Ordinal)
+            ? WebhookFailurePolicy.Ignore
+            : WebhookFailurePolicy.Fail,
+
+        Rules = [.. (rules ?? []).Select(r => new WebhookRule
+        {
+            Operations = [.. r.Operations ?? []],
+            ApiGroups = [.. r.ApiGroups ?? []],
+            Resources = [.. r.Resources ?? []],
+        })],
+
+        Target = client switch
+        {
+            { Service: { Name: { Length: > 0 } svc } s } => $"{s.NamespaceProperty}/{svc}",
+            { Url: { Length: > 0 } url } => url,
+            _ => string.Empty,
+        },
+
+        TimeoutSeconds = timeout ?? 10,
+        Age = AgeOf(meta),
+    };
+
     private static bool IsTrue(IDictionary<string, string>? annotations, string key) =>
         annotations is not null
         && annotations.TryGetValue(key, out var value)

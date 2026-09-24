@@ -48,7 +48,7 @@ namespace Kontena.Screenshots;
 //         update-{toast,card,downloading,ready,failed} (the in-app updater, driven through the real
 //         state machine against a fake update source), settings-updates and
 //         settings-updates-unmanaged (the Updates category, managed and not),
-//         cluster / cluster-{nodes,namespaces,workloads,pods,services,storageclasses,volumes} (the
+//         cluster / cluster-{nodes,namespaces,workloads,pods,services,storageclasses,volumes,webhooks} (the
 //         cluster browsers),
 //         cluster-networkpolicies, networkpolicy-detail and networkpolicy-pods (KON-476 — the list,
 //         then one policy as a page on its rules and on who it applies to),
@@ -764,6 +764,7 @@ internal static class Program
             case "cluster-services":
             case "cluster-storageclasses":
             case "cluster-volumes":
+            case "cluster-webhooks":
             case "cluster-networkpolicies":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
