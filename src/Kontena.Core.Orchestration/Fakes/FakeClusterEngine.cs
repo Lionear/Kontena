@@ -969,7 +969,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     {
         var idx = _nodes.FindIndex(n => n.Name == node);
         if (idx >= 0)
-            _nodes[idx] = _nodes[idx] with { Unschedulable = cordoned };
+        {
+            // Kubernetes' own node-lifecycle controller adds the unschedulable taint alongside the
+            // spec flag; a fake that only flipped the flag would never show what a real cordon does.
+            var current = _nodes[idx];
+            List<NodeTaint> taints = [.. current.Taints.Where(t => t.Key != UnschedulableTaint.Key)];
+            if (cordoned)
+                taints.Add(UnschedulableTaint);
+
+            _nodes[idx] = current with { Unschedulable = cordoned, Taints = taints };
+        }
 
         return ValueTask.CompletedTask;
     }
@@ -1487,6 +1496,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private static KubeNamespace Ns(string name) =>
         new() { Name = name, Phase = "Active", Age = TimeSpan.FromDays(9) };
 
+    /// <summary>The taint Kubernetes itself puts on a cordoned node.</summary>
+    private static readonly NodeTaint UnschedulableTaint =
+        new("node.kubernetes.io/unschedulable", string.Empty, "NoSchedule");
+
     private static Node Node1(
         string name, IReadOnlyList<string> roles, bool unschedulable = false, bool diskPressure = false,
         string kubeletVersion = "v1.29.4") => new()
@@ -1498,6 +1511,13 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         OsImage = "Container-Optimized OS",
         InternalIp = "10.128.0." + (name.GetHashCode() & 0x3f),
         Unschedulable = unschedulable,
+        Taints =
+        [
+            .. roles.Contains("control-plane")
+                ? new[] { new NodeTaint("node-role.kubernetes.io/control-plane", string.Empty, "NoSchedule") }
+                : [],
+            .. unschedulable ? new[] { UnschedulableTaint } : [],
+        ],
         Conditions =
         [
             new NodeCondition("Ready", true, "KubeletReady", "kubelet is posting ready status"),

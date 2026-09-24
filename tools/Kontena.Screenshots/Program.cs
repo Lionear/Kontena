@@ -61,6 +61,7 @@ namespace Kontena.Screenshots;
 //         cluster-node-drawer / cluster-namespace-drawer / cluster-storageclass-drawer (the detail
 //         drawer over its list, KON-307; the storage-class one is KON-445 — Overview/Events/YAML,
 //         no Pods tab),
+//         node-detail (KON-472 — a cordoned node's detail page, where its taints are listed),
 //         pod / pod-logs / pod-yaml (pod detail),
 //         pod-config (KON-390 — the Overview tab as a full page, with a Secret row of
 //         Config & secrets open and one of its values revealed),
@@ -100,10 +101,12 @@ internal static class Program
     {
         var opts = Options.Parse(args);
 
-        // Isolate every on-disk store into a throwaway config dir so a capture never reads or writes
-        // the user's real profile. The settings store resolves its root from SpecialFolder.Application-
-        // Data, which on Unix is $XDG_CONFIG_HOME (or $HOME/.config) — so pointing that at a temp dir,
-        // before any store is constructed, isolates it without touching store code.
+        // A throwaway config dir, so a capture never reads or writes the user's real profile. The
+        // settings the tool writes go there by path (see the store below) — these two variables only
+        // move whatever else resolves SpecialFolder.ApplicationData on Linux and Windows. They are a
+        // belt, not the isolation: on macOS that folder is ~/Library/Application Support and no
+        // environment variable reaches it, which is how a capture once erased the real settings
+        // (KON-419).
         var sandbox = Path.Combine(Path.GetTempPath(), "kontena-shots-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(sandbox);
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", sandbox);
@@ -201,7 +204,11 @@ internal static class Program
             // Persist the scene's settings before anything reads them: parts of the app deliberately
             // re-read the store rather than trust a copy from launch (the updater does), and an empty
             // store would hand them defaults instead of this scene's choices.
-            var store = new SettingsStore();
+            // Over a file in the sandbox, never the default store: on macOS SpecialFolder.Application-
+            // Data is ~/Library/Application Support and no environment variable reaches it, so the
+            // default store wrote straight over the real settings.json (KON-419). Naming the path
+            // makes the isolation an argument rather than an assumption about the environment.
+            var store = new SettingsStore(Path.Combine(sandbox, "settings.json"));
             store.Save(settings);
 
             // The update scenes need an updater with something to offer: a development run is not a
@@ -764,6 +771,25 @@ internal static class Program
                 {
                     vm.NavigateCommand.Execute("alerts");
                     Settle(rounds: 40);
+                }
+
+                break;
+
+            case "node-detail":
+                // KON-472: the node detail as a page, on the seeded cordoned control-plane node, so
+                // the Taints card is in frame with both a taint someone set and the one Kubernetes
+                // adds by itself when a node is cordoned. As a page rather than a drawer for the
+                // same reason pod-config is: the card sits below what a drawer can show at once.
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("nodes");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNodesViewModel taintedNodes)
+                {
+                    taintedNodes.Items.FirstOrDefault(n => n.Cordoned)?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 20);
                 }
 
                 break;

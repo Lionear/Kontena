@@ -17,7 +17,8 @@ public class K8sMapTests
         string readyStatus = "True",
         bool diskPressure = false,
         IDictionary<string, string>? labels = null,
-        bool unschedulable = false) => new()
+        bool unschedulable = false,
+        IList<V1Taint>? taints = null) => new()
     {
         Metadata = new V1ObjectMeta
         {
@@ -25,7 +26,7 @@ public class K8sMapTests
             Labels = labels,
             CreationTimestamp = DateTime.UtcNow.AddDays(-3),
         },
-        Spec = new V1NodeSpec { Unschedulable = unschedulable },
+        Spec = new V1NodeSpec { Unschedulable = unschedulable, Taints = taints },
         Status = new V1NodeStatus
         {
             NodeInfo = new V1NodeSystemInfo
@@ -99,6 +100,29 @@ public class K8sMapTests
 
         var pressured = K8sMap.ToNode(Node(diskPressure: true), null);
         Assert.Equal("DiskPressure", Assert.Single(pressured.Problems).Type);
+    }
+
+    [Fact]
+    public void Node_taints_are_reported_including_the_ones_kubernetes_sets_itself()
+    {
+        // KON-472: the taint on a cordoned node is added by Kubernetes, not by a person, and it is
+        // the one that explains why nothing schedules there — so nothing here filters by origin.
+        var node = K8sMap.ToNode(
+            Node(taints:
+            [
+                new V1Taint { Key = "node.kubernetes.io/unschedulable", Effect = "NoSchedule" },
+                new V1Taint { Key = "workload", Value = "gpu", Effect = "NoExecute" },
+            ]),
+            usage: null);
+
+        Assert.Equal(
+            [
+                new NodeTaint("node.kubernetes.io/unschedulable", string.Empty, "NoSchedule"),
+                new NodeTaint("workload", "gpu", "NoExecute"),
+            ],
+            node.Taints);
+
+        Assert.Empty(K8sMap.ToNode(Node(), usage: null).Taints);
     }
 
     [Fact]

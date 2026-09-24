@@ -50,6 +50,24 @@ public sealed class NodeAndNamespaceDetailTests
     }
 
     [Fact]
+    public void A_cordoned_nodes_taints_are_listed_system_set_ones_included()
+    {
+        // KON-472: the page showed no taints at all, so the one that actually explains a cordoned
+        // node — added by Kubernetes, not by a person — was nowhere to be read.
+        var cordoned = NodeDetail("gke-prod-cp-1");
+
+        Assert.True(cordoned.HasTaints);
+        Assert.Contains(cordoned.Taints, t => t.Key == "node.kubernetes.io/unschedulable" && t.Effect == "NoSchedule");
+        Assert.Contains(cordoned.Taints, t => t.Key == "node-role.kubernetes.io/control-plane");
+
+        // A taint with no value reads as a dash rather than an empty cell.
+        Assert.All(cordoned.Taints, t => Assert.NotEmpty(t.Value));
+
+        // And a node nobody tainted gets no card to say so.
+        Assert.False(NodeDetail().HasTaints);
+    }
+
+    [Fact]
     public void Every_condition_is_listed_and_not_only_the_failing_ones()
     {
         // The card shows the problems because a card has room for what is wrong. This page is where

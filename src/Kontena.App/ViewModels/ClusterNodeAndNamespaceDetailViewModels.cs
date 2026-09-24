@@ -39,6 +39,11 @@ public sealed partial class ClusterNodeDetailViewModel : ClusterObjectDetailView
         _node = node;
         _cordoned = node.Unschedulable;
 
+        // Every taint, system-set ones included (KON-472). The one that explains why nothing lands
+        // on a cordoned node is the one Kubernetes adds by itself, so filtering out "system" taints
+        // would hide precisely the answer you came for.
+        Taints = [.. node.Taints.Select(t => new NodeTaintRow(t))];
+
         CanMaintain = cluster.Capabilities.NodeMaintenance && onCordon is not null;
 
         // Disk gets a chart here and nowhere else: the kubelet is the only source that reports it,
@@ -114,6 +119,11 @@ public sealed partial class ClusterNodeDetailViewModel : ClusterObjectDetailView
     /// </summary>
     public IReadOnlyList<NodeConditionRow> Conditions =>
         [.. _node.Conditions.Select(c => new NodeConditionRow(c))];
+
+    public IReadOnlyList<NodeTaintRow> Taints { get; }
+
+    /// <summary>An untainted node gets no card: an empty table says less than its absence.</summary>
+    public bool HasTaints => Taints.Count > 0;
 
     public IBrush StatusBrush => new SolidColorBrush(Color.Parse(Status == "Ready" ? "#34D399" : "#F87171"));
 
@@ -237,6 +247,21 @@ public sealed class NodeConditionRow
     public string State { get; }
     public string Detail { get; }
     public IBrush Brush { get; }
+}
+
+/// <summary>One taint on a node, whoever set it (KON-472).</summary>
+public sealed class NodeTaintRow
+{
+    public NodeTaintRow(NodeTaint taint)
+    {
+        Key = taint.Key;
+        Value = string.IsNullOrEmpty(taint.Value) ? "—" : taint.Value;
+        Effect = taint.Effect;
+    }
+
+    public string Key { get; }
+    public string Value { get; }
+    public string Effect { get; }
 }
 
 /// <summary>
