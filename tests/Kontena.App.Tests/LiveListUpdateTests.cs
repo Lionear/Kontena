@@ -181,6 +181,7 @@ public sealed class LiveListUpdateTests
         { "pods", c => new ClusterPodsViewModel(c, "app") },
         { "services", c => new ClusterServicesViewModel(c, "app") },
         { "ingresses", c => new ClusterIngressesViewModel(c, "app") },
+        { "network policies", c => new ClusterNetworkPoliciesViewModel(c, "app") },
         { "volume claims", c => new ClusterPvcsViewModel(c, "app") },
         { "volumes", c => new ClusterVolumesViewModel(c) },
         { "storage classes", c => new ClusterStorageClassesViewModel(c) },

@@ -632,6 +632,16 @@ public partial class MainWindowViewModel
             $"ingress {ingress.Name}", ingress);
     }
 
+    /// <summary>Open the network-policy page (KON-476): the pods it applies to and its rules, read.</summary>
+    private void ShowNetworkPolicyDetail(NetworkPolicy policy)
+    {
+        if (_cluster is null)
+            return;
+
+        ShowDetail(new ClusterNetworkPolicyDetailViewModel(_cluster, policy, onOpenPod: ShowPodDetail),
+            $"network policy {policy.Name}", policy);
+    }
+
     /// <summary>
     /// Open whatever an event is about (KON-248) — the events feed's one way out.
     /// <para>

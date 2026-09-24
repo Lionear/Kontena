@@ -56,6 +56,45 @@ public static class PodMatching
     }
 
     /// <summary>
+    /// Pods a NetworkPolicy applies to (KON-476). The opposite of a service on the empty case: a policy's
+    /// <c>podSelector: {}</c> is the everyday default-deny, and it selects every pod in its namespace.
+    /// </summary>
+    public static IReadOnlyList<Pod> SelectedBy(IEnumerable<Pod> pods, NetworkPolicy policy) =>
+        [.. pods.Where(p =>
+            string.Equals(p.Namespace, policy.Namespace, StringComparison.Ordinal)
+            && Matches(p.Labels, policy.PodSelector))];
+
+    /// <summary>
+    /// Whether a set of labels satisfies a full selector: <c>matchLabels</c> as below, and every
+    /// <c>matchExpressions</c> entry. An empty selector matches everything.
+    /// </summary>
+    public static bool Matches(IReadOnlyDictionary<string, string> labels, LabelSelector selector)
+    {
+        if (!Matches(labels, selector.MatchLabels))
+            return false;
+
+        foreach (var e in selector.MatchExpressions)
+        {
+            var has = labels.TryGetValue(e.Key, out var value);
+            var ok = e.Operator switch
+            {
+                LabelSelectorOperator.In => has && e.Values.Contains(value!),
+                // NotIn is also satisfied by a pod without the key at all — Kubernetes' rule, and the
+                // one that is easy to get backwards.
+                LabelSelectorOperator.NotIn => !has || !e.Values.Contains(value!),
+                LabelSelectorOperator.Exists => has,
+                LabelSelectorOperator.DoesNotExist => !has,
+                _ => false,
+            };
+
+            if (!ok)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Whether a set of labels satisfies a selector: every selector entry must be present with the
     /// same value. Extra labels on the pod are irrelevant — that is what makes a selector a filter
     /// rather than an equality test.
