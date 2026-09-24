@@ -852,7 +852,6 @@ public sealed partial class NodeCardRow
         _onDrain = onDrain;
         _onOpenDetail = onOpenDetail;
         CanMaintain = canMaintain && onCordon is not null;
-        CanOpen = onOpenDetail is not null;
 
         Name = n.Name;
         Roles = n.Roles.Count > 0 ? string.Join(", ", n.Roles) : "—";
@@ -878,7 +877,23 @@ public sealed partial class NodeCardRow
 
         // Conditions need no metrics source either. Only the failing ones are worth surfacing —
         // a healthy node's five green conditions are noise, and the Ready dot already says it.
-        Problems = [.. n.Problems.Select(c => new NodeProblemChip(c))];
+        // A cordon leads (KON-479): Ready and cordoned still takes no new pods, and the card was the
+        // one place that did not say so. Its taint is the cordon itself, so it is not counted twice.
+        var taints = n.Taints.Where(t => !(n.Unschedulable && t.Key == UnschedulableTaint)).ToList();
+        Problems =
+        [
+            .. n.Unschedulable
+                ? [new NodeProblemChip("Unschedulable", "Cordoned — no new pods are scheduled here", "#F5B14C")]
+                : Array.Empty<NodeProblemChip>(),
+            .. n.Problems.Select(c => new NodeProblemChip(c)),
+            .. taints.Count > 0
+                ? [new NodeProblemChip(
+                    taints.Count == 1 ? "1 taint" : $"{taints.Count} taints",
+                    string.Join("\n", taints.Select(t =>
+                        $"{t.Key}{(string.IsNullOrEmpty(t.Value) ? "" : "=" + t.Value)}:{t.Effect}")),
+                    "#5AB8FF")]
+                : Array.Empty<NodeProblemChip>(),
+        ];
 
         // Version skew is the same kind of signal: no metrics source, no network, just the two
         // numbers we already hold (KON-95). Shown only when it is outside the supported window.
@@ -902,7 +917,13 @@ public sealed partial class NodeCardRow
     public double DiskFraction { get; }
     public string DiskText { get; }
 
-    /// <summary>Conditions currently signalling trouble; empty on a healthy node.</summary>
+    /// <summary>The taint Kubernetes sets on a cordoned node, mirroring <see cref="Node.Unschedulable"/>.</summary>
+    private const string UnschedulableTaint = "node.kubernetes.io/unschedulable";
+
+    /// <summary>
+    /// What deserves a glance before opening the node: a cordon, failing conditions, taints. Empty on
+    /// a healthy, untainted node.
+    /// </summary>
     public IReadOnlyList<NodeProblemChip> Problems { get; }
 
     public bool HasProblems => Problems.Count > 0;
@@ -943,25 +964,29 @@ public sealed partial class NodeCardRow
     [RelayCommand]
     private void Drain() => _onDrain?.Invoke(this);
 
-    /// <summary>Whether the shell wired a detail page to arrive at (KON-197).</summary>
-    public bool CanOpen { get; }
-
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_node);
 }
 
 /// <summary>
-/// A failing node condition, as a chip on the node card. Pressure conditions are a warning — the
-/// node still runs, but the kubelet may start evicting — while a failing Ready is a hard problem.
+/// A chip on the node card: a failing condition, a cordon or the node's taints. Pressure conditions
+/// are a warning — the node still runs, but the kubelet may start evicting — while a failing Ready is
+/// a hard problem.
 /// </summary>
 public sealed class NodeProblemChip
 {
     public NodeProblemChip(NodeCondition condition)
+        : this(
+            condition.Type,
+            string.IsNullOrEmpty(condition.Message) ? condition.Reason : condition.Message,
+            condition.Type == "Ready" ? "#F87171" : "#F5B14C")
     {
-        Label = condition.Type;
-        Detail = string.IsNullOrEmpty(condition.Message) ? condition.Reason : condition.Message;
+    }
 
-        var colour = condition.Type == "Ready" ? "#F87171" : "#F5B14C";
+    public NodeProblemChip(string label, string detail, string colour)
+    {
+        Label = label;
+        Detail = detail;
         Brush = new SolidColorBrush(Color.Parse(colour));
         Background = new SolidColorBrush(Color.Parse(colour), 0.13);
     }
