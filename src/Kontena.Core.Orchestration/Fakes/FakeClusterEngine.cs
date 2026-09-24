@@ -13,7 +13,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IHelmAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -398,6 +398,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     }
 
     /// <summary>
+    /// Whether helm is installed for this fake cluster. On by default; turn it off for the Releases
+    /// page's "helm is not installed" state (KON-473).
+    /// </summary>
+    public bool HasHelm
+    {
+        get => _capabilities.Helm;
+        init => _capabilities = _capabilities with { Helm = value };
+    }
+
+    /// <summary>
     /// Whether this fake cluster has an Alertmanager. On by default so the alerts page has something
     /// to draw; turn it off for the empty state, where the page has to say where it looked instead of
     /// showing an empty list (KON-205).
@@ -419,6 +429,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         get => _capabilities.AlertRules;
         init => _capabilities = _capabilities with { AlertRules = value };
     }
+
+    /// <summary>The releases the Releases page sees (KON-473); held so a test can read its writes back.</summary>
+    public FakeHelmReleases Helm { get; } = new();
+
+    IHelmReleases IHelmAware.Helm => Helm;
 
     private FakeAlertSource? _alertSource;
 
