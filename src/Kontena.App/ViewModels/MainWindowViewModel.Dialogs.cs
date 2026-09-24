@@ -70,6 +70,22 @@ public partial class MainWindowViewModel
         });
     }
     /// <summary>
+    /// "New namespace" on the namespaces page (KON-464). The reload is the cluster-page equivalent of
+    /// what the volume and network modals do — the namespace picker keeps itself current off its own
+    /// watch, so this only has to put the new row on the page that asked for it.
+    /// </summary>
+    private void ShowCreateNamespaceDialog()
+    {
+        if (_cluster is null)
+            return;
+
+        Dialog = new CreateNamespaceViewModel(_cluster, CloseDialog, onCreated: () =>
+        {
+            ReloadCurrentClusterPage();
+            return Task.CompletedTask;
+        });
+    }
+    /// <summary>
     /// The switcher's "Add engine or cluster…" row (KON-118). Opens the wizard, which ends in a
     /// connection that has actually been made — the reason it is a wizard and not a form.
     /// </summary>

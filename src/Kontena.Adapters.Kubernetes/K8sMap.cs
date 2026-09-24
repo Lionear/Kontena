@@ -81,11 +81,12 @@ internal static class K8sMap
         var ports = PortsByContainer(p.Spec);
         var limits = MemoryLimitsByContainer(p.Spec);
         var env = EnvByContainer(p.Spec);
+        var ns = p.Metadata?.NamespaceProperty ?? "default";
 
         return new Pod
         {
             Name = p.Metadata?.Name ?? "?",
-            Namespace = p.Metadata?.NamespaceProperty ?? "default",
+            Namespace = ns,
             Phase = p.Status?.Phase switch
             {
                 "Running" => PodPhase.Running,
@@ -112,6 +113,12 @@ internal static class K8sMap
             Labels = Labels(p.Metadata?.Labels),
             Age = AgeOf(p.Metadata),
             ConfigUses = ConfigUsesOf(p.Spec),
+            // Only resolvable when the pod is part of a headless Service (the StatefulSet pattern) or
+            // sets hostname/subdomain explicitly — Kubernetes fills both in automatically for the
+            // former, so reading just these two spec fields covers both cases.
+            ClusterDnsName = p.Spec?.Hostname is { Length: > 0 } hostname && p.Spec?.Subdomain is { Length: > 0 } subdomain
+                ? $"{hostname}.{subdomain}.{ns}.svc.cluster.local"
+                : string.Empty,
         };
     }
 
@@ -195,6 +202,10 @@ internal static class K8sMap
         // lastState is the only place that says whether it was killed or exited on its own (KON-150).
         LastTerminationReason = c.LastState?.Terminated?.Reason ?? string.Empty,
         LastExitCode = c.LastState?.Terminated?.ExitCode,
+        // …and when it died, which is the same instant as the restart that followed (KON-443). Through
+        // EngineTimestamp because "never" arrives here as 0001-01-01, and converting that one directly
+        // throws east of UTC — the crash KON-160 closed.
+        LastTerminationTime = EngineTimestamp.FromOptional(c.LastState?.Terminated?.FinishedAt),
         MemoryLimitBytes = memoryLimits.TryGetValue(c.Name, out var limit) ? limit : null,
     };
 
@@ -493,16 +504,21 @@ internal static class K8sMap
         if (type == ServiceType.ClusterIp && spec?.ClusterIP == "None")
             type = ServiceType.Headless;
 
+        var name = s.Metadata?.Name ?? "?";
+        var ns = s.Metadata?.NamespaceProperty ?? "default";
+
         return new Service
         {
-            Name = s.Metadata?.Name ?? "?",
-            Namespace = s.Metadata?.NamespaceProperty ?? "default",
+            Name = name,
+            Namespace = ns,
             Type = type,
             ClusterIp = spec?.ClusterIP ?? string.Empty,
             ExternalIp = ExternalIpOf(s),
             Ports = [.. (spec?.Ports ?? []).Select(ToServicePort)],
             Selector = ReadOnly(spec?.Selector),
             Age = AgeOf(s.Metadata),
+            // Kubernetes always assigns a service this name, regardless of type.
+            ClusterDnsName = $"{name}.{ns}.svc.cluster.local",
         };
     }
 
@@ -533,8 +549,15 @@ internal static class K8sMap
                     p.Backend?.Service?.Name ?? string.Empty,
                     p.Backend?.Service?.Port?.Number ?? 0))),
         ],
+        DefaultBackend = i.Spec?.DefaultBackend?.Service is { } fallback
+            ? new IngressBackend(fallback.Name ?? string.Empty, fallback.Port?.Number ?? 0)
+            : null,
         Addresses = [.. (i.Status?.LoadBalancer?.Ingress ?? []).Select(a => a.Ip ?? a.Hostname ?? string.Empty).Where(a => a.Length > 0)],
-        TlsHosts = [.. (i.Spec?.Tls ?? []).SelectMany(t => t.Hosts ?? [])],
+        Tls =
+        [
+            .. (i.Spec?.Tls ?? []).Select(t =>
+                new IngressTls(t.SecretName ?? string.Empty, [.. t.Hosts ?? []])),
+        ],
         Age = AgeOf(i.Metadata),
     };
 

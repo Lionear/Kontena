@@ -25,16 +25,71 @@
         </Border>
         <TextBlock Classes="emptytitle" Text="No workspace open"/>
         <TextBlock Classes="emptybody"
-                   Text="Open a folder that contains manifests. A folder with a kustomization.yaml is treated as a Kustomize project; anything else as plain manifests. Kontena does not import your files — the ones on disk stay the truth."/>
-        <Button x:Name="OpenFolderButton" Classes="primary" HorizontalAlignment="Center"
-                Click="OnOpenFolderClick">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Path Classes="icon" Width="15" Height="15"
-                  Stroke="{Binding $parent[Button].Foreground}"
-                  Data="{DynamicResource IconFolder}"/>
-            <TextBlock Text="Open folder…"/>
-          </StackPanel>
-        </Button>
+                   Text="Open a folder that contains manifests, or clone a repository. A folder with a kustomization.yaml is treated as a Kustomize project; anything else as plain manifests. Kontena does not import your files — the ones on disk stay the truth."/>
+        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+          <Button x:Name="OpenFolderButton" Classes="primary" Click="OnOpenFolderClick">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="icon" Width="15" Height="15"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    Data="{DynamicResource IconFolder}"/>
+              <TextBlock Text="Open folder…"/>
+            </StackPanel>
+          </Button>
+          <!-- The mockup's git glyph has no counterpart in the host's icon set; IconPull is the one
+               that already means "bring a repository down from a remote" on the Source control page. -->
+          <Button x:Name="CloneButton" Classes="ghost" IsVisible="False" Click="OnCloneRepositoryClick">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="icon" Width="15" Height="15"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    Data="{DynamicResource IconPull}"/>
+              <TextBlock Text="Clone repository…"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <!-- Clone repository (KON-436). Unfolds in place rather than in a dialog: this card is already
+             the page about getting a workspace, and a modal would be a second window for three fields.
+             Bound against the CloneViewModel handed in — the page's own DataContext is the workspace,
+             which by definition does not exist while this is on screen. -->
+        <StackPanel x:Name="ClonePanel" IsVisible="False" Spacing="10" MaxWidth="560" Margin="0,4,0,0">
+          <TextBox x:Name="CloneUrl" Classes="studio"
+                   PlaceholderText="https://github.com/your-org/your-manifests.git"
+                   Text="{Binding Url, Mode=TwoWay}"/>
+
+          <DockPanel>
+            <Button DockPanel.Dock="Left" x:Name="CloneFolderButton" Classes="ghost sm"
+                    Click="OnChooseCloneFolderClick" Content="Choose folder…"/>
+            <!-- The full destination, because "which folder" and "which folder plus the repository's
+                 own name" are different answers and only the second one says where the files land. -->
+            <TextBlock Classes="strip mono" VerticalAlignment="Center" Margin="10,0,0,0"
+                       TextTrimming="CharacterEllipsis" Text="{Binding TargetPath}"
+                       IsVisible="{Binding TargetPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Classes="strip" VerticalAlignment="Center" Margin="10,0,0,0"
+                       Text="Where it should be cloned to"
+                       IsVisible="{Binding TargetPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+          </DockPanel>
+
+          <DockPanel>
+            <Button DockPanel.Dock="Right" x:Name="StartCloneButton" Classes="primary sm"
+                    Command="{Binding CloneCommand}" Content="Clone"/>
+            <!-- git's own counting, verbatim. Nothing here knows the size of the repository, so a
+                 percentage of our own would be a number we made up. -->
+            <TextBlock x:Name="CloneProgress" Classes="strip mono" VerticalAlignment="Center"
+                       Margin="0,0,10,0" TextTrimming="CharacterEllipsis" Text="{Binding Progress}"/>
+          </DockPanel>
+
+          <Border Classes="notice bad"
+                  IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <Grid ColumnDefinitions="Auto,*">
+              <Path Grid.Column="0" Classes="icon" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,12,0"
+                    Stroke="{DynamicResource Danger}" Data="{DynamicResource IconWarning}"/>
+              <StackPanel Grid.Column="1" Spacing="3">
+                <TextBlock Classes="title" Text="git said no"/>
+                <TextBlock Classes="body" Text="{Binding Error}"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+        </StackPanel>
 
         <!-- Recent workspaces (KON-434). Here rather than behind a menu because this is the page you
              are on when you want one: the picker is for a folder Kontena has never seen, and going

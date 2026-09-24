@@ -48,6 +48,14 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private readonly List<Channel<ResourceEvent>> _watchers = [];
 
+    /// <summary>Test hook (KON-449): how many watches are open right now. A watch that outlives the page
+    /// that started it is the shape a leaked view model takes against a real cluster — a connection held
+    /// open decoding events nobody reads — and a count is the only part of that a fake can show.</summary>
+    public int OpenWatches
+    {
+        get { lock (_watchers) return _watchers.Count; }
+    }
+
     /// <summary>Test hook (KON-355): run on the thread each post-snapshot watch event is produced on,
     /// so a test can assert whose thread an adapter's per-event work would be costing.</summary>
     public Action? OnWatchEvent { get; set; }
@@ -136,7 +144,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             Pod1("web-5f2a", "app", PodPhase.Running, 1, 0, "gke-prod-worker-1", "Deployment/web", "nginx:1.27-alpine", WebUses),
             // web is mid-rollout at 2/3, so two pods and not three — the counts and the list have to
             // tell the same story now that the detail page shows them together.
-            Pod1("web-5f2b", "app", PodPhase.Running, 1, 0, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine", WebUses),
+            // Restarted often and perfectly fine now — the case KON-442 is about, and the one the fake
+            // was missing: every healthy pod here had a restart count of zero, so "healthy, but that
+            // number is worth a look" was a state nothing could show.
+            Pod1("web-5f2b", "app", PodPhase.Running, 1, 6, "gke-prod-worker-2", "Deployment/web", "nginx:1.27-alpine", WebUses),
             new Pod { Name = "redis-0c1e", Namespace = "app", Phase = PodPhase.Pending, Node = "gke-prod-worker-2", Restarts = 7, ControlledBy = "Deployment/redis", Labels = App("redis"), Qos = QosClass.Burstable, Age = TimeSpan.FromMinutes(12), Containers = [new ContainerStatus { Name = "redis", Image = "redis:7-alpine", Ready = false, Restarts = 7, Ports = [new ContainerPort("redis", 6379, "TCP")], RunState = ContainerRunState.Waiting, Reason = "CrashLoopBackOff" }] },
             // A pod wedged on its init container, which is the case the whole of KON-168 is about: the
             // container holding the answer is the one that used to be unreachable. Phase alone reports
@@ -170,7 +181,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
         _ingresses =
         [
-            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], TlsHosts = ["app.example.com"], Age = TimeSpan.FromHours(30) },
+            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], Tls = [new IngressTls("web-tls", ["app.example.com"])], DefaultBackend = new IngressBackend("web", 80), Age = TimeSpan.FromHours(30) },
         ];
 
         _pvcs =
@@ -599,9 +610,20 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         lock (_watchers)
             _watchers.Add(mine);
 
+        // Taken in one go, here, and not left to enumerate lazily while the snapshot drains below
+        // (KON-451). `refs` is a query straight over this fake's own live lists, and the loop that
+        // reads it gives the thread up between every item — so a test that changed the cluster while
+        // it drained (a cordon, an apply: both assign into a List<T>) bumped the version under the
+        // running enumerator and the watch died on "Collection was modified". The page reads any
+        // exception out of its watch as its object being gone, so the failure surfaced as an event
+        // that was delivered and never read, one full assembly run in three.
+        // This is also what an informer does: list once at a resource version, then watch from it.
+        // A lazy query over live state was never a snapshot.
+        var snapshot = refs.ToList();
+
         try
         {
-            foreach (var r in refs)
+            foreach (var r in snapshot)
             {
                 ct.ThrowIfCancellationRequested();
                 await Task.Yield();
@@ -810,9 +832,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private static readonly ApiResource[] Resources =
         [
-            new() { Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"] },
+            new()
+            {
+                Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"],
+                ShortNames = ["po"], Categories = ["all"],
+            },
+            new()
+            {
+                Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true,
+                Verbs = ["list", "delete"], ShortNames = ["svc"], Categories = ["all"],
+            },
+            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"], ShortNames = ["no"] },
             new()
             {
                 Kind = new GroupVersionKind(string.Empty, "v1", "ConfigMap"),
@@ -827,12 +857,39 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             {
                 Kind = new GroupVersionKind("cert-manager.io", "v1", "Certificate"),
                 Plural = "certificates", Namespaced = true, Verbs = ["list", "delete"], IsCustom = true,
+                ShortNames = ["cert", "certs"], Categories = ["cert-manager"],
+                Description = "A TLS certificate cert-manager requests and keeps renewed.",
+                Source = "cert-manager",
             },
         ];
 
     /// <inheritdoc/>
     public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
+
+    /// <summary>
+    /// One of each rung of the ladder, for the certificate the fake serves: a Deployment that mounts
+    /// the Secret the certificate owns, and the Secret's own owner relationship pointed back.
+    /// Anything else has no users, which is the answer that has to render too.
+    /// </summary>
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        IReadOnlyList<ResourceUsage> usages = resource.Name switch
+        {
+            "kontena-app-tls" =>
+            [
+                new(new ResourceRef(GroupVersionKind.Deployment, resource.Namespace, "kontena-web"),
+                    UsageEvidence.Mount, "Secret kontena-app-tls"),
+                new(new ResourceRef(GroupVersionKind.StatefulSet, resource.Namespace, "kontena-api"),
+                    UsageEvidence.OwnerReference, "ownerReference", OwnedByTarget: true),
+            ],
+            _ => [],
+        };
+
+        return ValueTask.FromResult(usages);
+    }
 
     /// <summary>
     /// Null, honestly: this fake models typed resources for the UI, not raw OpenAPI documents. A
@@ -1285,8 +1342,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
             case "Namespace":
             {
-                if (!_namespaces.Exists(n => n.Name == doc.Name))
+                // Apply is declarative for a namespace too: applying one that exists writes its
+                // labels rather than doing nothing. Skipping the update made this the one kind where
+                // a second apply could not change anything, which is not how the real one behaves —
+                // and it left a namespace with no reachable state change at all (KON-450).
+                var i = _namespaces.FindIndex(n => n.Name == doc.Name);
+                if (i >= 0)
+                    _namespaces[i] = _namespaces[i] with { Labels = doc.Labels };
+                else
                     _namespaces.Add(new KubeNamespace { Name = doc.Name, Phase = "Active", Labels = doc.Labels, Age = TimeSpan.Zero });
+
                 break;
             }
 
@@ -1559,6 +1624,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 Image = image,
                 Ready = phase == PodPhase.Running,
                 Restarts = restarts,
+                // A restart has a moment, and without one the tooltip can only say how often and not
+                // how long ago (KON-443). Relative to now so the demo does not age into "2 years ago".
+                LastTerminationTime = restarts > 0 ? DateTimeOffset.UtcNow.AddMinutes(-9) : null,
                 Ports = PortsFor(image),
                 Env = i == 0 ? env ?? [] : [],
                 RunState = phase == PodPhase.Running ? ContainerRunState.Running : ContainerRunState.Waiting,

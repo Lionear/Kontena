@@ -73,7 +73,7 @@
                     <Button Classes="tab" Classes.on="{Binding IsOverviewSelected}" Command="{Binding SelectTabCommand}" CommandParameter="overview">
                         <TextBlock Text="Overview" VerticalAlignment="Center"/>
                     </Button>
-                    <Button Classes="tab" Classes.on="{Binding IsPodsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="pods">
+                    <Button Classes="tab" Classes.on="{Binding IsPodsSelected}" IsVisible="{Binding ShowPodsTab}" Command="{Binding SelectTabCommand}" CommandParameter="pods">
                         <TextBlock Text="{Binding PodsTabLabel}" VerticalAlignment="Center"/>
                     </Button>
                     <Button Classes="tab" Classes.on="{Binding IsEventsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="events">

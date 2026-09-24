@@ -155,7 +155,7 @@
                     <ItemsControl ItemsSource="{Binding Nodes}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:NodeRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <Grid ColumnDefinitions="1.8*,1.2*,1*,1.2*,1.2*,1.6*">
                                         <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="Medium" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Roles}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>

@@ -37,7 +37,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ServiceRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <Grid ColumnDefinitions="1.6*,1*,1*,1.1*,1.6*,0.7*,160">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}"
                                                 IsEnabled="{Binding CanOpen}" VerticalAlignment="Center">

@@ -55,10 +55,20 @@ public sealed record ProvisionerCapabilities
 
     /// <summary>
     /// The CNI is a choice rather than a given. kubeadm installs none and the nodes stay NotReady until
-    /// something does; k0s installs one but will take another. kind and minikube wire their own in and
-    /// never ask.
+    /// something does; k0s installs one but will take another; kind installs kindnet but can be told
+    /// not to, and then whatever was chosen is applied afterwards (KON-465). minikube wires its own in
+    /// and never asks.
     /// </summary>
     public bool ChoosesCni { get; init; }
+
+    /// <summary>
+    /// The CNI names this provisioner understands, its own default first — or empty where the name is
+    /// free text rather than a list, which is k0s: it passes the value through to a config field that
+    /// accepts more providers than we would want to enumerate. A list where the set really is closed,
+    /// because kind can only offer what there is a pinned manifest for.
+    /// <para>Only read where <see cref="ChoosesCni"/> says the CNI is a choice.</para>
+    /// </summary>
+    public IReadOnlyList<string> Cnis { get; init; } = [];
 
     /// <summary>
     /// How it reaches the hosts, and therefore what they need before a rollout can start (KON-233).

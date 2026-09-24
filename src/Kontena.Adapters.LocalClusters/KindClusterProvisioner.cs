@@ -45,7 +45,23 @@ public sealed class KindClusterProvisioner(IToolRunner runner, ManagedToolStore?
 
         // The one tool that needs the escape hatch: its version list cannot be complete (KON-144).
         NodeImage = true,
+
+        // kindnet unless told otherwise, and it can be told (KON-465). A closed list rather than free
+        // text, because a chosen CNI has to be applied afterwards and only what is pinned can be.
+        ChoosesCni = true,
+        Cnis = KindCnis.Offered,
     };
+
+    /// <summary>
+    /// The chosen CNI, when it is not the kindnet the config disabled. Nothing else: kind leaves a
+    /// finished cluster behind in every other case.
+    /// </summary>
+    public IReadOnlyList<ClusterManifest> PostCreateManifests(LocalClusterSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+
+        return KindCnis.Manifest(spec.Cni) is { } manifest ? [manifest] : [];
+    }
 
     /// <summary>The kubeconfig context kind writes for a cluster of this name.</summary>
     public static string ContextFor(string name) => $"kind-{name}";

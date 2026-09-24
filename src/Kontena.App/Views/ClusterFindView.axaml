@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             x:Class="Kontena.App.Views.ClusterFindView"
+             x:DataType="vm:ClusterFindViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="18">
+
+        <StackPanel Grid.Row="0" Spacing="3" Margin="0,0,0,14">
+            <TextBlock Text="Find" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <TextBlock Text="Type a name in the search box above. Every resource type this cluster serves is searched, custom ones included."
+                       FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- How far along, said out loud. A sweep is one listing per kind, so it arrives in pieces and
+             the page should look like it rather than sitting behind a spinner. -->
+        <TextBlock Grid.Row="1" Text="{Binding Progress}" FontSize="11.5" Margin="0,0,0,10"
+                   FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"
+                   IsVisible="{Binding Progress, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+        <Border Grid.Row="2" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                IsVisible="{Binding HasHits}">
+            <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding Hits}" Margin="4">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SearchHitRow">
+                            <Button Classes="kind" Command="{Binding OpenCommand}" HorizontalAlignment="Stretch">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="1">
+                                        <TextBlock Text="{Binding Name}" FontSize="13"
+                                                   FontFamily="{StaticResource Mono}"
+                                                   Foreground="{DynamicResource Text}"/>
+                                        <TextBlock Text="{Binding Where}" FontSize="11"
+                                                   Foreground="{DynamicResource TextDim}"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding Kind}" FontSize="11.5"
+                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                               Foreground="{DynamicResource TextFaint}"/>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="2" IsVisible="{Binding IsIdle}" VerticalAlignment="Center"
+                    HorizontalAlignment="Center" Spacing="8">
+            <TextBlock Text="Nothing typed yet" FontSize="15" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+            <TextBlock Text="For when you remember what an object is called, but not what type it is."
+                       FontSize="12.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Told apart from the idle state above: searched and found nothing is an answer, and an
+             unexplained empty page is not. -->
+        <StackPanel Grid.Row="2" IsVisible="{Binding NothingFound}" VerticalAlignment="Center"
+                    HorizontalAlignment="Center" Spacing="8">
+            <TextBlock Text="No object by that name" FontSize="15" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+            <TextBlock Text="Searched every type the cluster serves, except the ones this account may not read."
+                       FontSize="12.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"
+                       TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

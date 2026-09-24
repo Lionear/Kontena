@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="280"
+             x:Class="Kontena.App.Views.CreateNamespaceView"
+             x:DataType="vm:CreateNamespaceViewModel">
+    <Border Width="480" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" CornerRadius="{StaticResource RadiusLg}" ClipToBounds="True" BoxShadow="0 32 80 0 #99000000">
+        <StackPanel>
+            <StackPanel Margin="24,22,24,20" Spacing="16">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="New namespace" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="19" HorizontalAlignment="Left"
+                               Foreground="{DynamicResource TextDim}" MaxWidth="420"
+                               Text="A namespace groups objects and scopes their names. It starts empty — nothing is placed in it until something is applied there."/>
+                </StackPanel>
+
+                <StackPanel Spacing="7">
+                    <TextBlock Text="NAME" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextFaint}"/>
+                    <TextBox Text="{Binding Name, Mode=TwoWay}" PlaceholderText="staging"
+                             FontFamily="{StaticResource Mono}"/>
+                    <!-- The rule that was broken, next to the field. A Create button that is simply
+                         disabled leaves the reader guessing which character it objected to. -->
+                    <TextBlock Text="{Binding NameProblem}" IsVisible="{Binding HasNameProblem}"
+                               Foreground="{DynamicResource Danger}" FontSize="12" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{DynamicResource Danger}" FontSize="12.5" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Height="1" Background="{DynamicResource Border}"/>
+            <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto">
+                <Button Grid.Column="1" Classes="ghost" Margin="0,0,10,0" Command="{Binding CancelCommand}">Cancel</Button>
+                <Button Grid.Column="2" Classes="primary" Command="{Binding CreateCommand}"
+                        IsEnabled="{Binding CanCreate}">Create namespace</Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

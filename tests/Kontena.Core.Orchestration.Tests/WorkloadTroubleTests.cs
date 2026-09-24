@@ -163,21 +163,46 @@ public sealed class WorkloadTroubleTests
     }
 
     [Fact]
-    public void A_pod_that_keeps_restarting_is_trouble_even_while_it_is_up()
+    public void A_pod_that_restarted_often_but_is_up_now_is_not_trouble()
     {
-        // Between two backoffs a crash loop looks like a healthy Running pod. The count is the only
-        // thing still saying otherwise.
+        // KON-442, and the reason this ticket exists: the count used to make this pod read as broken,
+        // triangle and all, while it was serving traffic. A crash loop is caught by the container
+        // being in CrashLoopBackOff, which is the case above — the count is not needed for that, and
+        // on its own it only says what already happened.
         var pod = Pod([Running("api", ready: true)]) with { Phase = PodPhase.Running, Restarts = 9 };
 
-        Assert.Equal("Restarted 9 times", WorkloadTrouble.DescribePod(pod));
+        Assert.Null(WorkloadTrouble.DescribePod(pod));
     }
 
     [Fact]
-    public void One_restart_is_not_trouble()
+    public void A_pod_that_restarted_often_is_still_worth_a_second_look()
+    {
+        // Not trouble, but not the same news as one restart either — which is the whole distinction
+        // the RESTARTS column now carries.
+        var pod = Pod([Running("api", ready: true)]) with { Phase = PodPhase.Running, Restarts = 9 };
+
+        Assert.True(WorkloadTrouble.RestartedOften(pod));
+    }
+
+    [Fact]
+    public void One_restart_is_not_worth_pointing_at()
     {
         var pod = Pod([Running("api", ready: true)]) with { Phase = PodPhase.Running, Restarts = 1 };
 
+        Assert.False(WorkloadTrouble.RestartedOften(pod));
         Assert.Null(WorkloadTrouble.DescribePod(pod));
+    }
+
+    [Fact]
+    public void A_crash_looping_pod_is_trouble_and_worth_a_look_at_once()
+    {
+        // The two readings are independent: one says "it is broken now", the other "it has been
+        // restarting". A pod in a crash loop is both, and neither answer should suppress the other.
+        var pod = Pod([Waiting("api", "CrashLoopBackOff")])
+            with { Phase = PodPhase.Running, Restarts = 12 };
+
+        Assert.Equal("Pod in CrashLoopBackOff", WorkloadTrouble.DescribePod(pod));
+        Assert.True(WorkloadTrouble.RestartedOften(pod));
     }
 
     [Fact]

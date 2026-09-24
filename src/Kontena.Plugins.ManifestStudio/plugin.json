@@ -8,6 +8,9 @@
   "assembly": "Kontena.Plugins.ManifestStudio.dll",
   "backends": [],
   "contributesUi": true,
+  "tools": [
+    "git"
+  ],
   "permissions": [
     "Read and write the folder you open as a workspace",
     "Run git in that folder, against the remotes already in its .git/config",

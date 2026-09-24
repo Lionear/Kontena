@@ -79,26 +79,28 @@
 
             <!-- Log stream -->
             <Border Grid.Row="2" Background="{DynamicResource Console}">
-                <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="16,12"
-                         SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:LogSelection.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="16,12"
+                         SelectionMode="Multiple" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                     <ListBox.Styles>
                         <Style Selector="ListBoxItem">
                             <Setter Property="Padding" Value="0"/>
                             <Setter Property="MinHeight" Value="0"/>
                             <Setter Property="Background" Value="Transparent"/>
                         </Style>
+                        <!-- Rows can be selected in bulk since KON-463, so a selected one has to read as
+                             selected. Both themes draw this console on near-black, hence a fixed wash. -->
                         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Background" Value="#28FFFFFF"/>
                         </Style>
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:ComposeLogLine">
                             <Grid ColumnDefinitions="130,*">
-                                <TextBlock Grid.Column="0" Text="{Binding Service}" FontFamily="{StaticResource Mono}" FontSize="12"
-                                           LineHeight="19" Foreground="{Binding ServiceBrush}" TextTrimming="CharacterEllipsis"
-                                           Margin="0,0,12,0"/>
-                                <TextBlock Grid.Column="1" Text="{Binding Text}" FontFamily="{StaticResource Mono}" FontSize="12"
-                                           LineHeight="19" Foreground="{DynamicResource TextDim}"/>
+                                <SelectableTextBlock Grid.Column="0" Text="{Binding Service}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                     LineHeight="19" Foreground="{Binding ServiceBrush}" TextTrimming="CharacterEllipsis"
+                                                     Margin="0,0,12,0"/>
+                                <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                     LineHeight="19" Foreground="{DynamicResource TextDim}"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

@@ -26,7 +26,8 @@ public static class KindConfig
         return spec.ControlPlaneNodes > 1
                || spec.WorkerNodes > 0
                || spec.PortMappings.Count > 0
-               || spec.IngressReady;
+               || spec.IngressReady
+               || KindCnis.ReplacesDefault(spec.Cni);
     }
 
     /// <summary>
@@ -40,8 +41,17 @@ public static class KindConfig
 
         var yaml = new StringBuilder()
             .AppendLine("kind: Cluster")
-            .AppendLine("apiVersion: kind.x-k8s.io/v1alpha4")
-            .AppendLine("nodes:");
+            .AppendLine("apiVersion: kind.x-k8s.io/v1alpha4");
+
+        // A CNI of one's own means kindnet must not come up: both want the same interfaces, and the loser
+        // of that fight is the pod network. The chosen one is applied once the cluster answers (KON-465).
+        if (KindCnis.ReplacesDefault(spec.Cni))
+        {
+            yaml.AppendLine("networking:")
+                .AppendLine("  disableDefaultCNI: true");
+        }
+
+        yaml.AppendLine("nodes:");
 
         for (var i = 0; i < Math.Max(1, spec.ControlPlaneNodes); i++)
         {

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
 
 namespace Kontena.Engines.Plugins;
 
@@ -211,6 +212,26 @@ public static class PluginLoader
                 + "that plugin.json does not declare");
         }
 
+        // Same one-directional rule as the backends above, over what the plugin shells out to (KON-438).
+        // The names in plugin.json are what the consent dialog showed, so a tool the assembly describes
+        // and that file does not name is a tool the user never agreed to see run. Naming more than the
+        // assembly ships stays fine: a plugin that dropped a tool between versions is not lying.
+        //
+        // Both entry points are asked and the result de-duplicated by name: a type that implements both
+        // hands back two equal manifests, and two types can each bring their own tools.
+        var tools = new[] { plugin?.Manifest, ui?.Manifest }
+            .Where(m => m is not null)
+            .SelectMany(m => m!.Tools)
+            .DistinctBy(t => t.Name, StringComparer.Ordinal)
+            .ToList();
+
+        var unnamed = tools.Select(t => t.Name).Except(manifest.Tools, StringComparer.Ordinal).ToList();
+        if (unnamed.Count > 0)
+        {
+            return Reject(
+                $"The assembly drives {string.Join(", ", unnamed)}, which plugin.json does not list under tools");
+        }
+
         // Touch every identity member here, inside the containment this method already sits in. The
         // host reads these while building the very first switcher — outside any try, before there is a
         // window to report a failure in — so a getter that throws would take the launch down instead
@@ -226,6 +247,7 @@ public static class PluginLoader
         return new DiscoveredPlugin(directory, manifest, PluginStatus.Loaded, null, providers)
         {
             Pages = pages,
+            Tools = tools,
         };
     }
 

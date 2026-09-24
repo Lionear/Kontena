@@ -103,4 +103,43 @@ public sealed class PluginPlatformTests
         Assert.Equal("linux", new PluginPlatform { Os = "linux" }.ToString());
         Assert.Equal("macos 26", new PluginPlatform { Os = "macos", MinVersion = "26" }.ToString());
     }
+
+    /// <summary>
+    /// The sentence Settings › Extensions puts under a card it cannot switch on (KON-468). Distinct
+    /// from <see cref="PluginPlatform.ToString"/>, which is the machine's spelling: the reader gets the
+    /// operating system's own capitals and is told the floor is a minimum, not an exact version.
+    /// </summary>
+    [Fact]
+    public void The_requirement_reads_as_a_person_would_write_it()
+    {
+        Assert.Equal(
+            "Requires macOS 26 or later",
+            PluginPlatform.RequirementFor([new PluginPlatform { Os = "macos", MinVersion = "26" }]));
+
+        Assert.Equal(
+            "Requires Windows",
+            PluginPlatform.RequirementFor([new PluginPlatform { Os = "windows" }]));
+
+        Assert.Equal(
+            "Requires Linux or macOS 26 or later",
+            PluginPlatform.RequirementFor(
+                [new PluginPlatform { Os = "linux" }, new PluginPlatform { Os = "macos", MinVersion = "26" }]));
+    }
+
+    /// <summary>
+    /// Declaring nothing means "anywhere", so there is no requirement to state. Empty rather than a
+    /// sentence, because the caller shows the line only when there is one.
+    /// </summary>
+    [Fact]
+    public void A_plugin_that_runs_anywhere_has_no_requirement_to_state()
+    {
+        Assert.Equal(string.Empty, PluginPlatform.RequirementFor([]));
+    }
+
+    /// <summary>An operating system this build has no capitals for is left as the manifest wrote it.</summary>
+    [Fact]
+    public void An_unknown_os_keeps_the_spelling_it_was_given()
+    {
+        Assert.Equal("Requires haiku", PluginPlatform.RequirementFor([new PluginPlatform { Os = "haiku" }]));
+    }
 }

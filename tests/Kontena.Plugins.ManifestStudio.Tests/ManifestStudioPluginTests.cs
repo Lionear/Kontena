@@ -34,6 +34,13 @@ public sealed class ManifestStudioPluginTests(HeadlessSessionFixture headless)
         Assert.Equal(declared.GetProperty("version").GetString(), manifest.Version);
         Assert.Equal(declared.GetProperty("minSdkVersion").GetString(), manifest.MinSdkVersion);
         Assert.Equal("Kontena.Plugins.ManifestStudio.dll", declared.GetProperty("assembly").GetString());
+
+        // And the tools it drives (KON-438): the loader refuses a plugin whose assembly describes an
+        // external tool this file does not name, so a git declaration added on one side only is a
+        // plugin that stops loading rather than a plugin that misses a row on Settings › Tools.
+        Assert.Equal(
+            manifest.Tools.Select(t => t.Name),
+            declared.GetProperty("tools").EnumerateArray().Select(t => t.GetString()));
     }
 
     [Fact]

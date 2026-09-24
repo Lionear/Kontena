@@ -35,11 +35,15 @@ public sealed class MigrateDialogRenderTests(HeadlessSessionFixture headless)
             var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
             var migrate = buttons.Single(b => b.Content is "Migrate");
 
-            Assert.False(migrate.IsEnabled);
+            // IsEffectivelyEnabled, not IsEnabled: a Button is an ICommandSource, and a command that
+            // cannot execute is folded into the effective value. IsEnabled keeps the local value the
+            // markup set — true, since the markup sets nothing — so asserting on it passes whatever the
+            // command says, and would have gone on passing with the button live.
+            Assert.False(migrate.IsEffectivelyEnabled);
             Assert.Contains(
                 window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text),
                 text => text is not null && text.Contains("already has a container", StringComparison.Ordinal));
-        }, CancellationToken.None);
+        }, CancellationToken.None).Unwrap();
 
     [Fact]
     public Task The_preview_and_the_dropped_lines_are_on_screen() =>
@@ -55,7 +59,7 @@ public sealed class MigrateDialogRenderTests(HeadlessSessionFixture headless)
             Assert.Contains(
                 window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text),
                 text => text is not null && text.Contains("Not inspected", StringComparison.Ordinal));
-        }, CancellationToken.None);
+        }, CancellationToken.None).Unwrap();
 
     private static Window Show(MigrateContainerViewModel model)
     {

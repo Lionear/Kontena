@@ -92,7 +92,7 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:ComposeServiceViewModel">
                                             <Border Classes="row" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                                                <Grid Margin="18,10" ColumnDefinitions="20,1.4*,1.8*,1*,1.1*,88" VerticalAlignment="Center">
+                                                <Grid Margin="{DynamicResource RowMargin}" ColumnDefinitions="20,1.4*,1.8*,1*,1.1*,88" VerticalAlignment="Center">
                                                     <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{Binding StatusBrush}"
                                                              HorizontalAlignment="Left" VerticalAlignment="Center"/>
                                                     <Button Grid.Column="1" Classes="link" Command="{Binding OpenCommand}" ToolTip.Tip="Open details">

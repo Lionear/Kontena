@@ -170,7 +170,19 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
     public string Namespace => _pod.Namespace;
     public string Node => string.IsNullOrEmpty(_pod.Node) ? "—" : _pod.Node;
     public string Ip => string.IsNullOrEmpty(_pod.Ip) ? "—" : _pod.Ip;
+    public bool HasHostname => _pod.ClusterDnsName.Length > 0;
+    public string HostnameText => HasHostname ? _pod.ClusterDnsName : "—";
+    public string? HostnameTip => HasHostname
+        ? null
+        : "This pod has no stable internal DNS name — only pods in a headless Service (StatefulSet pattern) or with hostname/subdomain set get one. Use the pod IP instead.";
     public string RestartsText => _pod.Restarts.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Whether the RESTARTS fact should stand out (KON-442) — the same reading the pods list
+    /// gives, so the same pod does not change its mind about the number on the way to its own page.</summary>
+    public bool RestartedOften => WorkloadTrouble.RestartedOften(_pod);
+
+    /// <summary>Only when nothing is wrong — see the same guard on <c>PodRow</c>.</summary>
+    public string? RestartsTip => RestartedOften && !HasTrouble ? Format.RestartsTip(_pod) : null;
     public string QosText => _pod.Qos.ToString();
     public string ControlledBy => string.IsNullOrEmpty(_pod.ControlledBy) ? "—" : _pod.ControlledBy;
 

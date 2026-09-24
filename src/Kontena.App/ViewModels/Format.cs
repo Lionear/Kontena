@@ -1,5 +1,6 @@
 using System.Globalization;
 using Kontena.Core.Models;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.ViewModels;
 
@@ -85,6 +86,28 @@ internal static class Format
         if (age.TotalHours >= 1) return $"{(int)age.TotalHours}h";
         if (age.TotalMinutes >= 1) return $"{(int)age.TotalMinutes}m";
         return $"{(int)age.TotalSeconds}s";
+    }
+
+    /// <summary>
+    /// What the amber RESTARTS count means, spelled out (KON-442, KON-443). Written here rather than
+    /// in the two view models that show it, because a list row and the detail page of the same pod
+    /// disagreeing about its own restarts is the sort of thing nobody notices until a screenshot.
+    /// <para>
+    /// Only call this for a pod with nothing wrong with it: the closing sentence is a reassurance, and
+    /// a crash-looping pod has restarted plenty too.
+    /// </para>
+    /// </summary>
+    public static string RestartsTip(Pod pod)
+    {
+        // Recency is what separates a pod with a past from one with a problem, and it is the whole
+        // reason this is a sentence and not just the number the cell already shows. Absent when the
+        // engine carries no restart time — every adapter but Kubernetes, and Kubernetes itself for a
+        // pod whose containers have not actually restarted.
+        var count = pod.LastRestart is { } last
+            ? $"Restarted {pod.Restarts} times, most recently {Age(last)}."
+            : $"Restarted {pod.Restarts} times.";
+
+        return count + " Running normally now — the count is history, not a fault.";
     }
 
     public static string Age(DateTimeOffset when)

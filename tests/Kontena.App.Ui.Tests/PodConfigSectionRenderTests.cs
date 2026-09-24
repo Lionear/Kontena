@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Kontena.App.ViewModels;
 using Kontena.App.Views;
@@ -42,14 +43,21 @@ public sealed class PodConfigSectionRenderTests(HeadlessSessionFixture headless)
             Settle();
 
             // The tooltip is the button's accessible name, so finding it by that is finding what a
-            // screen reader would read out.
+            // screen reader would read out. Since KON-416 it names the key rather than reading
+            // "Show the value" on every row of the page — which is also why the data context does the
+            // scoping here: the Environment variables section above borrows these very rows, and its
+            // eyes say "Show the value of ..." too, so a tooltip filter alone would count them in.
             var eyes = window.GetVisualDescendants().OfType<Button>()
-                .Where(b => b.GetValue(ToolTip.TipProperty) as string == "Show the value")
+                .Where(b => b.DataContext is ConfigKeyRow
+                            && b.GetValue(ToolTip.TipProperty) is string tip
+                            && tip.StartsWith("Show the value of ", StringComparison.Ordinal))
                 .ToList();
 
-            Assert.Equal(2, eyes.Count);
+            Assert.Equal(
+                ["Show the value of password", "Show the value of username"],
+                eyes.Select(e => e.GetValue(ToolTip.TipProperty) as string).Order(StringComparer.Ordinal));
             Assert.All(eyes, eye => Assert.NotEmpty(eye.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>()));
-        }, CancellationToken.None);
+        }, CancellationToken.None).Unwrap();
 
     private static Window Show(ClusterPodDetailViewModel page)
     {
@@ -66,8 +74,16 @@ public sealed class PodConfigSectionRenderTests(HeadlessSessionFixture headless)
         return window;
     }
 
+    /// <summary>
+    /// Ticking the render timer draws what is already there; it does not run the dispatcher's own
+    /// queue. An ItemsControl that has just been handed its items therefore has no containers yet —
+    /// however often you tick — so the key rows of an opened object stayed out of the visual tree and
+    /// there was nothing to count. <c>RunJobs</c> is what materialises them.
+    /// </summary>
     private static void Settle()
     {
+        Dispatcher.UIThread.RunJobs();
+
         for (var i = 0; i < 3; i++)
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
     }

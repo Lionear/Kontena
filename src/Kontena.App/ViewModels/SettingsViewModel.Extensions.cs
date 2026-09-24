@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Kontena.Sdk;
 
 namespace Kontena.App.ViewModels;
 
@@ -23,7 +24,13 @@ public sealed partial class AdapterRow : ViewModelBase
         Chip = new BackendChipInfo(
             adapter.Manifest.Name[..1].ToUpperInvariant(), adapter.Chip?.Glyph, adapter.Chip?.Accent);
         InUse = inUse;
-        _isEnabled = enabled;
+        CanToggle = AdapterCatalog.RunsOnThisOs(adapter);
+        UnavailableReason = CanToggle ? string.Empty : PluginPlatform.RequirementFor(adapter.Manifest.Platforms);
+
+        // Off, whatever the settings say. Unknown ids are enabled by default (KontenaSettings), so an
+        // adapter this machine cannot run would otherwise draw a switch reading "on" for a backend
+        // BackendCatalog refuses to build — which is the one thing worse than not showing the card.
+        _isEnabled = enabled && CanToggle;
         _changed = changed;
     }
 
@@ -60,12 +67,32 @@ public sealed partial class AdapterRow : ViewModelBase
 
     public bool IsBundled => Adapter.IsBundled;
 
+    /// <summary>
+    /// Whether the switch may be moved at all. False for an adapter whose manifest names an operating
+    /// system this machine is not (KON-468) — the card is shown because Kontena ships the adapter, and
+    /// the switch is dead because turning it on would ask for a backend that cannot exist here.
+    /// </summary>
+    public bool CanToggle { get; }
+
+    /// <summary>
+    /// Why the switch is dead — "Requires macOS 26 or later" — or empty when it is not. Read off the
+    /// manifest, so an adapter added later with a platform floor explains itself without this page
+    /// learning anything about it.
+    /// </summary>
+    public string UnavailableReason { get; }
+
+    /// <summary>Whether there is a reason to show. The card's own <c>IsVisible</c> for that line.</summary>
+    public bool IsUnavailable => UnavailableReason.Length > 0;
+
     [ObservableProperty]
     private bool _isEnabled;
 
     partial void OnIsEnabledChanged(bool value)
     {
-        if (_echo)
+        // The switch is disabled in the view, so this guard is for anything that reaches the row
+        // directly: a dead switch that still wrote through would persist a preference the user cannot
+        // see and cannot undo.
+        if (_echo || !CanToggle)
             return;
 
         _changed(this, value);

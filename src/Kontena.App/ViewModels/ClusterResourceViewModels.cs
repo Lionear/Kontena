@@ -281,8 +281,30 @@ public partial class ClusterNamespacesViewModel : ClusterListPageViewModel<Names
 
     public override string SearchPlaceholder => "Search namespaces…";
 
+    /// <summary>
+    /// How the page asks the shell for the "New namespace" modal (KON-464) — the same shape as the
+    /// volumes and networks pages, and for the same reason: the page knows a namespace should be
+    /// created, not where the modal lives.
+    /// </summary>
+    public Action? RequestCreateNamespace { get; set; }
+
+    [RelayCommand]
+    private void CreateNamespace() => RequestCreateNamespace?.Invoke();
+
+    /// <summary>Delete a namespace, always confirmed (KON-464).</summary>
+    private void ConfirmDelete(NamespaceRow row)
+    {
+        var (title, message) = ClusterDeleteWording.Namespace(row.Name);
+
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
+    }
+
     protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
+        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
 
@@ -303,15 +325,20 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
     private readonly Action<Workload>? _onScale;
     private readonly Action<Workload>? _onRestart;
     private readonly Action<Workload>? _onOpenDetail;
+    private readonly RestartTracker? _restarts;
 
     /// <param name="onOpenDetail">Invoked when a workload row is opened; the shell wires this to the
     /// workload-detail page (KON-166). A constructor parameter rather than an init-property, so it is
     /// set before the fire-and-forget load builds the rows.</param>
     /// <param name="kind">One kind, or null for every kind in one list (KON-169).</param>
+    /// <param name="restarts">The restarts asked for and not yet visible (KON-448). A constructor
+    /// parameter for the same reason as <paramref name="onOpenDetail"/>, and here it is the whole
+    /// point: a restart rebuilds this page, so the very first load is the one that must know.</param>
     public ClusterWorkloadsViewModel(
         IClusterEngine cluster, string? @namespace,
         Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null)
+        Action<Workload>? onOpenDetail = null, WorkloadKind? kind = null,
+        RestartTracker? restarts = null)
         // One kind has a coordinate to follow; the all-kinds page is five kinds at once, and a watch
         // per kind is five streams whose bursts would land out of step with each other.
         : base(
@@ -327,6 +354,7 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         _onRestart = onRestart;
         _onOpenDetail = onOpenDetail;
         _kind = kind;
+        _restarts = restarts;
         _ = LoadAsync();
         StartWatching();
     }
@@ -382,9 +410,21 @@ public partial class ClusterWorkloadsViewModel : ClusterListPageViewModel<Worklo
         });
     }
 
-    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListWorkloadsAsync(_kind, _namespace, ct))
-            .Select(w => new WorkloadRow(w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete))];
+    protected override async Task<IReadOnlyList<WorkloadRow>> LoadRowsAsync(CancellationToken ct)
+    {
+        var workloads = await _cluster.ListWorkloadsAsync(_kind, _namespace, ct);
+
+        // Every load is a fresh reading, so this is where a tracked restart is seen starting and
+        // seen finishing (KON-448). Before the rows, not inside them: a row is a projection, and one
+        // that quietly advanced a state machine while being built would run a different number of
+        // times than there are readings.
+        var now = DateTimeOffset.UtcNow;
+        _restarts?.Observe(workloads, now);
+
+        return [.. workloads.Select(w => new WorkloadRow(
+            w, _onScale, _onRestart, _onOpenDetail, ConfirmDelete,
+            _restarts?.IsRestarting(w.Reference, now) == true))];
+    }
 
     protected override bool Matches(WorkloadRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Kind, term) || Contains(row.Namespace, term);
@@ -524,12 +564,15 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
+    private readonly Action<Ingress>? _onOpenDetail;
 
-    public ClusterIngressesViewModel(IClusterEngine cluster, string? @namespace)
+    public ClusterIngressesViewModel(
+        IClusterEngine cluster, string? @namespace, Action<Ingress>? onOpenDetail = null)
         : base(cluster, GroupVersionKind.Ingress, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
         StartWatching();
     }
@@ -549,7 +592,7 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
     }
 
     protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete))];
+        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete, _onOpenDetail))];
 
     // The host is the thing you know: someone reports that app.example.com is down and the ingress is
     // what you go looking for. The class matters when a cluster runs more than one controller.
@@ -666,19 +709,35 @@ public partial class ClusterVolumesViewModel : ClusterListPageViewModel<Persiste
 public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<StorageClassRow>
 {
     private readonly IClusterEngine _cluster;
+    private readonly Action<string>? _onOpenVolumes;
+    private readonly Action<StorageClass>? _onOpenDetail;
 
-    public ClusterStorageClassesViewModel(IClusterEngine cluster)
+    /// <param name="onOpenVolumes">Route to the volumes provisioned by this class (KON-445) — the
+    /// reverse of <see cref="PersistentVolumeRow.OpenClass"/>.</param>
+    /// <param name="onOpenDetail">Opens the class's own detail page (KON-445).</param>
+    public ClusterStorageClassesViewModel(
+        IClusterEngine cluster, Action<string>? onOpenVolumes = null,
+        Action<StorageClass>? onOpenDetail = null)
         : base(cluster, GroupVersionKind.StorageClass, null)
     {
         _cluster = cluster;
+        _onOpenVolumes = onOpenVolumes;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
         StartWatching();
     }
 
     public override string SearchPlaceholder => "Search storage classes…";
 
-    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListStorageClassesAsync(ct)).Select(c => new StorageClassRow(c))];
+    protected override async Task<IReadOnlyList<StorageClassRow>> LoadRowsAsync(CancellationToken ct)
+    {
+        var classes = await _cluster.ListStorageClassesAsync(ct);
+        var volumes = await _cluster.ListVolumesAsync(ct);
+        var volumeCounts = volumes.CountBy(v => v.StorageClass).ToDictionary(StringComparer.Ordinal);
+
+        return [.. classes.Select(c =>
+            new StorageClassRow(c, volumeCounts.GetValueOrDefault(c.Name), _onOpenVolumes, _onOpenDetail))];
+    }
 
     protected override bool Matches(StorageClassRow row, string term) =>
         Contains(row.Name, term) || Contains(row.Provisioner, term);
@@ -688,6 +747,7 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
         {
             ["NAME"] = r => r.Name,
             ["PROVISIONER"] = r => r.Provisioner,
+            ["VOLUMES"] = r => r.VolumeCount,
             ["RECLAIM"] = r => r.Reclaim,
             ["AGE"] = r => r.AgeSpan,
         };
@@ -838,14 +898,22 @@ public sealed partial class NamespaceRow
 {
     private readonly KubeNamespace _namespace;
     private readonly Action<KubeNamespace>? _onOpenDetail;
+    private readonly Action<NamespaceRow>? _onDelete;
 
-    public NamespaceRow(KubeNamespace ns, Action<KubeNamespace>? onOpenDetail = null)
+    public NamespaceRow(
+        KubeNamespace ns, Action<KubeNamespace>? onOpenDetail = null, Action<NamespaceRow>? onDelete = null)
     {
         ArgumentNullException.ThrowIfNull(ns);
 
         _namespace = ns;
         _onOpenDetail = onOpenDetail;
+        _onDelete = onDelete;
         CanOpen = onOpenDetail is not null;
+
+        // Not offered on the four Kubernetes runs on: deleting kube-system takes the cluster with it,
+        // and default cannot be deleted at all. A button that is always refused is worse than none.
+        CanDelete = onDelete is not null && !ProtectedNamespaces.Contains(ns.Name);
+        Reference = new ResourceRef(GroupVersionKind.Namespace, null, ns.Name);
 
         Name = ns.Name;
         Status = ns.Phase;
@@ -861,9 +929,24 @@ public sealed partial class NamespaceRow
     public TimeSpan AgeSpan { get; }
 
     public bool CanOpen { get; }
+    public bool CanDelete { get; }
+
+    /// <summary>Cluster-scoped, so no namespace of its own — what the delete addresses.</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>
+    /// The namespaces Kubernetes creates and needs. <c>default</c> and <c>kube-system</c> are refused
+    /// outright by the API server; <c>kube-public</c> and <c>kube-node-lease</c> are not, but deleting
+    /// either breaks the cluster quietly, which is worse than being told no.
+    /// </summary>
+    private static readonly HashSet<string> ProtectedNamespaces =
+        new(StringComparer.Ordinal) { "default", "kube-system", "kube-public", "kube-node-lease" };
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_namespace);
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 }
 
 public sealed partial class PersistentVolumeRow
@@ -949,11 +1032,27 @@ public sealed partial class PersistentVolumeRow
     private void OpenClass() => _onOpenClass?.Invoke(StorageClass);
 }
 
-public sealed class StorageClassRow
+public sealed partial class StorageClassRow
 {
-    public StorageClassRow(StorageClass c)
+    private readonly StorageClass _class;
+    private readonly Action<string>? _onOpenVolumes;
+    private readonly Action<StorageClass>? _onOpenDetail;
+
+    /// <param name="volumeCount">How many PersistentVolumes this class provisioned (KON-445).</param>
+    /// <param name="onOpenVolumes">Route to those volumes, filtered to this class — the reverse of
+    /// <see cref="PersistentVolumeRow.OpenClass"/>.</param>
+    /// <param name="onOpenDetail">Opens the class's own detail page (KON-445) — the list answers "what
+    /// would provision here", the detail answers it in full plus the YAML and events.</param>
+    public StorageClassRow(
+        StorageClass c, int volumeCount, Action<string>? onOpenVolumes = null,
+        Action<StorageClass>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(c);
+
+        _class = c;
+        _onOpenVolumes = onOpenVolumes;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
 
         Name = c.Name;
         Provisioner = string.IsNullOrEmpty(c.Provisioner) ? "—" : c.Provisioner;
@@ -961,6 +1060,10 @@ public sealed class StorageClassRow
         IsDefault = c.IsDefault;
         Expansion = c.AllowsExpansion ? "Yes" : "No";
         Age = Format.Duration(c.Age);
+
+        VolumeCount = volumeCount;
+        VolumeCountLabel = volumeCount == 1 ? "1 volume" : $"{volumeCount} volumes";
+        CanOpenVolumes = onOpenVolumes is not null;
 
         // Said as a sentence rather than as the API's word. "WaitForFirstConsumer" is the single most
         // common reason someone thinks their storage is broken when it is working exactly as designed,
@@ -995,19 +1098,37 @@ public sealed class StorageClassRow
     public string NoProvisionerDetail { get; } =
         "Nothing provisions volumes for this class, so a claim naming it waits for a volume someone"
         + " creates by hand.";
+
+    public int VolumeCount { get; }
+    public string VolumeCountLabel { get; }
+    public bool CanOpenVolumes { get; }
+
+    [RelayCommand]
+    private void OpenVolumes() => _onOpenVolumes?.Invoke(Name);
+
+    /// <summary>Whether the shell wired a detail page to arrive at (KON-445).</summary>
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_class);
 }
 
 
 public sealed partial class IngressRow
 {
+    private readonly Ingress _ingress;
     private readonly Action<IngressRow>? _onDelete;
+    private readonly Action<Ingress>? _onOpenDetail;
 
-    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null)
+    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null, Action<Ingress>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(i);
 
+        _ingress = i;
         _onDelete = onDelete;
+        _onOpenDetail = onOpenDetail;
         CanDelete = onDelete is not null;
+        CanOpen = onOpenDetail is not null;
         Reference = new ResourceRef(GroupVersionKind.Ingress, i.Namespace, i.Name);
 
         Name = i.Name;
@@ -1076,8 +1197,14 @@ public sealed partial class IngressRow
     /// <summary>Whether the page wired a delete handler (KON-332).</summary>
     public bool CanDelete { get; }
 
+    /// <summary>Whether the shell wired a detail page to arrive at (KON-453).</summary>
+    public bool CanOpen { get; }
+
     [RelayCommand]
     private void Delete() => _onDelete?.Invoke(this);
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_ingress);
 }
 
 public sealed partial class PvcRow
@@ -1171,9 +1298,13 @@ public sealed partial class WorkloadRow
     private readonly Action<Workload>? _onOpenDetail;
     private readonly Action<WorkloadRow>? _onDelete;
 
+    /// <param name="restarting">Whether a restart was asked for here and the cluster has not shown it
+    /// yet (KON-448) — see <see cref="RestartTracker"/>. The row would otherwise read back the same
+    /// green "Complete" it showed before the click.</param>
     public WorkloadRow(
         Workload w, Action<Workload>? onScale = null, Action<Workload>? onRestart = null,
-        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null)
+        Action<Workload>? onOpenDetail = null, Action<WorkloadRow>? onDelete = null,
+        bool restarting = false)
     {
         _workload = w;
         _onScale = onScale;
@@ -1189,18 +1320,19 @@ public sealed partial class WorkloadRow
         Kind = w.Kind.ToString();
         Ready = w.Kind == WorkloadKind.CronJob ? "—" : $"{w.Ready}/{w.Desired}";
         Schedule = w.Schedule.Length == 0 ? "—" : w.Schedule;
-        Status = w.RolloutStatus.ToString();
+        Status = restarting ? RestartTracker.Restarting : w.RolloutStatus.ToString();
         Age = Format.Duration(w.Age);
         AgeSpan = w.Age;
         CanScale = w.IsScalable;
         CanRestart = w.Kind is WorkloadKind.Deployment or WorkloadKind.StatefulSet or WorkloadKind.DaemonSet;
-        StatusBrush = new SolidColorBrush(Color.Parse(w.RolloutStatus switch
-        {
-            RolloutStatus.Complete => "#34D399",
-            RolloutStatus.Progressing => "#F5B14C",
-            RolloutStatus.Degraded => "#F87171",
-            _ => "#5C6675",
-        }));
+        StatusBrush = new SolidColorBrush(Color.Parse(
+            restarting ? RestartTracker.RestartingColour : w.RolloutStatus switch
+            {
+                RolloutStatus.Complete => "#34D399",
+                RolloutStatus.Progressing => "#F5B14C",
+                RolloutStatus.Degraded => "#F87171",
+                _ => "#5C6675",
+            }));
     }
 
     public string Name { get; }
@@ -1273,6 +1405,10 @@ public sealed partial class PodRow
         StatusLine = Trouble ?? Phase;
         Restarts = p.Restarts.ToString(System.Globalization.CultureInfo.InvariantCulture);
         RestartsRaw = p.Restarts;
+        RestartedOften = WorkloadTrouble.RestartedOften(p);
+        // Only when nothing is wrong. A crash-looping pod has restarted plenty too, and telling it it
+        // is "running normally" would contradict the washed red row it is sitting on.
+        RestartsTip = RestartedOften && Trouble is null ? Format.RestartsTip(p) : null;
         ReadyRaw = p.ReadyContainers;
         Node = string.IsNullOrEmpty(p.Node) ? "—" : p.Node;
         Age = Format.Duration(p.Age);
@@ -1307,6 +1443,14 @@ public sealed partial class PodRow
     public string StatusLine { get; }
 
     public string Restarts { get; }
+
+    /// <summary>Whether the RESTARTS cell should stand out (KON-442). A count is not trouble — the
+    /// status stays a green dot and "Running" — but eight restarts and one are not the same news.</summary>
+    public bool RestartedOften { get; }
+
+    /// <summary>Says in words what the amber count means, for whoever the colour does not reach.</summary>
+    public string? RestartsTip { get; }
+
     public string Node { get; }
     public string Age { get; }
     public IBrush StatusBrush { get; }
@@ -1317,6 +1461,18 @@ public sealed partial class PodRow
 
     public int RestartsRaw { get; }
     public TimeSpan AgeSpan { get; }
+
+    /// <summary>
+    /// Whether this pod was created moments ago (KON-448) — what makes a rollout legible on the pods
+    /// tab: the replacements arrive marked, so "these are the new ones" is something you can see
+    /// rather than something you work out from six ages in a column.
+    /// <para>
+    /// Read off <see cref="Pod.Age"/>, which the row already carried. No diff against a previous
+    /// listing, no per-row bookkeeping: the pod itself knows how old it is, and a fifteen-second
+    /// window is short enough that nothing but a genuinely new pod falls inside it.
+    /// </para>
+    /// </summary>
+    public bool IsRecentlyCreated => AgeSpan < TimeSpan.FromSeconds(15);
 
     /// <summary>Whether the shell wired a delete handler (KON-69).</summary>
     public bool CanDelete { get; }
@@ -1490,4 +1646,18 @@ internal static class ClusterDeleteWording
             $"Delete ingress \"{name}\" in {@namespace}? The service and its pods keep running — what"
             + " goes is the route in from outside, so the hosts it routes stop reaching them as soon as"
             + " the controller drops the rule.");
+
+    /// <summary>
+    /// The largest blast radius in the app, and the one that looks smallest on screen: the row says a
+    /// name and an age, and the delete takes everything that was ever put in it (KON-464). So the
+    /// message is about the contents rather than the object — the same thing <c>kubectl</c> means by
+    /// "all resources in the namespace", said before the click instead of after.
+    /// </summary>
+    public static (string Title, string Message) Namespace(string name) =>
+        ("Delete namespace",
+            $"Delete namespace \"{name}\"? Everything in it goes with it — its workloads, pods,"
+            + " services, ingresses, config maps, secrets and volume claims are all deleted, and the"
+            + " data in those claims with them. Kontena keeps no copy, and nothing recreates any of it."
+            + " The namespace stays in Terminating until the cluster has finished removing its"
+            + " contents.");
 }

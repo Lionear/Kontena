@@ -1,3 +1,4 @@
+using System.Text;
 using Kontena.Sdk.Tooling;
 
 namespace Kontena.Core.Tests;
@@ -14,6 +15,11 @@ public sealed class ToolRunnerTests
 {
     private static readonly ExternalTool Dotnet = new("dotnet", "dotnet", ["--version"], []);
     private static readonly ExternalTool Absent = new("kontena-nope", "kontena-nope-xyz", ["--version"], []);
+
+    /// <summary>The one thing on every machine that will copy a file's bytes to stdout verbatim.</summary>
+    private static readonly ExternalTool Shell = OperatingSystem.IsWindows()
+        ? new ExternalTool("cmd", "cmd.exe", ["/c", "ver"], [])
+        : new ExternalTool("sh", "sh", ["--version"], []);
 
     private readonly ToolRunner _runner = new();
 
@@ -114,5 +120,33 @@ public sealed class ToolRunnerTests
         var result = await _runner.RunAsync(invocation);
 
         Assert.True(result.Ok);
+    }
+
+    [Fact]
+    public async Task Output_a_tool_wrote_as_utf8_is_read_back_as_utf8()
+    {
+        // kind and minikube spend their UTF-8 on emoji, and on Windows every one of them came back as
+        // mojibake (KON-469): with no encoding named, .NET decodes a redirected stream with the OS
+        // console codepage, which is UTF-8 on Linux and macOS and is not there. `type` and `cat` hand
+        // the file's bytes to the pipe untouched, so this asserts nothing but how ToolRunner reads them.
+        const string written = "Ensuring node image (kindest/node:v1.37.0) \U0001F5BC \u2713 \U0001F4E6";
+        var file = Path.Combine(Path.GetTempPath(), $"kontena-kon469-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(file, written, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        try
+        {
+            string[] arguments = OperatingSystem.IsWindows()
+                ? ["/c", "type", file]
+                : ["-c", "cat \"$0\"", file];
+
+            var result = await _runner.RunAsync(new ToolInvocation(Shell, arguments));
+
+            Assert.True(result.Ok);
+            Assert.Equal(written, result.StandardOutput.Trim());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
     }
 }

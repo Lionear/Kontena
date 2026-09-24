@@ -288,6 +288,15 @@ public sealed record SettingsContext
 /// </summary>
 public partial class SettingsViewModel : ViewModelBase
 {
+    /// <summary>
+    /// Close Settings again (KON-437). Set by the shell, which owns the overlay — the same way this
+    /// page hands its confirmations back rather than building them itself.
+    /// </summary>
+    public Action? RequestClose { get; set; }
+
+    [RelayCommand]
+    private void Close() => RequestClose?.Invoke();
+
     private readonly SettingsStore _store;
     private readonly List<EngineListItem> _backends;
     private KontenaSettings _settings;

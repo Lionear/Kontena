@@ -50,6 +50,11 @@ public sealed class ManifestStudioPlugin : IUiPlugin
         Description = "Write, validate and apply Kubernetes manifests from a folder or Git repository.",
         MinSdkVersion = "0.4.0",
         ContributesUi = true,
+
+        // What the host puts on Settings › Tools for us (KON-438). kustomize and kubectl are not here:
+        // the studio drives them too, but they are KnownTools — the core app needs them itself and
+        // already lists them, and a second row for one binary is two answers to one question.
+        Tools = [GitTool.Definition],
     };
 
     public IEnumerable<PluginPage> GetPages() =>
@@ -67,8 +72,13 @@ public sealed class ManifestStudioPlugin : IUiPlugin
             SchemasFromCluster = host.Cluster is not null,
 
             // Only when there is nothing open: the list lives on the empty state, and a workspace in
-            // hand means it is not on screen to read.
+            // hand means it is not on screen to read. Cloning is on the same card, so it follows.
             Recent = _workspace is null ? _recent.Read() : [],
+
+            // ponytail: one per editor page rather than one per session, so a clone still running while
+            // you navigate away finishes on disk but is not opened. Hold it in a field here if that
+            // turns out to matter — but then only one view may be subscribed to it at a time.
+            Clone = _workspace is null ? new CloneViewModel(new GitCli()) : null,
         };
 
         if (_workspace is not null)

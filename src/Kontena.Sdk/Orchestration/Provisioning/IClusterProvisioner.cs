@@ -69,6 +69,19 @@ public interface IClusterProvisioner
     IAsyncEnumerable<ToolLine> CreateAsync(LocalClusterSpec spec, CancellationToken ct = default);
 
     /// <summary>
+    /// What to apply to the finished cluster before it is handed over, in order — the CNI a kind cluster
+    /// was told not to install itself (KON-465), an add-on chosen at create time after that. Empty by
+    /// default, because a provisioner normally leaves a cluster that needs nothing.
+    /// <para>
+    /// Not async, and not the YAML: this only says <i>what</i>, and the create flow — which has an HTTP
+    /// client, a Helm renderer and a cluster engine — does the fetching and the applying. That keeps an
+    /// adapter that shells out to one binary from growing all three, and it means the same step serves
+    /// every provisioner rather than one of them.
+    /// </para>
+    /// </summary>
+    IReadOnlyList<ClusterManifest> PostCreateManifests(LocalClusterSpec spec) => [];
+
+    /// <summary>
     /// Delete a cluster and its kubeconfig context. Destructive — everything in it goes with it — so
     /// the caller confirms first (KON-126).
     /// </summary>

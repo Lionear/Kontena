@@ -111,7 +111,7 @@ public sealed class NavigationHistoryTests
 
         shell.ShowAboutCommand.Execute(null);
         shell.ShowActivityCommand.Execute(null);
-        shell.ShowSettingsCommand.Execute(null);
+        shell.ShowAboutCommand.Execute(null);
 
         shell.GoBackCommand.Execute(null);
         Assert.True(shell.IsActivitySelected);
@@ -141,9 +141,9 @@ public sealed class NavigationHistoryTests
         // "Back" alone makes you find out by pressing it.
         var shell = Shell();
 
-        shell.ShowSettingsCommand.Execute(null);
+        shell.ShowActivityCommand.Execute(null);
         shell.ShowAboutCommand.Execute(null);
 
-        Assert.Equal("Back to Settings", shell.BackTooltip);
+        Assert.Equal("Back to Activity", shell.BackTooltip);
     }
 }

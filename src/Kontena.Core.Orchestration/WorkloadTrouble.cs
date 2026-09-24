@@ -85,11 +85,10 @@ public static class WorkloadTrouble
         if (pod.Phase == PodPhase.Failed)
             return "Pod failed";
 
-        // No restart timestamps reach us, so "keeps restarting" can only be read off the count: a pod
-        // that has restarted this often is not one that had a bad afternoon once.
-        // ponytail: fixed threshold, swap for a rate once the SDK carries the last restart time.
-        if (pod.Restarts >= RestartsThatLookLikeALoop)
-            return $"Restarted {pod.Restarts} times";
+        // A restart count is history, and history is not trouble (KON-442). A pod that restarted
+        // eight times and is now 2/2 Ready is a pod that is fine; calling that trouble washed the row
+        // red and put a warning triangle on something running normally. What the count deserves is
+        // RestartedOften below, which the RESTARTS column carries — not this list.
 
         // Only once it is Running. A pod still pulling or working through its init containers has
         // no ready containers either, and calling that trouble would mark every pod that starts.
@@ -100,8 +99,25 @@ public static class WorkloadTrouble
         return null;
     }
 
-    /// <summary>Restart count at which a pod stops looking unlucky and starts looking stuck.</summary>
-    private const int RestartsThatLookLikeALoop = 5;
+    /// <summary>
+    /// Whether this pod has restarted often enough to be worth a second look, even though nothing is
+    /// wrong with it right now (KON-442). Not trouble — <see cref="DescribePod"/> deliberately does
+    /// not mention it — but not the same as a pod that restarted once either.
+    /// </summary>
+    public static bool RestartedOften(Pod pod) => pod.Restarts >= RestartsWorthNoticing;
+
+    /// <summary>
+    /// Restart count at which a pod stops looking unlucky. One number, because two numbers both
+    /// meaning "a lot of restarts" is how they come to disagree.
+    /// <para>
+    /// No restart timestamps reach us, so this can only be read off the total: "8 restarts" and
+    /// "8 restarts in the last hour" arrive here as the same fact. The kubelet does say when the last
+    /// one was — <c>lastState.terminated.finishedAt</c>, one field away from what K8sMap already maps
+    /// — and "last restarted 4 minutes ago" would beat any threshold.
+    /// </para>
+    /// ponytail: fixed threshold, swap for a rate once the SDK carries the last restart time.
+    /// </summary>
+    private const int RestartsWorthNoticing = 5;
 
     private static string Humanise(string reason) => reason switch
     {

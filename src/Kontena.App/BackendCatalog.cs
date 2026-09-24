@@ -114,7 +114,12 @@ public static class BackendCatalog
         Func<string, bool>? showsCluster = null,
         Func<string, bool>? adapterEnabled = null)
     {
-        bool Enabled(string adapter) => adapterEnabled is null || adapterEnabled(adapter);
+        // Two questions, and the platform's is not the user's to answer (KON-468). Settings › Extensions
+        // now lists an adapter this machine cannot run, so "switched on" no longer implies "could work
+        // here" — and a stored DisabledAdapters list from another machine, or anything that force-enabled
+        // one, must not get a provider built for a runtime that does not exist on this OS.
+        bool Enabled(string adapter) =>
+            (adapterEnabled is null || adapterEnabled(adapter)) && AdapterCatalog.RunsOnThisOs(adapter);
 
         var providers = new List<IBackendProvider>();
 
@@ -125,9 +130,10 @@ public static class BackendCatalog
             providers.Add(new PodmanEngineProvider());
 
         // Apple's native runtime (KON-31). Unlike the two above it is not offered unasked on every
-        // machine: its `IsInstalled` is false off macOS and false without the binary, so it appears
-        // where it can exist and nowhere else. Listing it always, the way Docker and Podman are
-        // listed, would put a permanently unreachable row in every Windows and Linux switcher.
+        // machine: `Enabled` refuses it off macOS 26 on the manifest's word, and its own `IsInstalled`
+        // is false again without the binary — so it appears where it can exist and nowhere else.
+        // Listing it always, the way Docker and Podman are listed, would put a permanently unreachable
+        // row in every Windows and Linux switcher.
         if (Enabled(AppleAdapterModule.BackendId))
             providers.Add(new AppleEngineProvider());
 

@@ -156,6 +156,9 @@ public partial class MainWindowViewModel
             return;
         }
 
+        // The layer being closed, before the guarded set below overwrites it.
+        var closing = Detail;
+
         var previous = _detailStack[^1];
         _detailStack.RemoveAt(_detailStack.Count - 1);
 
@@ -163,6 +166,15 @@ public partial class MainWindowViewModel
         _detailTarget = previous.Target;
 
         SetDetail(previous.Detail);
+
+        // SetDetail exists for a hand-over, and this is not one: nothing else holds the layer that was
+        // just closed, so nobody else is going to dispose it (KON-449). Left to the guard, every
+        // Deployment → pod → Back cycle left a pod detail behind with its watch still reading the
+        // cluster's whole event stream and its port-forward subscription still rooting it from the
+        // shell — the very leak the empty-stack branch above avoids by assigning Detail directly.
+        if (!ReferenceEquals(closing, previous.Detail))
+            (closing as IDisposable)?.Dispose();
+
         NotifyHistoryChanged();
     }
 

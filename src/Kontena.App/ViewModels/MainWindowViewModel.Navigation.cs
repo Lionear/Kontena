@@ -232,6 +232,7 @@ public partial class MainWindowViewModel
         NavGroups.Add(Group("System",
             new NavItem("events", "Events", "IconActivity"),
             new NavItem("resources", "Resources", "IconBox"),
+            new NavItem("find", "Find", "IconSearch"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
 
@@ -295,11 +296,16 @@ public partial class MainWindowViewModel
             // called "New rule" would be a page you can be on without having asked for it (KON-210).
             "alert-rule" => new RuleEditorViewModel(_cluster, ApplyAuthoredRule),
             "nodes" => new ClusterNodesViewModel(_cluster, ShowDrainNode, ShowNodeDetail) { RequestConfirm = ShowConfirm },
-            "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail),
+            // RequestConfirm because deleting one is the widest delete in the app, and the confirm is
+            // the only thing between a click and everything that was in it (KON-464).
+            "namespaces" => new ClusterNamespacesViewModel(_cluster, ShowNamespaceDetail)
+                { RequestConfirm = ShowConfirm, RequestCreateNamespace = ShowCreateNamespaceDialog },
             // RequestConfirm because the page owns its own delete, and its confirm is the only thing
             // between a click and a workload that is gone (KON-332).
             _ when WorkloadNavGroups.KindOf(key) is { } kind =>
-                new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail, kind)
+                new ClusterWorkloadsViewModel(
+                    _cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail,
+                    kind, Restarts)
                 { RequestConfirm = ShowConfirm },
             // The dashboard only where there is something to summarise. With one kind the sidebar has
             // no submenu either, and a dashboard of a single card is a page that says less than the
@@ -310,12 +316,14 @@ public partial class MainWindowViewModel
                     onOpenKind: kind => NavigateCluster(WorkloadNavGroups.KeyFor(kind)),
                     onOpenWorkload: ShowWorkloadDetail,
                     onOpenPods: () => NavigateCluster("pods")),
-            "workloads" => new ClusterWorkloadsViewModel(_cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail)
+            "workloads" => new ClusterWorkloadsViewModel(
+                _cluster, ActiveNamespace, ShowScaleDialog, ConfirmRestartWorkload, ShowWorkloadDetail,
+                restarts: Restarts)
                 { RequestConfirm = ShowConfirm },
             "pods" => new ClusterPodsViewModel(_cluster, ActiveNamespace, ShowPodDetail, ConfirmDeletePod),
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail)
                 { RequestConfirm = ShowConfirm },
-            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace, ShowIngressDetail) { RequestConfirm = ShowConfirm },
             // The three storage pages point at each other: a claim to its volume and its class, a
             // volume back to its claim (KON-254). Routing by search term rather than by a filter the
             // page owns keeps one way of saying "show me this one".
@@ -327,7 +335,10 @@ public partial class MainWindowViewModel
                 _cluster,
                 onOpenClaim: name => OpenStorage("pvcs", name),
                 onOpenClass: name => OpenStorage("storageclasses", name)),
-            "storageclasses" => new ClusterStorageClassesViewModel(_cluster),
+            "storageclasses" => new ClusterStorageClassesViewModel(
+                _cluster,
+                onOpenVolumes: name => OpenStorage("volumes", name),
+                onOpenDetail: ShowStorageClassDetail),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
             "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace)
@@ -345,7 +356,18 @@ public partial class MainWindowViewModel
             "events" => new ClusterEventsViewModel(_cluster, ActiveNamespace, OpenEventObjectAsync),
             // Any kind the cluster serves, custom ones included (KON-75). RequestConfirm
             // because deleting from here is as destructive as anywhere else.
-            "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace) { RequestConfirm = ShowConfirm },
+            "find" => new ClusterFindViewModel(_cluster, ActiveNamespace)
+            {
+                RequestOpen = target => _ = OpenEventObjectAsync(target),
+            },
+            "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace)
+            {
+                RequestConfirm = ShowConfirm,
+
+                // The same path the events page uses to open what a row points at (KON-455): one
+                // reference in, the right detail page out, and no second way to open a workload.
+                RequestOpen = target => _ = OpenEventObjectAsync(target),
+            },
             // A shell on this machine, already on this cluster (KON-171). Falls back to the
             // overview when the active backend is not a kubeconfig context, so the page can never
             // open onto a cluster it cannot name.
@@ -947,20 +969,22 @@ public partial class MainWindowViewModel
         CurrentPage = Containers;
         SearchText = Containers.SearchText;
     }
+    /// <summary>
+    /// Open Settings over the app (KON-437). Nothing about where the user is standing changes: it is
+    /// not a history step, it does not close the drawer and it does not clear the search — all three
+    /// are still there when Settings closes again, which is the point of it being a dialog.
+    /// </summary>
     [RelayCommand]
     private void ShowSettings()
     {
-        CloseDetail();
-        CloseDialog();
         if (SettingsPage is null)
             return;
 
-        Arrived("Settings", ShowSettings);
-        CurrentPage = SettingsPage;
-        SearchText = string.Empty;
-        foreach (var item in NavItems)
-            item.IsSelected = false;
+        IsSettingsOpen = true;
     }
+
+    [RelayCommand]
+    private void CloseSettings() => IsSettingsOpen = false;
     [RelayCommand]
     private void ShowAbout()
     {

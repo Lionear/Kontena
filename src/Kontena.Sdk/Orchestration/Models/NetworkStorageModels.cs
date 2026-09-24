@@ -34,10 +34,27 @@ public sealed record Service
         new Dictionary<string, string>();
 
     public TimeSpan Age { get; init; }
+
+    /// <summary>
+    /// The service's cluster-internal DNS name, or empty if the backend has no such concept. Left to
+    /// the adapter to fill in — the naming scheme (e.g. Kubernetes' <c>svc.cluster.local</c>) is
+    /// backend-specific and doesn't belong in this orchestrator-neutral model.
+    /// </summary>
+    public string ClusterDnsName { get; init; } = string.Empty;
 }
 
 /// <summary>One host/path routing rule of an Ingress.</summary>
 public readonly record struct IngressRule(string Host, string Path, string ServiceName, int ServicePort);
+
+/// <summary>Where an Ingress sends traffic that matches no rule, when it names one.</summary>
+public readonly record struct IngressBackend(string ServiceName, int ServicePort);
+
+/// <summary>
+/// One TLS block: the certificate, and which hosts it is presented for. Kept together rather than as
+/// two flat lists because "which certificate covers app.example.com" is the question, and an ingress
+/// with three hosts across two secrets cannot answer it from a bag of names (KON-453).
+/// </summary>
+public readonly record struct IngressTls(string SecretName, IReadOnlyList<string> Hosts);
 
 /// <summary>A neutral Ingress view.</summary>
 public sealed record Ingress
@@ -50,11 +67,18 @@ public sealed record Ingress
 
     public IReadOnlyList<IngressRule> Rules { get; init; } = [];
 
+    /// <summary>Where traffic goes that matches no rule; null when the ingress names no default.</summary>
+    public IngressBackend? DefaultBackend { get; init; }
+
     /// <summary>Load-balancer addresses the ingress is reachable at.</summary>
     public IReadOnlyList<string> Addresses { get; init; } = [];
 
-    /// <summary>Hosts covered by TLS.</summary>
-    public IReadOnlyList<string> TlsHosts { get; init; } = [];
+    /// <summary>The TLS blocks, certificate and covered hosts together.</summary>
+    public IReadOnlyList<IngressTls> Tls { get; init; } = [];
+
+    /// <summary>Hosts covered by TLS, across every certificate. Derived from <see cref="Tls"/> so
+    /// the two can never disagree.</summary>
+    public IReadOnlyList<string> TlsHosts => [.. Tls.SelectMany(t => t.Hosts)];
 
     public TimeSpan Age { get; init; }
 }
