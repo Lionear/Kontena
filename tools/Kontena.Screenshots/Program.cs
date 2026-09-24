@@ -55,6 +55,7 @@ namespace Kontena.Screenshots;
 //         storageclass-volumes (KON-445 — a storage class's own PROVISIONS/RECLAIM/EXPAND/AGE columns
 //         plus its VOLUMES count, then the click-through to the Volumes page filtered to that class,
 //         reached through the row's own OpenVolumes command),
+//         access-control (KON-474 — who may do what, one grant opened to its role's rules),
 //         workload-restarting (KON-448 — what Restart leaves behind: the toast that answers the
 //         click, driven through the row's own Restart and the confirm's own Confirm),
 //         alerts (KON-393 — the Alerts page, with the notice that says how it keeps up),
@@ -830,6 +831,17 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterStorageClassesViewModel classes)
                     classes.Items.FirstOrDefault(c => c.Name == "standard-rwo")?.OpenVolumesCommand.Execute(null);
+                Settle(rounds: 30);
+                break;
+
+            // KON-474: the access page, with one grant opened so the role's rules are in frame.
+            case "access-control":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("access");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterAccessViewModel access)
+                    access.Items.FirstOrDefault(r => r.Subject == "web")?.ToggleCommand.Execute(null);
                 Settle(rounds: 30);
                 break;
 
