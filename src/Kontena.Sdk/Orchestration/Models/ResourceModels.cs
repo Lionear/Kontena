@@ -31,6 +31,7 @@ public readonly record struct GroupVersionKind(string Group, string Version, str
     public static GroupVersionKind PersistentVolumeClaim => new(string.Empty, "v1", "PersistentVolumeClaim");
     public static GroupVersionKind PersistentVolume => new(string.Empty, "v1", "PersistentVolume");
     public static GroupVersionKind Ingress => new("networking.k8s.io", "v1", "Ingress");
+    public static GroupVersionKind NetworkPolicy => new("networking.k8s.io", "v1", "NetworkPolicy");
     public static GroupVersionKind StorageClass => new("storage.k8s.io", "v1", "StorageClass");
     public static GroupVersionKind Deployment => new("apps", "v1", "Deployment");
     public static GroupVersionKind StatefulSet => new("apps", "v1", "StatefulSet");

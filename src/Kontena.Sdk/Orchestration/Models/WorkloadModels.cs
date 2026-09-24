@@ -108,10 +108,6 @@ public sealed record HorizontalPodAutoscaler
     public TimeSpan Age { get; init; }
 }
 
-/// <summary>One <c>matchExpressions</c> entry of a label selector.</summary>
-/// <param name="Operator">"In", "NotIn", "Exists" or "DoesNotExist".</param>
-public readonly record struct LabelRequirement(string Key, string Operator, IReadOnlyList<string> Values);
-
 /// <summary>
 /// A PodDisruptionBudget (KON-477): how much voluntary disruption — a drain, an eviction — the pods it
 /// selects will tolerate, and how much of that is left right now.
@@ -128,12 +124,10 @@ public sealed record PodDisruptionBudget
     public string? MaxUnavailable { get; init; }
 
     /// <summary>
-    /// The selector's <c>matchLabels</c>. Null is a budget without a selector, which selects no pods;
-    /// empty (with no expressions) selects every pod in the namespace.
+    /// Null is a budget without a selector, which selects no pods (policy/v1); an empty one selects
+    /// every pod in the namespace.
     /// </summary>
-    public IReadOnlyDictionary<string, string>? Selector { get; init; }
-
-    public IReadOnlyList<LabelRequirement> SelectorExpressions { get; init; } = [];
+    public LabelSelector? Selector { get; init; }
 
     public int CurrentHealthy { get; init; }
     public int DesiredHealthy { get; init; }

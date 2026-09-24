@@ -50,9 +50,12 @@ namespace Kontena.Screenshots;
 //         settings-updates-unmanaged (the Updates category, managed and not),
 //         cluster / cluster-{nodes,namespaces,workloads,pods,services,storageclasses,volumes} (the
 //         cluster browsers),
+//         cluster-networkpolicies, networkpolicy-detail and networkpolicy-pods (KON-476 — the list,
+//         then one policy as a page on its rules and on who it applies to),
 //         storageclass-volumes (KON-445 — a storage class's own PROVISIONS/RECLAIM/EXPAND/AGE columns
 //         plus its VOLUMES count, then the click-through to the Volumes page filtered to that class,
 //         reached through the row's own OpenVolumes command),
+//         access-control (KON-474 — who may do what, one grant opened to its role's rules),
 //         workload-restarting (KON-448 — what Restart leaves behind: the toast that answers the
 //         click, driven through the row's own Restart and the confirm's own Confirm),
 //         alerts (KON-393 — the Alerts page, with the notice that says how it keeps up),
@@ -761,6 +764,7 @@ internal static class Program
             case "cluster-services":
             case "cluster-storageclasses":
             case "cluster-volumes":
+            case "cluster-networkpolicies":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -796,6 +800,29 @@ internal static class Program
 
                 break;
 
+            // KON-476: a network policy as a page, on the seeded allow that has both directions, so
+            // the ingress and egress sentences are in frame together. --tab pods shows who it applies to.
+            case "networkpolicy-detail":
+            case "networkpolicy-pods":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("networkpolicies");
+                SettleUntil(() => vm.CurrentPage is ClusterNetworkPoliciesViewModel { HasItems: true }, maxRounds: 120);
+                if (vm.CurrentPage is ClusterNetworkPoliciesViewModel policies)
+                {
+                    policies.Items.FirstOrDefault(n => n.Name == "postgres-from-api")?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 20);
+                    if (scene == "networkpolicy-pods" && vm.CurrentPage is ClusterNetworkPolicyDetailViewModel policy)
+                    {
+                        policy.SelectTabCommand.Execute("pods");
+                        Settle(rounds: 20);
+                    }
+                }
+
+                break;
+
             // KON-445: a storage class routes forward to the volumes it provisioned, reached through
             // the row's own OpenVolumes command — same reasoning as cluster-node-drawer, so the shot
             // cannot show a route the button does not really take.
@@ -806,6 +833,17 @@ internal static class Program
                 Settle(rounds: 30);
                 if (vm.CurrentPage is Kontena.App.ViewModels.ClusterStorageClassesViewModel classes)
                     classes.Items.FirstOrDefault(c => c.Name == "standard-rwo")?.OpenVolumesCommand.Execute(null);
+                Settle(rounds: 30);
+                break;
+
+            // KON-474: the access page, with one grant opened so the role's rules are in frame.
+            case "access-control":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("access");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterAccessViewModel access)
+                    access.Items.FirstOrDefault(r => r.Subject == "web")?.ToggleCommand.Execute(null);
                 Settle(rounds: 30);
                 break;
 

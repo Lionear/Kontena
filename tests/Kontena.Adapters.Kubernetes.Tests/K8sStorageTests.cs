@@ -42,6 +42,21 @@ public class K8sStorageTests
         Assert.Equal(string.Empty, K8sMap.ToVolume(new V1PersistentVolume()).Claim);
     }
 
+    [Fact]
+    public void Access_modes_are_shortened_the_way_kubectl_does()
+    {
+        // The API spells them out; kubectl, the models and every list column use the short form
+        // (KON-475). One nobody has a short form for yet is passed through rather than dropped.
+        string[] modes = ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod", "Something"];
+
+        var v = K8sMap.ToVolume(new V1PersistentVolume { Spec = new V1PersistentVolumeSpec { AccessModes = modes } });
+        var p = K8sMap.ToPvc(new V1PersistentVolumeClaim { Spec = new V1PersistentVolumeClaimSpec { AccessModes = modes } });
+
+        string[] expected = ["RWO", "ROX", "RWX", "RWOP", "Something"];
+        Assert.Equal(expected, v.AccessModes);
+        Assert.Equal(expected, p.AccessModes);
+    }
+
     [Theory]
     [InlineData("hostPath")]
     [InlineData("local")]

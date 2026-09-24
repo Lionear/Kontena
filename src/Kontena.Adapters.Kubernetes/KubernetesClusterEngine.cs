@@ -578,6 +578,15 @@ public sealed class KubernetesClusterEngine
         return [.. (list.Items ?? []).Select(K8sMap.ToIngress)];
     }
 
+    public async ValueTask<IReadOnlyList<NetworkPolicy>> ListNetworkPoliciesAsync(string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.NetworkingV1.ListNetworkPolicyForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.NetworkingV1.ListNamespacedNetworkPolicyAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToNetworkPolicy)];
+    }
+
     public async ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(
         string? ns = null, CancellationToken ct = default)
     {
@@ -618,6 +627,34 @@ public sealed class KubernetesClusterEngine
             : await _client.PolicyV1.ListNamespacedPodDisruptionBudgetAsync(ns, cancellationToken: ct).ConfigureAwait(false);
 
         return [.. (list.Items ?? []).Select(K8sMap.ToDisruptionBudget)];
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default)
+    {
+        var rbac = _client.RbacAuthorizationV1;
+
+        // Four independent lists; the page waits for all of them anyway.
+        var roles = ns is null
+            ? rbac.ListRoleForAllNamespacesAsync(cancellationToken: ct)
+            : rbac.ListNamespacedRoleAsync(ns, cancellationToken: ct);
+        var bindings = ns is null
+            ? rbac.ListRoleBindingForAllNamespacesAsync(cancellationToken: ct)
+            : rbac.ListNamespacedRoleBindingAsync(ns, cancellationToken: ct);
+        var clusterRoles = rbac.ListClusterRoleAsync(cancellationToken: ct);
+        var clusterBindings = rbac.ListClusterRoleBindingAsync(cancellationToken: ct);
+
+        await Task.WhenAll(roles, bindings, clusterRoles, clusterBindings).ConfigureAwait(false);
+
+        return new AccessControl(
+            [
+                .. ((await clusterRoles.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessRole),
+                .. ((await roles.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessRole),
+            ],
+            [
+                .. ((await clusterBindings.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessBinding),
+                .. ((await bindings.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessBinding),
+            ]);
     }
 
     public async ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(
@@ -741,7 +778,7 @@ public sealed class KubernetesClusterEngine
     {
         "Pod", "Service", "Node", "Namespace",
         "Deployment", "StatefulSet", "DaemonSet",
-        "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
+        "Ingress", "NetworkPolicy", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
         "ConfigMap", "Secret", "Event",
         "Job", "CronJob",
     };
@@ -773,6 +810,9 @@ public sealed class KubernetesClusterEngine
         "Ingress" => Box(ns is null
             ? _client.NetworkingV1.WatchListIngressForAllNamespacesAsync(cancellationToken: ct)
             : _client.NetworkingV1.WatchListNamespacedIngressAsync(ns, cancellationToken: ct)),
+        "NetworkPolicy" => Box(ns is null
+            ? _client.NetworkingV1.WatchListNetworkPolicyForAllNamespacesAsync(cancellationToken: ct)
+            : _client.NetworkingV1.WatchListNamespacedNetworkPolicyAsync(ns, cancellationToken: ct)),
         "PersistentVolumeClaim" => Box(ns is null
             ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
             : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),

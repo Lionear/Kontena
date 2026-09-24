@@ -1120,3 +1120,160 @@ public sealed class IngressTlsRow
     public string Secret { get; }
     public string Hosts { get; }
 }
+
+/// <summary>
+/// NetworkPolicy detail (KON-476). A policy's meaning is spread over a pod selector, two policy types
+/// and nested peers, and the YAML makes you evaluate all of it in your head — including the parts that
+/// mean the opposite of what they look like, such as an empty ingress list being a deny-all. This page
+/// does that evaluation: which pods it applies to right now, and each rule as a sentence.
+/// </summary>
+public sealed partial class ClusterNetworkPolicyDetailViewModel : ClusterObjectDetailViewModel
+{
+    private NetworkPolicy _policy;
+
+    public ClusterNetworkPolicyDetailViewModel(
+        IClusterEngine cluster, NetworkPolicy policy, Action<Pod>? onOpenPod = null)
+        : base(
+            cluster, new ResourceRef(GroupVersionKind.NetworkPolicy, policy.Namespace, policy.Name),
+            onOpenPod)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+
+        _policy = policy;
+        Fill(policy);
+        _ = LoadPodsAsync();
+    }
+
+    public string AppliesToText => NetworkPolicyText.Selector(_policy.PodSelector, "all pods in this namespace");
+    public string IsolatesText => NetworkPolicyText.Isolates(_policy);
+    public string AgeText => Format.Duration(_policy.Age);
+
+    public ObservableCollection<NetworkPolicyRuleRow> IngressRules { get; } = [];
+    public ObservableCollection<NetworkPolicyRuleRow> EgressRules { get; } = [];
+
+    public bool HasIngressRules => IngressRules.Count > 0;
+    public bool HasEgressRules => EgressRules.Count > 0;
+
+    /// <summary>What to say instead of a table: not isolated, or isolated with nothing allowed.</summary>
+    public string? IngressNote => Note(_policy.AffectsIngress, _policy.Ingress.Count, "incoming");
+    public string? EgressNote => Note(_policy.AffectsEgress, _policy.Egress.Count, "outgoing");
+
+    private static string? Note(bool affects, int rules, string direction) =>
+        !affects ? $"This policy does not restrict {direction} traffic."
+        // The line the YAML hides best: an isolated direction with no rules is a deny-all.
+        : rules == 0 ? $"All {direction} traffic is denied — this direction is isolated and no rule allows anything."
+        : null;
+
+    private void Fill(NetworkPolicy n)
+    {
+        IngressRules.Clear();
+        foreach (var r in n.Ingress)
+            IngressRules.Add(new NetworkPolicyRuleRow(r));
+
+        EgressRules.Clear();
+        foreach (var r in n.Egress)
+            EgressRules.Add(new NetworkPolicyRuleRow(r));
+    }
+
+    /// <summary>Follow this policy (KON-450): a changed selector changes which pods it covers.</summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListNetworkPoliciesAsync(_policy.Namespace),
+            n => n.Name == _policy.Name);
+
+        if (fresh is null)
+            return;
+
+        _policy = fresh;
+        Fill(fresh);
+
+        OnPropertyChanged(nameof(AppliesToText));
+        OnPropertyChanged(nameof(IsolatesText));
+        OnPropertyChanged(nameof(AgeText));
+        OnPropertyChanged(nameof(HasIngressRules));
+        OnPropertyChanged(nameof(HasEgressRules));
+        OnPropertyChanged(nameof(IngressNote));
+        OnPropertyChanged(nameof(EgressNote));
+
+        await RefreshPodsAsync();
+    }
+
+    public override string PodsTabLabel => "Applies to";
+
+    protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) =>
+        PodMatching.SelectedBy(all, _policy);
+
+    protected override string EmptyPodsReason() =>
+        $"No pods in {Namespace} match {AppliesToText}, so this policy isolates nothing yet.";
+}
+
+/// <summary>One ingress or egress rule, as the peers it admits and the ports it opens.</summary>
+public sealed class NetworkPolicyRuleRow
+{
+    public NetworkPolicyRuleRow(NetworkPolicyRule r)
+    {
+        // No peers and no ports are both wildcards in Kubernetes, not empty sets.
+        Peers = r.Peers.Count == 0 ? "Anywhere" : string.Join("\n", r.Peers.Select(NetworkPolicyText.Peer));
+        Ports = r.Ports.Count == 0 ? "All ports" : string.Join("\n", r.Ports.Select(NetworkPolicyText.Port));
+    }
+
+    public string Peers { get; }
+    public string Ports { get; }
+}
+
+/// <summary>NetworkPolicy parts as text, shared by the list row and the detail page (KON-476).</summary>
+internal static class NetworkPolicyText
+{
+    /// <summary>A selector in Kubernetes' own <c>-l</c> syntax, or <paramref name="empty"/> for <c>{}</c>.</summary>
+    public static string Selector(LabelSelector s, string empty)
+    {
+        if (s.IsEmpty)
+            return empty;
+
+        var parts = s.MatchLabels.Select(kv => $"{kv.Key}={kv.Value}").Concat(s.MatchExpressions.Select(e => e.Operator switch
+        {
+            LabelSelectorOperator.In => $"{e.Key} in ({string.Join(", ", e.Values)})",
+            LabelSelectorOperator.NotIn => $"{e.Key} notin ({string.Join(", ", e.Values)})",
+            LabelSelectorOperator.Exists => e.Key,
+            _ => $"!{e.Key}",
+        }));
+
+        return string.Join(", ", parts);
+    }
+
+    public static string Isolates(NetworkPolicy n) => (n.AffectsIngress, n.AffectsEgress) switch
+    {
+        (true, true) => "Ingress, Egress",
+        (true, false) => "Ingress",
+        (false, true) => "Egress",
+        _ => "—",
+    };
+
+    public static string Peer(NetworkPolicyPeer p)
+    {
+        if (p.Cidr.Length > 0)
+            return p.Except.Count == 0 ? p.Cidr : $"{p.Cidr} except {string.Join(", ", p.Except)}";
+
+        var pods = p.PodSelector is { IsEmpty: false } ps ? $"pods matching {Selector(ps, "")}" : "all pods";
+
+        // No namespace selector keeps the peer in the policy's own namespace; an empty one opens it
+        // to every namespace. The two look alike in YAML and are nothing alike on the wire.
+        var where = p.NamespaceSelector switch
+        {
+            null => "in this namespace",
+            { IsEmpty: true } => "in all namespaces",
+            var ns => $"in namespaces matching {Selector(ns, "")}",
+        };
+
+        return $"{char.ToUpperInvariant(pods[0])}{pods[1..]} {where}";
+    }
+
+    public static string Port(NetworkPolicyPort p) =>
+        p.Port.Length == 0 ? $"{p.Protocol} (all ports)"
+        : p.EndPort is { } end ? $"{p.Protocol} {p.Port}–{end.ToString(CultureInfo.InvariantCulture)}"
+        : $"{p.Protocol} {p.Port}";
+}

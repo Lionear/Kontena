@@ -955,9 +955,84 @@ public class K8sMapTests
 
         Assert.Null(mapped.MinAvailable);
         Assert.Equal("25%", mapped.MaxUnavailable);
-        Assert.Equal("web", mapped.Selector!["app"]);
-        var requirement = Assert.Single(mapped.SelectorExpressions);
-        Assert.Equal(("tier", "In", "frontend"), (requirement.Key, requirement.Operator, Assert.Single(requirement.Values)));
+        Assert.Equal("web", mapped.Selector!.MatchLabels["app"]);
+        var requirement = Assert.Single(mapped.Selector.MatchExpressions);
+        Assert.Equal(("tier", LabelSelectorOperator.In, "frontend"), (requirement.Key, requirement.Operator, Assert.Single(requirement.Values)));
         Assert.Equal((3, 2, 3, 1), (mapped.CurrentHealthy, mapped.DesiredHealthy, mapped.ExpectedPods, mapped.DisruptionsAllowed));
+    }
+
+    [Fact]
+    public void A_network_policy_keeps_its_selectors_peers_and_ports()
+    {
+        // KON-476. A null peer selector and an empty one mean different things on the wire (own
+        // namespace vs every namespace), so the mapper must not collapse them.
+        var mapped = K8sMap.ToNetworkPolicy(new V1NetworkPolicy
+        {
+            Metadata = new V1ObjectMeta { Name = "db", NamespaceProperty = "app" },
+            Spec = new V1NetworkPolicySpec
+            {
+                PodSelector = new V1LabelSelector
+                {
+                    MatchLabels = new Dictionary<string, string> { ["app"] = "db" },
+                    MatchExpressions = [new V1LabelSelectorRequirement { Key = "tier", OperatorProperty = "NotIn", Values = ["frontend"] }],
+                },
+                PolicyTypes = ["Ingress", "Egress"],
+                Ingress =
+                [
+                    new V1NetworkPolicyIngressRule
+                    {
+                        FromProperty =
+                        [
+                            new V1NetworkPolicyPeer { PodSelector = new V1LabelSelector() },
+                            new V1NetworkPolicyPeer { NamespaceSelector = new V1LabelSelector() },
+                        ],
+                        Ports = [new V1NetworkPolicyPort { Protocol = "TCP", Port = (IntOrString)"5432" }],
+                    },
+                ],
+                Egress =
+                [
+                    new V1NetworkPolicyEgressRule
+                    {
+                        To = [new V1NetworkPolicyPeer { IpBlock = new V1IPBlock { Cidr = "10.0.0.0/8", Except = ["10.0.99.0/24"] } }],
+                        Ports = [new V1NetworkPolicyPort { Protocol = "TCP", Port = (IntOrString)"8000", EndPort = 8080 }],
+                    },
+                ],
+            },
+        });
+
+        Assert.Equal("db", mapped.PodSelector.MatchLabels["app"]);
+        Assert.Equal("tier", mapped.PodSelector.MatchExpressions[0].Key);
+        Assert.Equal(["frontend"], mapped.PodSelector.MatchExpressions[0].Values);
+        Assert.Equal(LabelSelectorOperator.NotIn, mapped.PodSelector.MatchExpressions[0].Operator);
+        Assert.True(mapped.AffectsIngress);
+        Assert.True(mapped.AffectsEgress);
+
+        var from = mapped.Ingress.Single().Peers;
+        Assert.NotNull(from[0].PodSelector);
+        Assert.Null(from[0].NamespaceSelector);
+        Assert.Null(from[1].PodSelector);
+        Assert.True(from[1].NamespaceSelector!.IsEmpty);
+        Assert.Equal(new NetworkPolicyPort("TCP", "5432", null), mapped.Ingress.Single().Ports.Single());
+
+        var to = mapped.Egress.Single();
+        Assert.Equal("10.0.0.0/8", to.Peers.Single().Cidr);
+        Assert.Equal(["10.0.99.0/24"], to.Peers.Single().Except);
+        Assert.Equal(new NetworkPolicyPort("TCP", "8000", 8080), to.Ports.Single());
+    }
+
+    [Fact]
+    public void A_network_policy_without_policy_types_gets_the_kubernetes_default()
+    {
+        // Ingress always; Egress only when it has egress rules.
+        var mapped = K8sMap.ToNetworkPolicy(new V1NetworkPolicy
+        {
+            Metadata = new V1ObjectMeta { Name = "deny", NamespaceProperty = "app" },
+            Spec = new V1NetworkPolicySpec { PodSelector = new V1LabelSelector() },
+        });
+
+        Assert.True(mapped.AffectsIngress);
+        Assert.False(mapped.AffectsEgress);
+        Assert.True(mapped.PodSelector.IsEmpty);
+        Assert.Empty(mapped.Ingress);
     }
 }

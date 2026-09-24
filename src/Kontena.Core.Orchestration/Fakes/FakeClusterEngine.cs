@@ -22,6 +22,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private readonly List<Pod> _pods;
     private readonly List<Service> _services;
     private readonly List<Ingress> _ingresses;
+    private readonly List<NetworkPolicy> _networkPolicies;
     private readonly List<PersistentVolumeClaim> _pvcs;
     private readonly List<ConfigMapSummary> _configMaps;
     private readonly List<SecretSummary> _secrets;
@@ -29,6 +30,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private readonly List<StorageClass> _storageClasses;
     private readonly List<HorizontalPodAutoscaler> _autoscalers;
     private readonly List<PodDisruptionBudget> _budgets;
+    private readonly List<AccessRole> _roles;
+    private readonly List<AccessBinding> _bindings;
     private readonly List<ClusterEvent> _events;
 
     /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
@@ -186,6 +189,37 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], Tls = [new IngressTls("web-tls", ["app.example.com"])], DefaultBackend = new IngressBackend("web", 80), Age = TimeSpan.FromHours(30) },
         ];
 
+        // A default-deny and one allow on top of it: the pair every real cluster with policies starts
+        // from, and the shape the viewer exists to make readable (KON-476).
+        _networkPolicies =
+        [
+            new NetworkPolicy { Name = "default-deny-ingress", Namespace = "app", AffectsIngress = true, Age = TimeSpan.FromDays(9) },
+            new NetworkPolicy
+            {
+                Name = "postgres-from-api", Namespace = "app",
+                PodSelector = new LabelSelector { MatchLabels = App("postgres") },
+                AffectsIngress = true, AffectsEgress = true,
+                Ingress =
+                [
+                    new NetworkPolicyRule
+                    {
+                        Peers = [new NetworkPolicyPeer { PodSelector = new LabelSelector { MatchExpressions = [new LabelSelectorRequirement("app", LabelSelectorOperator.In, ["api", "migrate"])] } }],
+                        Ports = [new NetworkPolicyPort("TCP", "5432", null)],
+                    },
+                ],
+                Egress =
+                [
+                    new NetworkPolicyRule
+                    {
+                        Peers = [new NetworkPolicyPeer { NamespaceSelector = new LabelSelector { MatchLabels = new Dictionary<string, string> { ["kubernetes.io/metadata.name"] = "kube-system" } } }],
+                        Ports = [new NetworkPolicyPort("UDP", "53", null)],
+                    },
+                    new NetworkPolicyRule { Peers = [new NetworkPolicyPeer { Cidr = "10.0.0.0/8", Except = ["10.0.99.0/24"] }] },
+                ],
+                Age = TimeSpan.FromDays(9),
+            },
+        ];
+
         _pvcs =
         [
             new PersistentVolumeClaim { Name = "postgres-data", Namespace = "app", Phase = PvcPhase.Bound, Volume = "pvc-8a1f", CapacityBytes = 20L * 1024 * 1024 * 1024, StorageClass = "standard-rwo", AccessModes = ["RWO"], Age = TimeSpan.FromDays(9) },
@@ -218,7 +252,24 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
         _budgets =
         [
-            new PodDisruptionBudget { Name = "postgres-pdb", Namespace = "app", MinAvailable = "1", Selector = App("postgres"), CurrentHealthy = 1, DesiredHealthy = 1, ExpectedPods = 1, DisruptionsAllowed = 0, Age = TimeSpan.FromDays(9) },
+            new PodDisruptionBudget { Name = "postgres-pdb", Namespace = "app", MinAvailable = "1", Selector = new LabelSelector { MatchLabels = App("postgres") }, CurrentHealthy = 1, DesiredHealthy = 1, ExpectedPods = 1, DisruptionsAllowed = 0, Age = TimeSpan.FromDays(9) },
+        ];
+
+        // RBAC (KON-474): a RoleBinding that points at a ClusterRole, one that points at a Role, a
+        // ClusterRoleBinding, and one whose role is gone — the four shapes the access page tells apart.
+        _roles =
+        [
+            new AccessRole { Name = "cluster-admin", Rules = [new AccessRule { Verbs = ["*"], ApiGroups = ["*"], Resources = ["*"] }, new AccessRule { Verbs = ["*"], NonResourceUrls = ["*"] }], Age = TimeSpan.FromDays(120) },
+            new AccessRole { Name = "view", Rules = [new AccessRule { Verbs = ["get", "list", "watch"], ApiGroups = ["", "apps"], Resources = ["pods", "services", "configmaps", "deployments"] }], Age = TimeSpan.FromDays(120) },
+            new AccessRole { Name = "config-reader", Namespace = "app", Rules = [new AccessRule { Verbs = ["get", "list"], ApiGroups = [""], Resources = ["configmaps"] }, new AccessRule { Verbs = ["get"], ApiGroups = [""], Resources = ["secrets"], ResourceNames = ["web-tls"] }], Age = TimeSpan.FromDays(9) },
+        ];
+
+        _bindings =
+        [
+            new AccessBinding { Name = "cluster-admin", RoleKind = "ClusterRole", RoleName = "cluster-admin", Subjects = [new AccessSubject("Group", "system:masters")], Age = TimeSpan.FromDays(120) },
+            new AccessBinding { Name = "ci-view", Namespace = "app", RoleKind = "ClusterRole", RoleName = "view", Subjects = [new AccessSubject("ServiceAccount", "ci", "app"), new AccessSubject("User", "jane@example.com")], Age = TimeSpan.FromDays(9) },
+            new AccessBinding { Name = "read-config", Namespace = "app", RoleKind = "Role", RoleName = "config-reader", Subjects = [new AccessSubject("ServiceAccount", "web", "app")], Age = TimeSpan.FromDays(9) },
+            new AccessBinding { Name = "legacy-reader", Namespace = "monitoring", RoleKind = "Role", RoleName = "old-reader", Subjects = [new AccessSubject("Group", "ops")], Age = TimeSpan.FromDays(200) },
         ];
 
         _configMaps =
@@ -456,6 +507,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             case "Ingress":
                 _ingresses.RemoveAll(i => i.Name == name && i.Namespace == ns);
                 break;
+            case "NetworkPolicy":
+                _networkPolicies.RemoveAll(n => n.Name == name && n.Namespace == ns);
+                break;
             case "PersistentVolumeClaim":
                 _pvcs.RemoveAll(p => p.Name == name && p.Namespace == ns);
                 break;
@@ -609,6 +663,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             "Node" => _nodes.Select(n => new ResourceRef(kind, null, n.Name)),
             "Namespace" => _namespaces.Select(n => new ResourceRef(kind, null, n.Name)),
             "Ingress" => _ingresses.Where(i => Match(ns, i.Namespace)).Select(i => new ResourceRef(kind, i.Namespace, i.Name)),
+            "NetworkPolicy" => _networkPolicies.Where(n => Match(ns, n.Namespace)).Select(n => new ResourceRef(kind, n.Namespace, n.Name)),
             "PersistentVolumeClaim" => _pvcs.Where(p => Match(ns, p.Namespace)).Select(p => new ResourceRef(kind, p.Namespace, p.Name)),
             "PersistentVolume" => _volumes.Select(v => new ResourceRef(kind, null, v.Name)),
             "StorageClass" => _storageClasses.Select(c => new ResourceRef(kind, null, c.Name)),
@@ -964,6 +1019,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     public ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Ingress>>(_ingresses.Where(i => Match(ns, i.Namespace)).ToList());
 
+    public ValueTask<IReadOnlyList<NetworkPolicy>> ListNetworkPoliciesAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<NetworkPolicy>>(_networkPolicies.Where(n => Match(ns, n.Namespace)).ToList());
+
     public ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<PersistentVolumeClaim>>(_pvcs.Where(p => Match(ns, p.Namespace)).ToList());
 
@@ -978,6 +1036,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     public ValueTask<IReadOnlyList<PodDisruptionBudget>> ListDisruptionBudgetsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<PodDisruptionBudget>>(_budgets.Where(b => Match(ns, b.Namespace)).ToList());
+
+    public ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(new AccessControl(
+            [.. _roles.Where(r => r.IsClusterRole || Match(ns, r.Namespace))],
+            [.. _bindings.Where(b => b.IsClusterBinding || Match(ns, b.Namespace))]));
 
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(
@@ -1215,6 +1278,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
             case "Ingress":
                 return _ingresses.Find(i => i.Name == name && i.Namespace == ns) is { } ing ? ToDoc(ing) : null;
+
+            case "NetworkPolicy":
+                return _networkPolicies.Find(n => n.Name == name && n.Namespace == ns) is { } np
+                    ? new ManifestDoc { ApiVersion = "networking.k8s.io/v1", Kind = "NetworkPolicy", Name = np.Name, Namespace = np.Namespace }
+                    : null;
 
             case "PersistentVolumeClaim":
                 return _pvcs.Find(p => p.Name == name && p.Namespace == ns) is { } pvc ? ToDoc(pvc) : null;

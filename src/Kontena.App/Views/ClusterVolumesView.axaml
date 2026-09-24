@@ -24,15 +24,16 @@
                     IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="1.5*,0.9*,0.7*,1.4*,1.1*,0.8*,1.2*,0.5*">
+                        <Grid ColumnDefinitions="1.5*,0.9*,0.7*,0.7*,1.4*,1.1*,0.8*,1.2*,0.5*">
                             <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="1" Text="STATUS" Key="STATUS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="2" Text="CAPACITY" Key="CAPACITY" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
-                            <controls:SortableHeader Grid.Column="3" Text="CLAIM" Key="CLAIM" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
-                            <controls:SortableHeader Grid.Column="4" Text="STORAGECLASS" Key="STORAGECLASS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
-                            <controls:SortableHeader Grid.Column="5" Text="RECLAIM" Key="RECLAIM" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
-                            <controls:SortableHeader Grid.Column="6" Text="DRIVER" Key="DRIVER" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
-                            <controls:SortableHeader Grid.Column="7" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <TextBlock Grid.Column="3" Text="ACCESS" Classes="colhead"/>
+                            <controls:SortableHeader Grid.Column="4" Text="CLAIM" Key="CLAIM" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="5" Text="STORAGECLASS" Key="STORAGECLASS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="6" Text="RECLAIM" Key="RECLAIM" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="7" Text="DRIVER" Key="DRIVER" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="8" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                         </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Items}">
@@ -40,7 +41,7 @@
                             <DataTemplate x:DataType="vm:PersistentVolumeRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
                                     <StackPanel>
-                                        <Grid ColumnDefinitions="1.5*,0.9*,0.7*,1.4*,1.1*,0.8*,1.2*,0.5*">
+                                        <Grid ColumnDefinitions="1.5*,0.9*,0.7*,0.7*,1.4*,1.1*,0.8*,1.2*,0.5*">
                                             <TextBlock Grid.Column="0" Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"
                                                        Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
@@ -48,24 +49,26 @@
                                                 <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                             <TextBlock Grid.Column="2" Text="{Binding Capacity}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding AccessModes}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
                                             <!-- The claim is the way back: you arrive at a volume from a claim far
                                                  more often than by its generated name (KON-254). -->
-                                            <Button Grid.Column="3" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                            <Button Grid.Column="4" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
                                                     Command="{Binding OpenClaimCommand}" IsVisible="{Binding CanOpenClaim}">
                                                 <TextBlock Text="{Binding Claim}" TextTrimming="CharacterEllipsis"/>
                                             </Button>
-                                            <TextBlock Grid.Column="3" Text="{Binding Claim}" IsVisible="{Binding !CanOpenClaim}"
+                                            <TextBlock Grid.Column="4" Text="{Binding Claim}" IsVisible="{Binding !CanOpenClaim}"
                                                        Foreground="{DynamicResource TextDim}" Margin="0,0,14,0" VerticalAlignment="Center"/>
-                                            <Button Grid.Column="4" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                            <Button Grid.Column="5" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
                                                     Command="{Binding OpenClassCommand}" IsVisible="{Binding CanOpenClass}">
                                                 <TextBlock Text="{Binding StorageClass}" TextTrimming="CharacterEllipsis"/>
                                             </Button>
-                                            <TextBlock Grid.Column="4" Text="{Binding StorageClass}" IsVisible="{Binding !CanOpenClass}"
+                                            <TextBlock Grid.Column="5" Text="{Binding StorageClass}" IsVisible="{Binding !CanOpenClass}"
                                                        Foreground="{DynamicResource TextDim}" Margin="0,0,14,0" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="5" Text="{Binding Reclaim}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="6" Text="{Binding Driver}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                            <TextBlock Grid.Column="6" Text="{Binding Reclaim}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="7" Text="{Binding Driver}" FontFamily="{StaticResource Mono}" FontSize="12"
                                                        Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="7" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="8" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
                                         </Grid>
                                         <!-- Released with Retain is the state that costs money quietly, so it is
                                              said on the row rather than left to be worked out. -->
