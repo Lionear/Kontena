@@ -145,6 +145,37 @@ public partial class MainWindowViewModel
             ReloadCurrentClusterPage();
         });
     }
+    /// <summary>One Helm release in full (KON-473).</summary>
+    private void ShowHelmReleaseDetail(HelmRelease release)
+    {
+        if (_cluster is null || ClusterHelmReleasesViewModel.HelmOf(_cluster) is not { } helm)
+            return;
+
+        ShowDetail(
+            new ClusterHelmReleaseDetailViewModel(helm, release, ConfirmUninstallRelease) { RequestConfirm = ShowConfirm },
+            $"release {release.Name}", release);
+    }
+
+    /// <summary>
+    /// Uninstall a release, from the list or its detail — always confirmed. Routed here for the reason
+    /// <see cref="ConfirmDeleteObject"/> gives: the step back to the detail has to go with it.
+    /// </summary>
+    private void ConfirmUninstallRelease(HelmRelease release)
+    {
+        if (_cluster is null || ClusterHelmReleasesViewModel.HelmOf(_cluster) is not { } helm)
+            return;
+
+        var (title, message) = HelmWording.Uninstall(release);
+        Confirm(title, message, "Uninstall", async () =>
+        {
+            if (await helm.UninstallAsync(release.Name, release.Namespace) is { } error)
+                throw new InvalidOperationException(error);
+
+            ForgetSteps(release);
+            ReloadCurrentClusterPage();
+        });
+    }
+
     /// <summary>
     /// The node-detail page (KON-197). Until this existed a node was a dead end: the card summarised
     /// its conditions to a chip and there was nowhere to read them in full, nor to see what was

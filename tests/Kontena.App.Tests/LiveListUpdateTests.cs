@@ -184,6 +184,8 @@ public sealed class LiveListUpdateTests
         { "volume claims", c => new ClusterPvcsViewModel(c, "app") },
         { "volumes", c => new ClusterVolumesViewModel(c) },
         { "storage classes", c => new ClusterStorageClassesViewModel(c) },
+        // Helm keeps every revision in a Secret, so that is what the page follows (KON-473).
+        { "helm releases", c => new ClusterHelmReleasesViewModel(c, "app") },
     };
 
     [Theory]

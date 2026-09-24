@@ -7,6 +7,7 @@ using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
+using Kontena.Sdk.Tooling;
 
 // Both sides name their watch enum WatchEventType and both namespaces are imported, so name each.
 using K8sWatch = k8s.WatchEventType;
@@ -28,7 +29,7 @@ namespace Kontena.Adapters.Kubernetes;
 /// </para>
 /// </summary>
 public sealed class KubernetesClusterEngine
-    : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IDisposable
+    : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IHelmAware, IDisposable
 {
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
@@ -43,6 +44,7 @@ public sealed class KubernetesClusterEngine
     private readonly PrometheusSource _history;
     private readonly AlertingDiscovery _alerting;
     private readonly ApiProxyHttp _proxy;
+    private readonly HelmCli _helm;
 
     private IAlertSource _alerts = NoAlertSource.Instance;
     private AlertingProbe _alertingProbe = AlertingProbe.Nothing;
@@ -68,6 +70,7 @@ public sealed class KubernetesClusterEngine
         _apply = new KubernetesApply(_client, _resources);
         _alerting = new AlertingDiscovery(_client, proxy, _resources);
         _proxy = proxy;
+        _helm = new HelmCli(new ToolRunner(), () => _context, _kubeconfigPath);
 
         // Metrics and alerting start off; PingAsync probes for sources and turns on what answers.
         _capabilities = BaseCapabilities with { Metrics = false };
@@ -99,6 +102,9 @@ public sealed class KubernetesClusterEngine
 
     /// <summary>Where the past comes from, when the cluster keeps one (KON-345).</summary>
     public IMetricsHistory History => _history;
+
+    /// <summary>The Helm releases in this cluster, managed through the helm CLI (KON-473).</summary>
+    public IHelmReleases Helm => _helm;
 
     /// <summary>What answers for alerts, or <see cref="NoAlertSource"/> until something does.</summary>
     public IAlertSource Alerts => _alerts;
@@ -203,6 +209,9 @@ public sealed class KubernetesClusterEngine
             Metrics = hasMetrics,
             Alerting = _alertingProbe.Alertmanager is not null,
             AlertRules = _alertingProbe.RuleCrd,
+
+            // The Releases page drives the helm CLI; without one it would only ever show an error.
+            Helm = ToolLocator.Locate(KnownTools.Helm.Executable, KnownTools.Helm.ExtraSearchPaths) is not null,
         };
     }
 

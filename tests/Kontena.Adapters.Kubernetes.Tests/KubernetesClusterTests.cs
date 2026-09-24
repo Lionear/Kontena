@@ -5,6 +5,7 @@ using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
+using Kontena.Sdk.Tooling;
 
 namespace Kontena.Adapters.Kubernetes.Tests;
 
@@ -132,8 +133,10 @@ public class KubernetesClusterEngineTests
         Assert.True(engine.Capabilities.Exec);
         Assert.True(engine.Capabilities.PortForward);
 
-        // Helm is the one thing left; the UI must be told so it hides that affordance.
-        Assert.False(engine.Capabilities.Helm);
+        // Helm drives the helm CLI (KON-473), so it is there exactly when helm is.
+        Assert.Equal(
+            ToolLocator.Locate(KnownTools.Helm.Executable, KnownTools.Helm.ExtraSearchPaths) is not null,
+            engine.Capabilities.Helm);
     }
 
     [SkippableFact]

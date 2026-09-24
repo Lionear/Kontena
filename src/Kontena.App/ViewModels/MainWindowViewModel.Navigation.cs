@@ -233,6 +233,8 @@ public partial class MainWindowViewModel
             new NavItem("events", "Events", "IconActivity"),
             new NavItem("resources", "Resources", "IconBox"),
             new NavItem("find", "Find", "IconSearch"),
+            // Always listed, like Alerts: without helm the page says so instead of disappearing (KON-473).
+            new NavItem("helm", "Helm releases", "IconPackage"),
             new NavItem("apply", "Apply manifest", "IconPlay"),
             new NavItem("terminal", "Terminal", "IconTerminal")));
 
@@ -339,6 +341,7 @@ public partial class MainWindowViewModel
                 _cluster,
                 onOpenVolumes: name => OpenStorage("volumes", name),
                 onOpenDetail: ShowStorageClassDetail),
+            "helm" => new ClusterHelmReleasesViewModel(_cluster, ActiveNamespace, ShowHelmReleaseDetail, ConfirmUninstallRelease),
             "portforwards" => new PortForwardsViewModel(_portForwards),
             // RequestConfirm because deleting one is as destructive here as anywhere else (KON-253).
             "configmaps" => new ClusterConfigMapsViewModel(_cluster, ActiveNamespace)

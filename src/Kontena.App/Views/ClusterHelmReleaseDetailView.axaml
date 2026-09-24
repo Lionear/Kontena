@@ -1,0 +1,176 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="760"
+             x:Class="Kontena.App.Views.ClusterHelmReleaseDetailView"
+             x:DataType="vm:ClusterHelmReleaseDetailViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16,24,0">
+            <StackPanel Spacing="14">
+                <!-- Title left, actions right — where Delete sits on the other details (KON-334). -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center">
+                            <Panel>
+                                <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Success}" IsVisible="{Binding IsHealthy}"/>
+                                <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Danger}" IsVisible="{Binding !IsHealthy}"/>
+                            </Panel>
+                        </Border>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="pill" Command="{Binding UninstallCommand}" IsVisible="{Binding CanUninstall}"
+                            VerticalAlignment="Center">Uninstall</Button>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Spacing="28">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="NAMESPACE" Classes="colhead"/>
+                        <TextBlock Text="{Binding Namespace}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="CHART" Classes="colhead"/>
+                        <TextBlock Text="{Binding Chart}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="APP VERSION" Classes="colhead"/>
+                        <TextBlock Text="{Binding AppVersion}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="REVISION" Classes="colhead"/>
+                        <TextBlock Text="{Binding Revision}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="UPDATED" Classes="colhead"/>
+                        <TextBlock Text="{Binding Updated}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <Button Classes="tab" Classes.on="{Binding IsValuesSelected}" Command="{Binding SelectTabCommand}" CommandParameter="values">
+                        <TextBlock Text="Values" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsManifestSelected}" Command="{Binding SelectTabCommand}" CommandParameter="manifest">
+                        <TextBlock Text="Manifest" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsHistorySelected}" Command="{Binding SelectTabCommand}" CommandParameter="history">
+                        <TextBlock Text="History" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsUpgradeSelected}" Command="{Binding SelectTabCommand}" CommandParameter="upgrade">
+                        <TextBlock Text="Upgrade" VerticalAlignment="Center"/>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="28,20" RowDefinitions="Auto,*">
+            <Border Grid.Row="0" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="0,0,0,14"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{StaticResource Radius}" Padding="16,12">
+                <SelectableTextBlock Text="{Binding Error}" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"/>
+            </Border>
+
+            <Panel Grid.Row="1">
+                <!-- Values: what the user supplied, or with the chart's defaults merged in. -->
+                <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsValuesSelected}">
+                    <CheckBox Grid.Row="0" IsChecked="{Binding ShowAllValues}" FontSize="12" Margin="0,0,0,10"
+                              Content="Include the chart's defaults — every value the templates saw"/>
+                    <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                            <SelectableTextBlock Text="{Binding ValuesText}" FontFamily="{StaticResource Mono}" FontSize="12" Margin="14,10" Foreground="{DynamicResource Text}"/>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <Border IsVisible="{Binding IsManifestSelected}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                        <SelectableTextBlock Text="{Binding ManifestText}" FontFamily="{StaticResource Mono}" FontSize="12" Margin="14,10" Foreground="{DynamicResource Text}"/>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- History, newest first. Roll back to any revision but the current one. -->
+                <ScrollViewer IsVisible="{Binding IsHistorySelected}">
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
+                        <StackPanel>
+                            <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                                <Grid ColumnDefinitions="0.4*,0.9*,1.3*,2.2*,0.6*,110">
+                                    <TextBlock Grid.Column="0" Text="REV" Classes="colhead"/>
+                                    <TextBlock Grid.Column="1" Text="STATUS" Classes="colhead"/>
+                                    <TextBlock Grid.Column="2" Text="CHART" Classes="colhead"/>
+                                    <TextBlock Grid.Column="3" Text="DESCRIPTION" Classes="colhead"/>
+                                    <TextBlock Grid.Column="4" Text="UPDATED" Classes="colhead"/>
+                                </Grid>
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding History}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:HelmRevisionRow">
+                                        <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                            <Grid ColumnDefinitions="0.4*,0.9*,1.3*,2.2*,0.6*,110">
+                                                <TextBlock Grid.Column="0" Text="{Binding Number}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                                <Panel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource Success}" IsVisible="{Binding IsHealthy}"/>
+                                                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource Danger}" IsVisible="{Binding !IsHealthy}"/>
+                                                </Panel>
+                                                <TextBlock Grid.Column="2" Text="{Binding Chart}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding Description}" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Description}" Margin="0,0,14,0"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding Updated}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                                <Button Grid.Column="5" Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                        Command="{Binding RollbackCommand}" IsVisible="{Binding CanRollback}">Roll back</Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+
+                <!-- Upgrade: edit, review the values diff, then upgrade — the dry-run-first order of
+                     Apply manifest (KON-86). Any edit after a review asks for a new one. -->
+                <ScrollViewer IsVisible="{Binding IsUpgradeSelected}">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,12,180">
+                            <StackPanel Grid.Column="0" Spacing="5">
+                                <TextBlock Classes="flabel" Text="Chart"/>
+                                <TextBox Classes="field mono" Text="{Binding UpgradeChart}"
+                                         PlaceholderText="repo/chart, a path, or oci://…"
+                                         ToolTip.Tip="Helm does not record where a release's chart came from, so name it here."/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="5">
+                                <TextBlock Classes="flabel" Text="Version"/>
+                                <TextBox Classes="field mono" Text="{Binding UpgradeVersion}" PlaceholderText="newest"/>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Spacing="5">
+                            <TextBlock Classes="flabel" Text="Values"/>
+                            <TextBox Classes="field mono" Text="{Binding UpgradeValues}" AcceptsReturn="True" MinHeight="160" MaxHeight="360"
+                                     PlaceholderText="No values — the chart's defaults apply"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Classes="ghost" Command="{Binding ReviewCommand}">Review changes</Button>
+                            <Button Classes="primary" Command="{Binding UpgradeCommand}">Upgrade</Button>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding ReviewNote}" IsVisible="{Binding ReviewNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                        <Border IsVisible="{Binding HasUpgradeDiff}" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="{StaticResource Radius}">
+                            <ItemsControl ItemsSource="{Binding UpgradeDiff}" Margin="14,10">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DiffLineRow">
+                                        <TextBlock Text="{Binding Text}" Foreground="{Binding Brush}" FontFamily="{StaticResource Mono}" FontSize="11.5" LineHeight="19"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Panel>
+        </Grid>
+    </Grid>
+</UserControl>
