@@ -574,7 +574,7 @@ internal static class K8sMap
         Volume = p.Spec?.VolumeName ?? string.Empty,
         CapacityBytes = Bytes(p.Status?.Capacity, "storage"),
         StorageClass = p.Spec?.StorageClassName ?? string.Empty,
-        AccessModes = [.. p.Spec?.AccessModes ?? []],
+        AccessModes = [.. (p.Spec?.AccessModes ?? []).Select(AccessMode)],
         Age = AgeOf(p.Metadata),
     };
 
@@ -590,7 +590,7 @@ internal static class K8sMap
             _ => VolumePhase.Pending,
         },
         CapacityBytes = Bytes(v.Spec?.Capacity, "storage"),
-        AccessModes = [.. v.Spec?.AccessModes ?? []],
+        AccessModes = [.. (v.Spec?.AccessModes ?? []).Select(AccessMode)],
         ReclaimPolicy = Reclaim(v.Spec?.PersistentVolumeReclaimPolicy),
         StorageClass = v.Spec?.StorageClassName ?? string.Empty,
 
@@ -653,6 +653,19 @@ internal static class K8sMap
         "Retain" => ReclaimPolicy.Retain,
         "Recycle" => ReclaimPolicy.Recycle,
         _ => ReclaimPolicy.Delete,
+    };
+
+    /// <summary>
+    /// kubectl's short form, which is what the models promise and what fits a list column (KON-475).
+    /// A mode without one is passed through as the API spells it.
+    /// </summary>
+    private static string AccessMode(string mode) => mode switch
+    {
+        "ReadWriteOnce" => "RWO",
+        "ReadOnlyMany" => "ROX",
+        "ReadWriteMany" => "RWX",
+        "ReadWriteOncePod" => "RWOP",
+        _ => mode,
     };
 
     public static ClusterEvent ToEvent(Corev1Event e) => new()
