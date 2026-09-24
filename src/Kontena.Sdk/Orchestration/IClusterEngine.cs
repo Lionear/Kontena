@@ -168,6 +168,14 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List NetworkPolicies (KON-476). Empty by default rather than abstract: an orchestrator with no
+    /// such concept should cost nothing, and "no policies" is the truthful answer for it.
+    /// </summary>
+    ValueTask<IReadOnlyList<NetworkPolicy>> ListNetworkPoliciesAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<NetworkPolicy>>([]);
+
     ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default);
 
     /// <summary>

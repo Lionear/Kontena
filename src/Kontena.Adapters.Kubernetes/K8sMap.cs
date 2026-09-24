@@ -561,6 +561,55 @@ internal static class K8sMap
         Age = AgeOf(i.Metadata),
     };
 
+    public static NetworkPolicy ToNetworkPolicy(V1NetworkPolicy n)
+    {
+        var spec = n.Spec;
+        var types = spec?.PolicyTypes ?? [];
+
+        return new NetworkPolicy
+        {
+            Name = n.Metadata?.Name ?? "?",
+            Namespace = n.Metadata?.NamespaceProperty ?? "default",
+            PodSelector = ToSelector(spec?.PodSelector) ?? new LabelSelector(),
+            // The apiserver fills policyTypes in on write, so an empty list only comes from an object
+            // that predates that. Its documented default: Ingress always, Egress when egress rules exist.
+            AffectsIngress = types.Count == 0 || types.Contains("Ingress"),
+            AffectsEgress = types.Count == 0 ? spec?.Egress is { Count: > 0 } : types.Contains("Egress"),
+            Ingress = [.. (spec?.Ingress ?? []).Select(r => ToPolicyRule(r.FromProperty, r.Ports))],
+            Egress = [.. (spec?.Egress ?? []).Select(r => ToPolicyRule(r.To, r.Ports))],
+            Age = AgeOf(n.Metadata),
+        };
+    }
+
+    private static NetworkPolicyRule ToPolicyRule(
+        IList<V1NetworkPolicyPeer>? peers, IList<V1NetworkPolicyPort>? ports) => new()
+    {
+        Peers =
+        [
+            .. (peers ?? []).Select(p => new NetworkPolicyPeer
+            {
+                PodSelector = ToSelector(p.PodSelector),
+                NamespaceSelector = ToSelector(p.NamespaceSelector),
+                Cidr = p.IpBlock?.Cidr ?? string.Empty,
+                Except = [.. p.IpBlock?.Except ?? []],
+            }),
+        ],
+        Ports = [.. (ports ?? []).Select(p => new NetworkPolicyPort(p.Protocol ?? "TCP", p.Port?.Value ?? string.Empty, p.EndPort))],
+    };
+
+    /// <summary>Null stays null: on a peer, "no pod selector" and "an empty one" mean different things.</summary>
+    private static LabelSelector? ToSelector(V1LabelSelector? s) => s is null ? null : new LabelSelector
+    {
+        MatchLabels = Labels(s.MatchLabels),
+        MatchExpressions =
+        [
+            .. (s.MatchExpressions ?? []).Select(e => new LabelSelectorRequirement(
+                e.Key,
+                Enum.TryParse<LabelSelectorOperator>(e.OperatorProperty, out var op) ? op : LabelSelectorOperator.In,
+                [.. e.Values ?? []])),
+        ],
+    };
+
     public static PersistentVolumeClaim ToPvc(V1PersistentVolumeClaim p) => new()
     {
         Name = p.Metadata?.Name ?? "?",

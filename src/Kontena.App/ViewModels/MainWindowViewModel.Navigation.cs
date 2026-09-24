@@ -221,6 +221,7 @@ public partial class MainWindowViewModel
         NavGroups.Add(Group("Network",
             new NavItem("services", "Services", "IconNetwork"),
             new NavItem("ingresses", "Ingresses", "IconGlobe"),
+            new NavItem("networkpolicies", "Network policies", "IconEye"),
             new NavItem("portforwards", "Port forwards", "IconPlug")));
         NavGroups.Add(Group("Storage",
             new NavItem("pvcs", "Volume claims", "IconDatabase"),
@@ -324,6 +325,7 @@ public partial class MainWindowViewModel
             "services" => new ClusterServicesViewModel(_cluster, ActiveNamespace, ShowServicePortForward, ShowServiceDetail)
                 { RequestConfirm = ShowConfirm },
             "ingresses" => new ClusterIngressesViewModel(_cluster, ActiveNamespace, ShowIngressDetail) { RequestConfirm = ShowConfirm },
+            "networkpolicies" => new ClusterNetworkPoliciesViewModel(_cluster, ActiveNamespace, ShowNetworkPolicyDetail),
             // The three storage pages point at each other: a claim to its volume and its class, a
             // volume back to its claim (KON-254). Routing by search term rather than by a filter the
             // page owns keeps one way of saying "show me this one".
