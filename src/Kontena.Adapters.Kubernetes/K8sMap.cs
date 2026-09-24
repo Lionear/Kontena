@@ -34,6 +34,7 @@ internal static class K8sMap
             InternalIp = n.Status?.Addresses?.FirstOrDefault(a => a.Type == "InternalIP")?.Address ?? string.Empty,
             Unschedulable = n.Spec?.Unschedulable ?? false,
             Conditions = [.. conditions.Select(ToCondition)],
+            Taints = [.. (n.Spec?.Taints ?? []).Select(ToTaint)],
             Capacity = ToCapacity(n.Status?.Allocatable) with { DiskBytes = diskCapacityBytes },
             Usage = usage,
             ScheduledPods = scheduledPods,
@@ -43,6 +44,9 @@ internal static class K8sMap
 
     private static NodeCondition ToCondition(V1NodeCondition c) =>
         new(c.Type, string.Equals(c.Status, "True", StringComparison.Ordinal), c.Reason ?? string.Empty, c.Message ?? string.Empty);
+
+    private static NodeTaint ToTaint(V1Taint t) =>
+        new(t.Key, t.Value ?? string.Empty, t.Effect);
 
     /// <summary>Roles live in labels — <c>node-role.kubernetes.io/&lt;role&gt;</c>.</summary>
     private static List<string> RolesOf(V1Node n)

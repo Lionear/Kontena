@@ -111,6 +111,39 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <!-- Every taint, the ones Kubernetes set itself included (KON-472): a cordoned
+                         node carries node.kubernetes.io/unschedulable:NoSchedule that nobody typed,
+                         and that is exactly the row you came here to read. No card when there are
+                         none — an empty table says less than its absence. -->
+                    <StackPanel Spacing="10" IsVisible="{Binding HasTaints}">
+                        <TextBlock Text="Taints" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                CornerRadius="{StaticResource Radius}" ClipToBounds="True">
+                            <StackPanel>
+                                <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                                    <Grid ColumnDefinitions="2.6*,1.2*,1.2*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="KEY" Classes="colhead"/>
+                                        <TextBlock Grid.Column="1" Text="VALUE" Classes="colhead"/>
+                                        <TextBlock Grid.Column="2" Text="EFFECT" Classes="colhead"/>
+                                    </Grid>
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding Taints}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:NodeTaintRow">
+                                            <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                                <Grid ColumnDefinitions="2.6*,1.2*,1.2*" ColumnSpacing="10">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Effect}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
                     <!-- Every condition, not only the failing ones: this is where you come to read
                          what the kubelet actually says, and a healthy MemoryPressure is sometimes
                          the fact you need stated. -->
