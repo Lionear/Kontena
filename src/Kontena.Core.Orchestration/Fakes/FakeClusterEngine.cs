@@ -27,6 +27,8 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private readonly List<SecretSummary> _secrets;
     private readonly List<PersistentVolume> _volumes;
     private readonly List<StorageClass> _storageClasses;
+    private readonly List<AccessRole> _roles;
+    private readonly List<AccessBinding> _bindings;
     private readonly List<ClusterEvent> _events;
 
     /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
@@ -205,6 +207,23 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             new StorageClass { Name = "standard-rwo", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, IsDefault = true, AllowsExpansion = true, Age = TimeSpan.FromDays(120) },
             new StorageClass { Name = "local-path", Provisioner = "rancher.io/local-path", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, AllowsExpansion = false, Age = TimeSpan.FromDays(120) },
             new StorageClass { Name = "retain-ssd", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Retain, BindingMode = VolumeBindingMode.Immediate, AllowsExpansion = true, Age = TimeSpan.FromDays(60) },
+        ];
+
+        // RBAC (KON-474): a RoleBinding that points at a ClusterRole, one that points at a Role, a
+        // ClusterRoleBinding, and one whose role is gone — the four shapes the access page tells apart.
+        _roles =
+        [
+            new AccessRole { Name = "cluster-admin", Rules = [new AccessRule { Verbs = ["*"], ApiGroups = ["*"], Resources = ["*"] }, new AccessRule { Verbs = ["*"], NonResourceUrls = ["*"] }], Age = TimeSpan.FromDays(120) },
+            new AccessRole { Name = "view", Rules = [new AccessRule { Verbs = ["get", "list", "watch"], ApiGroups = ["", "apps"], Resources = ["pods", "services", "configmaps", "deployments"] }], Age = TimeSpan.FromDays(120) },
+            new AccessRole { Name = "config-reader", Namespace = "app", Rules = [new AccessRule { Verbs = ["get", "list"], ApiGroups = [""], Resources = ["configmaps"] }, new AccessRule { Verbs = ["get"], ApiGroups = [""], Resources = ["secrets"], ResourceNames = ["web-tls"] }], Age = TimeSpan.FromDays(9) },
+        ];
+
+        _bindings =
+        [
+            new AccessBinding { Name = "cluster-admin", RoleKind = "ClusterRole", RoleName = "cluster-admin", Subjects = [new AccessSubject("Group", "system:masters")], Age = TimeSpan.FromDays(120) },
+            new AccessBinding { Name = "ci-view", Namespace = "app", RoleKind = "ClusterRole", RoleName = "view", Subjects = [new AccessSubject("ServiceAccount", "ci", "app"), new AccessSubject("User", "jane@example.com")], Age = TimeSpan.FromDays(9) },
+            new AccessBinding { Name = "read-config", Namespace = "app", RoleKind = "Role", RoleName = "config-reader", Subjects = [new AccessSubject("ServiceAccount", "web", "app")], Age = TimeSpan.FromDays(9) },
+            new AccessBinding { Name = "legacy-reader", Namespace = "monitoring", RoleKind = "Role", RoleName = "old-reader", Subjects = [new AccessSubject("Group", "ops")], Age = TimeSpan.FromDays(200) },
         ];
 
         _configMaps =
@@ -958,6 +977,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     public ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<StorageClass>>(_storageClasses);
+
+    public ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(new AccessControl(
+            [.. _roles.Where(r => r.IsClusterRole || Match(ns, r.Namespace))],
+            [.. _bindings.Where(b => b.IsClusterBinding || Match(ns, b.Namespace))]));
 
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(

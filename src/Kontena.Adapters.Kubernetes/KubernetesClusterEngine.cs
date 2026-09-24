@@ -600,6 +600,34 @@ public sealed class KubernetesClusterEngine
         return [.. (list.Items ?? []).Select(K8sMap.ToStorageClass)];
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default)
+    {
+        var rbac = _client.RbacAuthorizationV1;
+
+        // Four independent lists; the page waits for all of them anyway.
+        var roles = ns is null
+            ? rbac.ListRoleForAllNamespacesAsync(cancellationToken: ct)
+            : rbac.ListNamespacedRoleAsync(ns, cancellationToken: ct);
+        var bindings = ns is null
+            ? rbac.ListRoleBindingForAllNamespacesAsync(cancellationToken: ct)
+            : rbac.ListNamespacedRoleBindingAsync(ns, cancellationToken: ct);
+        var clusterRoles = rbac.ListClusterRoleAsync(cancellationToken: ct);
+        var clusterBindings = rbac.ListClusterRoleBindingAsync(cancellationToken: ct);
+
+        await Task.WhenAll(roles, bindings, clusterRoles, clusterBindings).ConfigureAwait(false);
+
+        return new AccessControl(
+            [
+                .. ((await clusterRoles.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessRole),
+                .. ((await roles.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessRole),
+            ],
+            [
+                .. ((await clusterBindings.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessBinding),
+                .. ((await bindings.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessBinding),
+            ]);
+    }
+
     public async ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(
         string? ns = null, CancellationToken ct = default)
     {

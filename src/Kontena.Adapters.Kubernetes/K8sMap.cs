@@ -681,6 +681,56 @@ internal static class K8sMap
         return new ResourceRef(gvk, o.NamespaceProperty, o.Name ?? "?");
     }
 
+    // ── RBAC (KON-474) ───────────────────────────────────────────────────────
+
+    public static AccessRole ToAccessRole(V1Role r) => new()
+    {
+        Name = r.Metadata?.Name ?? "?",
+        Namespace = r.Metadata?.NamespaceProperty ?? string.Empty,
+        Rules = [.. (r.Rules ?? []).Select(ToAccessRule)],
+        Age = AgeOf(r.Metadata),
+    };
+
+    public static AccessRole ToAccessRole(V1ClusterRole r) => new()
+    {
+        Name = r.Metadata?.Name ?? "?",
+        Rules = [.. (r.Rules ?? []).Select(ToAccessRule)],
+        Age = AgeOf(r.Metadata),
+    };
+
+    public static AccessBinding ToAccessBinding(V1RoleBinding b) => new()
+    {
+        Name = b.Metadata?.Name ?? "?",
+        Namespace = b.Metadata?.NamespaceProperty ?? string.Empty,
+        RoleKind = b.RoleRef?.Kind ?? "Role",
+        RoleName = b.RoleRef?.Name ?? "?",
+        Subjects = [.. (b.Subjects ?? []).Select(ToAccessSubject)],
+        Age = AgeOf(b.Metadata),
+    };
+
+    public static AccessBinding ToAccessBinding(V1ClusterRoleBinding b) => new()
+    {
+        Name = b.Metadata?.Name ?? "?",
+        RoleKind = b.RoleRef?.Kind ?? "ClusterRole",
+        RoleName = b.RoleRef?.Name ?? "?",
+        Subjects = [.. (b.Subjects ?? []).Select(ToAccessSubject)],
+        Age = AgeOf(b.Metadata),
+    };
+
+    private static AccessRule ToAccessRule(V1PolicyRule r) => new()
+    {
+        Verbs = [.. r.Verbs ?? []],
+        ApiGroups = [.. r.ApiGroups ?? []],
+        Resources = [.. r.Resources ?? []],
+        ResourceNames = [.. r.ResourceNames ?? []],
+        NonResourceUrls = [.. r.NonResourceURLs ?? []],
+    };
+
+    // A subject with no namespace is fine for a User or Group; for a ServiceAccount it means the
+    // manifest is wrong, and the API server rejects that, so nothing is guessed here.
+    private static AccessSubject ToAccessSubject(Rbacv1Subject s) =>
+        new(s.Kind ?? "?", s.Name ?? "?", string.IsNullOrEmpty(s.NamespaceProperty) ? null : s.NamespaceProperty);
+
     // ── Metrics ──────────────────────────────────────────────────────────────
 
     public static NodeUsage ToNodeUsage(NodeMetrics m) => new()

@@ -132,6 +132,18 @@ public interface IClusterEngine : IBackend
         ResourceRef resource, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ResourceUsage>>([]);
 
+    /// <summary>
+    /// The RBAC objects that decide who may do what (KON-474): Roles and RoleBindings in
+    /// <paramref name="ns"/> (every namespace when null), plus every ClusterRole and
+    /// ClusterRoleBinding — a ClusterRoleBinding grants in every namespace, and a RoleBinding may
+    /// point at a ClusterRole, so neither can be left out of a namespace's answer.
+    /// <para>
+    /// Empty by default, like <see cref="FindUsersAsync"/>: an engine without RBAC has nothing to say.
+    /// </para>
+    /// </summary>
+    ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(AccessControl.Empty);
+
     // ── Typed listers (over the grids) ───────────────────────────────────────
 
     ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default);
