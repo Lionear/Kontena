@@ -106,16 +106,15 @@ internal static class Program
     {
         var opts = Options.Parse(args);
 
-        // A throwaway config dir, so a capture never reads or writes the user's real profile. The
-        // settings the tool writes go there by path (see the store below) — these two variables only
-        // move whatever else resolves SpecialFolder.ApplicationData on Linux and Windows. They are a
-        // belt, not the isolation: on macOS that folder is ~/Library/Application Support and no
-        // environment variable reaches it, which is how a capture once erased the real settings
-        // (KON-419).
+        // A throwaway data dir, so a capture never reads or writes the user's real profile — the
+        // settings, but also the tool-version cache, plugins and whatever else falls back to
+        // ProductInfo.DataDirectory. Moved in-process, before any of those reads it.
+        // This used to be XDG_CONFIG_HOME/APPDATA pointed at a temp dir, which no environment
+        // variable does on macOS: every capture there wrote over the real settings.json (KON-419).
+        // ScreenshotSandboxTests renders a scene under a fake home to keep it that way.
         var sandbox = Path.Combine(Path.GetTempPath(), "kontena-shots-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(sandbox);
-        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", sandbox);
-        Environment.SetEnvironmentVariable("APPDATA", sandbox);
+        ProductInfo.RedirectDataDirectory(sandbox);
         // The app's ConnectPreferred honours this to boot straight into the demo engine — except
         // for the one scene whose whole subject is what happens when that does not work out.
         // onboarding-again starts life on the down card, so it needs the same "no shortcut" treatment.

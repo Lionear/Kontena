@@ -24,7 +24,7 @@ public static class ProductInfo
     /// runs where somebody remembered to set it.
     /// </para>
     /// </summary>
-    public static string DataDirectory { get; } = Path.Combine(
+    public static string DataDirectory { get; private set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Lionear",
 #if DEBUG
@@ -32,4 +32,16 @@ public static class ProductInfo
 #else
         Name);
 #endif
+
+    /// <summary>
+    /// Moves <see cref="DataDirectory"/> for the rest of this process. For the screenshot tool, which
+    /// drives the real app and so reaches every store that falls back to this directory (KON-419).
+    /// <para>
+    /// It used to point <c>XDG_CONFIG_HOME</c> and <c>APPDATA</c> at a temp dir instead, which works
+    /// on Linux only: on macOS the folder above is <c>~/Library/Application Support</c> and no
+    /// environment variable reaches it, so every capture wrote over the real settings.json. Call this
+    /// before anything reads the property — some readers keep what they read in a static field.
+    /// </para>
+    /// </summary>
+    internal static void RedirectDataDirectory(string directory) => DataDirectory = directory;
 }

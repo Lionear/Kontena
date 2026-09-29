@@ -28,6 +28,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kontena.App\Kontena.App.csproj" />
+    <!-- Built alongside so ScreenshotSandboxTests can run it as its own process (KON-419). -->
+    <ProjectReference Include="..\..\tools\Kontena.Screenshots\Kontena.Screenshots.csproj" />
   </ItemGroup>
 
 </Project>
