@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -15,6 +16,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        <controls:CopyButton Classes="pill" Text="{Binding Name}" ToolTip.Tip="Copy the name" VerticalAlignment="Center"/>
                         <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center">
                             <Panel>
                                 <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Success}" IsVisible="{Binding IsHealthy}"/>

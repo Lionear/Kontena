@@ -28,6 +28,7 @@
                         <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="19" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Text}" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
+                        <controls:CopyButton Classes="pill" Text="{Binding Name}" ToolTip.Tip="Copy the name" VerticalAlignment="Center"/>
                         <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="10,4" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
