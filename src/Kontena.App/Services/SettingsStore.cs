@@ -65,6 +65,9 @@ public sealed class SettingsStore
     /// <summary>Where <see cref="Load"/> puts a copy of a file it could not read.</summary>
     public string QuarantinePath => _path + ".corrupt";
 
+    /// <summary>Where <see cref="Save"/> keeps the file it replaced.</summary>
+    public string BackupPath => _path + ".bak";
+
     /// <summary>
     /// Why the last <see cref="Load"/> could not read the file, or <c>null</c> if it read fine (KON-432).
     /// Whoever asks can say so; nothing here does, because the load that matters happens before there is
@@ -177,7 +180,19 @@ public sealed class SettingsStore
                 stream.Flush(flushToDisk: true);
             }
 
-            File.Move(pending, _path, overwrite: true);
+            // The file being replaced is kept as .bak (KON-419). A screenshot capture once wrote its own
+            // settings over the real file, and with no copy anywhere every kubeconfig path, remote and
+            // registry in it was gone. One wrong write can still replace the file; it no longer takes the
+            // only copy with it. The rename stays the step that makes the new file visible.
+            if (File.Exists(_path))
+            {
+                File.Replace(pending, _path, BackupPath);
+                RestrictToOwner(BackupPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+            else
+            {
+                File.Move(pending, _path);
+            }
         }
         catch
         {

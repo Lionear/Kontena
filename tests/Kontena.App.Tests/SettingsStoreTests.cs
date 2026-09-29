@@ -17,7 +17,7 @@ public sealed class SettingsStoreTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var path in new[] { _path, _path + ".corrupt", _path + ".tmp" })
+        foreach (var path in new[] { _path, _path + ".corrupt", _path + ".tmp", _path + ".bak" })
             if (File.Exists(path))
                 File.Delete(path);
     }
@@ -47,9 +47,13 @@ public sealed class SettingsStoreTests : IDisposable
             _path,
             UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
 
-        Store().Save(new KontenaSettings());
+        var store = Store();
+        store.Save(new KontenaSettings());
 
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(_path));
+
+        // The old file lives on as the backup (KON-419), with the same hosts and paths in it.
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(store.BackupPath));
     }
 
     [SkippableFact, UnsupportedOSPlatform("windows")]
@@ -147,6 +151,18 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.False(File.Exists(_path + ".tmp"));
         Assert.Equal("docker", store.Load().PinnedBackend);
+    }
+
+    [Fact]
+    public void The_file_a_save_replaces_is_kept_beside_it()
+    {
+        // KON-419. A screenshot capture wrote its own settings over the real file, and with no copy
+        // anywhere every kubeconfig path, remote and registry in it was gone for good.
+        var store = Store();
+        store.Save(new KontenaSettings { KubeconfigPaths = ["/home/me/.kube/prod"] });
+        store.Save(new KontenaSettings { PinnedBackend = "docker" });
+
+        Assert.Equal(["/home/me/.kube/prod"], new SettingsStore(store.BackupPath).Load().KubeconfigPaths);
     }
 
     [Fact]
