@@ -28,4 +28,10 @@
     <PackageReference Include="Avalonia" Version="12.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- ProductInfo.RedirectDataDirectory: the screenshot tool must never touch the user's data
+         directory, and that is not something an adapter should be able to ask for (KON-419). -->
+    <InternalsVisibleTo Include="Kontena.Screenshots" />
+  </ItemGroup>
+
 </Project>
