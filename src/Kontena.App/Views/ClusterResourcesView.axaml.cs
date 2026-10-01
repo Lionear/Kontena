@@ -60,12 +60,15 @@ public partial class ClusterResourcesView : UserControl
 
     private void Rebuild()
     {
-        TableGrid.Children.Clear();
-        TableGrid.RowDefinitions.Clear();
-        TableGrid.ColumnDefinitions.Clear();
+        TableRows.Children.Clear();
 
-        if (_vm?.Table is not { Columns.Count: > 0 } table)
+        if (_vm?.Table is not { Columns.Count: > 0 } table || _vm.Rows.Count == 0)
+        {
+            TableBorder.IsVisible = false;
             return;
+        }
+
+        TableBorder.IsVisible = true;
 
         // Only what kubectl would print. The wide columns are still in the table; showing them all
         // makes every listing scroll sideways for information nobody asked for.
@@ -77,35 +80,90 @@ public partial class ClusterResourcesView : UserControl
         if (shown.Length == 0)
             shown = [.. table.Columns.Select((column, index) => (column, index))];
 
-        var columns = shown.Select(s => s.column).ToArray();
-        var indexes = shown.Select(s => s.index).ToArray();
-        var rows = _vm.Rows;
+        // The namespace beside the name, as on Pods: the server's Table leaves it out, because kubectl
+        // adds that column itself when it lists across namespaces.
+        var namespaced = _vm.Rows.Any(r => r.Reference.Namespace is { Length: > 0 });
 
-        foreach (var _ in columns)
-            TableGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        TableRows.Children.Add(HeaderRow(shown.Select(s => s.column.Name).ToArray(), namespaced));
 
-        // One more for the row actions.
-        TableGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        foreach (var row in _vm.Rows)
+            TableRows.Children.Add(Row(row, shown.Select(s => s.index).ToArray(), namespaced));
+    }
 
-        TableGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-        foreach (var _ in rows)
-            TableGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+    /// <summary>
+    /// Proportional columns, the way the typed lists size theirs: the name widest, the namespace next,
+    /// the rest even, and a fixed slot for two pills (KON-332's 140). Every row builds the same
+    /// definitions, so the columns line up without a shared-size scope.
+    /// </summary>
+    private static Grid Columns(int cells, bool namespaced)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition(1.8, GridUnitType.Star));
 
-        for (var c = 0; c < columns.Length; c++)
-            TableGrid.Children.Add(Header(columns[c].Name, c));
+        if (namespaced)
+            grid.ColumnDefinitions.Add(new ColumnDefinition(1.1, GridUnitType.Star));
 
-        for (var r = 0; r < rows.Count; r++)
+        for (var i = 1; i < cells; i++)
+            grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+
+        grid.ColumnDefinitions.Add(new ColumnDefinition(140, GridUnitType.Pixel));
+        return grid;
+    }
+
+    private Border HeaderRow(string[] names, bool namespaced)
+    {
+        var grid = Columns(names.Length, namespaced);
+        var column = 0;
+
+        grid.Children.Add(At(Header(names[0]), column++));
+
+        if (namespaced)
+            grid.Children.Add(At(new TextBlock { Text = "NAMESPACE", Classes = { "colhead" } }, column++));
+
+        foreach (var name in names.Skip(1))
+            grid.Children.Add(At(Header(name), column++));
+
+        return new Border
         {
-            for (var c = 0; c < columns.Length; c++)
-            {
-                var index = indexes[c];
-                var text = index >= 0 && index < rows[r].Cells.Count ? rows[r].Cells[index] : string.Empty;
+            Child = grid,
+            Padding = new Thickness(16, 10),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            [!Border.BackgroundProperty] = new DynamicResourceExtension("SurfaceRaised"),
+            [!Border.BorderBrushProperty] = new DynamicResourceExtension("Border"),
+        };
+    }
 
-                TableGrid.Children.Add(c == 0 ? NameCell(rows[r], text, r + 1) : Cell(text, c, r + 1, mono: false));
-            }
+    private Border Row(ResourceRow row, int[] indexes, bool namespaced)
+    {
+        var grid = Columns(indexes.Length, namespaced);
+        var column = 0;
 
-            TableGrid.Children.Add(Actions(rows[r], columns.Length, r + 1));
-        }
+        grid.Children.Add(At(NameCell(row, CellText(row, indexes[0])), column++));
+
+        if (namespaced)
+            grid.Children.Add(At(Cell(row.Reference.Namespace ?? string.Empty, "TextDim", mono: false), column++));
+
+        foreach (var index in indexes.Skip(1))
+            grid.Children.Add(At(Cell(CellText(row, index), "TextDim", mono: true), column++));
+
+        grid.Children.Add(At(Actions(row), column));
+
+        return new Border
+        {
+            Child = grid,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            [!Border.PaddingProperty] = new DynamicResourceExtension("RowPadding"),
+            [!Border.BorderBrushProperty] = new DynamicResourceExtension("BorderSoft"),
+        };
+    }
+
+    private static string CellText(ResourceRow row, int index) =>
+        index >= 0 && index < row.Cells.Count ? row.Cells[index] : string.Empty;
+
+    private static T At<T>(T control, int column) where T : Control
+    {
+        Grid.SetColumn(control, column);
+        return control;
     }
 
     /// <summary>
@@ -113,72 +171,62 @@ public partial class ClusterResourcesView : UserControl
     /// of column header that happens to look alike. Its state is set rather than bound because the
     /// whole grid is rebuilt whenever the sort changes.
     /// </summary>
-    private SortableHeader Header(string name, int column)
+    private SortableHeader Header(string name) => new()
     {
-        var header = new SortableHeader
-        {
-            Text = name.ToUpperInvariant(),
-            Key = name,
-            SortColumn = _vm?.SortColumn,
-            SortDescending = _vm?.SortDescending ?? false,
-            SortCommand = _vm?.SortByCommand,
-            Margin = new Thickness(0, 0, 22, 8),
-        };
+        Text = name.ToUpperInvariant(),
+        Key = name,
+        SortColumn = _vm?.SortColumn,
+        SortDescending = _vm?.SortDescending ?? false,
+        SortCommand = _vm?.SortByCommand,
+    };
 
-        Grid.SetColumn(header, column);
-        Grid.SetRow(header, 0);
-        return header;
-    }
-
-    private static TextBlock Cell(string text, int column, int row, bool mono)
+    private static TextBlock Cell(string text, string brush, bool mono)
     {
         var block = new TextBlock
         {
             Text = text,
             FontSize = 12.5,
-            Margin = new Thickness(0, 3, 22, 3),
+            Margin = new Thickness(0, 0, 10, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 420,
             VerticalAlignment = VerticalAlignment.Center,
-            [!TextBlock.ForegroundProperty] = new DynamicResourceExtension(mono ? "Text" : "TextDim"),
+            [!TextBlock.ForegroundProperty] = new DynamicResourceExtension(brush),
+            [ToolTip.TipProperty] = text,
         };
 
         if (mono)
             block.FontFamily = new FontFamily("JetBrains Mono, monospace");
 
-        Grid.SetColumn(block, column);
-        Grid.SetRow(block, row);
         return block;
     }
 
     /// <summary>
-    /// The first column opens the object's detail page (KON-483), the way the name does on every
-    /// other list in the app.
+    /// The name opens the object's detail page (KON-483), the way it does on every other list in the
+    /// app.
     /// </summary>
-    private Button NameCell(ResourceRow row, string text, int gridRow)
+    private Button NameCell(ResourceRow row, string text)
     {
-        var name = Cell(text, 0, gridRow, mono: true);
-        name.Margin = default;
-
         var button = new Button
         {
-            Content = name,
+            Content = new TextBlock { Text = text, FontWeight = FontWeight.Medium, TextTrimming = TextTrimming.CharacterEllipsis },
             Classes = { "link" },
             HorizontalAlignment = HorizontalAlignment.Left,
-            Margin = new Thickness(0, 3, 22, 3),
+            VerticalAlignment = VerticalAlignment.Center,
         };
         button.Click += (_, _) => _vm?.OpenDetail(row);
-
-        Grid.SetColumn(button, 0);
-        Grid.SetRow(button, gridRow);
         return button;
     }
 
-    private StackPanel Actions(ResourceRow row, int column, int gridRow)
+    private StackPanel Actions(ResourceRow row)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
-        var yaml = new Button { Content = "YAML", Classes = { "ghost" } };
+        var yaml = new Button { Content = "YAML", Classes = { "pill" } };
         yaml.Click += (_, _) => _vm?.OpenDetail(row, "yaml");
         panel.Children.Add(yaml);
 
@@ -186,13 +234,11 @@ public partial class ClusterResourcesView : UserControl
         // worse than no button (KON-117).
         if (_vm?.CanDeleteSelected == true)
         {
-            var delete = new Button { Content = "Delete", Classes = { "ghost" } };
+            var delete = new Button { Content = "Delete", Classes = { "pill" } };
             delete.Click += (_, _) => _vm?.ConfirmDelete(row);
             panel.Children.Add(delete);
         }
 
-        Grid.SetColumn(panel, column);
-        Grid.SetRow(panel, gridRow);
         return panel;
     }
 }

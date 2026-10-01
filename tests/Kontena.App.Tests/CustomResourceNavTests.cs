@@ -76,6 +76,11 @@ public sealed class CustomResourceNavTests
             await Task.Delay(10);
         Assert.Equal("Certificate", page.Selected?.Kind);
 
+        // The kind's own list, like Pods: titled by the kind, the group beside it, no picker.
+        Assert.True(page.IsSingleKind);
+        Assert.Equal("Certificate", page.Title);
+        Assert.Equal("cert-manager.io", page.Subtitle);
+
         // Its entry is selected, and its folder open so the selection is not hidden inside it.
         var section = shell.NavGroups.Single(g => g.Label == "Custom resources");
         Assert.True(section.Items[1].IsSelected);

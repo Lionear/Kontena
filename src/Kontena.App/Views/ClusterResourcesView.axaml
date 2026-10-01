@@ -24,13 +24,18 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Margin="28,24" RowDefinitions="Auto,*" ColumnDefinitions="260,*">
+    <Grid Margin="28,24" RowDefinitions="Auto,*" ColumnDefinitions="Auto,*">
 
-        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="{Binding Title}" FontSize="22" FontWeight="SemiBold"
-                   Foreground="{DynamicResource Text}" Margin="0,0,0,16"/>
+        <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="12" Margin="0,0,0,16">
+            <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding Subtitle, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       FontSize="12.5" FontFamily="{StaticResource Mono}" Foreground="{DynamicResource TextFaint}"
+                       VerticalAlignment="Bottom" Margin="0,0,0,5"/>
+        </StackPanel>
 
-        <!-- The kinds the cluster serves, asked for rather than assumed. -->
-        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource Surface}"
+        <!-- The kinds the cluster serves, asked for rather than assumed. Not on a single kind's page,
+             where the sidebar is the picker (KON-483). -->
+        <Border Grid.Row="1" Grid.Column="0" Width="260" IsVisible="{Binding !IsSingleKind}" Background="{DynamicResource Surface}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}"
                 Padding="10" Margin="0,0,16,0">
             <Grid RowDefinitions="Auto,*">
@@ -90,7 +95,7 @@
         <!-- The listing, with the columns the API server chose. -->
         <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto">
 
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10" IsVisible="{Binding !IsSingleKind}">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Selected.Kind}" FontSize="15" FontWeight="SemiBold"
                                Foreground="{DynamicResource Text}"/>
@@ -100,14 +105,16 @@
                 <Button Grid.Column="1" Classes="ghost" Command="{Binding RefreshCommand}">Refresh</Button>
             </Grid>
 
-            <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="4" ClipToBounds="True">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto">
-                    <!-- Built in code: the number of columns is the server's answer, not something a
-                         template can be written against. -->
-                    <Grid x:Name="TableGrid" Margin="8,6"/>
-                </ScrollViewer>
-            </Border>
+            <!-- The same table the Pods and Deployments pages draw — a raised header, a line per row,
+                 the name as a link, actions as pills (KON-483) — built in code because the number of
+                 columns is the server's answer, not something a template can be written against. -->
+            <ScrollViewer Grid.Row="1">
+                <Border x:Name="TableBorder" VerticalAlignment="Top" Background="{DynamicResource Surface}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource Radius}" ClipToBounds="True">
+                    <StackPanel x:Name="TableRows"/>
+                </Border>
+            </ScrollViewer>
 
             <StackPanel Grid.Row="1" IsVisible="{Binding IsLoading}" VerticalAlignment="Center"
                         HorizontalAlignment="Center">

@@ -776,6 +776,7 @@ internal static class Program
             case "cluster-volumes":
             case "cluster-webhooks":
             case "cluster-networkpolicies":
+            case "cluster-resources":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);

@@ -114,8 +114,17 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     /// <summary>The API group this page is limited to, or null for all of them.</summary>
     public string? Group { get; }
 
-    /// <summary>The page title: the group when the sidebar opened one, else the whole browser.</summary>
-    public string Title => Group ?? "Resources";
+    /// <summary>
+    /// One kind from its entry under Custom resources (KON-483): the page is that kind's list, drawn
+    /// like Pods or Deployments, with no picker beside it — the sidebar already is the picker.
+    /// </summary>
+    public bool IsSingleKind => Group is not null && _initialKind is not null;
+
+    /// <summary>The page title: the kind on its own page, the group, or the whole browser.</summary>
+    public string Title => IsSingleKind && _initialKind is { } kind ? kind : Group ?? "Resources";
+
+    /// <summary>Beside the title of a single kind's page: the group, so two kinds called Cluster stay apart.</summary>
+    public string? Subtitle => IsSingleKind ? Group : null;
 
     /// <summary>
     /// Whether the listing follows the cluster (KON-483). It used to be one read when a kind was
@@ -266,9 +275,11 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
         IEnumerable<ResourceRow> matching = table.Rows;
 
         // Across every cell, not only the name: the columns a custom resource declares are the ones
-        // worth searching, and this page cannot know which of them is the interesting one.
+        // worth searching, and this page cannot know which of them is the interesting one. The
+        // namespace too: it is a column on screen, even though the server's Table does not carry it.
         if (term.Length > 0)
-            matching = matching.Where(row => row.Cells.Any(cell => Contains(cell, term)));
+            matching = matching.Where(row =>
+                row.Cells.Any(cell => Contains(cell, term)) || Contains(row.Reference.Namespace, term));
 
         if (IndexOf(SortColumn) is var index && index >= 0)
         {

@@ -311,6 +311,7 @@ public sealed class ClusterResourcesViewModelTests
             await Task.Delay(10);
 
         Assert.Equal("cert-manager.io", page.Title);
+        Assert.False(page.IsSingleKind);
         Assert.Equal(["Certificate"], page.Groups.SelectMany(g => g.Items).Select(i => i.Kind));
         Assert.Equal("Certificate", page.Selected?.Kind);
     }
