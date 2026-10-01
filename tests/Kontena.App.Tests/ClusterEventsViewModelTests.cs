@@ -27,12 +27,14 @@ public sealed class ClusterEventsViewModelTests
     private static ClusterEventRow Row(ClusterEvent e, Func<ResourceRef, Task>? open = null) => new(e, open);
 
     [Fact]
-    public void An_object_with_a_detail_page_is_a_link_and_everything_else_is_not()
+    public void An_object_with_a_kind_is_a_link_and_one_without_is_not()
     {
         // A link that opens nothing is worse than plain text: it promises a route that is not there.
         Assert.True(Row(Event("BackOff"), _ => Task.CompletedTask).CanOpen);
         Assert.True(Row(Event("ScalingReplicaSet", kind: "Deployment"), _ => Task.CompletedTask).CanOpen);
-        Assert.False(Row(Event("FailedMount", kind: "PersistentVolumeClaim"), _ => Task.CompletedTask).CanOpen);
+        // Any kind since the generic detail page (KON-483) — a custom resource's events included.
+        Assert.True(Row(Event("FailedMount", kind: "PersistentVolumeClaim"), _ => Task.CompletedTask).CanOpen);
+        Assert.False(Row(Event("Unknown", kind: ""), _ => Task.CompletedTask).CanOpen);
 
         // And no handler means no link at all, whatever the kind.
         Assert.False(Row(Event("BackOff")).CanOpen);

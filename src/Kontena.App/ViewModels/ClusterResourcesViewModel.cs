@@ -62,43 +62,6 @@ public sealed partial class ApiResourceItem(ApiResource resource) : ObservableOb
     private bool _isSelected;
 }
 
-/// <summary>
-/// One workload that uses, or was created by, the object being shown (KON-455). Clicking it opens
-/// that workload — the same click-through a related pod row has had since the workload detail
-/// existed, pointed the other way.
-/// </summary>
-public sealed partial class ResourceUsageRow(ResourceUsage usage, Action<ResourceRef>? onOpen)
-{
-    public ResourceRef Reference { get; } = usage.User;
-
-    public string Name => Reference.Name;
-
-    /// <summary>Kind and namespace, the way every other row in the app spells a location.</summary>
-    public string Where => Reference.Namespace is { Length: > 0 } ns
-        ? $"{Reference.Kind.Kind} · namespace {ns}"
-        : Reference.Kind.Kind;
-
-    /// <summary>
-    /// Which way the relation runs. "Created by this" and "uses this" end up in the same list and are
-    /// not the same fact — an operator's own StatefulSet is not a consumer of the object.
-    /// </summary>
-    public string Direction => usage.OwnedByTarget ? "created by this" : "uses this";
-
-    /// <summary>
-    /// How the link was found, in the cluster's own words. On the row because a relation whose basis
-    /// is not on screen cannot be checked — and these bases are not equally strong.
-    /// </summary>
-    public string Evidence => usage.Evidence switch
-    {
-        UsageEvidence.OwnerReference => "ownerReference",
-        UsageEvidence.Mount => $"mounts {usage.Detail}",
-        _ => $"annotation {usage.Detail}",
-    };
-
-    [RelayCommand]
-    private void Open() => onOpen?.Invoke(Reference);
-}
-
 /// <summary>A heading in the picker and the kinds under it.</summary>
 public sealed class ApiResourceGroup(string title, IReadOnlyList<ApiResourceItem> items)
 {
@@ -117,7 +80,7 @@ public sealed class ApiResourceGroup(string title, IReadOnlyList<ApiResourceItem
 /// Secrets, RBAC, and every CRD an operator installed — without a screen each.
 /// </para>
 /// </summary>
-public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
+public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage, IDisposable
 {
     /// <summary>
     /// Rows are laid out one grid cell at a time, so a namespace with thousands of objects would build
@@ -129,13 +92,35 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
     private IReadOnlyList<ApiResource> _resources = [];
+    private CancellationTokenSource? _watch;
 
-    public ClusterResourcesViewModel(IClusterEngine cluster, string? @namespace)
+    /// <param name="group">
+    /// Show only this API group's kinds — what a sidebar entry under Custom resources opens (KON-483).
+    /// Null for every kind the cluster serves.
+    /// </param>
+    public ClusterResourcesViewModel(IClusterEngine cluster, string? @namespace, string? group = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        Group = group;
         _ = LoadKindsAsync();
     }
+
+    /// <summary>The API group this page is limited to, or null for all of them.</summary>
+    public string? Group { get; }
+
+    /// <summary>The page title: the group when the sidebar opened one, else the whole browser.</summary>
+    public string Title => Group ?? "Resources";
+
+    /// <summary>
+    /// Whether the listing follows the cluster (KON-483). It used to be one read when a kind was
+    /// picked, so a status column — the reason most custom resources declare columns at all — showed
+    /// what was true at that moment for as long as the page stayed open.
+    /// </summary>
+    [ObservableProperty] private bool _isLive;
+
+    /// <summary>Why it is not live, when it is not; never silent, for the reason IClusterLivePage gives.</summary>
+    [ObservableProperty] private string? _liveNotice;
 
     /// <summary>The kinds on offer, grouped by where they came from.</summary>
     public ObservableCollection<ApiResourceGroup> Groups { get; } = [];
@@ -154,23 +139,12 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _isLoadingKinds = true;
     [ObservableProperty] private string? _error;
-    [ObservableProperty] private string? _manifest;
-    [ObservableProperty] private string? _manifestTitle;
 
     /// <summary>
-    /// The workloads that use the object whose manifest is open, or that it created (KON-455).
+    /// Opens an object's detail page on a tab (KON-483) — the shell's, which knows which page a kind
+    /// has. A row used to open a side panel with the YAML and nothing else.
     /// </summary>
-    [ObservableProperty] private IReadOnlyList<ResourceUsageRow> _users = [];
-
-    /// <summary>
-    /// True once the question has been asked and answered, however it came out. Without it the empty
-    /// state cannot tell "nothing uses this" from "not looked yet", and would flash the first while
-    /// the second is still true.
-    /// </summary>
-    [ObservableProperty] private bool _usersChecked;
-
-    /// <summary>Opens the workload behind a relation row. The shell owns navigation.</summary>
-    public Action<ResourceRef>? RequestOpen { get; set; }
+    public Action<ResourceRef, string>? RequestOpenDetail { get; set; }
 
     /// <summary>The column currently sorted by, or null for the order the server sent.</summary>
     [ObservableProperty] private string? _sortColumn;
@@ -213,15 +187,6 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     public Task LoadAsync() => LoadTableAsync();
 
     public bool CanDeleteSelected => Selected?.Resource.CanDelete == true;
-
-    public bool HasUsers => Users.Count > 0;
-
-    /// <summary>
-    /// Nothing found, and what was looked at. Every comparable tool leaves this silent, which cannot
-    /// be told apart from "nothing uses this" — and a generic ladder will sometimes miss a custom
-    /// resource that links itself in a way none of the three rungs covers.
-    /// </summary>
-    public bool NothingUsesIt => UsersChecked && Users.Count == 0;
 
     /// <summary>True once there is nothing to show and nothing on its way.</summary>
     public bool IsEmpty => !IsLoading && Table is { Rows.Count: 0 } && Error is null;
@@ -329,9 +294,44 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
         foreach (var item in Groups.SelectMany(g => g.Items))
             item.IsSelected = ReferenceEquals(item, value);
 
-        Manifest = null;
         OnPropertyChanged(nameof(CanDeleteSelected));
         _ = LoadTableAsync();
+        Follow();
+    }
+
+    /// <summary>
+    /// Follow the picked kind, the way every other list page follows its own (KON-250) — through the
+    /// generic watch for a kind with no typed one (KON-483).
+    /// </summary>
+    private void Follow()
+    {
+        StopFollowing();
+
+        if (Selected is not { } item)
+            return;
+
+        _watch = ClusterWatch.Follow(
+            _cluster, [item.Resource.Kind], item.Resource.Namespaced ? _namespace : null,
+            () => LoadTableAsync(quiet: true),
+            (live, notice) =>
+            {
+                IsLive = live;
+                LiveNotice = notice;
+            });
+    }
+
+    private void StopFollowing()
+    {
+        _watch?.Cancel();
+        _watch?.Dispose();
+        _watch = null;
+    }
+
+    /// <summary>Stop following; cluster pages are rebuilt on every visit.</summary>
+    public void Dispose()
+    {
+        StopFollowing();
+        GC.SuppressFinalize(this);
     }
 
     private async Task LoadKindsAsync()
@@ -365,6 +365,7 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
 
         var matching = _resources
             .Where(r => r.CanList)
+            .Where(r => Group is null || r.Kind.Group == Group)
             .Where(r => ApiResourceItem.Matches(r, term))
             .OrderBy(r => r.Kind.Kind, StringComparer.OrdinalIgnoreCase)
             .Select(r => new ApiResourceItem(r))
@@ -385,24 +386,37 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
         }
     }
 
-    private async Task LoadTableAsync()
+    /// <param name="quiet">
+    /// A re-read the watch asked for: no spinner over rows that are about to come back the same, and a
+    /// failed one leaves them standing rather than emptying the grid.
+    /// </param>
+    private async Task LoadTableAsync(bool quiet = false)
     {
         if (Selected is not { } item)
             return;
 
-        IsLoading = true;
-        Error = null;
+        IsLoading = !quiet;
+        if (!quiet)
+            Error = null;
 
         try
         {
-            Table = await _cluster.ListTableAsync(
+            var table = await _cluster.ListTableAsync(
                 item.Resource.Kind,
                 item.Resource.Namespaced ? _namespace : null);
+
+            // The kind may have been changed while this was out; its answer is not this listing's.
+            if (ReferenceEquals(Selected, item))
+                Table = table;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!quiet)
         {
             Table = ResourceTable.Empty;
             Error = ex.Message;
+        }
+        catch (Exception)
+        {
+            // Quiet: the rows on screen stay, and the next event tries again.
         }
         finally
         {
@@ -417,69 +431,9 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     [RelayCommand]
     public Task Refresh() => LoadTableAsync();
 
-    /// <summary>Show one object's manifest, which is the same for every kind and needs no model.</summary>
-    public async Task ShowManifestAsync(ResourceRow row)
-    {
-        ManifestTitle = row.Reference.Name;
-        Manifest = "Loading…";
-        Users = [];
-        UsersChecked = false;
-        RaiseUsers();
-
-        _ = LoadUsersAsync(row.Reference);
-
-        try
-        {
-            Manifest = await _cluster.GetManifestAsync(row.Reference);
-        }
-        catch (Exception ex)
-        {
-            Manifest = "# " + ex.Message;
-        }
-    }
-
-    /// <summary>
-    /// Ask the cluster what uses this object. Separate from the manifest read and not awaited with it:
-    /// the manifest is one GET and this is several lists, and the YAML should not wait for them.
-    /// </summary>
-    private async Task LoadUsersAsync(ResourceRef reference)
-    {
-        IReadOnlyList<ResourceUsage> usages;
-
-        try
-        {
-            usages = await _cluster.FindUsersAsync(reference);
-        }
-        catch (Exception)
-        {
-            // An engine that cannot answer leaves the section closed rather than the page broken.
-            usages = [];
-        }
-
-        // The panel may have been closed, or moved to another object, while this was out.
-        if (!string.Equals(ManifestTitle, reference.Name, StringComparison.Ordinal))
-            return;
-
-        Users = [.. usages.Select(u => new ResourceUsageRow(u, RequestOpen))];
-        UsersChecked = true;
-        RaiseUsers();
-    }
-
-    private void RaiseUsers()
-    {
-        OnPropertyChanged(nameof(HasUsers));
-        OnPropertyChanged(nameof(NothingUsesIt));
-    }
-
-    /// <summary>Close the manifest panel.</summary>
-    [RelayCommand]
-    public void CloseManifest()
-    {
-        Manifest = null;
-        Users = [];
-        UsersChecked = false;
-        RaiseUsers();
-    }
+    /// <summary>Open one object's detail page, on the tab asked for (KON-483).</summary>
+    public void OpenDetail(ResourceRow row, string tab = "overview") =>
+        RequestOpenDetail?.Invoke(row.Reference, tab);
 
     /// <summary>
     /// Delete an object, through the shell's confirm like every other destructive action (KON-126).

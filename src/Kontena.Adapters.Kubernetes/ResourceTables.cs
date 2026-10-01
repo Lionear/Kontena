@@ -50,6 +50,142 @@ internal static class ResourceTables
     }
 
     /// <summary>
+    /// One object, as a one-row Table with the whole object riding along (KON-483). The row carries
+    /// the printer columns — the same cells the listing shows — and <c>includeObject=Object</c> brings
+    /// the metadata and status the detail page reads, so it is one round-trip rather than a Table plus
+    /// a GET. Null when the object is not there.
+    /// </summary>
+    public static async Task<ResourceObject?> GetAsync(
+        HttpClient http, Uri baseUri, ApiResourceInfo resource, ResourceRef reference, CancellationToken ct)
+    {
+        var uri = RequestUri(baseUri, resource, reference.Namespace, reference.Name);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(uri.AbsoluteUri + "?includeObject=Object"));
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(MediaTypeWithQualityHeaderValue.Parse(TableMediaType));
+
+        using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+
+        // Anything else that is not a success is a failed read, not an absent object, and the page has
+        // to be able to tell the two apart.
+        response.EnsureSuccessStatusCode();
+
+        await using var body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var json = await JsonDocument.ParseAsync(body, cancellationToken: ct).ConfigureAwait(false);
+
+        return ReadObject(json.RootElement, reference);
+    }
+
+    internal static ResourceObject? ReadObject(JsonElement table, ResourceRef reference)
+    {
+        if (!table.TryGetProperty("rows", out var rows) || rows.GetArrayLength() == 0)
+            return null;
+
+        var row = rows[0];
+        var names = Read(table, reference.Kind, reference.Namespace).Columns.Select(c => c.Name).ToArray();
+        var cells = row.TryGetProperty("cells", out var c) ? c.EnumerateArray().Select(Cell).ToArray() : [];
+
+        // The name is the page's title already; repeating it as the first field says nothing.
+        var columns = names
+            .Zip(cells, (name, value) => new ResourceField(name, value))
+            .Where(f => !f.Name.Equals("Name", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var obj = row.TryGetProperty("object", out var o) ? o : default;
+        var metadata = obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty("metadata", out var m) ? m : default;
+        var status = obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty("status", out var s) ? s : default;
+
+        return new ResourceObject
+        {
+            Reference = reference,
+            Created = Text(metadata, "creationTimestamp") is { Length: > 0 } created
+                      && DateTimeOffset.TryParse(created, System.Globalization.CultureInfo.InvariantCulture,
+                          System.Globalization.DateTimeStyles.AssumeUniversal, out var at)
+                ? at
+                : null,
+            Labels = Map(metadata, "labels"),
+            Annotations = Map(metadata, "annotations"),
+            Owners = Owners(metadata, reference.Namespace),
+            Columns = columns,
+            Status = status.ValueKind == JsonValueKind.Object
+                ? [.. status.EnumerateObject()
+                    .Where(p => p.Value.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array or JsonValueKind.Null))
+                    .Select(p => new ResourceField(p.Name, Cell(p.Value)))]
+                : [],
+            Conditions = Conditions(status),
+        };
+    }
+
+    private static string Text(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+
+    private static Dictionary<string, string> Map(JsonElement metadata, string property)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (metadata.ValueKind == JsonValueKind.Object
+            && metadata.TryGetProperty(property, out var values)
+            && values.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var pair in values.EnumerateObject())
+                map[pair.Name] = pair.Value.ValueKind == JsonValueKind.String ? pair.Value.GetString() ?? string.Empty : pair.Value.ToString();
+        }
+
+        return map;
+    }
+
+    private static ResourceRef[] Owners(JsonElement metadata, string? ns)
+    {
+        if (metadata.ValueKind != JsonValueKind.Object
+            || !metadata.TryGetProperty("ownerReferences", out var owners)
+            || owners.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return
+        [
+            .. owners.EnumerateArray()
+                .Where(o => Text(o, "kind").Length > 0 && Text(o, "name").Length > 0)
+                .Select(o => new ResourceRef(KindOf(Text(o, "apiVersion"), Text(o, "kind")), ns, Text(o, "name"))),
+        ];
+    }
+
+    /// <summary><c>postgresql.cnpg.io/v1</c> → that group and version; a bare <c>v1</c> is the core group.</summary>
+    internal static GroupVersionKind KindOf(string apiVersion, string kind) =>
+        apiVersion.Split('/') is [var group, var version]
+            ? new GroupVersionKind(group, version, kind)
+            : new GroupVersionKind(string.Empty, apiVersion, kind);
+
+    private static ResourceCondition[] Conditions(JsonElement status)
+    {
+        if (status.ValueKind != JsonValueKind.Object
+            || !status.TryGetProperty("conditions", out var conditions)
+            || conditions.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return
+        [
+            .. conditions.EnumerateArray()
+                .Where(c => Text(c, "type").Length > 0)
+                .Select(c => new ResourceCondition(
+                    Text(c, "type"),
+                    Text(c, "status"),
+                    Text(c, "reason"),
+                    Text(c, "message"),
+                    DateTimeOffset.TryParse(Text(c, "lastTransitionTime"), System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal, out var at)
+                        ? at
+                        : null)),
+        ];
+    }
+
+    /// <summary>
     /// Where to ask: <c>/api/v1/...</c> for the core group, <c>/apis/&lt;group&gt;/&lt;version&gt;/...</c>
     /// for the rest, with the namespace segment only where the kind is namespaced. With
     /// <paramref name="name"/> it addresses one object instead of the collection.

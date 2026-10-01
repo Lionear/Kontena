@@ -800,6 +800,26 @@ internal static class Program
 
                 break;
 
+            // KON-483: one API group's kinds from its Custom resources entry in the sidebar, and a
+            // certificate's detail reached through the row's own OpenDetail — the not-ready one, so the
+            // failing condition is in frame.
+            case "custom-resources":
+            case "custom-resource-detail":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                SettleUntil(() => vm.NavGroups.Any(g => g.Label == "Custom resources"), maxRounds: 120);
+                vm.NavigateCommand.Execute("resources:cert-manager.io");
+                SettleUntil(() => vm.CurrentPage is ClusterResourcesViewModel { Rows.Count: > 0 }, maxRounds: 120);
+                if (scene == "custom-resource-detail" && vm.CurrentPage is ClusterResourcesViewModel certificates)
+                {
+                    certificates.OpenDetail(certificates.Rows.First(r => r.Reference.Name == "kontena-api-tls"));
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 30);
+                }
+
+                break;
+
             // KON-476: a network policy as a page, on the seeded allow that has both directions, so
             // the ingress and egress sentences are in frame together. --tab pods shows who it applies to.
             case "networkpolicy-detail":

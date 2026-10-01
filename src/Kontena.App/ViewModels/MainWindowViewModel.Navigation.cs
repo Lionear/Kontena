@@ -116,6 +116,88 @@ public partial class MainWindowViewModel
         AddPluginNav();
     }
 
+    /// <summary>The nav key prefix for one API group's kinds: "resources:postgresql.cnpg.io".</summary>
+    private const string CustomGroupPrefix = "resources:";
+
+    /// <summary>
+    /// The Resources page, all of it or one group's kinds. A row opens the same page the events feed
+    /// opens (KON-455) — a typed kind its own, anything else the generic detail — and its YAML button
+    /// the generic detail on its YAML tab, which every kind has.
+    /// </summary>
+    private ClusterResourcesViewModel ResourcesPage(IClusterEngine cluster, string? group) =>
+        new(cluster, ActiveNamespace, group)
+        {
+            RequestConfirm = ShowConfirm,
+            RequestOpenDetail = (target, tab) =>
+            {
+                if (tab == "overview")
+                    _ = OpenEventObjectAsync(target);
+                else
+                    ShowObjectDetail(target, tab);
+            },
+        };
+
+    /// <summary>
+    /// A Custom resources section with one entry per API group, the way Lens groups them (KON-483).
+    /// <para>
+    /// Per group rather than per kind: a cluster with cert-manager, a Prometheus operator and CNPG
+    /// serves dozens of custom kinds, and a sidebar entry for each would bury the fixed sections. The
+    /// group is what tells you which operator you are looking at; its kinds are one click further, in
+    /// the picker the Resources page already has.
+    /// </para>
+    /// <para>
+    /// Read when the cluster opens and after an apply — which is how a CRD arrives — rather than before
+    /// every navigation: the sidebar refresh was made cheap on purpose (KON-354, KON-396), and the set
+    /// of installed operators is not something that changes between two clicks.
+    /// </para>
+    /// </summary>
+    private async Task SyncCustomResourceNavAsync()
+    {
+        if (_cluster is not { } cluster || !cluster.Capabilities.Crds)
+            return;
+
+        IReadOnlyList<ApiResource> resources;
+        try
+        {
+            resources = await cluster.DiscoverResourcesAsync();
+        }
+        catch (Exception)
+        {
+            // No discovery, no section — the Resources page says why when it is opened.
+            return;
+        }
+
+        var groups = resources
+            .Where(r => r.IsCustom && r.CanList)
+            .Select(r => r.Kind.Group)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Another cluster, or none, since this was asked: its sidebar is not this answer's to change.
+        if (!ReferenceEquals(cluster, _cluster))
+            return;
+
+        var existing = NavGroups.FirstOrDefault(g => g.Label == "Custom resources");
+        if (existing is not null)
+            NavGroups.Remove(existing);
+
+        if (groups.Length == 0)
+            return;
+
+        // Above the plugins, which are not the cluster's.
+        var plugins = NavGroups.ToList().FindIndex(g => g.Label == "Plugins");
+        var section = Group("Custom resources",
+        [
+            .. groups.Select(g => new NavItem(CustomGroupPrefix + g, g, "IconBox")
+            {
+                IsSelected = _clusterPageKey == CustomGroupPrefix + g,
+            }),
+        ]);
+
+        NavGroups.Insert(plugins < 0 ? NavGroups.Count : plugins, section);
+    }
+
     /// <summary>Nav key to the page behind it, for everything a plugin contributed (KON-331).</summary>
     private readonly Dictionary<string, PluginPage> _pluginPages = new(StringComparer.Ordinal);
 
@@ -243,6 +325,10 @@ public partial class MainWindowViewModel
             new NavItem("terminal", "Terminal", "IconTerminal")));
 
         AddPluginNav();
+
+        // After the fixed sections, and read rather than assumed: which operators a cluster has is the
+        // cluster's answer (KON-483).
+        _ = SyncCustomResourceNavAsync();
     }
     /// <param name="refreshNav">
     /// False only where the caller has just read the cluster, so the sidebar is not refetched twice
@@ -371,14 +457,10 @@ public partial class MainWindowViewModel
             {
                 RequestOpen = target => _ = OpenEventObjectAsync(target),
             },
-            "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace)
-            {
-                RequestConfirm = ShowConfirm,
-
-                // The same path the events page uses to open what a row points at (KON-455): one
-                // reference in, the right detail page out, and no second way to open a workload.
-                RequestOpen = target => _ = OpenEventObjectAsync(target),
-            },
+            // One API group's kinds, from its entry under Custom resources (KON-483).
+            _ when key.StartsWith(CustomGroupPrefix, StringComparison.Ordinal) =>
+                ResourcesPage(_cluster, key[CustomGroupPrefix.Length..]),
+            "resources" => ResourcesPage(_cluster, group: null),
             // A shell on this machine, already on this cluster (KON-171). Falls back to the
             // overview when the active backend is not a kubeconfig context, so the page can never
             // open onto a cluster it cannot name.
@@ -386,7 +468,9 @@ public partial class MainWindowViewModel
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
             {
                 // An apply can create or remove anything — refresh the sidebar, not the open page.
+                // Including a CRD, which is a new entry under Custom resources (KON-483).
                 _ = UpdateClusterNavAsync();
+                _ = SyncCustomResourceNavAsync();
                 return Task.CompletedTask;
             }, ActiveNamespace),
             _ => new ClusterOverviewViewModel(_cluster, Versions),

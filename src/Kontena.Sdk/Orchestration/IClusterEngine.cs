@@ -133,6 +133,18 @@ public interface IClusterEngine : IBackend
         ValueTask.FromResult<IReadOnlyList<ResourceUsage>>([]);
 
     /// <summary>
+    /// One object of any kind, as far as it can be read without knowing the kind (KON-483): its
+    /// metadata, its printer columns, its status fields and conditions. What the detail page of a
+    /// custom resource is built from.
+    /// <para>
+    /// Null by default, and null for an object that is not there: an engine without generic objects
+    /// has nothing to show, and the page says so rather than drawing an empty one.
+    /// </para>
+    /// </summary>
+    ValueTask<ResourceObject?> GetObjectAsync(ResourceRef resource, CancellationToken ct = default) =>
+        ValueTask.FromResult<ResourceObject?>(null);
+
+    /// <summary>
     /// The RBAC objects that decide who may do what (KON-474): Roles and RoleBindings in
     /// <paramref name="ns"/> (every namespace when null), plus every ClusterRole and
     /// ClusterRoleBinding — a ClusterRoleBinding grants in every namespace, and a RoleBinding may

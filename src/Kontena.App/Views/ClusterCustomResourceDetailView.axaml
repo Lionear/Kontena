@@ -1,0 +1,213 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:sdk="using:Kontena.Sdk.Orchestration.Models"
+             xmlns:views="using:Kontena.App.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="760"
+             x:Class="Kontena.App.Views.ClusterCustomResourceDetailView"
+             x:DataType="vm:ClusterCustomResourceDetailViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="24,16,24,0">
+            <StackPanel Spacing="14">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        <controls:CopyButton Classes="pill" Text="{Binding Name}" ToolTip.Tip="Copy the name" VerticalAlignment="Center"/>
+                        <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center"
+                                ToolTip.Tip="{Binding ApiVersion}">
+                            <TextBlock Text="{Binding Kind}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                        </Border>
+                    </StackPanel>
+
+                    <Button Grid.Column="1" Classes="pill" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}"
+                            VerticalAlignment="Center">Delete</Button>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Spacing="28">
+                    <StackPanel Spacing="2" IsVisible="{Binding HasNamespace}">
+                        <TextBlock Text="NAMESPACE" Classes="colhead"/>
+                        <TextBlock Text="{Binding Namespace}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="API VERSION" Classes="colhead"/>
+                        <TextBlock Text="{Binding ApiVersion}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="CREATED" Classes="colhead"/>
+                        <TextBlock Text="{Binding AgeText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <Button Classes="tab" Classes.on="{Binding IsOverviewSelected}" Command="{Binding SelectTabCommand}" CommandParameter="overview">
+                        <TextBlock Text="Overview" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsPodsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="pods">
+                        <TextBlock Text="{Binding PodsTabLabel}" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsEventsSelected}" Command="{Binding SelectTabCommand}" CommandParameter="events">
+                        <TextBlock Text="Events" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Classes="tab" Classes.on="{Binding IsYamlSelected}" Command="{Binding SelectTabCommand}" CommandParameter="yaml">
+                        <TextBlock Text="YAML" VerticalAlignment="Center"/>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Panel Grid.Row="1" Margin="28,20">
+
+            <ScrollViewer IsVisible="{Binding IsOverviewSelected}">
+                <StackPanel Spacing="16">
+
+                    <TextBlock Text="Reading the object…" IsVisible="{Binding IsLoading}"
+                               FontSize="12.5" Foreground="{DynamicResource TextFaint}"/>
+                    <TextBlock Text="{Binding LoadNote}" IsVisible="{Binding LoadNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+
+                    <!-- The printer columns its CRD declares, then the status fields they leave out:
+                         what kubectl get shows, and what it does not. -->
+                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                            CornerRadius="{StaticResource Radius}" Padding="16,12" IsVisible="{Binding HasFields}">
+                        <ItemsControl ItemsSource="{Binding Fields}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sdk:ResourceField">
+                                    <StackPanel Spacing="2" Margin="0,4,32,4" MaxWidth="420">
+                                        <TextBlock Text="{Binding Name}" Classes="colhead"/>
+                                        <SelectableTextBlock Text="{Binding Value}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                             Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+
+                    <!-- Every condition, healthy ones included, the way the node page shows its own. -->
+                    <StackPanel Spacing="8" IsVisible="{Binding HasConditions}">
+                        <TextBlock Text="Conditions" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                CornerRadius="{StaticResource Radius}" ClipToBounds="True">
+                            <StackPanel>
+                                <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                                    <Grid ColumnDefinitions="1.6*,0.7*,2.8*,0.9*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="TYPE" Classes="colhead"/>
+                                        <TextBlock Grid.Column="1" Text="STATE" Classes="colhead"/>
+                                        <TextBlock Grid.Column="2" Text="DETAIL" Classes="colhead"/>
+                                        <TextBlock Grid.Column="3" Text="SINCE" Classes="colhead"/>
+                                    </Grid>
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding Conditions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ResourceConditionRow">
+                                            <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                                <Grid ColumnDefinitions="1.6*,0.7*,2.8*,0.9*" ColumnSpacing="10">
+                                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7">
+                                                        <Ellipse Width="7" Height="7" Fill="{Binding Brush}" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding Type}" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding State}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding Since}" FontSize="12" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Who this object belongs to, and what belongs to or uses it: the two directions
+                         of the same question, side by side. -->
+                    <StackPanel Spacing="8" IsVisible="{Binding HasOwners}">
+                        <TextBlock Text="Owned by" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <ItemsControl ItemsSource="{Binding Owners}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ResourceLinkRow">
+                                    <Button Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}" Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5"/>
+                                            <TextBlock Text="{Binding KindText}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Each row carries how the link was found, because these ways are not equally
+                         trustworthy and a relation you cannot check is one you take on faith (KON-455). -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Used by" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <ItemsControl ItemsSource="{Binding Users}" IsVisible="{Binding HasUsers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ResourceUsageRow">
+                                    <Button Classes="link" Command="{Binding OpenCommand}" HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch" Margin="0,0,0,6">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Spacing="1">
+                                                <TextBlock Text="{Binding Name}" FontSize="12.5" FontFamily="{StaticResource Mono}"/>
+                                                <TextBlock Text="{Binding Where}" FontSize="11" Foreground="{DynamicResource TextDim}"/>
+                                                <TextBlock Text="{Binding Evidence}" FontSize="10.5" FontFamily="{StaticResource Mono}"
+                                                           Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding Direction}" FontSize="10.5"
+                                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                                       Foreground="{DynamicResource TextFaint}"/>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock IsVisible="{Binding NothingUsesIt}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFaint}"
+                                   Text="Nothing found that uses this. Looked for an ownerReference, a mounted ConfigMap or Secret this object owns, and an annotation naming it."/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="8" IsVisible="{Binding HasLabels}">
+                        <TextBlock Text="Labels" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <ItemsControl ItemsSource="{Binding Labels}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sdk:ResourceField">
+                                    <SelectableTextBlock FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{DynamicResource TextDim}"
+                                                         TextWrapping="Wrap" Margin="0,0,0,3">
+                                        <Run Text="{Binding Name}"/><Run Text="=" Foreground="{DynamicResource TextFaint}"/><Run Text="{Binding Value}" Foreground="{DynamicResource Text}"/>
+                                    </SelectableTextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Spacing="8" IsVisible="{Binding HasAnnotations}">
+                        <TextBlock Text="Annotations" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <ItemsControl ItemsSource="{Binding Annotations}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sdk:ResourceField">
+                                    <SelectableTextBlock FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{DynamicResource TextDim}"
+                                                         TextWrapping="Wrap" MaxLines="4" Margin="0,0,0,3">
+                                        <Run Text="{Binding Name}"/><Run Text="=" Foreground="{DynamicResource TextFaint}"/><Run Text="{Binding Value}" Foreground="{DynamicResource Text}"/>
+                                    </SelectableTextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <views:RelatedPodsView IsVisible="{Binding IsPodsSelected}"/>
+            <views:ObjectEventsView IsVisible="{Binding IsEventsSelected}"/>
+            <views:ObjectYamlView IsVisible="{Binding IsYamlSelected}"/>
+        </Panel>
+    </Grid>
+</UserControl>

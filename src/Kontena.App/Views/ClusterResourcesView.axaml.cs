@@ -101,7 +101,7 @@ public partial class ClusterResourcesView : UserControl
                 var index = indexes[c];
                 var text = index >= 0 && index < rows[r].Cells.Count ? rows[r].Cells[index] : string.Empty;
 
-                TableGrid.Children.Add(Cell(text, c, r + 1, mono: c == 0));
+                TableGrid.Children.Add(c == 0 ? NameCell(rows[r], text, r + 1) : Cell(text, c, r + 1, mono: false));
             }
 
             TableGrid.Children.Add(Actions(rows[r], columns.Length, r + 1));
@@ -151,12 +151,35 @@ public partial class ClusterResourcesView : UserControl
         return block;
     }
 
+    /// <summary>
+    /// The first column opens the object's detail page (KON-483), the way the name does on every
+    /// other list in the app.
+    /// </summary>
+    private Button NameCell(ResourceRow row, string text, int gridRow)
+    {
+        var name = Cell(text, 0, gridRow, mono: true);
+        name.Margin = default;
+
+        var button = new Button
+        {
+            Content = name,
+            Classes = { "link" },
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 3, 22, 3),
+        };
+        button.Click += (_, _) => _vm?.OpenDetail(row);
+
+        Grid.SetColumn(button, 0);
+        Grid.SetRow(button, gridRow);
+        return button;
+    }
+
     private StackPanel Actions(ResourceRow row, int column, int gridRow)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
 
         var yaml = new Button { Content = "YAML", Classes = { "ghost" } };
-        yaml.Click += (_, _) => _ = _vm?.ShowManifestAsync(row);
+        yaml.Click += (_, _) => _vm?.OpenDetail(row, "yaml");
         panel.Children.Add(yaml);
 
         // Only where the API server says the verb exists: a delete button that could only ever fail is
