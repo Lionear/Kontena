@@ -83,7 +83,11 @@
 
                     <StackPanel Spacing="3">
                         <TextBlock Text="SELECTOR" Classes="colhead"/>
-                        <TextBlock Text="{Binding SelectorText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="{Binding SelectorText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                            <controls:CopyButton Grid.Column="1" Classes="pill" Text="{Binding SelectorCopyText}" IsVisible="{Binding SelectorCopyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" VerticalAlignment="Top"
+                                    ToolTip.Tip="Copy as a selector for kubectl -l"/>
+                        </Grid>
                     </StackPanel>
 
                     <!-- The full port table. The list view shows only what fits one column, and

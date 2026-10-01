@@ -101,4 +101,19 @@ public sealed class NetworkPolicyTests
         Assert.Equal("TCP 8000–8080", row.Ports);
         Assert.Equal("Anywhere", new NetworkPolicyRuleRow(new NetworkPolicyRule()).Peers);
     }
+
+    /// <summary>The copy is the shown selector without spaces, so it pastes into <c>kubectl -l</c> unquoted (KON-484).</summary>
+    [Fact]
+    public void The_copied_selector_has_no_spaces()
+    {
+        var selector = new LabelSelector
+        {
+            MatchLabels = new Dictionary<string, string>(StringComparer.Ordinal) { ["app"] = "db" },
+            MatchExpressions = [new LabelSelectorRequirement("tier", LabelSelectorOperator.In, ["a", "b"])],
+        };
+
+        Assert.Equal("app=db, tier in (a, b)", NetworkPolicyText.Selector(selector, "all pods"));
+        Assert.Equal("app=db,tier in (a,b)", NetworkPolicyText.Selector(selector, "", ","));
+        Assert.Equal("", NetworkPolicyText.Selector(new LabelSelector(), "", ","));
+    }
 }
