@@ -38,6 +38,23 @@ public partial class NavItem : ObservableObject
     /// <summary>Which plugin, for the badge's tooltip.</summary>
     public string PluginTip { get; init; } = string.Empty;
 
+    /// <summary>
+    /// An API group under Custom resources (KON-483): a click opens or closes the kinds under it, the
+    /// way Freelens does, rather than opening a page — a group is a folder, not a place.
+    /// </summary>
+    public bool IsFolder { get; init; }
+
+    /// <summary>A kind under such a folder, drawn indented: in a tree, the indent is what says where it hangs.</summary>
+    public bool IsNested { get; init; }
+
+    /// <summary>Whether a folder's kinds are showing.</summary>
+    [ObservableProperty]
+    private bool _isExpanded;
+
+    /// <summary>False for a nested entry while its folder is closed.</summary>
+    [ObservableProperty]
+    private bool _isShown = true;
+
     [ObservableProperty]
     private bool _isSelected;
 

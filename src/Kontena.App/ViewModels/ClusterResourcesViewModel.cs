@@ -98,13 +98,18 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
     /// Show only this API group's kinds — what a sidebar entry under Custom resources opens (KON-483).
     /// Null for every kind the cluster serves.
     /// </param>
-    public ClusterResourcesViewModel(IClusterEngine cluster, string? @namespace, string? group = null)
+    /// <param name="kind">The kind to land on, rather than the first one there is.</param>
+    public ClusterResourcesViewModel(
+        IClusterEngine cluster, string? @namespace, string? group = null, string? kind = null)
     {
         _cluster = cluster;
         _namespace = @namespace;
         Group = group;
+        _initialKind = kind;
         _ = LoadKindsAsync();
     }
+
+    private readonly string? _initialKind;
 
     /// <summary>The API group this page is limited to, or null for all of them.</summary>
     public string? Group { get; }
@@ -352,7 +357,8 @@ public sealed partial class ClusterResourcesViewModel : ViewModelBase, IListPage
         Regroup();
 
         // Land on something rather than an empty pane asking to be told what to look at.
-        Selected = Groups.SelectMany(g => g.Items).FirstOrDefault(i => i.Kind == "ConfigMap")
+        Selected = Groups.SelectMany(g => g.Items).FirstOrDefault(i => i.Kind == _initialKind)
+                   ?? Groups.SelectMany(g => g.Items).FirstOrDefault(i => i.Kind == "ConfigMap")
                    ?? Groups.SelectMany(g => g.Items).FirstOrDefault();
     }
 

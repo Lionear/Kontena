@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System.Collections.Generic;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
@@ -264,6 +265,16 @@ internal static class Program
 
             ApplyScene(opts.Scene, viewModel);
             Settle(rounds: 40);
+
+            // The Custom resources section sits below the fold of the sidebar; scroll the opened kind
+            // into frame so the shot shows the folder it hangs under (KON-483).
+            if (opts.Scene == "custom-resources")
+            {
+                window.GetVisualDescendants().OfType<Button>()
+                    .FirstOrDefault(b => b.DataContext is NavItem { IsNested: true, IsSelected: true })
+                    ?.BringIntoView();
+                Settle(rounds: 20);
+            }
 
             var frame = window.CaptureRenderedFrame();
             if (frame is null)
@@ -808,7 +819,7 @@ internal static class Program
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
                 SettleUntil(() => vm.NavGroups.Any(g => g.Label == "Custom resources"), maxRounds: 120);
-                vm.NavigateCommand.Execute("resources:cert-manager.io");
+                vm.NavigateCommand.Execute("resources:cert-manager.io/Certificate");
                 SettleUntil(() => vm.CurrentPage is ClusterResourcesViewModel { Rows.Count: > 0 }, maxRounds: 120);
                 if (scene == "custom-resource-detail" && vm.CurrentPage is ClusterResourcesViewModel certificates)
                 {
