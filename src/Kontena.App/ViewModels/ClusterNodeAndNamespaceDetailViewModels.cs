@@ -315,6 +315,7 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
     public string Phase => _ns.Phase;
     public string Age => Format.Duration(_ns.Age);
     public string Labels => FormatLabels(_ns.Labels);
+    public string LabelsCopyText => LabelSelector(_ns.Labels);
 
     /// <summary>
     /// Terminating is not a state you wait out cheerfully: a namespace stuck there is nearly always
@@ -441,6 +442,7 @@ public sealed partial class ClusterNamespaceDetailViewModel : ClusterObjectDetai
         OnPropertyChanged(nameof(PhaseBrush));
         OnPropertyChanged(nameof(Age));
         OnPropertyChanged(nameof(Labels));
+        OnPropertyChanged(nameof(LabelsCopyText));
         OnPropertyChanged(nameof(IsTerminating));
     }
 

@@ -422,6 +422,13 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     /// <summary>Renders a label map as the "k=v, k=v" chips both pages show.</summary>
     protected static string FormatLabels(IReadOnlyDictionary<string, string> labels) =>
         labels.Count == 0 ? "—" : string.Join(", ", labels.Select(kv => $"{kv.Key}={kv.Value}"));
+
+    /// <summary>
+    /// The same labels as what the copy button beside them puts on the clipboard (KON-484): no spaces,
+    /// so it pastes straight into <c>kubectl -l</c>. Empty for no labels, which hides the button.
+    /// </summary>
+    protected static string LabelSelector(IReadOnlyDictionary<string, string> labels) =>
+        string.Join(",", labels.Select(kv => $"{kv.Key}={kv.Value}"));
 }
 
 /// <summary>
@@ -484,6 +491,8 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     public string ImagesText => _workload.Images.Count == 0 ? "—" : string.Join(", ", _workload.Images);
     public string LabelsText => FormatLabels(_workload.Labels);
     public string SelectorText => FormatLabels(_workload.Selector);
+    public string LabelsCopyText => LabelSelector(_workload.Labels);
+    public string SelectorCopyText => LabelSelector(_workload.Selector);
     public string StrategyText => _workload.Strategy.Length == 0 ? "—" : _workload.Strategy;
     public string AgeText => Format.Duration(_workload.Age);
 
@@ -699,6 +708,7 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
     public string ExternalIpText => _service.ExternalIp.Length == 0 ? "—" : _service.ExternalIp;
     public string HostnameText => _service.ClusterDnsName;
     public string SelectorText => FormatLabels(_service.Selector);
+    public string SelectorCopyText => LabelSelector(_service.Selector);
     public string AgeText => Format.Duration(_service.Age);
 
     /// <summary>The full port table — the list view shows only what fits in a column.</summary>
@@ -773,6 +783,7 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
         OnPropertyChanged(nameof(ClusterIpText));
         OnPropertyChanged(nameof(ExternalIpText));
         OnPropertyChanged(nameof(SelectorText));
+        OnPropertyChanged(nameof(SelectorCopyText));
         OnPropertyChanged(nameof(AgeText));
         OnPropertyChanged(nameof(HasPorts));
 
@@ -1145,6 +1156,7 @@ public sealed partial class ClusterNetworkPolicyDetailViewModel : ClusterObjectD
     }
 
     public string AppliesToText => NetworkPolicyText.Selector(_policy.PodSelector, "all pods in this namespace");
+    public string PodSelectorCopyText => NetworkPolicyText.Selector(_policy.PodSelector, "", ",");
     public string IsolatesText => NetworkPolicyText.Isolates(_policy);
     public string AgeText => Format.Duration(_policy.Age);
 
@@ -1192,6 +1204,7 @@ public sealed partial class ClusterNetworkPolicyDetailViewModel : ClusterObjectD
         Fill(fresh);
 
         OnPropertyChanged(nameof(AppliesToText));
+        OnPropertyChanged(nameof(PodSelectorCopyText));
         OnPropertyChanged(nameof(IsolatesText));
         OnPropertyChanged(nameof(AgeText));
         OnPropertyChanged(nameof(HasIngressRules));
@@ -1228,21 +1241,25 @@ public sealed class NetworkPolicyRuleRow
 /// <summary>NetworkPolicy parts as text, shared by the list row and the detail page (KON-476).</summary>
 internal static class NetworkPolicyText
 {
-    /// <summary>A selector in Kubernetes' own <c>-l</c> syntax, or <paramref name="empty"/> for <c>{}</c>.</summary>
-    public static string Selector(LabelSelector s, string empty)
+    /// <summary>
+    /// A selector in Kubernetes' own <c>-l</c> syntax, or <paramref name="empty"/> for <c>{}</c>.
+    /// <paramref name="separator"/> is "," for the copy (KON-484): kubectl takes the spaces too, but a
+    /// selector pasted without them needs no quoting.
+    /// </summary>
+    public static string Selector(LabelSelector s, string empty, string separator = ", ")
     {
         if (s.IsEmpty)
             return empty;
 
         var parts = s.MatchLabels.Select(kv => $"{kv.Key}={kv.Value}").Concat(s.MatchExpressions.Select(e => e.Operator switch
         {
-            LabelSelectorOperator.In => $"{e.Key} in ({string.Join(", ", e.Values)})",
-            LabelSelectorOperator.NotIn => $"{e.Key} notin ({string.Join(", ", e.Values)})",
+            LabelSelectorOperator.In => $"{e.Key} in ({string.Join(separator, e.Values)})",
+            LabelSelectorOperator.NotIn => $"{e.Key} notin ({string.Join(separator, e.Values)})",
             LabelSelectorOperator.Exists => e.Key,
             _ => $"!{e.Key}",
         }));
 
-        return string.Join(", ", parts);
+        return string.Join(separator, parts);
     }
 
     public static string Isolates(NetworkPolicy n) => (n.AffectsIngress, n.AffectsEgress) switch

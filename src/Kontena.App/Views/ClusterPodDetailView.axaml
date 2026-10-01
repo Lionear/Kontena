@@ -210,21 +210,26 @@
 
                         <StackPanel Spacing="4" IsVisible="{Binding HasLabels}">
                             <TextBlock Text="LABELS" Classes="colhead"/>
-                            <ItemsControl ItemsSource="{Binding Labels}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel ItemSpacing="6" LineSpacing="6"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="x:String">
-                                        <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="7,2">
-                                            <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
-                                                       Foreground="{DynamicResource TextDim}"/>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <!-- Each chip copies itself as key=value; the pill copies them all as one
+                                 selector (KON-484). -->
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <ItemsControl ItemsSource="{Binding Labels}" VerticalAlignment="Center">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel ItemSpacing="6" LineSpacing="6"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <controls:CopyButton Text="{Binding}" Content="{Binding}" ToolTip.Tip="Copy this label"
+                                                                 Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="7,2"
+                                                                 FontFamily="{StaticResource Mono}" FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <controls:CopyButton Grid.Column="1" Classes="pill" Text="{Binding LabelsCopyText}" VerticalAlignment="Top"
+                                        ToolTip.Tip="Copy all labels as a selector for kubectl -l"/>
+                            </Grid>
                         </StackPanel>
                     </StackPanel>
 

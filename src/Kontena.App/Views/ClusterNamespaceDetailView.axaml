@@ -29,7 +29,11 @@
                     </StackPanel>
                     <StackPanel Spacing="2">
                         <TextBlock Text="LABELS" Classes="colhead"/>
-                        <TextBlock Text="{Binding Labels}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding Labels}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                            <controls:CopyButton Classes="pill" Text="{Binding LabelsCopyText}" IsVisible="{Binding LabelsCopyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                    ToolTip.Tip="Copy as a selector for kubectl -l"/>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
