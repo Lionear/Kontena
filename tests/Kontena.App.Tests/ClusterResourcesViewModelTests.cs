@@ -273,91 +273,94 @@ public sealed class ClusterResourcesViewModelTests
     }
 
     /// <summary>
-    /// The cross-link (KON-455): opening an object says which workloads use it, and clicking one hands
-    /// the shell the reference so it opens that workload's own page.
+    /// A row opens the object's own page (KON-483). It used to open a side panel with the YAML and
+    /// nothing else, which is what made a custom resource feel second-class.
     /// </summary>
     [Fact]
-    public async Task Opening_an_object_says_which_workloads_use_it()
+    public async Task Clicking_a_name_asks_the_shell_for_the_objects_detail()
     {
         var page = await CertificatesAsync();
-        var row = page.Rows.Single(r => r.Reference.Name == "kontena-app-tls");
+        (ResourceRef Target, string Tab)? opened = null;
+        page.RequestOpenDetail = (target, tab) => opened = (target, tab);
 
-        await page.ShowManifestAsync(row);
-        for (var i = 0; i < 100 && !page.UsersChecked; i++)
+        page.OpenDetail(page.Rows.Single(r => r.Reference.Name == "kontena-app-tls"));
+
+        Assert.Equal("kontena-app-tls", opened?.Target.Name);
+        Assert.Equal("Certificate", opened?.Target.Kind.Kind);
+        Assert.Equal("overview", opened?.Tab);
+    }
+
+    [Fact]
+    public async Task The_yaml_button_opens_the_detail_on_its_yaml_tab()
+    {
+        var page = await CertificatesAsync();
+        string? tab = null;
+        page.RequestOpenDetail = (_, t) => tab = t;
+
+        page.OpenDetail(page.Rows[0], "yaml");
+
+        Assert.Equal("yaml", tab);
+    }
+
+    /// <summary>What a sidebar entry under Custom resources opens: that group's kinds, and no others.</summary>
+    [Fact]
+    public async Task A_group_page_offers_only_that_groups_kinds()
+    {
+        using var page = new ClusterResourcesViewModel(new FakeClusterEngine(), null, "cert-manager.io");
+        for (var i = 0; i < 100 && (page.IsLoadingKinds || page.Table is null); i++)
             await Task.Delay(10);
 
-        Assert.True(page.HasUsers);
-        Assert.False(page.NothingUsesIt);
-        Assert.Equal(["kontena-web", "kontena-api"], page.Users.Select(u => u.Name));
-    }
-
-    /// <summary>Both directions in one list, and they do not say the same thing.</summary>
-    [Fact]
-    public async Task A_row_says_how_the_link_was_found_and_which_way_it_runs()
-    {
-        var page = await UsersOfTlsAsync();
-
-        var mounts = page.Users.Single(u => u.Name == "kontena-web");
-        Assert.Equal("mounts Secret kontena-app-tls", mounts.Evidence);
-        Assert.Equal("uses this", mounts.Direction);
-        Assert.Equal("Deployment · namespace default", mounts.Where);
-
-        var owned = page.Users.Single(u => u.Name == "kontena-api");
-        Assert.Equal("ownerReference", owned.Evidence);
-        Assert.Equal("created by this", owned.Direction);
-    }
-
-    [Fact]
-    public async Task Clicking_a_row_hands_the_shell_the_workload_to_open()
-    {
-        ResourceRef? opened = null;
-        var page = await UsersOfTlsAsync(target => opened = target);
-
-        page.Users.Single(u => u.Name == "kontena-web").OpenCommand.Execute(null);
-
-        Assert.Equal("kontena-web", opened?.Name);
-        Assert.Equal(GroupVersionKind.Deployment, opened?.Kind);
+        Assert.Equal("cert-manager.io", page.Title);
+        Assert.False(page.IsSingleKind);
+        Assert.Equal(["Certificate"], page.Groups.SelectMany(g => g.Items).Select(i => i.Kind));
+        Assert.Equal("Certificate", page.Selected?.Kind);
     }
 
     /// <summary>
-    /// Nothing found is stated, not left blank: a generic ladder will miss a custom resource that links
-    /// itself some other way, and silence cannot be told apart from "nothing uses this".
+    /// The listing follows the cluster (KON-483). It was one read when a kind was picked, so a custom
+    /// resource's status column — CNPG's "Waiting for the instances to become active" — kept saying
+    /// what was true at that moment long after the cluster had come up.
     /// </summary>
     [Fact]
-    public async Task An_object_nothing_uses_says_so()
+    public async Task The_listing_rereads_when_the_cluster_says_an_object_moved()
     {
-        var page = await CertificatesAsync();
-        var row = page.Rows.First(r => r.Reference.Name != "kontena-app-tls");
-
-        await page.ShowManifestAsync(row);
-        for (var i = 0; i < 100 && !page.UsersChecked; i++)
+        var cluster = new FakeClusterEngine();
+        using var page = new ClusterResourcesViewModel(cluster, null);
+        for (var i = 0; i < 100 && (page.IsLoadingKinds || page.Table is null); i++)
             await Task.Delay(10);
 
-        Assert.False(page.HasUsers);
-        Assert.True(page.NothingUsesIt);
+        page.Selected = page.Groups.SelectMany(g => g.Items).First(i => i.Kind == "Certificate");
+        for (var i = 0; i < 100 && page.Rows.Count == 0; i++)
+            await Task.Delay(10);
+
+        Assert.True(page.IsLive);
+        Assert.Null(page.LiveNotice);
+
+        // Let the seed burst settle into its one re-read first, so the count below is the event's.
+        await Task.Delay(600);
+        var before = cluster.CallsTo(nameof(FakeClusterEngine.ListTableAsync));
+
+        cluster.EmitWatchEvent(new ResourceEvent
+        {
+            Type = WatchEventType.Modified,
+            Resource = page.Rows[0].Reference,
+        });
+
+        for (var i = 0; i < 200 && cluster.CallsTo(nameof(FakeClusterEngine.ListTableAsync)) == before; i++)
+            await Task.Delay(10);
+
+        Assert.True(cluster.CallsTo(nameof(FakeClusterEngine.ListTableAsync)) > before, "the listing was not re-read");
+        Assert.False(page.IsLoading);
     }
 
-    /// <summary>Closing the panel drops the answer with it, so the next object starts from nothing.</summary>
     [Fact]
-    public async Task Closing_the_panel_forgets_what_used_the_object()
+    public async Task On_a_cluster_that_cannot_watch_it_says_so()
     {
-        var page = await UsersOfTlsAsync();
-
-        page.CloseManifestCommand.Execute(null);
-
-        Assert.Empty(page.Users);
-        Assert.False(page.NothingUsesIt);
-    }
-
-    private static async Task<ClusterResourcesViewModel> UsersOfTlsAsync(Action<ResourceRef>? onOpen = null)
-    {
-        var page = await CertificatesAsync();
-        page.RequestOpen = onOpen;
-
-        await page.ShowManifestAsync(page.Rows.Single(r => r.Reference.Name == "kontena-app-tls"));
-        for (var i = 0; i < 100 && !page.UsersChecked; i++)
+        using var page = new ClusterResourcesViewModel(new FakeClusterEngine(watch: false), null);
+        for (var i = 0; i < 100 && (page.IsLoadingKinds || page.Table is null); i++)
             await Task.Delay(10);
 
-        return page;
+        Assert.False(page.IsLive);
+        Assert.Contains("refresh", page.LiveNotice ?? "", StringComparison.OrdinalIgnoreCase);
     }
 }

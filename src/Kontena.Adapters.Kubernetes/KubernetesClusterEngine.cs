@@ -763,8 +763,22 @@ public sealed class KubernetesClusterEngine
         GroupVersionKind kind, string? ns = null, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var stream = WatchStream(kind, ns, ct);
+
+        // A kind with no typed watcher — every custom resource — is watched the generic way, on the
+        // path discovery names (KON-483). It used to get an empty stream, so the Resources page could
+        // only ever show the moment it was opened.
         if (stream is null)
+        {
+            if (await _resources.ResolveAsync(kind, ct).ConfigureAwait(false) is not { } resource)
+                yield break;
+
+            await foreach (var e in ResourceWatch
+                               .WatchAsync(_client.HttpClient, _client.BaseUri, resource, kind, ns, ct)
+                               .ConfigureAwait(false))
+                yield return e;
+
             yield break;
+        }
 
         await foreach (var (type, obj) in stream.WithCancellation(ct).ConfigureAwait(false))
         {
@@ -785,7 +799,9 @@ public sealed class KubernetesClusterEngine
     }
 
     /// <summary>
-    /// The kinds <see cref="WatchStream"/> has a typed watcher for, as data.
+    /// The kinds <see cref="WatchStream"/> has a typed watcher for, as data. Any other kind the cluster
+    /// serves is watched through <see cref="ResourceWatch"/> instead (KON-483), so this is the set a page
+    /// can follow without depending on discovery.
     /// <para>
     /// A page that follows a kind this adapter cannot watch gets an empty stream, which the page
     /// reads as "the cluster closed the stream" — a confident, wrong explanation of a mistake made
@@ -872,6 +888,17 @@ public sealed class KubernetesClusterEngine
     }
 
     // ── Manifests ────────────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async ValueTask<ResourceObject?> GetObjectAsync(ResourceRef resource, CancellationToken ct = default)
+    {
+        if (await _resources.ResolveAsync(resource.Kind, ct).ConfigureAwait(false) is not { } info)
+            return null;
+
+        return await ResourceTables
+            .GetAsync(_client.HttpClient, _client.BaseUri, info, resource, ct)
+            .ConfigureAwait(false);
+    }
 
     /// <summary>
     /// One object's live YAML, for any kind the cluster serves — the API server renders it itself

@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System.Collections.Generic;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
@@ -264,6 +265,16 @@ internal static class Program
 
             ApplyScene(opts.Scene, viewModel);
             Settle(rounds: 40);
+
+            // The Custom resources section sits below the fold of the sidebar; scroll the opened kind
+            // into frame so the shot shows the folder it hangs under (KON-483).
+            if (opts.Scene == "custom-resources")
+            {
+                window.GetVisualDescendants().OfType<Button>()
+                    .FirstOrDefault(b => b.DataContext is NavItem { IsNested: true, IsSelected: true })
+                    ?.BringIntoView();
+                Settle(rounds: 20);
+            }
 
             var frame = window.CaptureRenderedFrame();
             if (frame is null)
@@ -765,6 +776,7 @@ internal static class Program
             case "cluster-volumes":
             case "cluster-webhooks":
             case "cluster-networkpolicies":
+            case "cluster-resources":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -796,6 +808,26 @@ internal static class Program
                     Settle(rounds: 30);
                     vm.OpenDetailAsPageCommand.Execute(null);
                     Settle(rounds: 20);
+                }
+
+                break;
+
+            // KON-483: one API group's kinds from its Custom resources entry in the sidebar, and a
+            // certificate's detail reached through the row's own OpenDetail — the not-ready one, so the
+            // failing condition is in frame.
+            case "custom-resources":
+            case "custom-resource-detail":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                SettleUntil(() => vm.NavGroups.Any(g => g.Label == "Custom resources"), maxRounds: 120);
+                vm.NavigateCommand.Execute("resources:cert-manager.io/Certificate");
+                SettleUntil(() => vm.CurrentPage is ClusterResourcesViewModel { Rows.Count: > 0 }, maxRounds: 120);
+                if (scene == "custom-resource-detail" && vm.CurrentPage is ClusterResourcesViewModel certificates)
+                {
+                    certificates.OpenDetail(certificates.Rows.First(r => r.Reference.Name == "kontena-api-tls"));
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 30);
                 }
 
                 break;

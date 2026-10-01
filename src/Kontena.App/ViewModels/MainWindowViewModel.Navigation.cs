@@ -37,7 +37,18 @@ public partial class MainWindowViewModel
     }
 
     [RelayCommand]
-    private void Navigate(string key) => NavigateTo(key);
+    private void Navigate(string key)
+    {
+        // A folder is not a page: it opens or closes, and leaves no step in the history (KON-483).
+        if (key.StartsWith(CustomFolderPrefix, StringComparison.Ordinal))
+        {
+            var group = key[CustomFolderPrefix.Length..];
+            SetCustomGroupOpen(group, !_openCustomGroups.Contains(group));
+            return;
+        }
+
+        NavigateTo(key);
+    }
 
     /// <param name="refreshNav">
     /// False only where the caller has just read the cluster, the same reason
@@ -114,6 +125,144 @@ public partial class MainWindowViewModel
             new NavItem("projects", "Projects", "IconBox")));
 
         AddPluginNav();
+    }
+
+    /// <summary>The nav key prefix for one custom kind: "resources:postgresql.cnpg.io/Cluster".</summary>
+    private const string CustomGroupPrefix = "resources:";
+
+    /// <summary>
+    /// The Resources page, all of it or one group's kinds. A row opens the same page the events feed
+    /// opens (KON-455) — a typed kind its own, anything else the generic detail — and its YAML button
+    /// the generic detail on its YAML tab, which every kind has.
+    /// </summary>
+    private ClusterResourcesViewModel ResourcesPage(IClusterEngine cluster, string? group, string? kind = null) =>
+        new(cluster, ActiveNamespace, group, kind)
+        {
+            RequestConfirm = ShowConfirm,
+            RequestOpenDetail = (target, tab) =>
+            {
+                if (tab == "overview")
+                    _ = OpenEventObjectAsync(target);
+                else
+                    ShowObjectDetail(target, tab);
+            },
+        };
+
+    /// <summary>
+    /// "resources:&lt;group&gt;/&lt;kind&gt;" — and its folder opened, so arriving there by Back shows
+    /// where the entry is rather than a selection hidden inside a closed folder.
+    /// </summary>
+    private ClusterResourcesViewModel CustomKindPage(IClusterEngine cluster, string key)
+    {
+        var rest = key[CustomGroupPrefix.Length..];
+        var slash = rest.IndexOf('/', StringComparison.Ordinal);
+        var group = slash < 0 ? rest : rest[..slash];
+
+        SetCustomGroupOpen(group, true);
+        return ResourcesPage(cluster, group, slash < 0 ? null : rest[(slash + 1)..]);
+    }
+
+    /// <summary>The nav key of an API group's folder: "crd-group:postgresql.cnpg.io".</summary>
+    private const string CustomFolderPrefix = "crd-group:";
+
+    /// <summary>
+    /// Which API groups are open under Custom resources. Kept by the shell rather than on the items,
+    /// because the section is rebuilt after every apply, and a folder that snapped shut each time would
+    /// be one you stop opening. For the session only; nothing asked for it to survive a restart.
+    /// </summary>
+    private readonly HashSet<string> _openCustomGroups = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// A Custom resources section, one folder per API group with its kinds under it — the menu Lens and
+    /// Freelens have (KON-483).
+    /// <para>
+    /// A folder per group rather than an entry per kind: a cluster with cert-manager, a Prometheus
+    /// operator and CNPG serves dozens of custom kinds, and only the groups you open take up room. A
+    /// kind opens the Resources page on that kind, with its group's other kinds in the picker; the full
+    /// Resources page under System stays for searching across everything.
+    /// </para>
+    /// <para>
+    /// Read when the cluster opens and after an apply — which is how a CRD arrives — rather than before
+    /// every navigation: the sidebar refresh was made cheap on purpose (KON-354, KON-396), and the set
+    /// of installed operators is not something that changes between two clicks.
+    /// </para>
+    /// </summary>
+    private async Task SyncCustomResourceNavAsync()
+    {
+        if (_cluster is not { } cluster || !cluster.Capabilities.Crds)
+            return;
+
+        IReadOnlyList<ApiResource> resources;
+        try
+        {
+            resources = await cluster.DiscoverResourcesAsync();
+        }
+        catch (Exception)
+        {
+            // No discovery, no section — the Resources page says why when it is opened.
+            return;
+        }
+
+        var groups = resources
+            .Where(r => r.IsCustom && r.CanList)
+            .GroupBy(r => r.Kind.Group, StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .ToArray();
+
+        // Another cluster, or none, since this was asked: its sidebar is not this answer's to change.
+        if (!ReferenceEquals(cluster, _cluster))
+            return;
+
+        var existing = NavGroups.FirstOrDefault(g => g.Label == "Custom resources");
+        if (existing is not null)
+            NavGroups.Remove(existing);
+
+        if (groups.Length == 0)
+            return;
+
+        var items = new List<NavItem>();
+        foreach (var group in groups)
+        {
+            var open = _openCustomGroups.Contains(group.Key);
+            items.Add(new NavItem(CustomFolderPrefix + group.Key, group.Key, "IconFolder")
+            {
+                IsFolder = true,
+                IsExpanded = open,
+            });
+
+            foreach (var kind in group.OrderBy(r => r.Kind.Kind, StringComparer.Ordinal))
+            {
+                var key = $"{CustomGroupPrefix}{group.Key}/{kind.Kind.Kind}";
+                items.Add(new NavItem(key, kind.Kind.Kind, "IconBox")
+                {
+                    IsNested = true,
+                    IsShown = open,
+                    IsSelected = _clusterPageKey == key,
+                });
+            }
+        }
+
+        // Above the plugins, which are not the cluster's.
+        var plugins = NavGroups.ToList().FindIndex(g => g.Label == "Plugins");
+        NavGroups.Insert(plugins < 0 ? NavGroups.Count : plugins, Group("Custom resources", [.. items]));
+    }
+
+    /// <summary>Open or close one API group's folder.</summary>
+    private void SetCustomGroupOpen(string group, bool open)
+    {
+        if (open)
+            _openCustomGroups.Add(group);
+        else
+            _openCustomGroups.Remove(group);
+
+        var prefix = $"{CustomGroupPrefix}{group}/";
+        foreach (var item in NavItems)
+        {
+            if (item.Key == CustomFolderPrefix + group)
+                item.IsExpanded = open;
+            else if (item.Key.StartsWith(prefix, StringComparison.Ordinal))
+                item.IsShown = open;
+        }
     }
 
     /// <summary>Nav key to the page behind it, for everything a plugin contributed (KON-331).</summary>
@@ -243,6 +392,10 @@ public partial class MainWindowViewModel
             new NavItem("terminal", "Terminal", "IconTerminal")));
 
         AddPluginNav();
+
+        // After the fixed sections, and read rather than assumed: which operators a cluster has is the
+        // cluster's answer (KON-483).
+        _ = SyncCustomResourceNavAsync();
     }
     /// <param name="refreshNav">
     /// False only where the caller has just read the cluster, so the sidebar is not refetched twice
@@ -371,14 +524,10 @@ public partial class MainWindowViewModel
             {
                 RequestOpen = target => _ = OpenEventObjectAsync(target),
             },
-            "resources" => new ClusterResourcesViewModel(_cluster, ActiveNamespace)
-            {
-                RequestConfirm = ShowConfirm,
-
-                // The same path the events page uses to open what a row points at (KON-455): one
-                // reference in, the right detail page out, and no second way to open a workload.
-                RequestOpen = target => _ = OpenEventObjectAsync(target),
-            },
+            // One kind from its entry under Custom resources, with its group's other kinds in the
+            // picker (KON-483).
+            _ when key.StartsWith(CustomGroupPrefix, StringComparison.Ordinal) => CustomKindPage(_cluster, key),
+            "resources" => ResourcesPage(_cluster, group: null),
             // A shell on this machine, already on this cluster (KON-171). Falls back to the
             // overview when the active backend is not a kubeconfig context, so the page can never
             // open onto a cluster it cannot name.
@@ -386,7 +535,9 @@ public partial class MainWindowViewModel
             "apply" => new ApplyManifestViewModel(_cluster, EngineName, onApplied: () =>
             {
                 // An apply can create or remove anything — refresh the sidebar, not the open page.
+                // Including a CRD, which is a new entry under Custom resources (KON-483).
                 _ = UpdateClusterNavAsync();
+                _ = SyncCustomResourceNavAsync();
                 return Task.CompletedTask;
             }, ActiveNamespace),
             _ => new ClusterOverviewViewModel(_cluster, Versions),

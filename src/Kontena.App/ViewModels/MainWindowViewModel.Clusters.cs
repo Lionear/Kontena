@@ -721,10 +721,38 @@ public partial class MainWindowViewModel
                 return true;
 
             default:
-                // The row only offers the link for kinds that have a page, so this is the belt to that
-                // braces: a kind added to one list and not the other lands here rather than nowhere.
-                return false;
+                // Every other kind — custom resources first among them — has the generic detail page
+                // (KON-483). It reads the object itself, so an event about one that has since gone
+                // still lands somewhere that says so.
+                ShowObjectDetail(target);
+                return true;
         }
+    }
+
+    /// <summary>
+    /// The generic detail page for any object (KON-483): what a custom resource opens, and what a
+    /// Resources-page row opens when asked for its YAML.
+    /// </summary>
+    private void ShowObjectDetail(ResourceRef reference, string tab = "overview")
+    {
+        if (_cluster is null)
+            return;
+
+        // Boxed once: the history step and the delete that forgets it compare by reference.
+        object target = reference;
+        var where = reference.Namespace is { Length: > 0 } ns ? $" in {ns}" : string.Empty;
+
+        ShowDetail(
+            new ClusterCustomResourceDetailViewModel(
+                _cluster, reference,
+                onOpenPod: ShowPodDetail,
+                onOpen: r => _ = OpenEventObjectAsync(r),
+                onDelete: () => ConfirmDeleteObject(
+                    reference, target, $"Delete {reference.Kind.Kind}",
+                    $"Delete {reference.Kind.Kind} \"{reference.Name}\"{where}? If something owns it, a "
+                    + "replacement may be created straight away; if not, it is gone for good."),
+                initialTab: tab),
+            $"{reference.Kind.Kind} {reference.Name}", target);
     }
 
     /// <summary>

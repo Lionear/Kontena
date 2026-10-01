@@ -682,6 +682,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             "PersistentVolumeClaim" => _pvcs.Where(p => Match(ns, p.Namespace)).Select(p => new ResourceRef(kind, p.Namespace, p.Name)),
             "PersistentVolume" => _volumes.Select(v => new ResourceRef(kind, null, v.Name)),
             "StorageClass" => _storageClasses.Select(c => new ResourceRef(kind, null, c.Name)),
+            // A custom kind is whatever its listing holds (KON-483) — not workloads under its name.
+            _ when Resources.Any(r => r.IsCustom && r.Kind.Kind == kind.Kind) =>
+                TableOf(kind, ns).Rows.Select(r => r.Reference),
             // Everything left is a workload kind. Spelled as the fallthrough rather than five cases,
             // but it is a fallthrough over a known set — a kind the fake does not model would come out
             // of here carrying workload names, which is worse than nothing.
@@ -976,6 +979,50 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     }
 
     /// <summary>
+    /// Any object the generic listing has, built from its row (KON-483). The certificates carry the
+    /// Ready condition cert-manager sets, so a page that reads conditions has one healthy and one
+    /// failing object to show.
+    /// </summary>
+    /// <inheritdoc/>
+    public ValueTask<ResourceObject?> GetObjectAsync(ResourceRef resource, CancellationToken ct = default)
+    {
+        Counted(nameof(GetObjectAsync), 0);
+
+        var table = TableOf(resource.Kind, resource.Namespace);
+        if (table.Rows.FirstOrDefault(r => r.Reference.Name == resource.Name) is not { } row)
+            return ValueTask.FromResult<ResourceObject?>(null);
+
+        var fields = table.Columns
+            .Zip(row.Cells, (column, cell) => new ResourceField(column.Name, cell))
+            .Where(f => f.Name != "Name")
+            .ToArray();
+
+        var isCertificate = resource.Kind.Kind == "Certificate";
+        var ready = isCertificate && row.Cells[1] == "True";
+
+        return ValueTask.FromResult<ResourceObject?>(new ResourceObject
+        {
+            Reference = row.Reference,
+            Created = DateTimeOffset.UtcNow.AddDays(-12),
+            Labels = new Dictionary<string, string> { ["app.kubernetes.io/name"] = "kontena" },
+            Annotations = new Dictionary<string, string> { ["cert-manager.io/issuer-name"] = "letsencrypt" },
+            Columns = fields,
+            Status = isCertificate
+                ? [new("notAfter", "2026-12-30T00:00:00Z"), new("revision", "3")]
+                : [],
+            Conditions = isCertificate
+                ?
+                [
+                    new("Ready", ready ? "True" : "False",
+                        ready ? "Ready" : "DoesNotExist",
+                        ready ? "Certificate is up to date and has not expired" : "Issuing certificate as Secret does not exist",
+                        DateTimeOffset.UtcNow.AddMinutes(-3)),
+                ]
+                : [],
+        });
+    }
+
+    /// <summary>
     /// Null, honestly: this fake models typed resources for the UI, not raw OpenAPI documents. A
     /// schema-index built against it should see "unverifiable" (KON-288), the same state a real
     /// cluster reports for a group/version it does not serve — not a made-up schema.
@@ -987,13 +1034,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     /// <inheritdoc/>
     public ValueTask<ResourceTable> ListTableAsync(
-        GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(Counted(nameof(ListTableAsync), TableOf(kind, ns)));
+
+    /// <summary>The listing itself, for this fake's own use — uncounted, so a test counts what a page read.</summary>
+    private ResourceTable TableOf(GroupVersionKind kind, string? ns)
     {
         // Columns per kind, the way a server renders them: a browser that drew the same three columns
         // for everything would look right against a fake and wrong against a cluster.
         if (kind.Kind == "Certificate")
         {
-            return ValueTask.FromResult(new ResourceTable
+            return new ResourceTable
             {
                 Columns = [new("Name", 0), new("Ready", 0), new("Secret", 0), new("Age", 0)],
                 Rows =
@@ -1003,7 +1054,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                     new(new ResourceRef(kind, ns ?? "default", "kontena-api-tls"),
                         ["kontena-api-tls", "False", "kontena-api-tls", "3m"]),
                 ],
-            });
+            };
         }
 
         var names = kind.Kind switch
@@ -1015,7 +1066,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             _ => [],
         };
 
-        return ValueTask.FromResult(new ResourceTable
+        return new ResourceTable
         {
             Columns = [new("Name", 0), new("Age", 0)],
             Rows =
@@ -1024,7 +1075,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                     new ResourceRef(kind, string.IsNullOrEmpty(n.Item2) ? null : n.Item2, n.Item1),
                     [n.Item1, "5d"])),
             ],
-        });
+        };
     }
 
     public ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default) =>
