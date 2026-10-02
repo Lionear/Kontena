@@ -178,6 +178,11 @@ public sealed class ToolRunner : IToolRunner
                 startInfo.Environment[key] = value;
         }
 
+        // We found the tool beyond PATH; the tool will look for its own on PATH — kind for docker or
+        // podman, helm for its plugins. Without this they inherit launchd's bare one (KON-485).
+        if (OperatingSystem.IsMacOS())
+            startInfo.Environment["PATH"] = ToolLocator.LoginPath(startInfo.Environment.TryGetValue("PATH", out var inherited) ? inherited : null);
+
         if (redirectForStreaming)
         {
             // Tools that detect a pipe often switch to a terse, buffered mode. Saying "no colour"

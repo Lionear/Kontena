@@ -149,4 +149,29 @@ public sealed class ToolRunnerTests
             File.Delete(file);
         }
     }
+
+    /// <summary>
+    /// A tool we start gets the PATH a login shell would have built, not launchd's bare one (KON-485):
+    /// kind found by us, then failing to find docker itself. The bare PATH is handed in explicitly —
+    /// a test runner started from a terminal already has the full one, the one case the bug cannot
+    /// happen in.
+    /// </summary>
+    [Fact]
+    public async Task On_macos_a_tool_started_with_a_bare_path_still_sees_homebrew()
+    {
+        if (!OperatingSystem.IsMacOS())
+            return;
+
+        var invocation = new ToolInvocation(Shell, ["-c", "echo \"$PATH\""])
+        {
+            Environment = new Dictionary<string, string?> { ["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin" },
+        };
+
+        var result = await _runner.RunAsync(invocation);
+        var directories = result.StandardOutput.Trim().Split(':');
+
+        Assert.Contains("/opt/homebrew/bin", directories);
+        Assert.Contains("/usr/local/bin", directories);
+        Assert.Equal("/usr/bin", directories[0]);
+    }
 }
