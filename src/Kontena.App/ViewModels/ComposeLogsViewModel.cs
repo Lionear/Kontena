@@ -139,7 +139,14 @@ public partial class ComposeLogsViewModel : ViewModelBase, IDisposable
 public sealed record ComposeLogSource(string Service, string ContainerId);
 
 /// <summary>One aggregated log line, tagged with its originating service and colour.</summary>
-public sealed record ComposeLogLine(string Service, IBrush ServiceBrush, string Text);
+public sealed record ComposeLogLine(string Service, IBrush ServiceBrush, string Text) : ILogLine
+{
+    /// <summary>
+    /// Service and line, the two columns the row draws (KON-463). The compose stream has no timestamp
+    /// column and no toggle for one, so there is nothing here to leave out.
+    /// </summary>
+    public string ForClipboard(bool withTimestamp) => $"{Service}  {Text}";
+}
 
 /// <summary>A legend entry mapping a service to its colour.</summary>
 public sealed record ComposeServiceLegend(string Service, IBrush Brush);

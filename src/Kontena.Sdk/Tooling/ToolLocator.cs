@@ -122,4 +122,82 @@ public static class ToolLocator
         yield return executable + ".bat";
         yield return executable;
     }
+
+    /// <summary>
+    /// <paramref name="current"/> plus the directories a login shell would have added — macOS only.
+    /// <para>
+    /// A macOS app started from Finder inherits launchd's bare PATH, and everything else — Homebrew
+    /// above all — arrives through <c>/etc/zprofile</c>, which only a login shell reads. Finding a tool
+    /// ourselves is not enough: whatever we start inherits that bare PATH too, and goes looking for its
+    /// own tools on it. The embedded terminal lost <c>kubectl</c> that way (KON-423), and <c>kind</c>
+    /// lost <c>docker</c> (KON-485).
+    /// </para>
+    /// <para>What was already in PATH stays in front: an order the user arranged is one they meant.</para>
+    /// </summary>
+    public static string LoginPath(string? current)
+    {
+        var directories = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(string directory)
+        {
+            if (directory.Length > 0 && seen.Add(directory))
+                directories.Add(directory);
+        }
+
+        foreach (var directory in (current ?? string.Empty).Split(
+                     Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            Add(directory.Trim());
+
+        foreach (var directory in PathHelperDirectories())
+            Add(directory);
+
+        // Homebrew is not always in /etc/paths.d: on Apple Silicon its installer writes a
+        // `brew shellenv` line into ~/.zprofile instead, which is just as login-only.
+        foreach (var directory in DefaultSearchPaths())
+            Add(directory);
+
+        return string.Join(Path.PathSeparator, directories);
+    }
+
+    /// <summary>
+    /// The <c>/etc/paths</c> and <c>/etc/paths.d</c> entries that <c>/usr/libexec/path_helper</c> turns
+    /// into a login shell's PATH — read rather than run, because the files are the whole of it.
+    /// </summary>
+    private static IEnumerable<string> PathHelperDirectories()
+    {
+        var files = new List<string> { "/etc/paths" };
+
+        try
+        {
+            // Sorted, because path_helper reads them in that order and the order is the precedence.
+            if (Directory.Exists("/etc/paths.d"))
+                files.AddRange(Directory.EnumerateFiles("/etc/paths.d").Order(StringComparer.Ordinal));
+        }
+        catch (IOException)
+        {
+            // best effort: a PATH short one directory beats a terminal that refuses to open
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // best effort
+        }
+
+        foreach (var file in files)
+        {
+            string[] lines;
+
+            try
+            {
+                lines = File.ReadAllLines(file);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var line in lines)
+                yield return line.Trim();
+        }
+    }
 }

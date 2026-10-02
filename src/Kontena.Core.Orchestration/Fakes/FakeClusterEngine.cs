@@ -13,7 +13,7 @@ namespace Kontena.Core.Orchestration.Fakes;
 /// before the real <c>Kontena.Adapters.Kubernetes</c> adapter exists, exactly as
 /// <c>FakeEngine</c> did for the CEAL. No cluster, no network; every value is local.
 /// </summary>
-public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware
+public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IHelmAware
 {
     private readonly List<KubeContext> _contexts;
     private readonly List<Node> _nodes;
@@ -22,11 +22,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private readonly List<Pod> _pods;
     private readonly List<Service> _services;
     private readonly List<Ingress> _ingresses;
+    private readonly List<NetworkPolicy> _networkPolicies;
     private readonly List<PersistentVolumeClaim> _pvcs;
     private readonly List<ConfigMapSummary> _configMaps;
     private readonly List<SecretSummary> _secrets;
     private readonly List<PersistentVolume> _volumes;
     private readonly List<StorageClass> _storageClasses;
+    private readonly List<HorizontalPodAutoscaler> _autoscalers;
+    private readonly List<PodDisruptionBudget> _budgets;
+    private readonly List<AccessRole> _roles;
+    private readonly List<AccessBinding> _bindings;
     private readonly List<ClusterEvent> _events;
 
     /// <summary>Applied resources of kinds the fake does not model, kept so apply stays idempotent.</summary>
@@ -181,7 +186,38 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
         _ingresses =
         [
-            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], TlsHosts = ["app.example.com"], Age = TimeSpan.FromHours(30) },
+            new Ingress { Name = "web", Namespace = "app", Class = "nginx", Rules = [new IngressRule("app.example.com", "/", "web", 80)], Addresses = ["34.120.55.10"], Tls = [new IngressTls("web-tls", ["app.example.com"])], DefaultBackend = new IngressBackend("web", 80), Age = TimeSpan.FromHours(30) },
+        ];
+
+        // A default-deny and one allow on top of it: the pair every real cluster with policies starts
+        // from, and the shape the viewer exists to make readable (KON-476).
+        _networkPolicies =
+        [
+            new NetworkPolicy { Name = "default-deny-ingress", Namespace = "app", AffectsIngress = true, Age = TimeSpan.FromDays(9) },
+            new NetworkPolicy
+            {
+                Name = "postgres-from-api", Namespace = "app",
+                PodSelector = new LabelSelector { MatchLabels = App("postgres") },
+                AffectsIngress = true, AffectsEgress = true,
+                Ingress =
+                [
+                    new NetworkPolicyRule
+                    {
+                        Peers = [new NetworkPolicyPeer { PodSelector = new LabelSelector { MatchExpressions = [new LabelSelectorRequirement("app", LabelSelectorOperator.In, ["api", "migrate"])] } }],
+                        Ports = [new NetworkPolicyPort("TCP", "5432", null)],
+                    },
+                ],
+                Egress =
+                [
+                    new NetworkPolicyRule
+                    {
+                        Peers = [new NetworkPolicyPeer { NamespaceSelector = new LabelSelector { MatchLabels = new Dictionary<string, string> { ["kubernetes.io/metadata.name"] = "kube-system" } } }],
+                        Ports = [new NetworkPolicyPort("UDP", "53", null)],
+                    },
+                    new NetworkPolicyRule { Peers = [new NetworkPolicyPeer { Cidr = "10.0.0.0/8", Except = ["10.0.99.0/24"] }] },
+                ],
+                Age = TimeSpan.FromDays(9),
+            },
         ];
 
         _pvcs =
@@ -205,6 +241,35 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             new StorageClass { Name = "standard-rwo", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, IsDefault = true, AllowsExpansion = true, Age = TimeSpan.FromDays(120) },
             new StorageClass { Name = "local-path", Provisioner = "rancher.io/local-path", ReclaimPolicy = ReclaimPolicy.Delete, BindingMode = VolumeBindingMode.WaitForFirstConsumer, AllowsExpansion = false, Age = TimeSpan.FromDays(120) },
             new StorageClass { Name = "retain-ssd", Provisioner = "pd.csi.storage.gke.io", ReclaimPolicy = ReclaimPolicy.Retain, BindingMode = VolumeBindingMode.Immediate, AllowsExpansion = true, Age = TimeSpan.FromDays(60) },
+        ];
+
+        // KON-477. The api is autoscaled; postgres has the budget the fake drain already refuses on,
+        // with nothing left to give — the one reading that explains a blocked drain.
+        _autoscalers =
+        [
+            new HorizontalPodAutoscaler { Name = "api", Namespace = "app", TargetKind = "Deployment", TargetName = "api", MinReplicas = 2, MaxReplicas = 10, CurrentReplicas = 3, DesiredReplicas = 3, Metrics = ["cpu: 45% / 70%", "memory: 310Mi / 512Mi"], Age = TimeSpan.FromHours(30) },
+        ];
+
+        _budgets =
+        [
+            new PodDisruptionBudget { Name = "postgres-pdb", Namespace = "app", MinAvailable = "1", Selector = new LabelSelector { MatchLabels = App("postgres") }, CurrentHealthy = 1, DesiredHealthy = 1, ExpectedPods = 1, DisruptionsAllowed = 0, Age = TimeSpan.FromDays(9) },
+        ];
+
+        // RBAC (KON-474): a RoleBinding that points at a ClusterRole, one that points at a Role, a
+        // ClusterRoleBinding, and one whose role is gone — the four shapes the access page tells apart.
+        _roles =
+        [
+            new AccessRole { Name = "cluster-admin", Rules = [new AccessRule { Verbs = ["*"], ApiGroups = ["*"], Resources = ["*"] }, new AccessRule { Verbs = ["*"], NonResourceUrls = ["*"] }], Age = TimeSpan.FromDays(120) },
+            new AccessRole { Name = "view", Rules = [new AccessRule { Verbs = ["get", "list", "watch"], ApiGroups = ["", "apps"], Resources = ["pods", "services", "configmaps", "deployments"] }], Age = TimeSpan.FromDays(120) },
+            new AccessRole { Name = "config-reader", Namespace = "app", Rules = [new AccessRule { Verbs = ["get", "list"], ApiGroups = [""], Resources = ["configmaps"] }, new AccessRule { Verbs = ["get"], ApiGroups = [""], Resources = ["secrets"], ResourceNames = ["web-tls"] }], Age = TimeSpan.FromDays(9) },
+        ];
+
+        _bindings =
+        [
+            new AccessBinding { Name = "cluster-admin", RoleKind = "ClusterRole", RoleName = "cluster-admin", Subjects = [new AccessSubject("Group", "system:masters")], Age = TimeSpan.FromDays(120) },
+            new AccessBinding { Name = "ci-view", Namespace = "app", RoleKind = "ClusterRole", RoleName = "view", Subjects = [new AccessSubject("ServiceAccount", "ci", "app"), new AccessSubject("User", "jane@example.com")], Age = TimeSpan.FromDays(9) },
+            new AccessBinding { Name = "read-config", Namespace = "app", RoleKind = "Role", RoleName = "config-reader", Subjects = [new AccessSubject("ServiceAccount", "web", "app")], Age = TimeSpan.FromDays(9) },
+            new AccessBinding { Name = "legacy-reader", Namespace = "monitoring", RoleKind = "Role", RoleName = "old-reader", Subjects = [new AccessSubject("Group", "ops")], Age = TimeSpan.FromDays(200) },
         ];
 
         _configMaps =
@@ -333,6 +398,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     }
 
     /// <summary>
+    /// Whether helm is installed for this fake cluster. On by default; turn it off for the Releases
+    /// page's "helm is not installed" state (KON-473).
+    /// </summary>
+    public bool HasHelm
+    {
+        get => _capabilities.Helm;
+        init => _capabilities = _capabilities with { Helm = value };
+    }
+
+    /// <summary>
     /// Whether this fake cluster has an Alertmanager. On by default so the alerts page has something
     /// to draw; turn it off for the empty state, where the page has to say where it looked instead of
     /// showing an empty list (KON-205).
@@ -354,6 +429,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         get => _capabilities.AlertRules;
         init => _capabilities = _capabilities with { AlertRules = value };
     }
+
+    /// <summary>The releases the Releases page sees (KON-473); held so a test can read its writes back.</summary>
+    public FakeHelmReleases Helm { get; } = new();
+
+    IHelmReleases IHelmAware.Helm => Helm;
 
     private FakeAlertSource? _alertSource;
 
@@ -441,6 +521,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                 break;
             case "Ingress":
                 _ingresses.RemoveAll(i => i.Name == name && i.Namespace == ns);
+                break;
+            case "NetworkPolicy":
+                _networkPolicies.RemoveAll(n => n.Name == name && n.Namespace == ns);
                 break;
             case "PersistentVolumeClaim":
                 _pvcs.RemoveAll(p => p.Name == name && p.Namespace == ns);
@@ -595,9 +678,13 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             "Node" => _nodes.Select(n => new ResourceRef(kind, null, n.Name)),
             "Namespace" => _namespaces.Select(n => new ResourceRef(kind, null, n.Name)),
             "Ingress" => _ingresses.Where(i => Match(ns, i.Namespace)).Select(i => new ResourceRef(kind, i.Namespace, i.Name)),
+            "NetworkPolicy" => _networkPolicies.Where(n => Match(ns, n.Namespace)).Select(n => new ResourceRef(kind, n.Namespace, n.Name)),
             "PersistentVolumeClaim" => _pvcs.Where(p => Match(ns, p.Namespace)).Select(p => new ResourceRef(kind, p.Namespace, p.Name)),
             "PersistentVolume" => _volumes.Select(v => new ResourceRef(kind, null, v.Name)),
             "StorageClass" => _storageClasses.Select(c => new ResourceRef(kind, null, c.Name)),
+            // A custom kind is whatever its listing holds (KON-483) — not workloads under its name.
+            _ when Resources.Any(r => r.IsCustom && r.Kind.Kind == kind.Kind) =>
+                TableOf(kind, ns).Rows.Select(r => r.Reference),
             // Everything left is a workload kind. Spelled as the fallthrough rather than five cases,
             // but it is a fallthrough over a known set — a kind the fake does not model would come out
             // of here carrying workload names, which is worse than nothing.
@@ -610,9 +697,20 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         lock (_watchers)
             _watchers.Add(mine);
 
+        // Taken in one go, here, and not left to enumerate lazily while the snapshot drains below
+        // (KON-451). `refs` is a query straight over this fake's own live lists, and the loop that
+        // reads it gives the thread up between every item — so a test that changed the cluster while
+        // it drained (a cordon, an apply: both assign into a List<T>) bumped the version under the
+        // running enumerator and the watch died on "Collection was modified". The page reads any
+        // exception out of its watch as its object being gone, so the failure surfaced as an event
+        // that was delivered and never read, one full assembly run in three.
+        // This is also what an informer does: list once at a resource version, then watch from it.
+        // A lazy query over live state was never a snapshot.
+        var snapshot = refs.ToList();
+
         try
         {
-            foreach (var r in refs)
+            foreach (var r in snapshot)
             {
                 ct.ThrowIfCancellationRequested();
                 await Task.Yield();
@@ -821,9 +919,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     /// </summary>
     private static readonly ApiResource[] Resources =
         [
-            new() { Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true, Verbs = ["list", "delete"] },
-            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"] },
+            new()
+            {
+                Kind = GroupVersionKind.Pod, Plural = "pods", Namespaced = true, Verbs = ["list", "delete"],
+                ShortNames = ["po"], Categories = ["all"],
+            },
+            new()
+            {
+                Kind = GroupVersionKind.Service, Plural = "services", Namespaced = true,
+                Verbs = ["list", "delete"], ShortNames = ["svc"], Categories = ["all"],
+            },
+            new() { Kind = GroupVersionKind.Node, Plural = "nodes", Verbs = ["list"], ShortNames = ["no"] },
             new()
             {
                 Kind = new GroupVersionKind(string.Empty, "v1", "ConfigMap"),
@@ -838,12 +944,83 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             {
                 Kind = new GroupVersionKind("cert-manager.io", "v1", "Certificate"),
                 Plural = "certificates", Namespaced = true, Verbs = ["list", "delete"], IsCustom = true,
+                ShortNames = ["cert", "certs"], Categories = ["cert-manager"],
+                Description = "A TLS certificate cert-manager requests and keeps renewed.",
+                Source = "cert-manager",
             },
         ];
 
     /// <inheritdoc/>
     public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
+
+    /// <summary>
+    /// One of each rung of the ladder, for the certificate the fake serves: a Deployment that mounts
+    /// the Secret the certificate owns, and the Secret's own owner relationship pointed back.
+    /// Anything else has no users, which is the answer that has to render too.
+    /// </summary>
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        IReadOnlyList<ResourceUsage> usages = resource.Name switch
+        {
+            "kontena-app-tls" =>
+            [
+                new(new ResourceRef(GroupVersionKind.Deployment, resource.Namespace, "kontena-web"),
+                    UsageEvidence.Mount, "Secret kontena-app-tls"),
+                new(new ResourceRef(GroupVersionKind.StatefulSet, resource.Namespace, "kontena-api"),
+                    UsageEvidence.OwnerReference, "ownerReference", OwnedByTarget: true),
+            ],
+            _ => [],
+        };
+
+        return ValueTask.FromResult(usages);
+    }
+
+    /// <summary>
+    /// Any object the generic listing has, built from its row (KON-483). The certificates carry the
+    /// Ready condition cert-manager sets, so a page that reads conditions has one healthy and one
+    /// failing object to show.
+    /// </summary>
+    /// <inheritdoc/>
+    public ValueTask<ResourceObject?> GetObjectAsync(ResourceRef resource, CancellationToken ct = default)
+    {
+        Counted(nameof(GetObjectAsync), 0);
+
+        var table = TableOf(resource.Kind, resource.Namespace);
+        if (table.Rows.FirstOrDefault(r => r.Reference.Name == resource.Name) is not { } row)
+            return ValueTask.FromResult<ResourceObject?>(null);
+
+        var fields = table.Columns
+            .Zip(row.Cells, (column, cell) => new ResourceField(column.Name, cell))
+            .Where(f => f.Name != "Name")
+            .ToArray();
+
+        var isCertificate = resource.Kind.Kind == "Certificate";
+        var ready = isCertificate && row.Cells[1] == "True";
+
+        return ValueTask.FromResult<ResourceObject?>(new ResourceObject
+        {
+            Reference = row.Reference,
+            Created = DateTimeOffset.UtcNow.AddDays(-12),
+            Labels = new Dictionary<string, string> { ["app.kubernetes.io/name"] = "kontena" },
+            Annotations = new Dictionary<string, string> { ["cert-manager.io/issuer-name"] = "letsencrypt" },
+            Columns = fields,
+            Status = isCertificate
+                ? [new("notAfter", "2026-12-30T00:00:00Z"), new("revision", "3")]
+                : [],
+            Conditions = isCertificate
+                ?
+                [
+                    new("Ready", ready ? "True" : "False",
+                        ready ? "Ready" : "DoesNotExist",
+                        ready ? "Certificate is up to date and has not expired" : "Issuing certificate as Secret does not exist",
+                        DateTimeOffset.UtcNow.AddMinutes(-3)),
+                ]
+                : [],
+        });
+    }
 
     /// <summary>
     /// Null, honestly: this fake models typed resources for the UI, not raw OpenAPI documents. A
@@ -857,13 +1034,17 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     /// <inheritdoc/>
     public ValueTask<ResourceTable> ListTableAsync(
-        GroupVersionKind kind, string? ns = null, CancellationToken ct = default)
+        GroupVersionKind kind, string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(Counted(nameof(ListTableAsync), TableOf(kind, ns)));
+
+    /// <summary>The listing itself, for this fake's own use — uncounted, so a test counts what a page read.</summary>
+    private ResourceTable TableOf(GroupVersionKind kind, string? ns)
     {
         // Columns per kind, the way a server renders them: a browser that drew the same three columns
         // for everything would look right against a fake and wrong against a cluster.
         if (kind.Kind == "Certificate")
         {
-            return ValueTask.FromResult(new ResourceTable
+            return new ResourceTable
             {
                 Columns = [new("Name", 0), new("Ready", 0), new("Secret", 0), new("Age", 0)],
                 Rows =
@@ -873,7 +1054,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                     new(new ResourceRef(kind, ns ?? "default", "kontena-api-tls"),
                         ["kontena-api-tls", "False", "kontena-api-tls", "3m"]),
                 ],
-            });
+            };
         }
 
         var names = kind.Kind switch
@@ -885,7 +1066,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             _ => [],
         };
 
-        return ValueTask.FromResult(new ResourceTable
+        return new ResourceTable
         {
             Columns = [new("Name", 0), new("Age", 0)],
             Rows =
@@ -894,7 +1075,7 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
                     new ResourceRef(kind, string.IsNullOrEmpty(n.Item2) ? null : n.Item2, n.Item1),
                     [n.Item1, "5d"])),
             ],
-        });
+        };
     }
 
     public ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default) =>
@@ -904,6 +1085,9 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     public ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<Ingress>>(_ingresses.Where(i => Match(ns, i.Namespace)).ToList());
 
+    public ValueTask<IReadOnlyList<NetworkPolicy>> ListNetworkPoliciesAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<NetworkPolicy>>(_networkPolicies.Where(n => Match(ns, n.Namespace)).ToList());
+
     public ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<PersistentVolumeClaim>>(_pvcs.Where(p => Match(ns, p.Namespace)).ToList());
 
@@ -912,6 +1096,47 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     public ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<StorageClass>>(_storageClasses);
+
+    // A policy engine that fails closed next to a cert-manager webhook that does not (KON-478): the
+    // pair a real cluster tends to have, and the difference the page exists to show.
+    private static readonly AdmissionWebhook[] Webhooks =
+    [
+        new AdmissionWebhook
+        {
+            Name = "mutate.kyverno.svc-fail", Configuration = "kyverno-resource-mutating-webhook-cfg",
+            Kind = AdmissionWebhookKind.Mutating, FailurePolicy = WebhookFailurePolicy.Fail,
+            Rules = [new WebhookRule { Operations = ["CREATE", "UPDATE"], ApiGroups = ["*"], Resources = ["*"] }],
+            Target = "kyverno/kyverno-svc", TimeoutSeconds = 10, Age = TimeSpan.FromDays(30),
+        },
+        new AdmissionWebhook
+        {
+            Name = "validate.kyverno.svc-fail", Configuration = "kyverno-resource-validating-webhook-cfg",
+            Kind = AdmissionWebhookKind.Validating, FailurePolicy = WebhookFailurePolicy.Fail,
+            Rules = [new WebhookRule { Operations = ["CREATE", "UPDATE", "DELETE", "CONNECT"], ApiGroups = ["*"], Resources = ["*"] }],
+            Target = "kyverno/kyverno-svc", TimeoutSeconds = 10, Age = TimeSpan.FromDays(30),
+        },
+        new AdmissionWebhook
+        {
+            Name = "webhook.cert-manager.io", Configuration = "cert-manager-webhook",
+            Kind = AdmissionWebhookKind.Validating, FailurePolicy = WebhookFailurePolicy.Ignore,
+            Rules = [new WebhookRule { Operations = ["CREATE", "UPDATE"], ApiGroups = ["cert-manager.io", "acme.cert-manager.io"], Resources = ["*/*"] }],
+            Target = "cert-manager/cert-manager-webhook", TimeoutSeconds = 30, Age = TimeSpan.FromDays(90),
+        },
+    ];
+
+    public ValueTask<IReadOnlyList<AdmissionWebhook>> ListAdmissionWebhooksAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<AdmissionWebhook>>(Webhooks);
+
+    public ValueTask<IReadOnlyList<HorizontalPodAutoscaler>> ListAutoscalersAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<HorizontalPodAutoscaler>>(_autoscalers.Where(h => Match(ns, h.Namespace)).ToList());
+
+    public ValueTask<IReadOnlyList<PodDisruptionBudget>> ListDisruptionBudgetsAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PodDisruptionBudget>>(_budgets.Where(b => Match(ns, b.Namespace)).ToList());
+
+    public ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(new AccessControl(
+            [.. _roles.Where(r => r.IsClusterRole || Match(ns, r.Namespace))],
+            [.. _bindings.Where(b => b.IsClusterBinding || Match(ns, b.Namespace))]));
 
     public ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default) =>
         ValueTask.FromResult<IReadOnlyList<ClusterEvent>>(
@@ -923,7 +1148,16 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     {
         var idx = _nodes.FindIndex(n => n.Name == node);
         if (idx >= 0)
-            _nodes[idx] = _nodes[idx] with { Unschedulable = cordoned };
+        {
+            // Kubernetes' own node-lifecycle controller adds the unschedulable taint alongside the
+            // spec flag; a fake that only flipped the flag would never show what a real cordon does.
+            var current = _nodes[idx];
+            List<NodeTaint> taints = [.. current.Taints.Where(t => t.Key != UnschedulableTaint.Key)];
+            if (cordoned)
+                taints.Add(UnschedulableTaint);
+
+            _nodes[idx] = current with { Unschedulable = cordoned, Taints = taints };
+        }
 
         return ValueTask.CompletedTask;
     }
@@ -1140,6 +1374,11 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
             case "Ingress":
                 return _ingresses.Find(i => i.Name == name && i.Namespace == ns) is { } ing ? ToDoc(ing) : null;
+
+            case "NetworkPolicy":
+                return _networkPolicies.Find(n => n.Name == name && n.Namespace == ns) is { } np
+                    ? new ManifestDoc { ApiVersion = "networking.k8s.io/v1", Kind = "NetworkPolicy", Name = np.Name, Namespace = np.Namespace }
+                    : null;
 
             case "PersistentVolumeClaim":
                 return _pvcs.Find(p => p.Name == name && p.Namespace == ns) is { } pvc ? ToDoc(pvc) : null;
@@ -1441,6 +1680,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
     private static KubeNamespace Ns(string name) =>
         new() { Name = name, Phase = "Active", Age = TimeSpan.FromDays(9) };
 
+    /// <summary>The taint Kubernetes itself puts on a cordoned node.</summary>
+    private static readonly NodeTaint UnschedulableTaint =
+        new("node.kubernetes.io/unschedulable", string.Empty, "NoSchedule");
+
     private static Node Node1(
         string name, IReadOnlyList<string> roles, bool unschedulable = false, bool diskPressure = false,
         string kubeletVersion = "v1.29.4") => new()
@@ -1452,6 +1695,13 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
         OsImage = "Container-Optimized OS",
         InternalIp = "10.128.0." + (name.GetHashCode() & 0x3f),
         Unschedulable = unschedulable,
+        Taints =
+        [
+            .. roles.Contains("control-plane")
+                ? new[] { new NodeTaint("node-role.kubernetes.io/control-plane", string.Empty, "NoSchedule") }
+                : [],
+            .. unschedulable ? new[] { UnschedulableTaint } : [],
+        ],
         Conditions =
         [
             new NodeCondition("Ready", true, "KubeletReady", "kubelet is posting ready status"),

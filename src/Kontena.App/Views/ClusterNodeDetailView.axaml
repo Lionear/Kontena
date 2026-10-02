@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -15,6 +16,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        <controls:CopyButton Classes="pill" Text="{Binding Name}" ToolTip.Tip="Copy the name" VerticalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                             <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding Status}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
@@ -109,6 +111,39 @@
                             <TextBlock Text="OS IMAGE" Classes="colhead"/>
                             <TextBlock Text="{Binding OsImage}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
                         </StackPanel>
+                    </StackPanel>
+
+                    <!-- Every taint, the ones Kubernetes set itself included (KON-472): a cordoned
+                         node carries node.kubernetes.io/unschedulable:NoSchedule that nobody typed,
+                         and that is exactly the row you came here to read. No card when there are
+                         none — an empty table says less than its absence. -->
+                    <StackPanel Spacing="10" IsVisible="{Binding HasTaints}">
+                        <TextBlock Text="Taints" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                CornerRadius="{StaticResource Radius}" ClipToBounds="True">
+                            <StackPanel>
+                                <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                                    <Grid ColumnDefinitions="2.6*,1.2*,1.2*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="KEY" Classes="colhead"/>
+                                        <TextBlock Grid.Column="1" Text="VALUE" Classes="colhead"/>
+                                        <TextBlock Grid.Column="2" Text="EFFECT" Classes="colhead"/>
+                                    </Grid>
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding Taints}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:NodeTaintRow">
+                                            <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="16,11">
+                                                <Grid ColumnDefinitions="2.6*,1.2*,1.2*" ColumnSpacing="10">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Effect}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- Every condition, not only the failing ones: this is where you come to read

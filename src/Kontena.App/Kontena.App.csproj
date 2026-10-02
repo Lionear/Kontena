@@ -33,6 +33,9 @@
          are the part that fails silently, so the tests reach them here rather than by widening them. -->
     <InternalsVisibleTo Include="Kontena.App.Tests" />
     <InternalsVisibleTo Include="Kontena.App.Ui.Tests" />
+    <!-- The screenshot tool needs the same "a store over a file I name" the tests need, for the same
+         reason: a capture that used the default store wrote over the real settings (KON-419). -->
+    <InternalsVisibleTo Include="Kontena.Screenshots" />
   </ItemGroup>
 
   <ItemGroup>

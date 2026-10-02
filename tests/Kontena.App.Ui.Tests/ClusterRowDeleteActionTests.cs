@@ -103,6 +103,29 @@ public sealed class ClusterRowDeleteActionTests(HeadlessSessionFixture headless)
         CancellationToken.None);
 
     [Fact]
+    public Task A_namespace_row_shows_Delete_only_where_deleting_is_allowed() => headless.Session.Dispatch(
+        () =>
+        {
+            // Same shape of change as the ingress row, and the same reason to check it here: the
+            // namespaces grid went from three columns to four (KON-464), and a Delete left in the old
+            // last column lands on top of the AGE text while still compiling and still binding.
+            var page = new ClusterNamespacesViewModel(new FakeClusterEngine());
+            page.LoadAsync().GetAwaiter().GetResult();
+
+            var window = Show(new ClusterNamespacesView { DataContext = page });
+
+            // IsVisible=false leaves the button in the visual tree, so the count is of the ones that
+            // actually reached the screen — the namespaces Kubernetes needs are not offered one.
+            var deletes = Deletes(window).Where(b => b.IsVisible).ToList();
+
+            Assert.Equal(page.Items.Count(r => r.CanDelete), deletes.Count);
+            Assert.NotEmpty(deletes);
+            Assert.All(deletes, b => Assert.NotNull(b.Command));
+            Assert.All(deletes, AssertItSitsInTheActionsCell);
+        },
+        CancellationToken.None);
+
+    [Fact]
     public Task An_ingress_row_shows_Delete_in_a_column_it_never_had_before() => headless.Session.Dispatch(
         () =>
         {

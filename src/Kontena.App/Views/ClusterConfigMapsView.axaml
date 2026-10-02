@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -24,10 +25,10 @@
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
                         <Grid ColumnDefinitions="2.2*,1.2*,0.9*,0.6*,140">
-                            <TextBlock Grid.Column="0" Text="NAME" Classes="colhead"/>
-                            <TextBlock Grid.Column="1" Text="NAMESPACE" Classes="colhead"/>
-                            <TextBlock Grid.Column="2" Text="KEYS" Classes="colhead"/>
-                            <TextBlock Grid.Column="3" Text="AGE" Classes="colhead"/>
+                            <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="1" Text="NAMESPACE" Key="NAMESPACE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="2" Text="KEYS" Key="KEYS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="3" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <TextBlock Grid.Column="4" Text="" Classes="colhead" MinWidth="132"/>
                         </Grid>
                     </Border>

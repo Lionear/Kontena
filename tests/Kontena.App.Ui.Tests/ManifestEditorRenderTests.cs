@@ -185,7 +185,7 @@ public sealed class ManifestEditorRenderTests(HeadlessSessionFixture headless)
             editor.Editor.Document.Insert(0, "# touched\n");
             Assert.StartsWith("# touched\n", vm.Text, StringComparison.Ordinal);
             Assert.True(vm.IsDirty);
-        }, CancellationToken.None);
+        }, CancellationToken.None).Unwrap();
 
     /// <summary>A backend that cannot apply still shows the manifest; it just will not take it back.</summary>
     [Fact]
@@ -198,7 +198,7 @@ public sealed class ManifestEditorRenderTests(HeadlessSessionFixture headless)
             Assert.NotEmpty(editor.Editor.Document.Text);
             Assert.True(editor.IsReadOnly);
             Assert.True(editor.Editor.IsReadOnly);
-        }, CancellationToken.None);
+        }, CancellationToken.None).Unwrap();
 
     /// <summary>Pod detail keeps its own copy of the YAML tab, so it needs its own guard.</summary>
     [Fact]

@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System.Collections.Generic;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Kubernetes;
@@ -48,11 +49,14 @@ namespace Kontena.Screenshots;
 //         update-{toast,card,downloading,ready,failed} (the in-app updater, driven through the real
 //         state machine against a fake update source), settings-updates and
 //         settings-updates-unmanaged (the Updates category, managed and not),
-//         cluster / cluster-{nodes,namespaces,workloads,pods,services,storageclasses,volumes} (the
+//         cluster / cluster-{nodes,namespaces,workloads,pods,services,storageclasses,volumes,webhooks} (the
 //         cluster browsers),
+//         cluster-networkpolicies, networkpolicy-detail and networkpolicy-pods (KON-476 — the list,
+//         then one policy as a page on its rules and on who it applies to),
 //         storageclass-volumes (KON-445 — a storage class's own PROVISIONS/RECLAIM/EXPAND/AGE columns
 //         plus its VOLUMES count, then the click-through to the Volumes page filtered to that class,
 //         reached through the row's own OpenVolumes command),
+//         access-control (KON-474 — who may do what, one grant opened to its role's rules),
 //         workload-restarting (KON-448 — what Restart leaves behind: the toast that answers the
 //         click, driven through the row's own Restart and the confirm's own Confirm),
 //         alerts (KON-393 — the Alerts page, with the notice that says how it keeps up),
@@ -61,6 +65,9 @@ namespace Kontena.Screenshots;
 //         cluster-node-drawer / cluster-namespace-drawer / cluster-storageclass-drawer (the detail
 //         drawer over its list, KON-307; the storage-class one is KON-445 — Overview/Events/YAML,
 //         no Pods tab),
+//         node-detail (KON-472 — a cordoned node's detail page, where its taints are listed),
+//         workload-autoscaler / workload-budget (KON-477 — a workload page's Autoscaling and
+//         Disruption budget section: the api's HPA, postgres's budget with nothing left to give),
 //         pod / pod-logs / pod-yaml (pod detail),
 //         pod-config (KON-390 — the Overview tab as a full page, with a Secret row of
 //         Config & secrets open and one of its values revealed),
@@ -100,14 +107,15 @@ internal static class Program
     {
         var opts = Options.Parse(args);
 
-        // Isolate every on-disk store into a throwaway config dir so a capture never reads or writes
-        // the user's real profile. The settings store resolves its root from SpecialFolder.Application-
-        // Data, which on Unix is $XDG_CONFIG_HOME (or $HOME/.config) — so pointing that at a temp dir,
-        // before any store is constructed, isolates it without touching store code.
+        // A throwaway data dir, so a capture never reads or writes the user's real profile — the
+        // settings, but also the tool-version cache, plugins and whatever else falls back to
+        // ProductInfo.DataDirectory. Moved in-process, before any of those reads it.
+        // This used to be XDG_CONFIG_HOME/APPDATA pointed at a temp dir, which no environment
+        // variable does on macOS: every capture there wrote over the real settings.json (KON-419).
+        // ScreenshotSandboxTests renders a scene under a fake home to keep it that way.
         var sandbox = Path.Combine(Path.GetTempPath(), "kontena-shots-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(sandbox);
-        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", sandbox);
-        Environment.SetEnvironmentVariable("APPDATA", sandbox);
+        ProductInfo.RedirectDataDirectory(sandbox);
         // The app's ConnectPreferred honours this to boot straight into the demo engine — except
         // for the one scene whose whole subject is what happens when that does not work out.
         // onboarding-again starts life on the down card, so it needs the same "no shortcut" treatment.
@@ -201,7 +209,11 @@ internal static class Program
             // Persist the scene's settings before anything reads them: parts of the app deliberately
             // re-read the store rather than trust a copy from launch (the updater does), and an empty
             // store would hand them defaults instead of this scene's choices.
-            var store = new SettingsStore();
+            // Over a file in the sandbox, never the default store: on macOS SpecialFolder.Application-
+            // Data is ~/Library/Application Support and no environment variable reaches it, so the
+            // default store wrote straight over the real settings.json (KON-419). Naming the path
+            // makes the isolation an argument rather than an assumption about the environment.
+            var store = new SettingsStore(Path.Combine(sandbox, "settings.json"));
             store.Save(settings);
 
             // The update scenes need an updater with something to offer: a development run is not a
@@ -253,6 +265,16 @@ internal static class Program
 
             ApplyScene(opts.Scene, viewModel);
             Settle(rounds: 40);
+
+            // The Custom resources section sits below the fold of the sidebar; scroll the opened kind
+            // into frame so the shot shows the folder it hangs under (KON-483).
+            if (opts.Scene == "custom-resources")
+            {
+                window.GetVisualDescendants().OfType<Button>()
+                    .FirstOrDefault(b => b.DataContext is NavItem { IsNested: true, IsSelected: true })
+                    ?.BringIntoView();
+                Settle(rounds: 20);
+            }
 
             var frame = window.CaptureRenderedFrame();
             if (frame is null)
@@ -752,6 +774,9 @@ internal static class Program
             case "cluster-services":
             case "cluster-storageclasses":
             case "cluster-volumes":
+            case "cluster-webhooks":
+            case "cluster-networkpolicies":
+            case "cluster-resources":
                 // Switch to the fake cluster → the whole UI enters cluster mode.
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
@@ -764,6 +789,68 @@ internal static class Program
                 {
                     vm.NavigateCommand.Execute("alerts");
                     Settle(rounds: 40);
+                }
+
+                break;
+
+            case "node-detail":
+                // KON-472: the node detail as a page, on the seeded cordoned control-plane node, so
+                // the Taints card is in frame with both a taint someone set and the one Kubernetes
+                // adds by itself when a node is cordoned. As a page rather than a drawer for the
+                // same reason pod-config is: the card sits below what a drawer can show at once.
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("nodes");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterNodesViewModel taintedNodes)
+                {
+                    taintedNodes.Items.FirstOrDefault(n => n.Cordoned)?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+
+                break;
+
+            // KON-483: one API group's kinds from its Custom resources entry in the sidebar, and a
+            // certificate's detail reached through the row's own OpenDetail — the not-ready one, so the
+            // failing condition is in frame.
+            case "custom-resources":
+            case "custom-resource-detail":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                SettleUntil(() => vm.NavGroups.Any(g => g.Label == "Custom resources"), maxRounds: 120);
+                vm.NavigateCommand.Execute("resources:cert-manager.io/Certificate");
+                SettleUntil(() => vm.CurrentPage is ClusterResourcesViewModel { Rows.Count: > 0 }, maxRounds: 120);
+                if (scene == "custom-resource-detail" && vm.CurrentPage is ClusterResourcesViewModel certificates)
+                {
+                    certificates.OpenDetail(certificates.Rows.First(r => r.Reference.Name == "kontena-api-tls"));
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 30);
+                }
+
+                break;
+
+            // KON-476: a network policy as a page, on the seeded allow that has both directions, so
+            // the ingress and egress sentences are in frame together. --tab pods shows who it applies to.
+            case "networkpolicy-detail":
+            case "networkpolicy-pods":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("networkpolicies");
+                SettleUntil(() => vm.CurrentPage is ClusterNetworkPoliciesViewModel { HasItems: true }, maxRounds: 120);
+                if (vm.CurrentPage is ClusterNetworkPoliciesViewModel policies)
+                {
+                    policies.Items.FirstOrDefault(n => n.Name == "postgres-from-api")?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 20);
+                    if (scene == "networkpolicy-pods" && vm.CurrentPage is ClusterNetworkPolicyDetailViewModel policy)
+                    {
+                        policy.SelectTabCommand.Execute("pods");
+                        Settle(rounds: 20);
+                    }
                 }
 
                 break;
@@ -781,6 +868,17 @@ internal static class Program
                 Settle(rounds: 30);
                 break;
 
+            // KON-474: the access page, with one grant opened so the role's rules are in frame.
+            case "access-control":
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                vm.NavigateCommand.Execute("access");
+                Settle(rounds: 30);
+                if (vm.CurrentPage is Kontena.App.ViewModels.ClusterAccessViewModel access)
+                    access.Items.FirstOrDefault(r => r.Subject == "web")?.ToggleCommand.Execute(null);
+                Settle(rounds: 30);
+                break;
+
             // KON-448: the moment after Restart is confirmed. Driven all the way through the row's
             // Restart command and the confirm dialog's own Confirm, because the whole ticket is about
             // what that path leaves behind — a scene that set the toast by hand could not tell a
@@ -790,6 +888,26 @@ internal static class Program
             // apiserver moves the rollout status inside the call, so the reload that follows already
             // has the real answer and the placeholder rightly steps aside. "Restarting…" covers the
             // window a real cluster has and this one does not — the tests drive that directly.
+            case "workload-autoscaler":
+            case "workload-budget":
+                // KON-477: the workload page's Autoscaling / Disruption budget section, as a page for
+                // the same reason as node-detail. The api carries the seeded HPA, postgres the budget
+                // that blocks the fake drain — so between them both halves are in frame.
+                vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
+                SettleUntil(() => vm.IsClusterMode, maxRounds: 120);
+                var scaledKind = scene == "workload-autoscaler" ? WorkloadKind.Deployment : WorkloadKind.StatefulSet;
+                vm.NavigateCommand.Execute(WorkloadNavGroups.KeyFor(scaledKind));
+                SettleUntil(() => vm.CurrentPage is ClusterWorkloadsViewModel { HasItems: true }, maxRounds: 120);
+                if (vm.CurrentPage is ClusterWorkloadsViewModel scaled)
+                {
+                    scaled.Items.FirstOrDefault(w => w.Name == (scene == "workload-autoscaler" ? "api" : "postgres"))?.OpenCommand.Execute(null);
+                    Settle(rounds: 30);
+                    vm.OpenDetailAsPageCommand.Execute(null);
+                    Settle(rounds: 20);
+                }
+
+                break;
+
             case "workload-restarting":
                 vm.SwitchEngineCommand.Execute("fakecluster:prod-eu-west");
                 SettleUntil(() => vm.IsClusterMode, maxRounds: 120);

@@ -42,6 +42,8 @@ public sealed partial class NewClusterViewModel : ObservableObject
 
         _available = availableRuntimes;
         Provisioners = [.. provisioners];
+        // Selecting a provisioner already settles the CNI to its default, the same way it settles the
+        // version — see OnSelectedChanged.
         Selected = Provisioners.FirstOrDefault(p => p.IsUsable) ?? Provisioners.FirstOrDefault();
         AddPort();
     }
@@ -64,6 +66,19 @@ public sealed partial class NewClusterViewModel : ObservableObject
     public bool ShowProvisioners => Provisioners.Count > 1;
 
     /// <summary>
+    /// Whether the CNI is worth asking about: the tool has to treat it as a choice, and there has to be
+    /// more than one name to choose between. k0s says yes to the first and offers no list — its field
+    /// lives in the remote wizard, where it is free text (KON-236).
+    /// </summary>
+    public bool ShowCni => Capabilities.ChoosesCni && Cnis.Count > 1;
+
+    /// <summary>The CNIs the chosen tool will install, its own default first.</summary>
+    public IReadOnlyList<string> Cnis => Capabilities.Cnis;
+
+    /// <summary>The tool's own, i.e. the entry that means "change nothing".</summary>
+    public string DefaultCni => Cnis.Count > 0 ? Cnis[0] : string.Empty;
+
+    /// <summary>
     /// The runtimes worth offering: what the provisioner supports, kept to what this machine has. A
     /// driver that is not installed is a choice that fails after the form is filled in.
     /// </summary>
@@ -79,6 +94,7 @@ public sealed partial class NewClusterViewModel : ObservableObject
     [ObservableProperty] private string _memoryMb = string.Empty;
     [ObservableProperty] private bool _ingressReady;
     [ObservableProperty] private LocalClusterRuntime _runtime = LocalClusterRuntime.Default;
+    [ObservableProperty] private string _cni = string.Empty;
     [ObservableProperty] private bool _waitForReady = true;
 
     /// <summary>
@@ -223,6 +239,11 @@ public sealed partial class NewClusterViewModel : ObservableObject
             PortMappings = ShowPorts ? [.. Ports.Select(p => p.Mapping).OfType<ClusterPortMapping>()] : [],
             IngressReady = ShowIngress && IngressReady,
             Runtime = Runtimes.Contains(Runtime) ? Runtime : LocalClusterRuntime.Default,
+
+            // The default entry means "leave it to the tool", which is null rather than its name — the
+            // same reading as the version field above, and what keeps the spec from asking for a
+            // post-create apply of the CNI that is already there.
+            Cni = ShowCni && !string.Equals(Cni, DefaultCni, StringComparison.Ordinal) ? Cni : null,
             Cpus = ShowResources ? Empty(Cpus) : null,
             MemoryMb = ShowResources ? Empty(MemoryMb) : null,
 
@@ -287,6 +308,7 @@ public sealed partial class NewClusterViewModel : ObservableObject
                      nameof(ShowRuntimes), nameof(Runtimes), nameof(ContextPreview),
                      nameof(HasContextPreview), nameof(HasDocker), nameof(HasPodman), nameof(HasKvm2),
                      nameof(Versions), nameof(DefaultVersion), nameof(ShowNodeImage),
+                     nameof(ShowCni), nameof(Cnis), nameof(DefaultCni),
                  })
         {
             OnPropertyChanged(name);
@@ -297,6 +319,11 @@ public sealed partial class NewClusterViewModel : ObservableObject
         // one cannot boot, or nothing at all.
         if (!Versions.Contains(Version, StringComparer.Ordinal))
             Version = DefaultVersion;
+
+        // Same treatment for the CNI: the other tool has never heard of this one's list, and the entry
+        // that always exists is its own default.
+        if (!Cnis.Contains(Cni, StringComparer.Ordinal))
+            Cni = DefaultCni;
 
         Recompute();
     }
@@ -309,6 +336,7 @@ public sealed partial class NewClusterViewModel : ObservableObject
     partial void OnMemoryMbChanged(string value) => Recompute();
     partial void OnIngressReadyChanged(bool value) => Recompute();
     partial void OnRuntimeChanged(LocalClusterRuntime value) => Recompute();
+    partial void OnCniChanged(string value) => Recompute();
     partial void OnWaitForReadyChanged(bool value) => Recompute();
 
     private void Recompute()

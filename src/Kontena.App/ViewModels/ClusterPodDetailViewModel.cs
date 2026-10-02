@@ -318,6 +318,9 @@ public partial class ClusterPodDetailViewModel : ViewModelBase, IDisposable, ITe
 
     public bool HasLabels => Labels.Count > 0;
 
+    /// <summary>All of <see cref="Labels"/> as one selector, for <c>kubectl -l</c> (KON-484).</summary>
+    public string LabelsCopyText => string.Join(",", Labels);
+
     /// <summary>The ConfigMaps and Secrets this pod reads, one row per object (KON-390).</summary>
     public IReadOnlyList<PodConfigRow> ConfigRows { get; }
 

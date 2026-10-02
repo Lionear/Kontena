@@ -96,6 +96,16 @@ public partial class MainWindowViewModel
             service, title, message);
     }
 
+    /// <summary>Delete an ingress from its detail page (KON-334, KON-453).</summary>
+    private void ConfirmDeleteIngress(Ingress ingress)
+    {
+        var (title, message) = ClusterDeleteWording.Ingress(ingress.Name, ingress.Namespace);
+
+        ConfirmDeleteObject(
+            new ResourceRef(GroupVersionKind.Ingress, ingress.Namespace, ingress.Name),
+            ingress, title, message);
+    }
+
     /// <summary>Delete a config map or secret from its detail page (KON-334).</summary>
     private void ConfirmDeleteConfigObject(ConfigObjectRow row)
     {
@@ -135,6 +145,37 @@ public partial class MainWindowViewModel
             ReloadCurrentClusterPage();
         });
     }
+    /// <summary>One Helm release in full (KON-473).</summary>
+    private void ShowHelmReleaseDetail(HelmRelease release)
+    {
+        if (_cluster is null || ClusterHelmReleasesViewModel.HelmOf(_cluster) is not { } helm)
+            return;
+
+        ShowDetail(
+            new ClusterHelmReleaseDetailViewModel(helm, release, ConfirmUninstallRelease) { RequestConfirm = ShowConfirm },
+            $"release {release.Name}", release);
+    }
+
+    /// <summary>
+    /// Uninstall a release, from the list or its detail — always confirmed. Routed here for the reason
+    /// <see cref="ConfirmDeleteObject"/> gives: the step back to the detail has to go with it.
+    /// </summary>
+    private void ConfirmUninstallRelease(HelmRelease release)
+    {
+        if (_cluster is null || ClusterHelmReleasesViewModel.HelmOf(_cluster) is not { } helm)
+            return;
+
+        var (title, message) = HelmWording.Uninstall(release);
+        Confirm(title, message, "Uninstall", async () =>
+        {
+            if (await helm.UninstallAsync(release.Name, release.Namespace) is { } error)
+                throw new InvalidOperationException(error);
+
+            ForgetSteps(release);
+            ReloadCurrentClusterPage();
+        });
+    }
+
     /// <summary>
     /// The node-detail page (KON-197). Until this existed a node was a dead end: the card summarised
     /// its conditions to a chip and there was nowhere to read them in full, nor to see what was
@@ -609,6 +650,30 @@ public partial class MainWindowViewModel
     }
 
     /// <summary>
+    /// Open the ingress-detail page (KON-453). The list row was a dead end: its rules lived in a
+    /// tooltip over a trimmed cell and its manifest had nowhere to be read at all.
+    /// </summary>
+    private void ShowIngressDetail(Ingress ingress)
+    {
+        if (_cluster is null)
+            return;
+
+        ShowDetail(new ClusterIngressDetailViewModel(
+            _cluster, ingress, onDelete: () => ConfirmDeleteIngress(ingress)),
+            $"ingress {ingress.Name}", ingress);
+    }
+
+    /// <summary>Open the network-policy page (KON-476): the pods it applies to and its rules, read.</summary>
+    private void ShowNetworkPolicyDetail(NetworkPolicy policy)
+    {
+        if (_cluster is null)
+            return;
+
+        ShowDetail(new ClusterNetworkPolicyDetailViewModel(_cluster, policy, onOpenPod: ShowPodDetail),
+            $"network policy {policy.Name}", policy);
+    }
+
+    /// <summary>
     /// Open whatever an event is about (KON-248) — the events feed's one way out.
     /// <para>
     /// An event carries a <see cref="ResourceRef"/>, and the detail pages take the object itself, so
@@ -640,6 +705,13 @@ public partial class MainWindowViewModel
                 ShowServiceDetail(service);
                 return true;
 
+            case "Ingress":
+                if ((await _cluster.ListIngressesAsync(ns)).FirstOrDefault(i => i.Name == target.Name) is not { } ingress)
+                    return false;
+
+                ShowIngressDetail(ingress);
+                return true;
+
             case var kind when Enum.TryParse<WorkloadKind>(kind, out var workloadKind):
                 if ((await _cluster.ListWorkloadsAsync(workloadKind, ns))
                         .FirstOrDefault(w => w.Name == target.Name) is not { } workload)
@@ -649,10 +721,38 @@ public partial class MainWindowViewModel
                 return true;
 
             default:
-                // The row only offers the link for kinds that have a page, so this is the belt to that
-                // braces: a kind added to one list and not the other lands here rather than nowhere.
-                return false;
+                // Every other kind — custom resources first among them — has the generic detail page
+                // (KON-483). It reads the object itself, so an event about one that has since gone
+                // still lands somewhere that says so.
+                ShowObjectDetail(target);
+                return true;
         }
+    }
+
+    /// <summary>
+    /// The generic detail page for any object (KON-483): what a custom resource opens, and what a
+    /// Resources-page row opens when asked for its YAML.
+    /// </summary>
+    private void ShowObjectDetail(ResourceRef reference, string tab = "overview")
+    {
+        if (_cluster is null)
+            return;
+
+        // Boxed once: the history step and the delete that forgets it compare by reference.
+        object target = reference;
+        var where = reference.Namespace is { Length: > 0 } ns ? $" in {ns}" : string.Empty;
+
+        ShowDetail(
+            new ClusterCustomResourceDetailViewModel(
+                _cluster, reference,
+                onOpenPod: ShowPodDetail,
+                onOpen: r => _ = OpenEventObjectAsync(r),
+                onDelete: () => ConfirmDeleteObject(
+                    reference, target, $"Delete {reference.Kind.Kind}",
+                    $"Delete {reference.Kind.Kind} \"{reference.Name}\"{where}? If something owns it, a "
+                    + "replacement may be created straight away; if not, it is gone for good."),
+                initialTab: tab),
+            $"{reference.Kind.Kind} {reference.Name}", target);
     }
 
     /// <summary>

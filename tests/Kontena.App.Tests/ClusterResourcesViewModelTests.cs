@@ -1,5 +1,6 @@
 using Kontena.App.ViewModels;
 using Kontena.Core.Orchestration.Fakes;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.Tests;
 
@@ -94,5 +95,272 @@ public sealed class ClusterResourcesViewModelTests
 
         page.Selected = items.First(i => i.Kind == "Node");
         Assert.False(page.CanDeleteSelected);
+    }
+
+    /// <summary>
+    /// The command-bar search box binds to whatever page is showing, but only where the page says it
+    /// searches. This page did not, so the box sat there greyed out — the complaint behind KON-454.
+    /// </summary>
+    [Fact]
+    public async Task The_page_takes_part_in_the_shared_search_box()
+    {
+        var page = await PageAsync();
+
+        Assert.True(page is IListPage { SupportsSearch: true });
+        Assert.True(((IListPage)page).HasLoaded);
+    }
+
+    [Fact]
+    public async Task Searching_narrows_the_listing_to_the_rows_that_match_any_column()
+    {
+        var page = await CertificatesAsync();
+        var all = page.Rows.Count;
+
+        page.SearchText = "kontena-app-tls";
+
+        Assert.Equal(["kontena-app-tls"], page.Rows.Select(r => r.Reference.Name));
+        Assert.True(all > page.Rows.Count, "the search should have left rows out");
+    }
+
+    /// <summary>A search that matched nothing is a different answer from a kind with nothing in it.</summary>
+    [Fact]
+    public async Task A_search_that_matches_nothing_says_so_rather_than_looking_empty()
+    {
+        var page = await CertificatesAsync();
+
+        page.SearchText = "nothing-is-called-this";
+
+        Assert.Empty(page.Rows);
+        Assert.True(page.HasNoMatches);
+        Assert.False(page.IsEmpty);
+    }
+
+    /// <summary>
+    /// Three states, the same as every cluster list page since KON-318: ascending, descending, and
+    /// back to the order the server sent.
+    /// </summary>
+    [Fact]
+    public async Task Clicking_a_header_sorts_then_flips_then_lets_go()
+    {
+        var page = await CertificatesAsync();
+        var served = page.Rows.Select(r => r.Reference.Name).ToArray();
+
+        page.SortByCommand.Execute("Name");
+        Assert.Equal("Name", page.SortColumn);
+        Assert.False(page.SortDescending);
+        var ascending = page.Rows.Select(r => r.Cells[0]).ToArray();
+        Assert.Equal([.. ascending.OrderBy(c => c, StringComparer.OrdinalIgnoreCase)], ascending);
+
+        page.SortByCommand.Execute("Name");
+        Assert.True(page.SortDescending);
+        Assert.Equal([.. ascending.Reverse()], page.Rows.Select(r => r.Cells[0]));
+
+        page.SortByCommand.Execute("Name");
+        Assert.Null(page.SortColumn);
+        Assert.Equal(served, page.Rows.Select(r => r.Reference.Name));
+    }
+
+    /// <summary>A column this listing does not have is ignored, not thrown — the key comes off a click.</summary>
+    [Fact]
+    public async Task Sorting_by_a_column_this_kind_does_not_have_is_ignored()
+    {
+        var page = await CertificatesAsync();
+
+        page.SortByCommand.Execute("NoSuchColumn");
+
+        Assert.Null(page.SortColumn);
+    }
+
+    /// <summary>Filter first, then sort: sorting decides the order of what survived the search.</summary>
+    [Fact]
+    public async Task Sorting_applies_to_what_the_search_left_over()
+    {
+        var page = await CertificatesAsync();
+
+        page.SortByCommand.Execute("Name");
+        page.SearchText = "tls";
+
+        Assert.All(page.Rows, row => Assert.Contains("tls", row.Cells[0], StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static async Task<ClusterResourcesViewModel> CertificatesAsync()
+    {
+        var page = await PageAsync();
+        page.Selected = page.Groups.SelectMany(g => g.Items).First(i => i.Kind == "Certificate");
+
+        for (var i = 0; i < 100 && page.Rows.Count == 0; i++)
+            await Task.Delay(10);
+
+        return page;
+    }
+
+    /// <summary>
+    /// The complaint behind KON-455: you know the object is in a custom resource, you do not know what
+    /// the type is called. Kind-only matching cannot answer that; the names kubectl accepts can.
+    /// </summary>
+    [Theory]
+    [InlineData("cert")]          // short name
+    [InlineData("certificates")]  // plural
+    [InlineData("cert-manager")]  // category, and the group
+    [InlineData("CERT")]          // and none of it is case-sensitive
+    public async Task A_kind_is_found_by_every_name_it_answers_to(string term)
+    {
+        var page = await PageAsync();
+
+        page.KindSearch = term;
+
+        Assert.Contains(page.Groups.SelectMany(g => g.Items), i => i.Kind == "Certificate");
+    }
+
+    /// <summary>A name you can search by but cannot see reads as a search that failed.</summary>
+    [Fact]
+    public async Task The_names_a_kind_answers_to_are_shown_under_it()
+    {
+        var page = await PageAsync();
+        var certificate = page.Groups.SelectMany(g => g.Items).Single(i => i.Kind == "Certificate");
+
+        Assert.Contains("cert", certificate.Aliases, StringComparison.Ordinal);
+        Assert.Contains("certificates", certificate.Aliases, StringComparison.Ordinal);
+
+        // The kind itself is already the line above; repeating it there is noise.
+        Assert.DoesNotContain("Certificate", certificate.Aliases, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_term_that_names_nothing_still_matches_nothing()
+    {
+        var page = await PageAsync();
+
+        page.KindSearch = "zzz-no-such-kind";
+
+        Assert.Empty(page.Groups);
+    }
+
+    /// <summary>
+    /// The case KON-455 actually described: you remember what the thing does, not what it is called.
+    /// "TLS" appears in no name, no alias and no group — only in the description the CRD author wrote.
+    /// </summary>
+    [Fact]
+    public async Task A_kind_is_found_by_what_it_is_for()
+    {
+        var page = await PageAsync();
+
+        page.KindSearch = "TLS";
+
+        Assert.Equal(["Certificate"], page.Groups.SelectMany(g => g.Items).Select(i => i.Kind));
+    }
+
+    [Fact]
+    public async Task The_description_and_what_installed_it_are_on_the_row()
+    {
+        var page = await PageAsync();
+        var certificate = page.Groups.SelectMany(g => g.Items).Single(i => i.Kind == "Certificate");
+
+        Assert.True(certificate.HasDescription);
+        Assert.Contains("TLS", certificate.Description, StringComparison.Ordinal);
+        Assert.Equal("cert-manager.io · cert-manager", certificate.Origin);
+    }
+
+    /// <summary>A built-in kind has no definition to read, so it shows the group and nothing else.</summary>
+    [Fact]
+    public async Task A_built_in_kind_carries_no_description_line()
+    {
+        var page = await PageAsync();
+        var pod = page.Groups.SelectMany(g => g.Items).Single(i => i.Kind == "Pod");
+
+        Assert.False(pod.HasDescription);
+        Assert.Equal("core", pod.Origin);
+    }
+
+    /// <summary>
+    /// A row opens the object's own page (KON-483). It used to open a side panel with the YAML and
+    /// nothing else, which is what made a custom resource feel second-class.
+    /// </summary>
+    [Fact]
+    public async Task Clicking_a_name_asks_the_shell_for_the_objects_detail()
+    {
+        var page = await CertificatesAsync();
+        (ResourceRef Target, string Tab)? opened = null;
+        page.RequestOpenDetail = (target, tab) => opened = (target, tab);
+
+        page.OpenDetail(page.Rows.Single(r => r.Reference.Name == "kontena-app-tls"));
+
+        Assert.Equal("kontena-app-tls", opened?.Target.Name);
+        Assert.Equal("Certificate", opened?.Target.Kind.Kind);
+        Assert.Equal("overview", opened?.Tab);
+    }
+
+    [Fact]
+    public async Task The_yaml_button_opens_the_detail_on_its_yaml_tab()
+    {
+        var page = await CertificatesAsync();
+        string? tab = null;
+        page.RequestOpenDetail = (_, t) => tab = t;
+
+        page.OpenDetail(page.Rows[0], "yaml");
+
+        Assert.Equal("yaml", tab);
+    }
+
+    /// <summary>What a sidebar entry under Custom resources opens: that group's kinds, and no others.</summary>
+    [Fact]
+    public async Task A_group_page_offers_only_that_groups_kinds()
+    {
+        using var page = new ClusterResourcesViewModel(new FakeClusterEngine(), null, "cert-manager.io");
+        for (var i = 0; i < 100 && (page.IsLoadingKinds || page.Table is null); i++)
+            await Task.Delay(10);
+
+        Assert.Equal("cert-manager.io", page.Title);
+        Assert.False(page.IsSingleKind);
+        Assert.Equal(["Certificate"], page.Groups.SelectMany(g => g.Items).Select(i => i.Kind));
+        Assert.Equal("Certificate", page.Selected?.Kind);
+    }
+
+    /// <summary>
+    /// The listing follows the cluster (KON-483). It was one read when a kind was picked, so a custom
+    /// resource's status column — CNPG's "Waiting for the instances to become active" — kept saying
+    /// what was true at that moment long after the cluster had come up.
+    /// </summary>
+    [Fact]
+    public async Task The_listing_rereads_when_the_cluster_says_an_object_moved()
+    {
+        var cluster = new FakeClusterEngine();
+        using var page = new ClusterResourcesViewModel(cluster, null);
+        for (var i = 0; i < 100 && (page.IsLoadingKinds || page.Table is null); i++)
+            await Task.Delay(10);
+
+        page.Selected = page.Groups.SelectMany(g => g.Items).First(i => i.Kind == "Certificate");
+        for (var i = 0; i < 100 && page.Rows.Count == 0; i++)
+            await Task.Delay(10);
+
+        Assert.True(page.IsLive);
+        Assert.Null(page.LiveNotice);
+
+        // Let the seed burst settle into its one re-read first, so the count below is the event's.
+        await Task.Delay(600);
+        var before = cluster.CallsTo(nameof(FakeClusterEngine.ListTableAsync));
+
+        cluster.EmitWatchEvent(new ResourceEvent
+        {
+            Type = WatchEventType.Modified,
+            Resource = page.Rows[0].Reference,
+        });
+
+        for (var i = 0; i < 200 && cluster.CallsTo(nameof(FakeClusterEngine.ListTableAsync)) == before; i++)
+            await Task.Delay(10);
+
+        Assert.True(cluster.CallsTo(nameof(FakeClusterEngine.ListTableAsync)) > before, "the listing was not re-read");
+        Assert.False(page.IsLoading);
+    }
+
+    [Fact]
+    public async Task On_a_cluster_that_cannot_watch_it_says_so()
+    {
+        using var page = new ClusterResourcesViewModel(new FakeClusterEngine(watch: false), null);
+        for (var i = 0; i < 100 && (page.IsLoadingKinds || page.Table is null); i++)
+            await Task.Delay(10);
+
+        Assert.False(page.IsLive);
+        Assert.Contains("refresh", page.LiveNotice ?? "", StringComparison.OrdinalIgnoreCase);
     }
 }

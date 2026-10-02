@@ -1,3 +1,4 @@
+using Kontena.Adapters.Apple;
 using Kontena.Adapters.Docker;
 using Kontena.Adapters.Podman;
 using Kontena.App.Services;
@@ -55,8 +56,66 @@ public sealed class ExtensionsSettingsTests : IDisposable
         var page = Page();
 
         Assert.True(page.HasAdapters);
-        Assert.All(page.Adapters, row => Assert.True(row.IsEnabled));
+        Assert.All(page.Adapters.Where(r => r.CanToggle), row => Assert.True(row.IsEnabled));
         Assert.Contains(page.Adapters, row => row.Id == DockerAdapterModule.BackendId);
+    }
+
+    /// <summary>
+    /// The card is on the page whatever machine this is (KON-468) — Kontena ships the adapter, so it is
+    /// part of what the page is listing. Whether it can be switched on is the platform's answer, not the
+    /// list's.
+    /// </summary>
+    [Fact]
+    public void An_adapter_this_machine_cannot_run_is_listed()
+    {
+        Assert.Single(Page().Adapters, r => r.Id == AppleAdapterModule.BackendId);
+    }
+
+    /// <summary>
+    /// The switch is dead and reads off, with the manifest's own requirement as the reason. Written as
+    /// an equality against the platform so it says something on a Mac too, rather than passing there by
+    /// describing nothing.
+    /// </summary>
+    [Fact]
+    public void An_adapter_this_machine_cannot_run_has_a_dead_switch_and_a_reason()
+    {
+        var runsHere = OperatingSystem.IsMacOSVersionAtLeast(26);
+        var apple = Assert.Single(Page().Adapters, r => r.Id == AppleAdapterModule.BackendId);
+
+        Assert.Equal(runsHere, apple.CanToggle);
+        Assert.Equal(runsHere, apple.IsEnabled);
+        Assert.Equal(!runsHere, apple.IsUnavailable);
+        Assert.Equal(runsHere ? string.Empty : "Requires macOS 26 or later", apple.UnavailableReason);
+    }
+
+    /// <summary>An adapter that does run here is untouched by any of it — no regression to Docker.</summary>
+    [Fact]
+    public void An_adapter_this_machine_can_run_keeps_its_switch()
+    {
+        var docker = Assert.Single(Page().Adapters, r => r.Id == DockerAdapterModule.BackendId);
+
+        Assert.True(docker.CanToggle);
+        Assert.True(docker.IsEnabled);
+        Assert.False(docker.IsUnavailable);
+        Assert.Equal(string.Empty, docker.UnavailableReason);
+    }
+
+    /// <summary>
+    /// Writing past the dead switch persists nothing. The view disables it, so this is about anything
+    /// that reaches the row itself: a preference the user cannot see and cannot undo is worse than none.
+    /// </summary>
+    [Fact]
+    public void Forcing_a_dead_switch_on_writes_nothing()
+    {
+        if (OperatingSystem.IsMacOSVersionAtLeast(26))
+            return;
+
+        var page = Page(new KontenaSettings { DisabledAdapters = [AppleAdapterModule.BackendId] });
+        var apple = Assert.Single(page.Adapters, r => r.Id == AppleAdapterModule.BackendId);
+
+        apple.IsEnabled = true;
+
+        Assert.False(new SettingsStore(_path).Load().IsAdapterEnabled(AppleAdapterModule.BackendId));
     }
 
     [Fact]

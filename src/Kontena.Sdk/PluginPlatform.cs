@@ -70,4 +70,37 @@ public sealed record PluginPlatform
 
     /// <summary>What a rejection or a store listing shows: "linux", "macos 26".</summary>
     public override string ToString() => MinVersion.Length == 0 ? Os : Os + " " + MinVersion;
+
+    /// <summary>
+    /// What a machine needs for this entry to match, written the way a person reads it rather than the
+    /// way <see cref="MatchesHost"/> matches it: "macOS 26 or later", "Linux".
+    /// </summary>
+    public string Requirement => MinVersion.Length == 0 ? Display(Os) : Display(Os) + " " + MinVersion + " or later";
+
+    /// <summary>
+    /// What a machine would have to be for a plugin declaring <paramref name="platforms"/> to run, as
+    /// one sentence — "Requires macOS 26 or later" — or empty when it declares nothing and so runs
+    /// anywhere (KON-468).
+    /// <para>
+    /// Composed from the declaration rather than written per adapter, because the declaration is the
+    /// only thing that knows: an adapter Settings shows but cannot switch on has to say why, and a
+    /// sentence typed beside the card would be one more place to forget when the floor moves.
+    /// </para>
+    /// </summary>
+    public static string RequirementFor(IReadOnlyCollection<PluginPlatform> platforms) =>
+        platforms.Count == 0
+            ? string.Empty
+            : "Requires " + string.Join(" or ", platforms.Select(p => p.Requirement));
+
+    /// <summary>
+    /// The operating system as it is written down rather than as it is matched. <see cref="Os"/> is
+    /// .NET's lowercase vocabulary and stays that way; only the reader gets the capitals.
+    /// </summary>
+    private static string Display(string os) => os.ToLowerInvariant() switch
+    {
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "linux" => "Linux",
+        _ => os,
+    };
 }

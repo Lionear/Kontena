@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:vm="using:Kontena.App.ViewModels"
              xmlns:views="using:Kontena.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -16,6 +17,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                        <controls:CopyButton Classes="pill" Text="{Binding Name}" ToolTip.Tip="Copy the name" VerticalAlignment="Center"/>
                         <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center">
                             <TextBlock Text="{Binding KindText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
                         </Border>
@@ -107,11 +109,19 @@
                             </StackPanel>
                             <StackPanel Spacing="3">
                                 <TextBlock Text="LABELS" Classes="colhead"/>
-                                <TextBlock Text="{Binding LabelsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding LabelsText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    <controls:CopyButton Grid.Column="1" Classes="pill" Text="{Binding LabelsCopyText}" IsVisible="{Binding LabelsCopyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" VerticalAlignment="Top"
+                                            ToolTip.Tip="Copy as a selector for kubectl -l"/>
+                                </Grid>
                             </StackPanel>
                             <StackPanel Spacing="3">
                                 <TextBlock Text="SELECTOR" Classes="colhead"/>
-                                <TextBlock Text="{Binding SelectorText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding SelectorText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    <controls:CopyButton Grid.Column="1" Classes="pill" Text="{Binding SelectorCopyText}" IsVisible="{Binding SelectorCopyText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" VerticalAlignment="Top"
+                                            ToolTip.Tip="Copy as a selector for kubectl -l"/>
+                                </Grid>
                             </StackPanel>
                             <StackPanel Spacing="3" IsVisible="{Binding !IsCronJob}">
                                 <TextBlock Text="STRATEGY" Classes="colhead"/>
@@ -119,6 +129,76 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+
+                    <!-- Autoscaling and disruption (KON-477): what sets the replica count, and what a
+                         drain has to respect. Absence is stated too — "is there a PDB?" is the question. -->
+                    <StackPanel Spacing="10" Margin="0,8,0,0" IsVisible="{Binding ShowScaling}">
+                        <TextBlock Text="Autoscaling" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <TextBlock Text="{Binding NoAutoscalerNote}" IsVisible="{Binding NoAutoscalerNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                        <ItemsControl ItemsSource="{Binding Autoscalers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AutoscalerRow">
+                                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16" Margin="0,0,0,8">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource Text}"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="28">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="CURRENT" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Current}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="DESIRED" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Desired}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="MIN" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Min}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="MAX" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Max}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="METRICS (CURRENT / TARGET)" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Metrics}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Text="Disruption budget" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                        <TextBlock Text="{Binding NoDisruptionBudgetNote}" IsVisible="{Binding NoDisruptionBudgetNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                        <ItemsControl ItemsSource="{Binding DisruptionBudgets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DisruptionBudgetRow">
+                                    <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16" Margin="0,0,0,8">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource Text}"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="28">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="{Binding BudgetLabel}" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Budget}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="HEALTHY / DESIRED" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Healthy}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="DISRUPTIONS ALLOWED" Classes="colhead"/>
+                                                    <TextBlock Text="{Binding Allowed}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
 

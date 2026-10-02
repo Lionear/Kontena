@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:controls="using:Kontena.App.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterHelmReleasesView"
+             x:DataType="vm:ClusterHelmReleasesViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Helm releases" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Without helm the page stays and says why it is empty, like Alerts without an
+                 Alertmanager (KON-207): a missing entry would leave "where are my releases" unanswered. -->
+            <Border IsVisible="{Binding IsHelmMissing}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Helm is not installed" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+                    <TextBlock Text="Kontena reads and manages releases through the helm CLI. Install it — Cluster tooling in Settings shows how — and reopen this page."
+                               FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <SelectableTextBlock Text="{Binding Error}" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"/>
+            </Border>
+
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="1.3*,1*,1.5*,0.8*,0.9*,0.6*,0.7*,100">
+                            <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="1" Text="NAMESPACE" Key="NAMESPACE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="2" Text="CHART" Key="CHART" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <TextBlock Grid.Column="3" Text="APP" Classes="colhead"/>
+                            <controls:SortableHeader Grid.Column="4" Text="STATUS" Key="STATUS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="5" Text="REV" Key="REVISION" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="6" Text="UPDATED" Key="UPDATED" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <TextBlock Grid.Column="7" Text="" Classes="colhead" MinWidth="80"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HelmReleaseRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                    <Grid ColumnDefinitions="1.3*,1*,1.5*,0.8*,0.9*,0.6*,0.7*,100">
+                                        <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}"
+                                                IsEnabled="{Binding CanOpen}" VerticalAlignment="Center" Margin="0,0,14,0">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
+                                        <TextBlock Grid.Column="1" Text="{Binding Namespace}" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Chart}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,14,0"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding AppVersion}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <Panel Grid.Column="4" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource Success}" IsVisible="{Binding IsHealthy}"/>
+                                            <TextBlock Text="{Binding Status}" Foreground="{DynamicResource Danger}" IsVisible="{Binding !IsHealthy}"/>
+                                        </Panel>
+                                        <TextBlock Grid.Column="5" Text="{Binding Revision}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="6" Text="{Binding Updated}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="7" Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Command="{Binding UninstallCommand}" IsVisible="{Binding CanUninstall}">Uninstall</Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding ShowEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No Helm releases in this namespace." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No releases match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

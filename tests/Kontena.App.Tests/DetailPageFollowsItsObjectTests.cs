@@ -10,20 +10,24 @@ namespace Kontena.App.Tests;
 /// page was open went unseen. KON-448 built the hook and used it for workloads; this fills in the
 /// other three.
 /// <para>
-/// Each case drives the page's own <c>RefreshAsync</c> — the method the watch calls when a Modified
-/// event for this object arrives — and awaits it. That the watch calls it is one line in the shared
-/// base, covered where it was introduced (KON-448); what is new here is what each page does when it
-/// is called, and that is worth testing without a stream in the middle.
+/// Most cases drive the page's own <c>RefreshAsync</c> — the method the watch calls when a Modified
+/// event for this object arrives — and await it. What is new in KON-450 is what each page does when
+/// it is called, and that is worth testing without a stream in the middle.
 /// </para>
 /// <para>
-/// <b>Deliberately not "emit an event and wait for the effect".</b> A watch-driven version of these
-/// was written first and failed about one run in three, only ever in the full-assembly run. The fake
-/// hands its watch snapshot back through <c>Task.Yield()</c>, which resumes on xUnit's
-/// synchronisation context — a bounded set of workers shared with every other test — and a few tests
-/// in this assembly block one of those workers (the analyser flags them: xUnit1031). A watch stuck
-/// mid-snapshot never reaches the event already sitting in its channel, and the page waits for
-/// something that was in fact delivered. That is a harness problem, it predates this work, and
-/// paying for it in every assertion here would buy nothing.
+/// One case below does drive it through the watch, because that the watch calls
+/// <c>OnResourceModifiedAsync</c> at all is the line KON-448 fixed and nothing else here would hold
+/// it. The rest stay direct: what each page does when it is called is worth testing without a stream
+/// in the middle, and four copies of the same delivery would only be four chances to time out.
+/// </para>
+/// <para>
+/// A watch-driven version of all of these was written first and failed about one run in three, which
+/// is what KON-451 chased down. It was never the synchronisation context the first diagnosis blamed:
+/// the fake's snapshot was a lazy query over its own live lists, so <c>CordonNodeAsync</c> landing
+/// while that snapshot still drained bumped the list version under the enumerator, killed the watch
+/// with "Collection was modified", and the page — which reads any exception out of its watch as its
+/// object being gone — sat waiting for an event that had in fact been delivered. The fake takes its
+/// snapshot in one go now.
 /// </para>
 /// <para>
 /// The world is still moved through real paths — <c>CordonNodeAsync</c>, an apply — rather than by
@@ -122,6 +126,36 @@ public sealed class DetailPageFollowsItsObjectTests
 
         Assert.True(detail.Cordoned);
         Assert.Contains("Cordoned", detail.CordonState, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_modified_event_on_the_watch_reaches_the_page()
+    {
+        // The one case that goes through the stream rather than calling RefreshAsync by hand: that a
+        // Modified event gets as far as OnResourceModifiedAsync is one line in the shared base
+        // (KON-448), and it is the line that had no test at all while KON-451 was open.
+        var engine = new FakeClusterEngine();
+        var node = (await engine.ListNodesAsync()).First(n => !n.Unschedulable);
+
+        using var detail = new ClusterNodeDetailViewModel(engine, node, "v1.29.0");
+
+        Assert.False(detail.Cordoned);
+
+        await engine.CordonNodeAsync(node.Name, cordoned: true);
+        engine.EmitWatchEvent(new ResourceEvent
+        {
+            Type = WatchEventType.Modified,
+            Resource = new ResourceRef(GroupVersionKind.Node, null, node.Name),
+        });
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!detail.Cordoned && DateTime.UtcNow < deadline)
+            await Task.Delay(5);
+
+        // Not IsSourceGone: a watch that died of an exception sets that instead, which is exactly how
+        // this test used to fail — silently, as a page waiting forever.
+        Assert.False(detail.IsSourceGone, "the watch ended instead of delivering the event");
+        Assert.True(detail.Cordoned, "the Modified event never reached the page");
     }
 
     [Fact]

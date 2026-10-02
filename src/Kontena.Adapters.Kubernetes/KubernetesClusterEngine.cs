@@ -7,6 +7,7 @@ using Kontena.Sdk;
 using Kontena.Sdk.Models;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
+using Kontena.Sdk.Tooling;
 
 // Both sides name their watch enum WatchEventType and both namespaces are imported, so name each.
 using K8sWatch = k8s.WatchEventType;
@@ -28,7 +29,7 @@ namespace Kontena.Adapters.Kubernetes;
 /// </para>
 /// </summary>
 public sealed class KubernetesClusterEngine
-    : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IDisposable
+    : IClusterEngine, IMetricsAware, IMetricsHistoryAware, IAlertingAware, IHelmAware, IDisposable
 {
     private readonly k8s.Kubernetes _client;
     private readonly ClusterMetrics _metrics;
@@ -43,6 +44,7 @@ public sealed class KubernetesClusterEngine
     private readonly PrometheusSource _history;
     private readonly AlertingDiscovery _alerting;
     private readonly ApiProxyHttp _proxy;
+    private readonly HelmCli _helm;
 
     private IAlertSource _alerts = NoAlertSource.Instance;
     private AlertingProbe _alertingProbe = AlertingProbe.Nothing;
@@ -68,6 +70,7 @@ public sealed class KubernetesClusterEngine
         _apply = new KubernetesApply(_client, _resources);
         _alerting = new AlertingDiscovery(_client, proxy, _resources);
         _proxy = proxy;
+        _helm = new HelmCli(new ToolRunner(), () => _context, _kubeconfigPath);
 
         // Metrics and alerting start off; PingAsync probes for sources and turns on what answers.
         _capabilities = BaseCapabilities with { Metrics = false };
@@ -99,6 +102,9 @@ public sealed class KubernetesClusterEngine
 
     /// <summary>Where the past comes from, when the cluster keeps one (KON-345).</summary>
     public IMetricsHistory History => _history;
+
+    /// <summary>The Helm releases in this cluster, managed through the helm CLI (KON-473).</summary>
+    public IHelmReleases Helm => _helm;
 
     /// <summary>What answers for alerts, or <see cref="NoAlertSource"/> until something does.</summary>
     public IAlertSource Alerts => _alerts;
@@ -203,6 +209,9 @@ public sealed class KubernetesClusterEngine
             Metrics = hasMetrics,
             Alerting = _alertingProbe.Alertmanager is not null,
             AlertRules = _alertingProbe.RuleCrd,
+
+            // The Releases page drives the helm CLI; without one it would only ever show an error.
+            Helm = ToolLocator.Locate(KnownTools.Helm.Executable, KnownTools.Helm.ExtraSearchPaths) is not null,
         };
     }
 
@@ -388,6 +397,109 @@ public sealed class KubernetesClusterEngine
         return [.. (list.Items ?? []).Select(map)];
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default)
+    {
+        var ns = resource.Namespace;
+
+        // The ConfigMaps and Secrets this object created, so a workload mounting one of them counts as
+        // using the object. Both hops are exact: the ownerReference here, the name in the pod spec
+        // below. Best-effort — without rights to read them the ladder simply loses its middle rung.
+        var ownedConfig = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        try
+        {
+            var secrets = ns is { Length: > 0 }
+                ? await _client.CoreV1.ListNamespacedSecretAsync(ns, cancellationToken: ct).ConfigureAwait(false)
+                : await _client.CoreV1.ListSecretForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
+
+            foreach (var secret in secrets?.Items ?? [])
+            {
+                if (ResourceUsers.OwnedBy(secret.Metadata?.OwnerReferences, resource))
+                    ownedConfig[$"Secret/{secret.Metadata!.Name}"] = $"Secret {secret.Metadata.Name}";
+            }
+
+            var maps = ns is { Length: > 0 }
+                ? await _client.CoreV1.ListNamespacedConfigMapAsync(ns, cancellationToken: ct).ConfigureAwait(false)
+                : await _client.CoreV1.ListConfigMapForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false);
+
+            foreach (var map in maps?.Items ?? [])
+            {
+                if (ResourceUsers.OwnedBy(map.Metadata?.OwnerReferences, resource))
+                    ownedConfig[$"ConfigMap/{map.Metadata!.Name}"] = $"ConfigMap {map.Metadata.Name}";
+            }
+        }
+        catch (Exception)
+        {
+            // No rights to the config objects: the other two rungs still stand.
+        }
+
+        var usages = new List<ResourceUsage>();
+
+        foreach (var (kind, workloads) in await WorkloadsForUsageAsync(ns, ct).ConfigureAwait(false))
+        {
+            foreach (var (meta, spec) in workloads)
+            {
+                if (meta?.Name is not { Length: > 0 } name)
+                    continue;
+
+                var reference = new ResourceRef(kind, meta.NamespaceProperty, name);
+
+                if (ResourceUsers.Link(reference, meta.OwnerReferences, meta.Annotations, spec, resource, ownedConfig)
+                    is { } usage)
+                {
+                    usages.Add(usage);
+                }
+            }
+        }
+
+        // Strongest evidence first, then by name, so the list reads the same on every refresh.
+        return [.. usages
+            .OrderBy(u => u.Evidence)
+            .ThenBy(u => u.User.Name, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Deployments, StatefulSets and DaemonSets with the two things the ladder reads: their metadata
+    /// and their pod template. One listing per kind, in the namespace when there is one.
+    /// </summary>
+    private async Task<IReadOnlyList<(GroupVersionKind Kind, IReadOnlyList<(V1ObjectMeta? Meta, V1PodSpec? Spec)> Items)>>
+        WorkloadsForUsageAsync(string? ns, CancellationToken ct)
+    {
+        var all = new List<(GroupVersionKind, IReadOnlyList<(V1ObjectMeta?, V1PodSpec?)>)>();
+
+        try
+        {
+            var deployments = ns is { Length: > 0 }
+                ? (await _client.AppsV1.ListNamespacedDeploymentAsync(ns, cancellationToken: ct).ConfigureAwait(false)).Items
+                : (await _client.AppsV1.ListDeploymentForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)).Items;
+
+            all.Add((GroupVersionKind.Deployment,
+                [.. (deployments ?? []).Select(d => ((V1ObjectMeta?)d.Metadata, (V1PodSpec?)d.Spec?.Template?.Spec))]));
+
+            var statefulSets = ns is { Length: > 0 }
+                ? (await _client.AppsV1.ListNamespacedStatefulSetAsync(ns, cancellationToken: ct).ConfigureAwait(false)).Items
+                : (await _client.AppsV1.ListStatefulSetForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)).Items;
+
+            all.Add((GroupVersionKind.StatefulSet,
+                [.. (statefulSets ?? []).Select(w => ((V1ObjectMeta?)w.Metadata, (V1PodSpec?)w.Spec?.Template?.Spec))]));
+
+            var daemonSets = ns is { Length: > 0 }
+                ? (await _client.AppsV1.ListNamespacedDaemonSetAsync(ns, cancellationToken: ct).ConfigureAwait(false)).Items
+                : (await _client.AppsV1.ListDaemonSetForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)).Items;
+
+            all.Add((GroupVersionKind.DaemonSet,
+                [.. (daemonSets ?? []).Select(w => ((V1ObjectMeta?)w.Metadata, (V1PodSpec?)w.Spec?.Template?.Spec))]));
+        }
+        catch (Exception)
+        {
+            // Whatever came back before the refusal is still a true answer; the rest is not listed.
+        }
+
+        return all;
+    }
+
     public async ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default)
     {
         var list = ns is null
@@ -475,6 +587,15 @@ public sealed class KubernetesClusterEngine
         return [.. (list.Items ?? []).Select(K8sMap.ToIngress)];
     }
 
+    public async ValueTask<IReadOnlyList<NetworkPolicy>> ListNetworkPoliciesAsync(string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.NetworkingV1.ListNetworkPolicyForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.NetworkingV1.ListNamespacedNetworkPolicyAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToNetworkPolicy)];
+    }
+
     public async ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(
         string? ns = null, CancellationToken ct = default)
     {
@@ -495,6 +616,66 @@ public sealed class KubernetesClusterEngine
     {
         var list = await _client.StorageV1.ListStorageClassAsync(cancellationToken: ct).ConfigureAwait(false);
         return [.. (list.Items ?? []).Select(K8sMap.ToStorageClass)];
+    }
+
+    public async ValueTask<IReadOnlyList<AdmissionWebhook>> ListAdmissionWebhooksAsync(CancellationToken ct = default)
+    {
+        var mutating = await _client.AdmissionregistrationV1
+            .ListMutatingWebhookConfigurationAsync(cancellationToken: ct).ConfigureAwait(false);
+        var validating = await _client.AdmissionregistrationV1
+            .ListValidatingWebhookConfigurationAsync(cancellationToken: ct).ConfigureAwait(false);
+
+        // Mutating first: that is the order the API server calls them in.
+        return [.. (mutating.Items ?? []).SelectMany(K8sMap.ToWebhooks),
+            .. (validating.Items ?? []).SelectMany(K8sMap.ToWebhooks)];
+    }
+
+    public async ValueTask<IReadOnlyList<HorizontalPodAutoscaler>> ListAutoscalersAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.AutoscalingV2.ListHorizontalPodAutoscalerForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.AutoscalingV2.ListNamespacedHorizontalPodAutoscalerAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToAutoscaler)];
+    }
+
+    public async ValueTask<IReadOnlyList<PodDisruptionBudget>> ListDisruptionBudgetsAsync(
+        string? ns = null, CancellationToken ct = default)
+    {
+        var list = ns is null
+            ? await _client.PolicyV1.ListPodDisruptionBudgetForAllNamespacesAsync(cancellationToken: ct).ConfigureAwait(false)
+            : await _client.PolicyV1.ListNamespacedPodDisruptionBudgetAsync(ns, cancellationToken: ct).ConfigureAwait(false);
+
+        return [.. (list.Items ?? []).Select(K8sMap.ToDisruptionBudget)];
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default)
+    {
+        var rbac = _client.RbacAuthorizationV1;
+
+        // Four independent lists; the page waits for all of them anyway.
+        var roles = ns is null
+            ? rbac.ListRoleForAllNamespacesAsync(cancellationToken: ct)
+            : rbac.ListNamespacedRoleAsync(ns, cancellationToken: ct);
+        var bindings = ns is null
+            ? rbac.ListRoleBindingForAllNamespacesAsync(cancellationToken: ct)
+            : rbac.ListNamespacedRoleBindingAsync(ns, cancellationToken: ct);
+        var clusterRoles = rbac.ListClusterRoleAsync(cancellationToken: ct);
+        var clusterBindings = rbac.ListClusterRoleBindingAsync(cancellationToken: ct);
+
+        await Task.WhenAll(roles, bindings, clusterRoles, clusterBindings).ConfigureAwait(false);
+
+        return new AccessControl(
+            [
+                .. ((await clusterRoles.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessRole),
+                .. ((await roles.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessRole),
+            ],
+            [
+                .. ((await clusterBindings.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessBinding),
+                .. ((await bindings.ConfigureAwait(false)).Items ?? []).Select(K8sMap.ToAccessBinding),
+            ]);
     }
 
     public async ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(
@@ -582,8 +763,22 @@ public sealed class KubernetesClusterEngine
         GroupVersionKind kind, string? ns = null, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var stream = WatchStream(kind, ns, ct);
+
+        // A kind with no typed watcher — every custom resource — is watched the generic way, on the
+        // path discovery names (KON-483). It used to get an empty stream, so the Resources page could
+        // only ever show the moment it was opened.
         if (stream is null)
+        {
+            if (await _resources.ResolveAsync(kind, ct).ConfigureAwait(false) is not { } resource)
+                yield break;
+
+            await foreach (var e in ResourceWatch
+                               .WatchAsync(_client.HttpClient, _client.BaseUri, resource, kind, ns, ct)
+                               .ConfigureAwait(false))
+                yield return e;
+
             yield break;
+        }
 
         await foreach (var (type, obj) in stream.WithCancellation(ct).ConfigureAwait(false))
         {
@@ -604,7 +799,9 @@ public sealed class KubernetesClusterEngine
     }
 
     /// <summary>
-    /// The kinds <see cref="WatchStream"/> has a typed watcher for, as data.
+    /// The kinds <see cref="WatchStream"/> has a typed watcher for, as data. Any other kind the cluster
+    /// serves is watched through <see cref="ResourceWatch"/> instead (KON-483), so this is the set a page
+    /// can follow without depending on discovery.
     /// <para>
     /// A page that follows a kind this adapter cannot watch gets an empty stream, which the page
     /// reads as "the cluster closed the stream" — a confident, wrong explanation of a mistake made
@@ -618,7 +815,7 @@ public sealed class KubernetesClusterEngine
     {
         "Pod", "Service", "Node", "Namespace",
         "Deployment", "StatefulSet", "DaemonSet",
-        "Ingress", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
+        "Ingress", "NetworkPolicy", "PersistentVolumeClaim", "PersistentVolume", "StorageClass",
         "ConfigMap", "Secret", "Event",
         "Job", "CronJob",
     };
@@ -650,6 +847,9 @@ public sealed class KubernetesClusterEngine
         "Ingress" => Box(ns is null
             ? _client.NetworkingV1.WatchListIngressForAllNamespacesAsync(cancellationToken: ct)
             : _client.NetworkingV1.WatchListNamespacedIngressAsync(ns, cancellationToken: ct)),
+        "NetworkPolicy" => Box(ns is null
+            ? _client.NetworkingV1.WatchListNetworkPolicyForAllNamespacesAsync(cancellationToken: ct)
+            : _client.NetworkingV1.WatchListNamespacedNetworkPolicyAsync(ns, cancellationToken: ct)),
         "PersistentVolumeClaim" => Box(ns is null
             ? _client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(cancellationToken: ct)
             : _client.CoreV1.WatchListNamespacedPersistentVolumeClaimAsync(ns, cancellationToken: ct)),
@@ -688,6 +888,17 @@ public sealed class KubernetesClusterEngine
     }
 
     // ── Manifests ────────────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async ValueTask<ResourceObject?> GetObjectAsync(ResourceRef resource, CancellationToken ct = default)
+    {
+        if (await _resources.ResolveAsync(resource.Kind, ct).ConfigureAwait(false) is not { } info)
+            return null;
+
+        return await ResourceTables
+            .GetAsync(_client.HttpClient, _client.BaseUri, info, resource, ct)
+            .ConfigureAwait(false);
+    }
 
     /// <summary>
     /// One object's live YAML, for any kind the cluster serves — the API server renders it itself

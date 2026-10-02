@@ -19,6 +19,17 @@ public readonly record struct NodeCondition(string Type, bool IsActive, string R
     public bool IsProblem => Type == "Ready" ? !IsActive : IsActive;
 }
 
+/// <summary>
+/// One taint on a node — what keeps pods off it unless they carry a matching toleration. Some are
+/// set by hand, some by Kubernetes itself: cordoning a node makes its own lifecycle controller add
+/// <c>node.kubernetes.io/unschedulable:NoSchedule</c>, which is why a cordoned node has a taint
+/// nobody typed.
+/// </summary>
+/// <param name="Key">Taint key, e.g. "node.kubernetes.io/unschedulable".</param>
+/// <param name="Value">Taint value; empty for the many taints that carry none.</param>
+/// <param name="Effect">"NoSchedule", "PreferNoSchedule" or "NoExecute".</param>
+public readonly record struct NodeTaint(string Key, string Value, string Effect);
+
 /// <summary>A cluster node with its capacity and (when metrics are available) live usage.</summary>
 public sealed record Node
 {
@@ -47,6 +58,12 @@ public sealed record Node
     /// drive the Nodes view's status indicators.
     /// </summary>
     public IReadOnlyList<NodeCondition> Conditions { get; init; } = [];
+
+    /// <summary>
+    /// Taints on this node, system-set ones included. Not filtered: a taint nobody typed is exactly
+    /// the one you are looking for when pods refuse to land here.
+    /// </summary>
+    public IReadOnlyList<NodeTaint> Taints { get; init; } = [];
 
     /// <summary>Conditions currently signalling trouble (a failing Ready, or any pressure).</summary>
     public IReadOnlyList<NodeCondition> Problems => [.. Conditions.Where(c => c.IsProblem)];

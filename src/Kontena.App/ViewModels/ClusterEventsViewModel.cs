@@ -165,9 +165,9 @@ public sealed partial class ClusterEventRow
             ? null
             : $"in {e.InvolvedObject.Namespace}";
 
-        // Only the kinds that have a detail page to arrive at. A link that opens nothing is worse
-        // than plain text, and every other kind is reachable through the resource browser anyway.
-        CanOpen = open is not null && Navigable.Contains(kind);
+        // Every kind has a detail page to arrive at since the generic one (KON-483); an event with no
+        // kind to its name still has nowhere to go.
+        CanOpen = open is not null && kind.Length > 0;
 
         // An event that fired 340 times is a different fact from one that fired once, and it is the
         // count that tells a crash loop from a single bad start.
@@ -180,13 +180,6 @@ public sealed partial class ClusterEventRow
 
         SeverityBrush = new SolidColorBrush(Color.Parse(IsWarning ? "#F5B14C" : "#5C6675"));
     }
-
-    /// <summary>Kinds this app can open a detail page for.</summary>
-    private static readonly HashSet<string> Navigable =
-        new(StringComparer.Ordinal)
-        {
-            "Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob", "Service",
-        };
 
     public string Severity { get; }
     public string Reason { get; }

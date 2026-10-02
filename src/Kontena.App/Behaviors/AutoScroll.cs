@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
@@ -93,12 +95,33 @@ public static class AutoScroll
         /// <summary>Whether the list had a viewport to scroll in, last time it was laid out.</summary>
         private bool _hadRoom;
 
+        /// <summary>
+        /// Set while the pointer is down inside the list — a text selection being dragged (KON-452).
+        /// Tailing on top of that pulls the line out from under the cursor mid-drag, so the tail waits
+        /// for the button to come back up. The lines still arrive; only the scroll is held.
+        /// </summary>
+        private bool _dragging;
+
         public Tail(ListBox listBox)
         {
             _listBox = listBox;
 
             HookItems();
             listBox.PropertyChanged += OnListBoxPropertyChanged;
+
+            // Tunnelled, because the line under the pointer handles the press itself — that is what
+            // makes it selectable — and a bubbling handler on the list would never hear about it.
+            // The move is what keeps this honest: a release the list never sees (the pointer left the
+            // window mid-drag) would otherwise leave the tail switched off for good.
+            listBox.AddHandler(
+                InputElement.PointerPressedEvent,
+                (_, e) => _dragging = e.GetCurrentPoint(listBox).Properties.IsLeftButtonPressed,
+                RoutingStrategies.Tunnel);
+            listBox.AddHandler(InputElement.PointerReleasedEvent, (_, _) => _dragging = false, RoutingStrategies.Tunnel);
+            listBox.AddHandler(
+                InputElement.PointerMovedEvent,
+                (_, e) => _dragging = e.GetCurrentPoint(listBox).Properties.IsLeftButtonPressed,
+                RoutingStrategies.Tunnel);
 
             // The lines are often already there before the view gets its DataContext — history that
             // arrives in one go, or a page rebuilt on the way back to it. Those Adds happened with
@@ -192,7 +215,7 @@ public static class AutoScroll
         /// </summary>
         public void ScrollToEnd()
         {
-            if (!GetFollow(_listBox))
+            if (!GetFollow(_listBox) || _dragging)
                 return;
 
             _scrolling = true;

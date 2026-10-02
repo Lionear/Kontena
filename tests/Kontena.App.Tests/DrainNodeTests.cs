@@ -154,4 +154,36 @@ public sealed class DrainNodeTests
         Assert.Equal("Cordon", new NodeCardRow(new Node { Name = "a" }).CordonLabel);
         Assert.Equal("Uncordon", new NodeCardRow(new Node { Name = "a", Unschedulable = true }).CordonLabel);
     }
+
+    [Fact]
+    public void The_card_says_a_node_is_cordoned_and_tainted_without_opening_it()
+    {
+        // KON-479: a Ready node that is cordoned takes no new pods, and the card never said so.
+        var cordoned = new NodeCardRow(new Node
+        {
+            Name = "worker-1",
+            Status = "Ready",
+            Unschedulable = true,
+            Taints =
+            [
+                new NodeTaint("node.kubernetes.io/unschedulable", "", "NoSchedule"),
+                new NodeTaint("dedicated", "gpu", "NoExecute"),
+            ],
+        });
+
+        // The cordon's own taint is the Unschedulable chip, not counted again among the taints.
+        Assert.Equal(["Unschedulable", "1 taint"], cordoned.Problems.Select(c => c.Label));
+        Assert.Equal("dedicated=gpu:NoExecute", cordoned.Problems[1].Detail);
+
+        // Tainted but schedulable (a control plane): a taint chip, no cordon chip.
+        var controlPlane = new NodeCardRow(new Node
+        {
+            Name = "cp",
+            Taints = [new NodeTaint("node-role.kubernetes.io/control-plane", "", "NoSchedule")],
+        });
+        Assert.Equal(["1 taint"], controlPlane.Problems.Select(c => c.Label));
+        Assert.Equal("node-role.kubernetes.io/control-plane:NoSchedule", controlPlane.Problems[0].Detail);
+
+        Assert.False(new NodeCardRow(new Node { Name = "clean" }).HasProblems);
+    }
 }

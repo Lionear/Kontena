@@ -281,8 +281,30 @@ public partial class ClusterNamespacesViewModel : ClusterListPageViewModel<Names
 
     public override string SearchPlaceholder => "Search namespaces…";
 
+    /// <summary>
+    /// How the page asks the shell for the "New namespace" modal (KON-464) — the same shape as the
+    /// volumes and networks pages, and for the same reason: the page knows a namespace should be
+    /// created, not where the modal lives.
+    /// </summary>
+    public Action? RequestCreateNamespace { get; set; }
+
+    [RelayCommand]
+    private void CreateNamespace() => RequestCreateNamespace?.Invoke();
+
+    /// <summary>Delete a namespace, always confirmed (KON-464).</summary>
+    private void ConfirmDelete(NamespaceRow row)
+    {
+        var (title, message) = ClusterDeleteWording.Namespace(row.Name);
+
+        ConfirmDelete(title, message, async () =>
+        {
+            await _cluster.DeleteAsync(row.Reference);
+            await LoadAsync();
+        });
+    }
+
     protected override async Task<IReadOnlyList<NamespaceRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail))];
+        [.. (await _cluster.ListNamespacesAsync(ct)).Select(ns => new NamespaceRow(ns, _onOpenDetail, ConfirmDelete))];
 
     protected override bool Matches(NamespaceRow row, string term) => Contains(row.Name, term);
 
@@ -542,12 +564,15 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
 {
     private readonly IClusterEngine _cluster;
     private readonly string? _namespace;
+    private readonly Action<Ingress>? _onOpenDetail;
 
-    public ClusterIngressesViewModel(IClusterEngine cluster, string? @namespace)
+    public ClusterIngressesViewModel(
+        IClusterEngine cluster, string? @namespace, Action<Ingress>? onOpenDetail = null)
         : base(cluster, GroupVersionKind.Ingress, @namespace)
     {
         _cluster = cluster;
         _namespace = @namespace;
+        _onOpenDetail = onOpenDetail;
         _ = LoadAsync();
         StartWatching();
     }
@@ -567,7 +592,7 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
     }
 
     protected override async Task<IReadOnlyList<IngressRow>> LoadRowsAsync(CancellationToken ct) =>
-        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete))];
+        [.. (await _cluster.ListIngressesAsync(_namespace, ct)).Select(i => new IngressRow(i, ConfirmDelete, _onOpenDetail))];
 
     // The host is the thing you know: someone reports that app.example.com is down and the ingress is
     // what you go looking for. The class matters when a cluster runs more than one controller.
@@ -583,6 +608,44 @@ public partial class ClusterIngressesViewModel : ClusterListPageViewModel<Ingres
             ["CLASS"] = r => r.Class,
             ["HOSTS"] = r => r.Hosts,
             ["ADDRESS"] = r => r.Address,
+            ["AGE"] = r => r.AgeSpan,
+        };
+}
+
+/// <summary>NetworkPolicies view — which pods are isolated, and in which direction (KON-476).</summary>
+public partial class ClusterNetworkPoliciesViewModel : ClusterListPageViewModel<NetworkPolicyRow>
+{
+    private readonly IClusterEngine _cluster;
+    private readonly string? _namespace;
+    private readonly Action<NetworkPolicy>? _onOpenDetail;
+
+    public ClusterNetworkPoliciesViewModel(
+        IClusterEngine cluster, string? @namespace, Action<NetworkPolicy>? onOpenDetail = null)
+        : base(cluster, GroupVersionKind.NetworkPolicy, @namespace)
+    {
+        _cluster = cluster;
+        _namespace = @namespace;
+        _onOpenDetail = onOpenDetail;
+        _ = LoadAsync();
+        StartWatching();
+    }
+
+    public override string SearchPlaceholder => "Search network policies…";
+
+    protected override async Task<IReadOnlyList<NetworkPolicyRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListNetworkPoliciesAsync(_namespace, ct)).Select(n => new NetworkPolicyRow(n, _onOpenDetail))];
+
+    // The selector too: "which policy covers app=postgres" is the question you arrive with.
+    protected override bool Matches(NetworkPolicyRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Namespace, term) || Contains(row.AppliesTo, term);
+
+    protected override IReadOnlyDictionary<string, Func<NetworkPolicyRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<NetworkPolicyRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["NAMESPACE"] = r => r.Namespace,
+            ["APPLIES TO"] = r => r.AppliesTo,
+            ["ISOLATES"] = r => r.Isolates,
             ["AGE"] = r => r.AgeSpan,
         };
 }
@@ -728,6 +791,46 @@ public partial class ClusterStorageClassesViewModel : ClusterListPageViewModel<S
         };
 }
 
+/// <summary>
+/// Admission webhooks, mutating and validating (KON-478) — the page for "why won't my apply go
+/// through" when the answer is a policy engine rather than the manifest.
+/// </summary>
+public partial class ClusterWebhooksViewModel : ClusterListPageViewModel<AdmissionWebhookRow>
+{
+    private readonly IClusterEngine _cluster;
+
+    // Two kinds at once, like the all-workloads page, and for the same reason no watch: two streams
+    // whose bursts land out of step. Webhook configurations change when something is installed, not
+    // while you are looking.
+    public ClusterWebhooksViewModel(IClusterEngine cluster)
+        : base(cluster, kind: null, ns: null,
+            unwatchable: "This page shows mutating and validating webhooks together and updates when you refresh it.")
+    {
+        _cluster = cluster;
+        _ = LoadAsync();
+        StartWatching();
+    }
+
+    public override string SearchPlaceholder => "Search webhooks…";
+
+    protected override async Task<IReadOnlyList<AdmissionWebhookRow>> LoadRowsAsync(CancellationToken ct) =>
+        [.. (await _cluster.ListAdmissionWebhooksAsync(ct)).Select(w => new AdmissionWebhookRow(w))];
+
+    protected override bool Matches(AdmissionWebhookRow row, string term) =>
+        Contains(row.Name, term) || Contains(row.Configuration, term)
+        || Contains(row.Target, term) || Contains(row.RulesDetail, term);
+
+    protected override IReadOnlyDictionary<string, Func<AdmissionWebhookRow, IComparable>> SortColumns { get; } =
+        new Dictionary<string, Func<AdmissionWebhookRow, IComparable>>(StringComparer.Ordinal)
+        {
+            ["NAME"] = r => r.Name,
+            ["TYPE"] = r => r.Kind,
+            ["FAILURE"] = r => r.FailurePolicy,
+            ["CALLS"] = r => r.Target,
+            ["AGE"] = r => r.AgeSpan,
+        };
+}
+
 // ── Row view-models ─────────────────────────────────────────────────────────
 
 public sealed partial class NodeCardRow
@@ -749,7 +852,6 @@ public sealed partial class NodeCardRow
         _onDrain = onDrain;
         _onOpenDetail = onOpenDetail;
         CanMaintain = canMaintain && onCordon is not null;
-        CanOpen = onOpenDetail is not null;
 
         Name = n.Name;
         Roles = n.Roles.Count > 0 ? string.Join(", ", n.Roles) : "—";
@@ -775,7 +877,23 @@ public sealed partial class NodeCardRow
 
         // Conditions need no metrics source either. Only the failing ones are worth surfacing —
         // a healthy node's five green conditions are noise, and the Ready dot already says it.
-        Problems = [.. n.Problems.Select(c => new NodeProblemChip(c))];
+        // A cordon leads (KON-479): Ready and cordoned still takes no new pods, and the card was the
+        // one place that did not say so. Its taint is the cordon itself, so it is not counted twice.
+        var taints = n.Taints.Where(t => !(n.Unschedulable && t.Key == UnschedulableTaint)).ToList();
+        Problems =
+        [
+            .. n.Unschedulable
+                ? [new NodeProblemChip("Unschedulable", "Cordoned — no new pods are scheduled here", "#F5B14C")]
+                : Array.Empty<NodeProblemChip>(),
+            .. n.Problems.Select(c => new NodeProblemChip(c)),
+            .. taints.Count > 0
+                ? [new NodeProblemChip(
+                    taints.Count == 1 ? "1 taint" : $"{taints.Count} taints",
+                    string.Join("\n", taints.Select(t =>
+                        $"{t.Key}{(string.IsNullOrEmpty(t.Value) ? "" : "=" + t.Value)}:{t.Effect}")),
+                    "#5AB8FF")]
+                : Array.Empty<NodeProblemChip>(),
+        ];
 
         // Version skew is the same kind of signal: no metrics source, no network, just the two
         // numbers we already hold (KON-95). Shown only when it is outside the supported window.
@@ -799,7 +917,13 @@ public sealed partial class NodeCardRow
     public double DiskFraction { get; }
     public string DiskText { get; }
 
-    /// <summary>Conditions currently signalling trouble; empty on a healthy node.</summary>
+    /// <summary>The taint Kubernetes sets on a cordoned node, mirroring <see cref="Node.Unschedulable"/>.</summary>
+    private const string UnschedulableTaint = "node.kubernetes.io/unschedulable";
+
+    /// <summary>
+    /// What deserves a glance before opening the node: a cordon, failing conditions, taints. Empty on
+    /// a healthy, untainted node.
+    /// </summary>
     public IReadOnlyList<NodeProblemChip> Problems { get; }
 
     public bool HasProblems => Problems.Count > 0;
@@ -840,25 +964,29 @@ public sealed partial class NodeCardRow
     [RelayCommand]
     private void Drain() => _onDrain?.Invoke(this);
 
-    /// <summary>Whether the shell wired a detail page to arrive at (KON-197).</summary>
-    public bool CanOpen { get; }
-
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_node);
 }
 
 /// <summary>
-/// A failing node condition, as a chip on the node card. Pressure conditions are a warning — the
-/// node still runs, but the kubelet may start evicting — while a failing Ready is a hard problem.
+/// A chip on the node card: a failing condition, a cordon or the node's taints. Pressure conditions
+/// are a warning — the node still runs, but the kubelet may start evicting — while a failing Ready is
+/// a hard problem.
 /// </summary>
 public sealed class NodeProblemChip
 {
     public NodeProblemChip(NodeCondition condition)
+        : this(
+            condition.Type,
+            string.IsNullOrEmpty(condition.Message) ? condition.Reason : condition.Message,
+            condition.Type == "Ready" ? "#F87171" : "#F5B14C")
     {
-        Label = condition.Type;
-        Detail = string.IsNullOrEmpty(condition.Message) ? condition.Reason : condition.Message;
+    }
 
-        var colour = condition.Type == "Ready" ? "#F87171" : "#F5B14C";
+    public NodeProblemChip(string label, string detail, string colour)
+    {
+        Label = label;
+        Detail = detail;
         Brush = new SolidColorBrush(Color.Parse(colour));
         Background = new SolidColorBrush(Color.Parse(colour), 0.13);
     }
@@ -873,14 +1001,22 @@ public sealed partial class NamespaceRow
 {
     private readonly KubeNamespace _namespace;
     private readonly Action<KubeNamespace>? _onOpenDetail;
+    private readonly Action<NamespaceRow>? _onDelete;
 
-    public NamespaceRow(KubeNamespace ns, Action<KubeNamespace>? onOpenDetail = null)
+    public NamespaceRow(
+        KubeNamespace ns, Action<KubeNamespace>? onOpenDetail = null, Action<NamespaceRow>? onDelete = null)
     {
         ArgumentNullException.ThrowIfNull(ns);
 
         _namespace = ns;
         _onOpenDetail = onOpenDetail;
+        _onDelete = onDelete;
         CanOpen = onOpenDetail is not null;
+
+        // Not offered on the four Kubernetes runs on: deleting kube-system takes the cluster with it,
+        // and default cannot be deleted at all. A button that is always refused is worse than none.
+        CanDelete = onDelete is not null && !ProtectedNamespaces.Contains(ns.Name);
+        Reference = new ResourceRef(GroupVersionKind.Namespace, null, ns.Name);
 
         Name = ns.Name;
         Status = ns.Phase;
@@ -896,9 +1032,24 @@ public sealed partial class NamespaceRow
     public TimeSpan AgeSpan { get; }
 
     public bool CanOpen { get; }
+    public bool CanDelete { get; }
+
+    /// <summary>Cluster-scoped, so no namespace of its own — what the delete addresses.</summary>
+    public ResourceRef Reference { get; }
+
+    /// <summary>
+    /// The namespaces Kubernetes creates and needs. <c>default</c> and <c>kube-system</c> are refused
+    /// outright by the API server; <c>kube-public</c> and <c>kube-node-lease</c> are not, but deleting
+    /// either breaks the cluster quietly, which is worse than being told no.
+    /// </summary>
+    private static readonly HashSet<string> ProtectedNamespaces =
+        new(StringComparer.Ordinal) { "default", "kube-system", "kube-public", "kube-node-lease" };
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_namespace);
+
+    [RelayCommand]
+    private void Delete() => _onDelete?.Invoke(this);
 }
 
 public sealed partial class PersistentVolumeRow
@@ -982,6 +1133,74 @@ public sealed partial class PersistentVolumeRow
 
     [RelayCommand]
     private void OpenClass() => _onOpenClass?.Invoke(StorageClass);
+}
+
+public sealed class AdmissionWebhookRow
+{
+    public AdmissionWebhookRow(AdmissionWebhook w)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+
+        Name = w.Name;
+        Configuration = w.Configuration;
+        Kind = w.Kind.ToString();
+        FailurePolicy = w.FailurePolicy.ToString();
+        FailsClosed = w.FailurePolicy == WebhookFailurePolicy.Fail;
+        Target = w.Target.Length > 0 ? w.Target : "—";
+        Age = Format.Duration(w.Age);
+        AgeSpan = w.Age;
+
+        var rules = w.Rules.Select(Describe).ToList();
+        Rules = rules.Count == 0 ? "No rules — never called" : string.Join("; ", rules);
+        RulesDetail = string.Join(Environment.NewLine, rules);
+
+        // The crux of the ticket: which way an outage of the webhook itself goes. Said as what happens
+        // to your apply, because "Fail" on its own reads like a status rather than a policy.
+        FailureDetail = FailsClosed
+            ? $"If {Target} is down or takes longer than {w.TimeoutSeconds}s, every request this webhook"
+                + " matches is rejected."
+            : $"If {Target} is down or takes longer than {w.TimeoutSeconds}s, matching requests go"
+                + " through unchecked.";
+    }
+
+    public string Name { get; }
+    public string Configuration { get; }
+    public string Kind { get; }
+    public string FailurePolicy { get; }
+    public bool FailsClosed { get; }
+    public string FailureDetail { get; }
+    public string Target { get; }
+
+    /// <summary>One line per rule, for the row.</summary>
+    public string Rules { get; }
+
+    /// <summary>The same rules one per line, for the tooltip and the search.</summary>
+    public string RulesDetail { get; }
+
+    public string Age { get; }
+    public TimeSpan AgeSpan { get; }
+
+    /// <summary>"CREATE, UPDATE on deployments.apps, pods" — the operations, then what they apply to.</summary>
+    internal static string Describe(WebhookRule r)
+    {
+        var ops = r.Operations.Contains("*") ? "Any operation" : string.Join(", ", r.Operations);
+
+        var targets = r.ApiGroups.SelectMany(g => r.Resources.Select(res => Qualify(g, res)))
+            .Distinct(StringComparer.Ordinal);
+
+        return $"{ops} on {string.Join(", ", targets)}";
+    }
+
+    // A resource is only unambiguous with its group; core ("") and "every group" are left bare, the
+    // way kubectl prints them. "*/*" is every resource plus its subresources — said in words.
+    private static string Qualify(string group, string resource) => resource is "*" or "*/*"
+        ? group switch
+        {
+            "*" => "every resource",
+            "" => "every core resource",
+            _ => $"everything in {group}",
+        }
+        : group is "" or "*" ? resource : $"{resource}.{group}";
 }
 
 public sealed partial class StorageClassRow
@@ -1068,14 +1287,19 @@ public sealed partial class StorageClassRow
 
 public sealed partial class IngressRow
 {
+    private readonly Ingress _ingress;
     private readonly Action<IngressRow>? _onDelete;
+    private readonly Action<Ingress>? _onOpenDetail;
 
-    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null)
+    public IngressRow(Ingress i, Action<IngressRow>? onDelete = null, Action<Ingress>? onOpenDetail = null)
     {
         ArgumentNullException.ThrowIfNull(i);
 
+        _ingress = i;
         _onDelete = onDelete;
+        _onOpenDetail = onOpenDetail;
         CanDelete = onDelete is not null;
+        CanOpen = onOpenDetail is not null;
         Reference = new ResourceRef(GroupVersionKind.Ingress, i.Namespace, i.Name);
 
         Name = i.Name;
@@ -1144,8 +1368,55 @@ public sealed partial class IngressRow
     /// <summary>Whether the page wired a delete handler (KON-332).</summary>
     public bool CanDelete { get; }
 
+    /// <summary>Whether the shell wired a detail page to arrive at (KON-453).</summary>
+    public bool CanOpen { get; }
+
     [RelayCommand]
     private void Delete() => _onDelete?.Invoke(this);
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_ingress);
+}
+
+public sealed partial class NetworkPolicyRow
+{
+    private readonly NetworkPolicy _policy;
+    private readonly Action<NetworkPolicy>? _onOpenDetail;
+
+    public NetworkPolicyRow(NetworkPolicy n, Action<NetworkPolicy>? onOpenDetail = null)
+    {
+        ArgumentNullException.ThrowIfNull(n);
+
+        _policy = n;
+        _onOpenDetail = onOpenDetail;
+        CanOpen = onOpenDetail is not null;
+
+        Name = n.Name;
+        Namespace = n.Namespace;
+        AppliesTo = NetworkPolicyText.Selector(n.PodSelector, "all pods");
+        Isolates = NetworkPolicyText.Isolates(n);
+        Age = Format.Duration(n.Age);
+        AgeSpan = n.Age;
+    }
+
+    public string Name { get; }
+    public string Namespace { get; }
+
+    /// <summary>The pod selector as Kubernetes writes one, or "all pods" for <c>{}</c>.</summary>
+    public string AppliesTo { get; }
+
+    /// <summary>Which directions it isolates, e.g. "Ingress, Egress".</summary>
+    public string Isolates { get; }
+
+    public string Age { get; }
+
+    /// <summary>The raw age behind <see cref="Age"/> — what a column sort actually orders by.</summary>
+    public TimeSpan AgeSpan { get; }
+
+    public bool CanOpen { get; }
+
+    [RelayCommand]
+    private void Open() => _onOpenDetail?.Invoke(_policy);
 }
 
 public sealed partial class PvcRow
@@ -1587,4 +1858,18 @@ internal static class ClusterDeleteWording
             $"Delete ingress \"{name}\" in {@namespace}? The service and its pods keep running — what"
             + " goes is the route in from outside, so the hosts it routes stop reaching them as soon as"
             + " the controller drops the rule.");
+
+    /// <summary>
+    /// The largest blast radius in the app, and the one that looks smallest on screen: the row says a
+    /// name and an age, and the delete takes everything that was ever put in it (KON-464). So the
+    /// message is about the contents rather than the object — the same thing <c>kubectl</c> means by
+    /// "all resources in the namespace", said before the click instead of after.
+    /// </summary>
+    public static (string Title, string Message) Namespace(string name) =>
+        ("Delete namespace",
+            $"Delete namespace \"{name}\"? Everything in it goes with it — its workloads, pods,"
+            + " services, ingresses, config maps, secrets and volume claims are all deleted, and the"
+            + " data in those claims with them. Kontena keeps no copy, and nothing recreates any of it."
+            + " The namespace stays in Terminating until the cluster has finished removing its"
+            + " contents.");
 }

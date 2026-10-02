@@ -75,24 +75,64 @@ public sealed record ApplyProgress
     public string? Error { get; init; }
 }
 
-/// <summary>A Helm release, for the (stretch) Helm view. See KON-74.</summary>
+/// <summary>A Helm release installed in the cluster, as <c>helm list</c> reports it (KON-473).</summary>
 public sealed record HelmRelease
 {
     public required string Name { get; init; }
     public required string Namespace { get; init; }
 
-    /// <summary>Chart name and version, e.g. "ingress-nginx-4.10.0".</summary>
+    /// <summary>The chart's own name, without its version — <c>ingress-nginx</c>, not <c>ingress-nginx-4.10.1</c>.</summary>
     public string Chart { get; init; } = string.Empty;
 
-    /// <summary>App version the chart deploys.</summary>
+    public string ChartVersion { get; init; } = string.Empty;
     public string AppVersion { get; init; } = string.Empty;
 
-    /// <summary>Release revision number.</summary>
-    public int Revision { get; init; }
-
-    /// <summary>Status, e.g. "deployed", "failed", "pending-upgrade".</summary>
+    /// <summary>Helm's own word for it: deployed, failed, pending-upgrade, superseded, …</summary>
     public string Status { get; init; } = string.Empty;
 
-    /// <summary>When the release was last updated (UTC).</summary>
-    public DateTimeOffset Updated { get; init; }
+    public int Revision { get; init; }
+
+    /// <summary>When the current revision was written, or null when helm's timestamp did not parse.</summary>
+    public DateTimeOffset? Updated { get; init; }
+}
+
+/// <summary>One entry of a release's history, as <c>helm history</c> reports it.</summary>
+public sealed record HelmRevision
+{
+    public required int Revision { get; init; }
+    public string Status { get; init; } = string.Empty;
+
+    /// <summary>Chart name and version as one string, the way helm writes it: <c>ingress-nginx-4.10.1</c>.</summary>
+    public string Chart { get; init; } = string.Empty;
+
+    public string AppVersion { get; init; } = string.Empty;
+
+    /// <summary>What helm wrote about the revision: "Install complete", "Rollback to 2", …</summary>
+    public string Description { get; init; } = string.Empty;
+
+    public DateTimeOffset? Updated { get; init; }
+}
+
+/// <summary>
+/// An upgrade of an installed release: which chart to take it to, and the values it gets.
+/// </summary>
+public sealed record HelmUpgrade
+{
+    public required string Release { get; init; }
+    public required string Namespace { get; init; }
+
+    /// <summary>
+    /// A chart reference helm can resolve — <c>repo/chart</c>, a path, or an <c>oci://</c> reference. Helm
+    /// does not record where an installed chart came from, so this cannot be read back from the release.
+    /// </summary>
+    public required string Chart { get; init; }
+
+    /// <summary>Chart version; empty takes the newest the repository offers.</summary>
+    public string Version { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The user-supplied values as YAML. They replace the release's current ones — the same as
+    /// <c>helm upgrade -f</c> without <c>--reuse-values</c>.
+    /// </summary>
+    public string ValuesYaml { get; init; } = string.Empty;
 }

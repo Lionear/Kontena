@@ -4,6 +4,7 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kontena.App.Controls;
+using Kontena.App.Services;
 using Kontena.Sdk.Orchestration;
 using Kontena.Sdk.Orchestration.Models;
 using Kontena.Core.Orchestration;
@@ -421,6 +422,13 @@ public abstract partial class ClusterObjectDetailViewModel : ViewModelBase, IDis
     /// <summary>Renders a label map as the "k=v, k=v" chips both pages show.</summary>
     protected static string FormatLabels(IReadOnlyDictionary<string, string> labels) =>
         labels.Count == 0 ? "—" : string.Join(", ", labels.Select(kv => $"{kv.Key}={kv.Value}"));
+
+    /// <summary>
+    /// The same labels as what the copy button beside them puts on the clipboard (KON-484): no spaces,
+    /// so it pastes straight into <c>kubectl -l</c>. Empty for no labels, which hides the button.
+    /// </summary>
+    protected static string LabelSelector(IReadOnlyDictionary<string, string> labels) =>
+        string.Join(",", labels.Select(kv => $"{kv.Key}={kv.Value}"));
 }
 
 /// <summary>
@@ -473,6 +481,7 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
             });
 
         _ = LoadPodsAsync();
+        _ = LoadScalingAsync();
     }
 
     private readonly Action<Workload>? _onScale;
@@ -482,6 +491,8 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
     public string ImagesText => _workload.Images.Count == 0 ? "—" : string.Join(", ", _workload.Images);
     public string LabelsText => FormatLabels(_workload.Labels);
     public string SelectorText => FormatLabels(_workload.Selector);
+    public string LabelsCopyText => LabelSelector(_workload.Labels);
+    public string SelectorCopyText => LabelSelector(_workload.Selector);
     public string StrategyText => _workload.Strategy.Length == 0 ? "—" : _workload.Strategy;
     public string AgeText => Format.Duration(_workload.Age);
 
@@ -559,6 +570,60 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
 
         // The pods are the other half of what a rollout changes, and this page's tab holds them.
         await RefreshPodsAsync();
+        await LoadScalingAsync();
+    }
+
+    // ── Autoscaling and disruption (KON-477) ─────────────────────────────────
+
+    /// <summary>
+    /// What scales this workload and what protects its pods. Both used to live only in the Resources
+    /// browser, a page away from the one question they answer: why is this at 7 replicas, and why
+    /// does a drain stop here.
+    /// </summary>
+    public bool ShowScaling => _workload.IsScalable;
+
+    public ObservableCollection<AutoscalerRow> Autoscalers { get; } = [];
+    public ObservableCollection<DisruptionBudgetRow> DisruptionBudgets { get; } = [];
+
+    /// <summary>False until the first read answers — "none" before that would be a guess.</summary>
+    private bool _scalingLoaded;
+
+    public string? NoAutoscalerNote => _scalingLoaded && Autoscalers.Count == 0
+        ? "No HorizontalPodAutoscaler targets this workload." : null;
+
+    public string? NoDisruptionBudgetNote => _scalingLoaded && DisruptionBudgets.Count == 0
+        ? "No PodDisruptionBudget covers its pods." : null;
+
+    private async Task LoadScalingAsync()
+    {
+        if (!ShowScaling)
+            return;
+
+        // Each on its own: a cluster that refuses one (RBAC, or no autoscaling/v2 on an old server)
+        // still answers the other. A failed read leaves what was showing — not the same fact as "none".
+        if (await Try(Cluster.ListAutoscalersAsync(_workload.Namespace)) is { } hpas)
+        {
+            Autoscalers.Clear();
+            foreach (var h in hpas.Where(h => h.TargetKind == _workload.Kind.ToString() && h.TargetName == _workload.Name))
+                Autoscalers.Add(new AutoscalerRow(h));
+        }
+
+        if (await Try(Cluster.ListDisruptionBudgetsAsync(_workload.Namespace)) is { } pdbs)
+        {
+            DisruptionBudgets.Clear();
+            foreach (var b in pdbs.Where(b => PodMatching.Covers(b, _workload)))
+                DisruptionBudgets.Add(new DisruptionBudgetRow(b));
+        }
+
+        _scalingLoaded = true;
+        OnPropertyChanged(nameof(NoAutoscalerNote));
+        OnPropertyChanged(nameof(NoDisruptionBudgetNote));
+
+        static async Task<IReadOnlyList<T>?> Try<T>(ValueTask<IReadOnlyList<T>> read)
+        {
+            try { return await read; }
+            catch (Exception) { return null; }
+        }
     }
 
     public override string PodsTabLabel => IsCronJob ? "Jobs" : "Pods";
@@ -573,6 +638,34 @@ public sealed partial class ClusterWorkloadDetailViewModel : ClusterObjectDetail
         : _workload.Desired == 0
             ? "Scaled to zero, so there are no pods to show."
             : "No pods are running for this workload yet.";
+}
+
+/// <summary>One autoscaler on a workload's page (KON-477).</summary>
+public sealed class AutoscalerRow(HorizontalPodAutoscaler h)
+{
+    public string Name => h.Name;
+    public string Current => h.CurrentReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Desired => h.DesiredReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Min => h.MinReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Max => h.MaxReplicas.ToString(CultureInfo.InvariantCulture);
+    public string Metrics => h.Metrics.Count == 0 ? "—" : string.Join("\n", h.Metrics);
+}
+
+/// <summary>One disruption budget on a workload's page (KON-477).</summary>
+public sealed class DisruptionBudgetRow(PodDisruptionBudget b)
+{
+    public string Name => b.Name;
+
+    /// <summary>A budget sets one of the two; the column says which.</summary>
+    public string BudgetLabel => b.MinAvailable is not null ? "MIN AVAILABLE" : "MAX UNAVAILABLE";
+    public string Budget => b.MinAvailable ?? b.MaxUnavailable ?? "—";
+
+    public string Healthy => $"{b.CurrentHealthy} / {b.DesiredHealthy}";
+
+    /// <summary>Zero is the reading that explains a drain that will not finish.</summary>
+    public string Allowed => b.DisruptionsAllowed == 0
+        ? "0 — evictions wait"
+        : b.DisruptionsAllowed.ToString(CultureInfo.InvariantCulture);
 }
 
 /// <summary>
@@ -615,6 +708,7 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
     public string ExternalIpText => _service.ExternalIp.Length == 0 ? "—" : _service.ExternalIp;
     public string HostnameText => _service.ClusterDnsName;
     public string SelectorText => FormatLabels(_service.Selector);
+    public string SelectorCopyText => LabelSelector(_service.Selector);
     public string AgeText => Format.Duration(_service.Age);
 
     /// <summary>The full port table — the list view shows only what fits in a column.</summary>
@@ -689,6 +783,7 @@ public sealed partial class ClusterServiceDetailViewModel : ClusterObjectDetailV
         OnPropertyChanged(nameof(ClusterIpText));
         OnPropertyChanged(nameof(ExternalIpText));
         OnPropertyChanged(nameof(SelectorText));
+        OnPropertyChanged(nameof(SelectorCopyText));
         OnPropertyChanged(nameof(AgeText));
         OnPropertyChanged(nameof(HasPorts));
 
@@ -833,4 +928,369 @@ public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDe
 
     protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) => [];
     protected override string EmptyPodsReason() => string.Empty;
+}
+
+/// <summary>
+/// Ingress detail (KON-453). The list row was the only thing an ingress had: no way to its YAML, and
+/// the rules only as a tooltip on a trimmed cell — so "which path goes where" was unreadable exactly
+/// when it mattered, and the manifest was unreachable from the kind whose manifest is most often the
+/// thing that is wrong.
+/// </summary>
+public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailViewModel
+{
+    private Ingress _ingress;
+
+    public ClusterIngressDetailViewModel(IClusterEngine cluster, Ingress ingress, Action? onDelete = null)
+        : base(
+            cluster, new ResourceRef(GroupVersionKind.Ingress, ingress.Namespace, ingress.Name),
+            onOpenPod: null, onDelete)
+    {
+        ArgumentNullException.ThrowIfNull(ingress);
+
+        _ingress = ingress;
+        Fill(ingress);
+    }
+
+    public string ClassText => _ingress.Class.Length == 0 ? "—" : _ingress.Class;
+
+    /// <summary>Every address, not the first one: an ingress behind two load balancers is reachable
+    /// at both, and the list cell already trims to whichever fits.</summary>
+    public string AddressText => _ingress.Addresses.Count == 0 ? "—" : string.Join("  ", _ingress.Addresses);
+
+    public string AgeText => Format.Duration(_ingress.Age);
+
+    /// <summary>The rules in full — the list row has them only as a tooltip on a trimmed cell.</summary>
+    public ObservableCollection<IngressRuleRow> Rules { get; } = [];
+
+    public bool HasRules => Rules.Count > 0;
+
+    /// <summary>Every TLS block with the certificate it uses.</summary>
+    public ObservableCollection<IngressTlsRow> Tls { get; } = [];
+
+    public bool HasTls => Tls.Count > 0;
+
+    /// <summary>The rules that have an address worth opening (KON-461), in rule order. A rule
+    /// without a host matches whatever the controller answers on, so it has none.</summary>
+    public ObservableCollection<IngressRuleRow> Links { get; } = [];
+
+    public bool HasOneLink => Links.Count == 1;
+    public bool HasManyLinks => Links.Count > 1;
+
+    /// <summary>The single link, when there is exactly one — the header shows a plain button for it
+    /// rather than a flyout with one entry.</summary>
+    public IngressRuleRow? OnlyLink => Links.Count == 1 ? Links[0] : null;
+
+    /// <summary>Where unmatched traffic goes, or null when the ingress names no default backend —
+    /// in which case unmatched traffic is the controller's 404 and there is nothing to show.</summary>
+    public string? DefaultBackendText => _ingress.DefaultBackend is { } b
+        ? $"{b.ServiceName}:{b.ServicePort}"
+        : null;
+
+    public bool HasDefaultBackend => DefaultBackendText is not null;
+
+    private void Fill(Ingress i)
+    {
+        Tls.Clear();
+        foreach (var t in i.Tls)
+            Tls.Add(new IngressTlsRow(t));
+
+        // TLS first: a rule's scheme is decided by whether this ingress presents a certificate for
+        // that host, and the hosts are the block's, not a separate setting (KON-461).
+        var tlsHosts = i.TlsHosts;
+
+        Rules.Clear();
+        Links.Clear();
+        foreach (var r in i.Rules)
+        {
+            var row = new IngressRuleRow(r, tlsHosts);
+            Rules.Add(row);
+
+            if (row.CanOpen)
+                Links.Add(row);
+        }
+    }
+
+    /// <summary>
+    /// Follow this ingress (KON-450, KON-453). The address is the field worth the read: it is blank
+    /// until the controller assigns one, and that arrival is exactly a Modified event.
+    /// </summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListIngressesAsync(_ingress.Namespace),
+            i => i.Name == _ingress.Name);
+
+        if (fresh is null)
+            return;
+
+        _ingress = fresh;
+        Fill(fresh);
+
+        OnPropertyChanged(nameof(ClassText));
+        OnPropertyChanged(nameof(AddressText));
+        OnPropertyChanged(nameof(AgeText));
+        OnPropertyChanged(nameof(HasRules));
+        OnPropertyChanged(nameof(HasTls));
+        OnPropertyChanged(nameof(HasOneLink));
+        OnPropertyChanged(nameof(HasManyLinks));
+        OnPropertyChanged(nameof(OnlyLink));
+        OnPropertyChanged(nameof(DefaultBackendText));
+        OnPropertyChanged(nameof(HasDefaultBackend));
+    }
+
+    // No pods: an ingress routes to services, and which pods are behind those is the service page's
+    // question. The rules table names the service, which is the honest end of this page's answer.
+    public override bool ShowPodsTab => false;
+
+    protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) => [];
+    protected override string EmptyPodsReason() => string.Empty;
+}
+
+/// <summary>One row of an ingress's routing table.</summary>
+public sealed partial class IngressRuleRow
+{
+    public IngressRuleRow(IngressRule r, IReadOnlyList<string> tlsHosts)
+    {
+        // Same substitutions the list row makes, so the two never read differently for one rule.
+        Host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
+        Path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
+        Backend = $"{r.ServiceName}:{r.ServicePort}";
+
+        // A rule with no host matches every host its controller answers on, so there is no one
+        // address to open and the button stays away rather than inventing one.
+        Url = string.IsNullOrEmpty(r.Host)
+            ? null
+            : $"{(CoveredByTls(r.Host, tlsHosts) ? "https" : "http")}://{r.Host}{Path}";
+    }
+
+    public string Host { get; }
+    public string Path { get; }
+    public string Backend { get; }
+
+    /// <summary>What this rule's host and path resolve to, or null when the rule names no host.</summary>
+    public string? Url { get; }
+
+    public bool CanOpen => Url is not null;
+
+    /// <summary>Host and path as one line, for the flyout that lists every combination.</summary>
+    public string LinkText => $"{Host}{Path}";
+
+    /// <summary>
+    /// Open this rule in the system browser (KON-461), the way ArgoCD does. Deliberately not a
+    /// reachability check: an ingress host is routinely a cluster-internal name or another
+    /// environment's domain that this machine cannot resolve, and the shortcut is still the useful
+    /// thing to offer. <see cref="Browser.OpenUrl"/> is best-effort for the same reason.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanOpen))]
+    private void Open()
+    {
+        if (Url is { } url)
+            Browser.OpenUrl(url);
+    }
+
+    /// <summary>
+    /// https when this ingress presents a certificate for the host. Wildcards count: a TLS host of
+    /// <c>*.example.com</c> covers <c>app.example.com</c> and is what cert-manager issues by
+    /// default, so matching only exact names would call the common case http.
+    /// </summary>
+    private static bool CoveredByTls(string host, IReadOnlyList<string> tlsHosts)
+    {
+        foreach (var t in tlsHosts)
+        {
+            if (string.Equals(t, host, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // One label only, as in the TLS spec: *.example.com matches app.example.com but not
+            // a.b.example.com.
+            if (!t.StartsWith("*.", StringComparison.Ordinal))
+                continue;
+
+            var dot = host.IndexOf('.');
+            if (dot > 0 && string.Equals(host[(dot + 1)..], t[2..], StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+}
+
+/// <summary>One TLS block: the secret holding the certificate, and the hosts it is presented for.</summary>
+public sealed class IngressTlsRow
+{
+    public IngressTlsRow(IngressTls t)
+    {
+        // A TLS block with no secretName is legal and means "the controller's default certificate" —
+        // worth saying rather than leaving the cell blank.
+        Secret = string.IsNullOrEmpty(t.SecretName) ? "(controller default)" : t.SecretName;
+        Hosts = t.Hosts.Count == 0 ? "—" : string.Join("  ", t.Hosts);
+    }
+
+    public string Secret { get; }
+    public string Hosts { get; }
+}
+
+/// <summary>
+/// NetworkPolicy detail (KON-476). A policy's meaning is spread over a pod selector, two policy types
+/// and nested peers, and the YAML makes you evaluate all of it in your head — including the parts that
+/// mean the opposite of what they look like, such as an empty ingress list being a deny-all. This page
+/// does that evaluation: which pods it applies to right now, and each rule as a sentence.
+/// </summary>
+public sealed partial class ClusterNetworkPolicyDetailViewModel : ClusterObjectDetailViewModel
+{
+    private NetworkPolicy _policy;
+
+    public ClusterNetworkPolicyDetailViewModel(
+        IClusterEngine cluster, NetworkPolicy policy, Action<Pod>? onOpenPod = null)
+        : base(
+            cluster, new ResourceRef(GroupVersionKind.NetworkPolicy, policy.Namespace, policy.Name),
+            onOpenPod)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+
+        _policy = policy;
+        Fill(policy);
+        _ = LoadPodsAsync();
+    }
+
+    public string AppliesToText => NetworkPolicyText.Selector(_policy.PodSelector, "all pods in this namespace");
+    public string PodSelectorCopyText => NetworkPolicyText.Selector(_policy.PodSelector, "", ",");
+    public string IsolatesText => NetworkPolicyText.Isolates(_policy);
+    public string AgeText => Format.Duration(_policy.Age);
+
+    public ObservableCollection<NetworkPolicyRuleRow> IngressRules { get; } = [];
+    public ObservableCollection<NetworkPolicyRuleRow> EgressRules { get; } = [];
+
+    public bool HasIngressRules => IngressRules.Count > 0;
+    public bool HasEgressRules => EgressRules.Count > 0;
+
+    /// <summary>What to say instead of a table: not isolated, or isolated with nothing allowed.</summary>
+    public string? IngressNote => Note(_policy.AffectsIngress, _policy.Ingress.Count, "incoming");
+    public string? EgressNote => Note(_policy.AffectsEgress, _policy.Egress.Count, "outgoing");
+
+    private static string? Note(bool affects, int rules, string direction) =>
+        !affects ? $"This policy does not restrict {direction} traffic."
+        // The line the YAML hides best: an isolated direction with no rules is a deny-all.
+        : rules == 0 ? $"All {direction} traffic is denied — this direction is isolated and no rule allows anything."
+        : null;
+
+    private void Fill(NetworkPolicy n)
+    {
+        IngressRules.Clear();
+        foreach (var r in n.Ingress)
+            IngressRules.Add(new NetworkPolicyRuleRow(r));
+
+        EgressRules.Clear();
+        foreach (var r in n.Egress)
+            EgressRules.Add(new NetworkPolicyRuleRow(r));
+    }
+
+    /// <summary>Follow this policy (KON-450): a changed selector changes which pods it covers.</summary>
+    protected override Task OnResourceModifiedAsync() => RefreshAsync();
+
+    /// <inheritdoc cref="OnResourceModifiedAsync"/>
+    public async Task RefreshAsync()
+    {
+        var fresh = await RefetchAsync(
+            () => Cluster.ListNetworkPoliciesAsync(_policy.Namespace),
+            n => n.Name == _policy.Name);
+
+        if (fresh is null)
+            return;
+
+        _policy = fresh;
+        Fill(fresh);
+
+        OnPropertyChanged(nameof(AppliesToText));
+        OnPropertyChanged(nameof(PodSelectorCopyText));
+        OnPropertyChanged(nameof(IsolatesText));
+        OnPropertyChanged(nameof(AgeText));
+        OnPropertyChanged(nameof(HasIngressRules));
+        OnPropertyChanged(nameof(HasEgressRules));
+        OnPropertyChanged(nameof(IngressNote));
+        OnPropertyChanged(nameof(EgressNote));
+
+        await RefreshPodsAsync();
+    }
+
+    public override string PodsTabLabel => "Applies to";
+
+    protected override IReadOnlyList<Pod> SelectPods(IReadOnlyList<Pod> all) =>
+        PodMatching.SelectedBy(all, _policy);
+
+    protected override string EmptyPodsReason() =>
+        $"No pods in {Namespace} match {AppliesToText}, so this policy isolates nothing yet.";
+}
+
+/// <summary>One ingress or egress rule, as the peers it admits and the ports it opens.</summary>
+public sealed class NetworkPolicyRuleRow
+{
+    public NetworkPolicyRuleRow(NetworkPolicyRule r)
+    {
+        // No peers and no ports are both wildcards in Kubernetes, not empty sets.
+        Peers = r.Peers.Count == 0 ? "Anywhere" : string.Join("\n", r.Peers.Select(NetworkPolicyText.Peer));
+        Ports = r.Ports.Count == 0 ? "All ports" : string.Join("\n", r.Ports.Select(NetworkPolicyText.Port));
+    }
+
+    public string Peers { get; }
+    public string Ports { get; }
+}
+
+/// <summary>NetworkPolicy parts as text, shared by the list row and the detail page (KON-476).</summary>
+internal static class NetworkPolicyText
+{
+    /// <summary>
+    /// A selector in Kubernetes' own <c>-l</c> syntax, or <paramref name="empty"/> for <c>{}</c>.
+    /// <paramref name="separator"/> is "," for the copy (KON-484): kubectl takes the spaces too, but a
+    /// selector pasted without them needs no quoting.
+    /// </summary>
+    public static string Selector(LabelSelector s, string empty, string separator = ", ")
+    {
+        if (s.IsEmpty)
+            return empty;
+
+        var parts = s.MatchLabels.Select(kv => $"{kv.Key}={kv.Value}").Concat(s.MatchExpressions.Select(e => e.Operator switch
+        {
+            LabelSelectorOperator.In => $"{e.Key} in ({string.Join(separator, e.Values)})",
+            LabelSelectorOperator.NotIn => $"{e.Key} notin ({string.Join(separator, e.Values)})",
+            LabelSelectorOperator.Exists => e.Key,
+            _ => $"!{e.Key}",
+        }));
+
+        return string.Join(separator, parts);
+    }
+
+    public static string Isolates(NetworkPolicy n) => (n.AffectsIngress, n.AffectsEgress) switch
+    {
+        (true, true) => "Ingress, Egress",
+        (true, false) => "Ingress",
+        (false, true) => "Egress",
+        _ => "—",
+    };
+
+    public static string Peer(NetworkPolicyPeer p)
+    {
+        if (p.Cidr.Length > 0)
+            return p.Except.Count == 0 ? p.Cidr : $"{p.Cidr} except {string.Join(", ", p.Except)}";
+
+        var pods = p.PodSelector is { IsEmpty: false } ps ? $"pods matching {Selector(ps, "")}" : "all pods";
+
+        // No namespace selector keeps the peer in the policy's own namespace; an empty one opens it
+        // to every namespace. The two look alike in YAML and are nothing alike on the wire.
+        var where = p.NamespaceSelector switch
+        {
+            null => "in this namespace",
+            { IsEmpty: true } => "in all namespaces",
+            var ns => $"in namespaces matching {Selector(ns, "")}",
+        };
+
+        return $"{char.ToUpperInvariant(pods[0])}{pods[1..]} {where}";
+    }
+
+    public static string Port(NetworkPolicyPort p) =>
+        p.Port.Length == 0 ? $"{p.Protocol} (all ports)"
+        : p.EndPort is { } end ? $"{p.Protocol} {p.Port}–{end.ToString(CultureInfo.InvariantCulture)}"
+        : $"{p.Protocol} {p.Port}";
 }

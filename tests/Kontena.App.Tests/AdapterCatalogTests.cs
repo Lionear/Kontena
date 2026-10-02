@@ -93,17 +93,65 @@ public sealed class AdapterCatalogTests : IDisposable
     }
 
     /// <summary>
-    /// Apple's runtime exists only on macOS 26 and up, so it is left out everywhere else rather than
-    /// shown switched off — a Windows machine has no decision to make about it. The expectation is
-    /// written out here rather than read back from the manifest, so that a manifest that stops saying
-    /// "macos 26" fails this instead of agreeing with itself.
+    /// Apple's runtime exists only on macOS 26 and up, and is listed everywhere anyway (KON-468):
+    /// Kontena ships the adapter, so a Windows machine showing no card said "Kontena does not do this"
+    /// when the true answer was "your machine cannot". What the platform decides is
+    /// <see cref="AdapterCatalog.RunsOnThisOs(AdapterEntry)"/>, which is what the switch and
+    /// <c>BackendCatalog</c> read — asserted here on the same run so the two cannot drift apart.
     /// </summary>
     [Fact]
-    public void An_adapter_that_cannot_run_here_is_not_listed()
+    public void An_adapter_that_cannot_run_here_is_still_listed_but_cannot_run()
     {
-        var listed = AdapterCatalog.All([]).Any(a => a.Id == AppleAdapterModule.BackendId);
+        var apple = Assert.Single(AdapterCatalog.All([]), a => a.Id == AppleAdapterModule.BackendId);
 
-        Assert.Equal(OperatingSystem.IsMacOSVersionAtLeast(26), listed);
+        Assert.Equal(OperatingSystem.IsMacOSVersionAtLeast(26), AdapterCatalog.RunsOnThisOs(apple));
+    }
+
+    /// <summary>Every bundled adapter without a platform floor runs everywhere, on every machine.</summary>
+    [Fact]
+    public void An_adapter_that_declares_no_platform_runs_here()
+    {
+        foreach (var adapter in AdapterCatalog.Bundled.Where(a => a.Manifest.Platforms.Count == 0))
+            Assert.True(AdapterCatalog.RunsOnThisOs(adapter), $"{adapter.Id} declares nothing but was refused.");
+    }
+
+    /// <summary>
+    /// The id overload is what <c>BackendCatalog.Build</c> asks, and it has to answer the same as the
+    /// entry overload — including for an id no bundled adapter has, which is a plugin's and already
+    /// vetted by the loader.
+    /// </summary>
+    [Fact]
+    public void The_platform_check_answers_the_same_by_id()
+    {
+        foreach (var adapter in AdapterCatalog.Bundled)
+            Assert.Equal(AdapterCatalog.RunsOnThisOs(adapter), AdapterCatalog.RunsOnThisOs(adapter.Id));
+
+        Assert.True(AdapterCatalog.RunsOnThisOs("com.acme.nerdctl"));
+    }
+
+    /// <summary>
+    /// The half that matters after KON-468: the card is on screen now, so nothing but the platform
+    /// check stops a force-enabled adapter reaching a provider. Built with <em>every</em> adapter
+    /// switched on — which is what a settings file copied from a Mac, or anything that wrote past the
+    /// dead switch, would produce.
+    /// <para>
+    /// Asserted as an equality against the platform rather than as "produces nothing", so the test says
+    /// something on a machine that <i>can</i> run Apple's runtime instead of passing vacuously there.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_force_enabled_adapter_that_cannot_run_here_builds_no_providers()
+    {
+        var apple = Assert.Single(AdapterCatalog.Bundled, a => a.Id == AppleAdapterModule.BackendId);
+
+        var everything = BackendCatalog.Build(
+            includeDemo: false,
+            kubeconfigPaths: [WriteKubeconfig()],
+            adapterEnabled: _ => true);
+
+        Assert.Equal(
+            AdapterCatalog.RunsOnThisOs(apple),
+            everything.Any(p => apple.Owns(p.Backend)));
     }
 
     /// <summary>
@@ -201,13 +249,18 @@ public sealed class AdapterCatalogTests : IDisposable
     /// kubeconfig — which includes CI — so an <c>Assert.All</c> over an empty list would pass with the
     /// entry plainly wrong. Verified by breaking each half in turn: the emptiness is what hid it.
     /// </para>
+    /// <para>
+    /// Adapters this machine cannot run are skipped rather than excused (KON-468): <c>Build</c> refuses
+    /// them by design, so demanding providers from Apple's runtime on Linux would fail the test for the
+    /// behaviour it is meant to protect. They are still checked wherever they do run.
+    /// </para>
     /// </summary>
     [Fact]
     public void Each_bundled_adapter_owns_what_it_produces_and_claims_the_right_kind()
     {
         var kubeconfig = WriteKubeconfig();
 
-        foreach (var adapter in AdapterCatalog.Bundled)
+        foreach (var adapter in AdapterCatalog.Bundled.Where(AdapterCatalog.RunsOnThisOs))
         {
             var mine = BackendCatalog.Build(
                 includeDemo: false,

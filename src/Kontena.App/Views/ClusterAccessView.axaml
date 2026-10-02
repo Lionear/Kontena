@@ -1,0 +1,107 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:controls="using:Kontena.App.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Kontena.App.Views.ClusterAccessView"
+             x:DataType="vm:ClusterAccessViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="28,24" Spacing="16">
+            <TextBlock Text="Access control" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
+            <Border IsVisible="{Binding LiveNotice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="16,11">
+                <TextBlock Text="{Binding LiveNotice}" FontSize="12.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- One row per subject per binding (KON-474): who, gets which role, where, through what.
+                 The role's rules open under the row, so the join is never left to the reader. -->
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True"
+                    IsVisible="{Binding HasItems}">
+                <StackPanel>
+                    <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
+                        <Grid ColumnDefinitions="1.6*,1.3*,1*,1.3*,0.9*">
+                            <controls:SortableHeader Grid.Column="0" Text="SUBJECT" Key="SUBJECT" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="1" Text="ROLE" Key="ROLE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="2" Text="SCOPE" Key="SCOPE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <controls:SortableHeader Grid.Column="3" Text="BINDING" Key="BINDING" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
+                            <TextBlock Grid.Column="4" Text="PERMISSIONS" Classes="colhead"/>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AccessGrantRow">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                    <StackPanel>
+                                        <Grid ColumnDefinitions="1.6*,1.3*,1*,1.3*,0.9*">
+                                            <StackPanel Grid.Column="0" Margin="0,0,14,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Subject}" FontWeight="Medium" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding SubjectDetail}" FontSize="11.5" Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="0,0,14,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Role}" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding RoleKind}" FontSize="11.5" Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding Scope}" Foreground="{DynamicResource TextDim}"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Binding}" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding BindingKind}" FontSize="11.5" Foreground="{DynamicResource TextFaint}"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="4" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                    Command="{Binding ToggleCommand}" IsVisible="{Binding !RoleMissing}">
+                                                <TextBlock Text="{Binding RulesLabel}"/>
+                                            </Button>
+                                            <!-- A binding to a role that does not exist grants nothing; said out
+                                                 loud because it is the answer to "why can't it". -->
+                                            <TextBlock Grid.Column="4" Text="{Binding RulesLabel}" IsVisible="{Binding RoleMissing}"
+                                                       Foreground="{DynamicResource Warn}" VerticalAlignment="Center"
+                                                       ToolTip.Tip="The role this binding names does not exist, so the binding grants nothing"/>
+                                        </Grid>
+                                        <Border IsVisible="{Binding IsExpanded}" Margin="0,10,0,0" Padding="12,8"
+                                                Background="{DynamicResource SurfaceRaised}" CornerRadius="{StaticResource RadiusSm}">
+                                            <StackPanel Spacing="6">
+                                                <Grid ColumnDefinitions="2*,1*">
+                                                    <TextBlock Grid.Column="0" Text="RESOURCES" Classes="colhead"/>
+                                                    <TextBlock Grid.Column="1" Text="VERBS" Classes="colhead"/>
+                                                </Grid>
+                                                <ItemsControl ItemsSource="{Binding Rules}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:AccessRuleRow">
+                                                            <Grid ColumnDefinitions="2*,1*" Margin="0,2">
+                                                                <StackPanel Grid.Column="0" Margin="0,0,14,0">
+                                                                    <TextBlock Text="{Binding Resources}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                                               Foreground="{DynamicResource Text}" TextWrapping="Wrap"/>
+                                                                    <TextBlock Text="{Binding Names}" IsVisible="{Binding HasNames}" FontSize="11.5"
+                                                                               Foreground="{DynamicResource TextFaint}" TextWrapping="Wrap"/>
+                                                                </StackPanel>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Verbs}" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                                           Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding IsEmpty}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No role bindings here, so nothing is granted beyond the cluster's defaults." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+            <Border IsVisible="{Binding HasNoMatches}" Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="18,16">
+                <TextBlock Text="No grants match that search." FontSize="12.5" Foreground="{DynamicResource TextDim}"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

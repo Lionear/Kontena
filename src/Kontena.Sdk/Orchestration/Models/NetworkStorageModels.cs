@@ -46,6 +46,16 @@ public sealed record Service
 /// <summary>One host/path routing rule of an Ingress.</summary>
 public readonly record struct IngressRule(string Host, string Path, string ServiceName, int ServicePort);
 
+/// <summary>Where an Ingress sends traffic that matches no rule, when it names one.</summary>
+public readonly record struct IngressBackend(string ServiceName, int ServicePort);
+
+/// <summary>
+/// One TLS block: the certificate, and which hosts it is presented for. Kept together rather than as
+/// two flat lists because "which certificate covers app.example.com" is the question, and an ingress
+/// with three hosts across two secrets cannot answer it from a bag of names (KON-453).
+/// </summary>
+public readonly record struct IngressTls(string SecretName, IReadOnlyList<string> Hosts);
+
 /// <summary>A neutral Ingress view.</summary>
 public sealed record Ingress
 {
@@ -57,11 +67,98 @@ public sealed record Ingress
 
     public IReadOnlyList<IngressRule> Rules { get; init; } = [];
 
+    /// <summary>Where traffic goes that matches no rule; null when the ingress names no default.</summary>
+    public IngressBackend? DefaultBackend { get; init; }
+
     /// <summary>Load-balancer addresses the ingress is reachable at.</summary>
     public IReadOnlyList<string> Addresses { get; init; } = [];
 
-    /// <summary>Hosts covered by TLS.</summary>
-    public IReadOnlyList<string> TlsHosts { get; init; } = [];
+    /// <summary>The TLS blocks, certificate and covered hosts together.</summary>
+    public IReadOnlyList<IngressTls> Tls { get; init; } = [];
+
+    /// <summary>Hosts covered by TLS, across every certificate. Derived from <see cref="Tls"/> so
+    /// the two can never disagree.</summary>
+    public IReadOnlyList<string> TlsHosts => [.. Tls.SelectMany(t => t.Hosts)];
+
+    public TimeSpan Age { get; init; }
+}
+
+/// <summary>How a <see cref="LabelSelectorRequirement"/> compares a label to its values.</summary>
+public enum LabelSelectorOperator
+{
+    In,
+    NotIn,
+    Exists,
+    DoesNotExist,
+}
+
+/// <summary>One <c>matchExpressions</c> entry of a label selector.</summary>
+public readonly record struct LabelSelectorRequirement(
+    string Key, LabelSelectorOperator Operator, IReadOnlyList<string> Values);
+
+/// <summary>
+/// A full Kubernetes label selector: <c>matchLabels</c> and <c>matchExpressions</c>, all of which must
+/// hold. Unlike a Service's plain map, an empty one selects everything — which is exactly what a
+/// NetworkPolicy's <c>podSelector: {}</c> means (KON-476).
+/// </summary>
+public sealed record LabelSelector
+{
+    public IReadOnlyDictionary<string, string> MatchLabels { get; init; } = new Dictionary<string, string>();
+
+    public IReadOnlyList<LabelSelectorRequirement> MatchExpressions { get; init; } = [];
+
+    public bool IsEmpty => MatchLabels.Count == 0 && MatchExpressions.Count == 0;
+}
+
+/// <summary>A port a NetworkPolicy rule allows. <paramref name="Port"/> is a number or a named port,
+/// empty for every port of the protocol; <paramref name="EndPort"/> makes it a range.</summary>
+public readonly record struct NetworkPolicyPort(string Protocol, string Port, int? EndPort);
+
+/// <summary>
+/// One <c>from</c>/<c>to</c> entry. Either an IP block, or pods picked by a pod selector, a namespace
+/// selector, or both — where both means "these pods in those namespaces", not either.
+/// </summary>
+public sealed record NetworkPolicyPeer
+{
+    /// <summary>Null when the peer names no pod selector.</summary>
+    public LabelSelector? PodSelector { get; init; }
+
+    /// <summary>Null when the peer names no namespace selector, which means the policy's own namespace.</summary>
+    public LabelSelector? NamespaceSelector { get; init; }
+
+    /// <summary>The CIDR of an <c>ipBlock</c> peer; empty for a selector peer.</summary>
+    public string Cidr { get; init; } = string.Empty;
+
+    /// <summary>CIDRs the IP block carves out of <see cref="Cidr"/>.</summary>
+    public IReadOnlyList<string> Except { get; init; } = [];
+}
+
+/// <summary>One ingress or egress rule. No peers means any peer; no ports means every port.</summary>
+public sealed record NetworkPolicyRule
+{
+    public IReadOnlyList<NetworkPolicyPeer> Peers { get; init; } = [];
+
+    public IReadOnlyList<NetworkPolicyPort> Ports { get; init; } = [];
+}
+
+/// <summary>A NetworkPolicy — which pods it isolates, and what traffic it still lets through (KON-476).</summary>
+public sealed record NetworkPolicy
+{
+    public required string Name { get; init; }
+    public required string Namespace { get; init; }
+
+    /// <summary>The pods in <see cref="Namespace"/> this policy applies to. Empty selects them all.</summary>
+    public LabelSelector PodSelector { get; init; } = new();
+
+    /// <summary>Whether it isolates incoming traffic — with no <see cref="Ingress"/> rules, that is deny-all.</summary>
+    public bool AffectsIngress { get; init; }
+
+    /// <summary>Whether it isolates outgoing traffic — with no <see cref="Egress"/> rules, that is deny-all.</summary>
+    public bool AffectsEgress { get; init; }
+
+    public IReadOnlyList<NetworkPolicyRule> Ingress { get; init; } = [];
+
+    public IReadOnlyList<NetworkPolicyRule> Egress { get; init; } = [];
 
     public TimeSpan Age { get; init; }
 }

@@ -9,7 +9,16 @@
              x:DataType="vm:ClusterNamespacesViewModel">
     <ScrollViewer>
         <StackPanel Margin="28,24" Spacing="16">
-            <TextBlock Text="Namespaces" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Namespaces" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Classes="primary" Command="{Binding CreateNamespaceCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Path Classes="icon" Width="15" Height="15" Stroke="{Binding $parent[Button].Foreground}" Data="{StaticResource IconPlus}"/>
+                        <TextBlock Text="New namespace" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
             <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
             <!-- Never silent about not being live: a list that has quietly stopped moving looks
                  exactly like a cluster where nothing is happening, and those want opposite
@@ -23,7 +32,7 @@
                     IsVisible="{Binding HasItems}">
                 <StackPanel>
                     <Border Background="{DynamicResource SurfaceRaised}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="16,10">
-                        <Grid ColumnDefinitions="2*,1*,0.8*">
+                        <Grid ColumnDefinitions="2*,1*,0.8*,Auto">
                             <controls:SortableHeader Grid.Column="0" Text="NAME" Key="NAME" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="1" Text="STATUS" Key="STATUS" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
                             <controls:SortableHeader Grid.Column="2" Text="AGE" Key="AGE" SortColumn="{Binding SortColumn}" SortDescending="{Binding SortDescending}" SortCommand="{Binding SortByCommand}"/>
@@ -33,7 +42,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:NamespaceRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
-                                    <Grid ColumnDefinitions="2*,1*,0.8*">
+                                    <Grid ColumnDefinitions="2*,1*,0.8*,Auto">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
                                                 Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}">
                                             <TextBlock Text="{Binding Name}" FontWeight="Medium"/>
@@ -43,6 +52,8 @@
                                             <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextDim}"/>
                                         </StackPanel>
                                         <TextBlock Grid.Column="2" Text="{Binding Age}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextFaint}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="3" Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}">Delete</Button>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

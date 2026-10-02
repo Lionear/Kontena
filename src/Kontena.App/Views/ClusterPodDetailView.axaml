@@ -21,6 +21,7 @@
                 <StackPanel Spacing="12">
                   <WrapPanel ItemSpacing="12" LineSpacing="8">
                     <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                    <controls:CopyButton Classes="pill" Text="{Binding Name}" ToolTip.Tip="Copy the name" VerticalAlignment="Center"/>
                     <Border CornerRadius="20" Padding="9,3" Background="{DynamicResource Surface2}" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="7">
                             <Ellipse Width="7" Height="7" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
@@ -76,8 +77,8 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="{Binding HostnameText}" FontFamily="{StaticResource Mono}" FontSize="12.5" Foreground="{DynamicResource TextDim}"
                                        VerticalAlignment="Center" ToolTip.Tip="{Binding HostnameTip}"/>
-                            <Button Classes="pill" Click="OnCopyClick" Tag="{Binding HostnameText}" IsVisible="{Binding HasHostname}"
-                                    ToolTip.Tip="Resolvable only from inside the cluster">Copy</Button>
+                            <controls:CopyButton Classes="pill" Text="{Binding HostnameText}" IsVisible="{Binding HasHostname}"
+                                    ToolTip.Tip="Resolvable only from inside the cluster"/>
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Spacing="2">
@@ -209,21 +210,26 @@
 
                         <StackPanel Spacing="4" IsVisible="{Binding HasLabels}">
                             <TextBlock Text="LABELS" Classes="colhead"/>
-                            <ItemsControl ItemsSource="{Binding Labels}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel ItemSpacing="6" LineSpacing="6"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="x:String">
-                                        <Border Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="7,2">
-                                            <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="11.5"
-                                                       Foreground="{DynamicResource TextDim}"/>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <!-- Each chip copies itself as key=value; the pill copies them all as one
+                                 selector (KON-484). -->
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <ItemsControl ItemsSource="{Binding Labels}" VerticalAlignment="Center">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel ItemSpacing="6" LineSpacing="6"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <controls:CopyButton Text="{Binding}" Content="{Binding}" ToolTip.Tip="Copy this label"
+                                                                 Background="{DynamicResource Surface2}" CornerRadius="{StaticResource RadiusSm}" Padding="7,2"
+                                                                 FontFamily="{StaticResource Mono}" FontSize="11.5" Foreground="{DynamicResource TextDim}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <controls:CopyButton Grid.Column="1" Classes="pill" Text="{Binding LabelsCopyText}" VerticalAlignment="Top"
+                                        ToolTip.Tip="Copy all labels as a selector for kubectl -l"/>
+                            </Grid>
                         </StackPanel>
                     </StackPanel>
 
@@ -502,8 +508,8 @@
                     <Button Grid.Column="5" Classes="pill" Margin="8,0,0,0" Command="{Binding ClearLogsCommand}">Clear</Button>
                 </Grid>
                 <Border Grid.Row="1" Background="{DynamicResource Console}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="{StaticResource Radius}" ClipToBounds="True">
-                    <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
-                             SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                    <ListBox x:Name="LogList" behaviors:AutoScroll.Enabled="True" behaviors:LogSelection.Enabled="True" behaviors:LogSelection.Timestamps="{Binding ShowTimestamps}" behaviors:AutoScroll.Follow="{Binding AutoScroll, Mode=TwoWay}" ItemsSource="{Binding Lines}" Background="Transparent" Padding="14,12"
+                             SelectionMode="Multiple" ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <ListBox.Styles>
                             <Style Selector="ListBoxItem">
                                 <Setter Property="Padding" Value="0"/>
@@ -511,21 +517,24 @@
                                 <Setter Property="MinHeight" Value="0"/>
                                 <Setter Property="Background" Value="Transparent"/>
                             </Style>
+                            <!-- Rows can be selected in bulk since KON-463, so a selected one has to read as
+                                 selected. Both themes draw this console on near-black, hence a fixed wash
+                                 rather than a theme brush — and a heavier one than :pointerover above. -->
                             <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Background" Value="#28FFFFFF"/>
                             </Style>
                         </ListBox.Styles>
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:LogLineViewModel">
                                 <StackPanel Orientation="Horizontal" Spacing="14">
-                                    <TextBlock Text="{Binding Timestamp}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="21"
-                                               Foreground="{DynamicResource TextFaint}"
-                                               IsVisible="{Binding #Root.((vm:ClusterPodDetailViewModel)DataContext).ShowTimestamps}"/>
-                                    <TextBlock Text="{Binding Level}" FontFamily="{StaticResource Mono}" FontSize="12.5" FontWeight="Bold" LineHeight="21"
-                                               Foreground="{Binding LevelBrush}" IsVisible="{Binding HasLevel}"/>
-                                    <TextBlock Text="{Binding Message}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="21"
-                                               Foreground="{Binding MessageBrush}"
-                                               TextWrapping="{Binding #Root.((vm:ClusterPodDetailViewModel)DataContext).LogWrapping}"/>
+                                    <SelectableTextBlock Text="{Binding Timestamp}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="21"
+                                                         Foreground="{DynamicResource TextFaint}"
+                                                         IsVisible="{Binding #Root.((vm:ClusterPodDetailViewModel)DataContext).ShowTimestamps}"/>
+                                    <SelectableTextBlock Text="{Binding Level}" FontFamily="{StaticResource Mono}" FontSize="12.5" FontWeight="Bold" LineHeight="21"
+                                                         Foreground="{Binding LevelBrush}" IsVisible="{Binding HasLevel}"/>
+                                    <SelectableTextBlock Text="{Binding Message}" FontFamily="{StaticResource Mono}" FontSize="12.5" LineHeight="21"
+                                                         Foreground="{Binding MessageBrush}"
+                                                         TextWrapping="{Binding #Root.((vm:ClusterPodDetailViewModel)DataContext).LogWrapping}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

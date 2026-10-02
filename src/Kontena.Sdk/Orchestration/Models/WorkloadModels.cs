@@ -79,3 +79,62 @@ public sealed record Workload
 
     public TimeSpan Age { get; init; }
 }
+
+/// <summary>
+/// A HorizontalPodAutoscaler (KON-477), as far as a workload's detail page needs it: which workload it
+/// scales, its bounds, where it stands, and what it scales on.
+/// </summary>
+public sealed record HorizontalPodAutoscaler
+{
+    public required string Name { get; init; }
+    public required string Namespace { get; init; }
+
+    /// <summary>The scale target's kind, e.g. "Deployment".</summary>
+    public required string TargetKind { get; init; }
+    public required string TargetName { get; init; }
+
+    /// <summary>Kubernetes defaults this to 1 when the spec leaves it out.</summary>
+    public int MinReplicas { get; init; } = 1;
+    public int MaxReplicas { get; init; }
+    public int CurrentReplicas { get; init; }
+    public int DesiredReplicas { get; init; }
+
+    /// <summary>
+    /// Each metric as "what: current / target", e.g. "cpu: 45% / 70%". Current reads "?" until the
+    /// autoscaler has one — a freshly created HPA, or one whose metrics source is missing.
+    /// </summary>
+    public IReadOnlyList<string> Metrics { get; init; } = [];
+
+    public TimeSpan Age { get; init; }
+}
+
+/// <summary>
+/// A PodDisruptionBudget (KON-477): how much voluntary disruption — a drain, an eviction — the pods it
+/// selects will tolerate, and how much of that is left right now.
+/// </summary>
+public sealed record PodDisruptionBudget
+{
+    public required string Name { get; init; }
+    public required string Namespace { get; init; }
+
+    /// <summary>A count or a percentage, as written; null when the budget uses the other field.</summary>
+    public string? MinAvailable { get; init; }
+
+    /// <inheritdoc cref="MinAvailable"/>
+    public string? MaxUnavailable { get; init; }
+
+    /// <summary>
+    /// Null is a budget without a selector, which selects no pods (policy/v1); an empty one selects
+    /// every pod in the namespace.
+    /// </summary>
+    public LabelSelector? Selector { get; init; }
+
+    public int CurrentHealthy { get; init; }
+    public int DesiredHealthy { get; init; }
+    public int ExpectedPods { get; init; }
+
+    /// <summary>How many of its pods may be evicted right now. Zero is what blocks a drain.</summary>
+    public int DisruptionsAllowed { get; init; }
+
+    public TimeSpan Age { get; init; }
+}

@@ -225,8 +225,8 @@
                             </ListBox.Styles>
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                    <TextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12" LineHeight="19"
-                                               Foreground="{DynamicResource TextDim}"/>
+                                    <SelectableTextBlock Text="{Binding}" FontFamily="{StaticResource Mono}" FontSize="12" LineHeight="19"
+                                                         Foreground="{DynamicResource TextDim}"/>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>

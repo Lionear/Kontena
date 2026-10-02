@@ -17,7 +17,8 @@ public class K8sMapTests
         string readyStatus = "True",
         bool diskPressure = false,
         IDictionary<string, string>? labels = null,
-        bool unschedulable = false) => new()
+        bool unschedulable = false,
+        IList<V1Taint>? taints = null) => new()
     {
         Metadata = new V1ObjectMeta
         {
@@ -25,7 +26,7 @@ public class K8sMapTests
             Labels = labels,
             CreationTimestamp = DateTime.UtcNow.AddDays(-3),
         },
-        Spec = new V1NodeSpec { Unschedulable = unschedulable },
+        Spec = new V1NodeSpec { Unschedulable = unschedulable, Taints = taints },
         Status = new V1NodeStatus
         {
             NodeInfo = new V1NodeSystemInfo
@@ -99,6 +100,29 @@ public class K8sMapTests
 
         var pressured = K8sMap.ToNode(Node(diskPressure: true), null);
         Assert.Equal("DiskPressure", Assert.Single(pressured.Problems).Type);
+    }
+
+    [Fact]
+    public void Node_taints_are_reported_including_the_ones_kubernetes_sets_itself()
+    {
+        // KON-472: the taint on a cordoned node is added by Kubernetes, not by a person, and it is
+        // the one that explains why nothing schedules there — so nothing here filters by origin.
+        var node = K8sMap.ToNode(
+            Node(taints:
+            [
+                new V1Taint { Key = "node.kubernetes.io/unschedulable", Effect = "NoSchedule" },
+                new V1Taint { Key = "workload", Value = "gpu", Effect = "NoExecute" },
+            ]),
+            usage: null);
+
+        Assert.Equal(
+            [
+                new NodeTaint("node.kubernetes.io/unschedulable", string.Empty, "NoSchedule"),
+                new NodeTaint("workload", "gpu", "NoExecute"),
+            ],
+            node.Taints);
+
+        Assert.Empty(K8sMap.ToNode(Node(), usage: null).Taints);
     }
 
     [Fact]
@@ -788,5 +812,227 @@ public class K8sMapTests
         Assert.Equal("Pod", mapped.InvolvedObject.Kind.Kind);
         Assert.Equal("app", mapped.InvolvedObject.Namespace);
         Assert.Equal("redis-0", mapped.InvolvedObject.Name);
+    }
+
+    [Fact]
+    public void An_ingress_carries_its_rules_default_backend_and_certificates()
+    {
+        // The three fields the detail page reads (KON-453). Rules flatten to one entry per path,
+        // because a host with three paths is three routes and not one.
+        var mapped = K8sMap.ToIngress(new V1Ingress
+        {
+            Metadata = new V1ObjectMeta { Name = "web", NamespaceProperty = "app", CreationTimestamp = DateTime.UtcNow },
+            Spec = new V1IngressSpec
+            {
+                IngressClassName = "nginx",
+                DefaultBackend = new V1IngressBackend
+                {
+                    Service = new V1IngressServiceBackend
+                    {
+                        Name = "fallback",
+                        Port = new V1ServiceBackendPort { Number = 8080 },
+                    },
+                },
+                Rules =
+                [
+                    new V1IngressRule
+                    {
+                        Host = "app.example.com",
+                        Http = new V1HTTPIngressRuleValue
+                        {
+                            Paths =
+                            [
+                                new V1HTTPIngressPath
+                                {
+                                    Path = "/",
+                                    Backend = new V1IngressBackend
+                                    {
+                                        Service = new V1IngressServiceBackend
+                                        {
+                                            Name = "web",
+                                            Port = new V1ServiceBackendPort { Number = 80 },
+                                        },
+                                    },
+                                },
+                                new V1HTTPIngressPath
+                                {
+                                    Path = "/api",
+                                    Backend = new V1IngressBackend
+                                    {
+                                        Service = new V1IngressServiceBackend
+                                        {
+                                            Name = "api",
+                                            Port = new V1ServiceBackendPort { Number = 8080 },
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                Tls = [new V1IngressTLS { SecretName = "web-tls", Hosts = ["app.example.com"] }],
+            },
+        });
+
+        Assert.Equal("nginx", mapped.Class);
+        Assert.Equal(new IngressBackend("fallback", 8080), mapped.DefaultBackend);
+        Assert.Equal(
+            [("app.example.com", "/", "web", 80), ("app.example.com", "/api", "api", 8080)],
+            mapped.Rules.Select(r => (r.Host, r.Path, r.ServiceName, r.ServicePort)));
+
+        var tls = Assert.Single(mapped.Tls);
+        Assert.Equal("web-tls", tls.SecretName);
+        Assert.Equal(["app.example.com"], tls.Hosts);
+
+        // Derived from Tls, so the two cannot disagree.
+        Assert.Equal(["app.example.com"], mapped.TlsHosts);
+    }
+
+    [Fact]
+    public void An_ingress_without_a_default_backend_maps_to_none()
+    {
+        // Distinct from one pointing at nothing: unmatched traffic gets the controller's own 404.
+        var mapped = K8sMap.ToIngress(new V1Ingress
+        {
+            Metadata = new V1ObjectMeta { Name = "web", NamespaceProperty = "app" },
+            Spec = new V1IngressSpec(),
+        });
+
+        Assert.Null(mapped.DefaultBackend);
+        Assert.Empty(mapped.Tls);
+        Assert.Empty(mapped.TlsHosts);
+    }
+
+    [Fact]
+    public void Autoscaler_maps_bounds_status_and_each_metric_against_its_target()
+    {
+        var mapped = K8sMap.ToAutoscaler(new V2HorizontalPodAutoscaler
+        {
+            Metadata = new V1ObjectMeta { Name = "api", NamespaceProperty = "app" },
+            Spec = new V2HorizontalPodAutoscalerSpec
+            {
+                ScaleTargetRef = new V2CrossVersionObjectReference { Kind = "Deployment", Name = "api" },
+                MaxReplicas = 10,
+                Metrics =
+                [
+                    new V2MetricSpec { Type = "Resource", Resource = new V2ResourceMetricSource { Name = "cpu", Target = new V2MetricTarget { Type = "Utilization", AverageUtilization = 70 } } },
+                    new V2MetricSpec { Type = "Pods", Pods = new V2PodsMetricSource { Metric = new V2MetricIdentifier { Name = "rps" }, Target = new V2MetricTarget { Type = "AverageValue", AverageValue = new ResourceQuantity("100") } } },
+                ],
+            },
+            Status = new V2HorizontalPodAutoscalerStatus
+            {
+                CurrentReplicas = 3,
+                DesiredReplicas = 4,
+                CurrentMetrics =
+                [
+                    new V2MetricStatus { Type = "Resource", Resource = new V2ResourceMetricStatus { Name = "cpu", Current = new V2MetricValueStatus { AverageUtilization = 85 } } },
+                ],
+            },
+        });
+
+        // No minReplicas in the spec is Kubernetes' default of 1; a metric with no reading yet is "?".
+        Assert.Equal(("Deployment", "api", 1, 10, 3, 4), (mapped.TargetKind, mapped.TargetName, mapped.MinReplicas, mapped.MaxReplicas, mapped.CurrentReplicas, mapped.DesiredReplicas));
+        Assert.Equal(["cpu: 85% / 70%", "rps: ? / 100"], mapped.Metrics);
+    }
+
+    [Fact]
+    public void Disruption_budget_maps_its_budget_selector_and_what_is_left()
+    {
+        var mapped = K8sMap.ToDisruptionBudget(new V1PodDisruptionBudget
+        {
+            Metadata = new V1ObjectMeta { Name = "web", NamespaceProperty = "app" },
+            Spec = new V1PodDisruptionBudgetSpec
+            {
+                MaxUnavailable = "25%",
+                Selector = new V1LabelSelector
+                {
+                    MatchLabels = new Dictionary<string, string> { ["app"] = "web" },
+                    MatchExpressions = [new V1LabelSelectorRequirement { Key = "tier", OperatorProperty = "In", Values = ["frontend"] }],
+                },
+            },
+            Status = new V1PodDisruptionBudgetStatus { CurrentHealthy = 3, DesiredHealthy = 2, ExpectedPods = 3, DisruptionsAllowed = 1 },
+        });
+
+        Assert.Null(mapped.MinAvailable);
+        Assert.Equal("25%", mapped.MaxUnavailable);
+        Assert.Equal("web", mapped.Selector!.MatchLabels["app"]);
+        var requirement = Assert.Single(mapped.Selector.MatchExpressions);
+        Assert.Equal(("tier", LabelSelectorOperator.In, "frontend"), (requirement.Key, requirement.Operator, Assert.Single(requirement.Values)));
+        Assert.Equal((3, 2, 3, 1), (mapped.CurrentHealthy, mapped.DesiredHealthy, mapped.ExpectedPods, mapped.DisruptionsAllowed));
+    }
+
+    [Fact]
+    public void A_network_policy_keeps_its_selectors_peers_and_ports()
+    {
+        // KON-476. A null peer selector and an empty one mean different things on the wire (own
+        // namespace vs every namespace), so the mapper must not collapse them.
+        var mapped = K8sMap.ToNetworkPolicy(new V1NetworkPolicy
+        {
+            Metadata = new V1ObjectMeta { Name = "db", NamespaceProperty = "app" },
+            Spec = new V1NetworkPolicySpec
+            {
+                PodSelector = new V1LabelSelector
+                {
+                    MatchLabels = new Dictionary<string, string> { ["app"] = "db" },
+                    MatchExpressions = [new V1LabelSelectorRequirement { Key = "tier", OperatorProperty = "NotIn", Values = ["frontend"] }],
+                },
+                PolicyTypes = ["Ingress", "Egress"],
+                Ingress =
+                [
+                    new V1NetworkPolicyIngressRule
+                    {
+                        FromProperty =
+                        [
+                            new V1NetworkPolicyPeer { PodSelector = new V1LabelSelector() },
+                            new V1NetworkPolicyPeer { NamespaceSelector = new V1LabelSelector() },
+                        ],
+                        Ports = [new V1NetworkPolicyPort { Protocol = "TCP", Port = (IntOrString)"5432" }],
+                    },
+                ],
+                Egress =
+                [
+                    new V1NetworkPolicyEgressRule
+                    {
+                        To = [new V1NetworkPolicyPeer { IpBlock = new V1IPBlock { Cidr = "10.0.0.0/8", Except = ["10.0.99.0/24"] } }],
+                        Ports = [new V1NetworkPolicyPort { Protocol = "TCP", Port = (IntOrString)"8000", EndPort = 8080 }],
+                    },
+                ],
+            },
+        });
+
+        Assert.Equal("db", mapped.PodSelector.MatchLabels["app"]);
+        Assert.Equal("tier", mapped.PodSelector.MatchExpressions[0].Key);
+        Assert.Equal(["frontend"], mapped.PodSelector.MatchExpressions[0].Values);
+        Assert.Equal(LabelSelectorOperator.NotIn, mapped.PodSelector.MatchExpressions[0].Operator);
+        Assert.True(mapped.AffectsIngress);
+        Assert.True(mapped.AffectsEgress);
+
+        var from = mapped.Ingress.Single().Peers;
+        Assert.NotNull(from[0].PodSelector);
+        Assert.Null(from[0].NamespaceSelector);
+        Assert.Null(from[1].PodSelector);
+        Assert.True(from[1].NamespaceSelector!.IsEmpty);
+        Assert.Equal(new NetworkPolicyPort("TCP", "5432", null), mapped.Ingress.Single().Ports.Single());
+
+        var to = mapped.Egress.Single();
+        Assert.Equal("10.0.0.0/8", to.Peers.Single().Cidr);
+        Assert.Equal(["10.0.99.0/24"], to.Peers.Single().Except);
+        Assert.Equal(new NetworkPolicyPort("TCP", "8000", 8080), to.Ports.Single());
+    }
+
+    [Fact]
+    public void A_network_policy_without_policy_types_gets_the_kubernetes_default()
+    {
+        // Ingress always; Egress only when it has egress rules.
+        var mapped = K8sMap.ToNetworkPolicy(new V1NetworkPolicy
+        {
+            Metadata = new V1ObjectMeta { Name = "deny", NamespaceProperty = "app" },
+            Spec = new V1NetworkPolicySpec { PodSelector = new V1LabelSelector() },
+        });
+
+        Assert.True(mapped.AffectsIngress);
+        Assert.False(mapped.AffectsEgress);
+        Assert.True(mapped.PodSelector.IsEmpty);
+        Assert.Empty(mapped.Ingress);
     }
 }

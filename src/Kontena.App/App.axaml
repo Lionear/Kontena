@@ -224,6 +224,12 @@
             <Setter Property="FontSize" Value="13.5"/>
             <Setter Property="FontWeight" Value="Medium"/>
         </Style>
+        <!-- A kind under a Custom resources folder (KON-483): no icon of its own, and its label sits
+             under the folder's label plus one step, so the indent says which folder it is in. -->
+        <Style Selector="Button.nav.nested">
+            <Setter Property="Padding" Value="42,6,11,6"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
         <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource Surface}"/>
             <Setter Property="TextElement.Foreground" Value="{DynamicResource Text}"/>
@@ -378,6 +384,15 @@
             <Setter Property="StrokeJoin" Value="Round"/>
             <Setter Property="Stretch" Value="Uniform"/>
             <Setter Property="Stroke" Value="{DynamicResource TextDim}"/>
+        </Style>
+
+        <!-- Text can only be selected where the pointer can reach it (KON-452). A text block with no
+             background is invisible to hit testing, so the press falls through to whatever is behind
+             it — inside a list, to the row, which takes the click and leaves the text unselected.
+             Transparent is a background: it takes the pointer and paints nothing. One rule here rather
+             than an attribute per console, because every log surface in the app has the same problem. -->
+        <Style Selector="SelectableTextBlock">
+            <Setter Property="Background" Value="Transparent"/>
         </Style>
 
         <!-- A list row for something that is broken (KON-415). Three signals, because one is not

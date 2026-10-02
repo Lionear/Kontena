@@ -114,6 +114,48 @@ public interface IClusterEngine : IBackend
     async ValueTask<int> CountAsync(GroupVersionKind kind, string? ns = null, CancellationToken ct = default) =>
         (await ListTableAsync(kind, ns, ct).ConfigureAwait(false)).Rows.Count;
 
+    /// <summary>
+    /// The workloads that use, or were created by, one object (KON-455).
+    /// <para>
+    /// Generic on purpose. The tools that solve this per resource type all stop at the types they were
+    /// taught, which is why none of them answers it for a custom resource — nobody controls what a CRD
+    /// author will reference. This asks the cluster for signals that hold for any kind: what carries an
+    /// ownerReference to it, what mounts a ConfigMap or Secret it owns, and what names it in an
+    /// annotation under its own API group.
+    /// </para>
+    /// <para>
+    /// Empty by default rather than abstract: an engine that cannot answer this should cost nothing,
+    /// and an empty list is the truthful answer for one that does not look.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<ResourceUsage>> FindUsersAsync(
+        ResourceRef resource, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<ResourceUsage>>([]);
+
+    /// <summary>
+    /// One object of any kind, as far as it can be read without knowing the kind (KON-483): its
+    /// metadata, its printer columns, its status fields and conditions. What the detail page of a
+    /// custom resource is built from.
+    /// <para>
+    /// Null by default, and null for an object that is not there: an engine without generic objects
+    /// has nothing to show, and the page says so rather than drawing an empty one.
+    /// </para>
+    /// </summary>
+    ValueTask<ResourceObject?> GetObjectAsync(ResourceRef resource, CancellationToken ct = default) =>
+        ValueTask.FromResult<ResourceObject?>(null);
+
+    /// <summary>
+    /// The RBAC objects that decide who may do what (KON-474): Roles and RoleBindings in
+    /// <paramref name="ns"/> (every namespace when null), plus every ClusterRole and
+    /// ClusterRoleBinding — a ClusterRoleBinding grants in every namespace, and a RoleBinding may
+    /// point at a ClusterRole, so neither can be left out of a namespace's answer.
+    /// <para>
+    /// Empty by default, like <see cref="FindUsersAsync"/>: an engine without RBAC has nothing to say.
+    /// </para>
+    /// </summary>
+    ValueTask<AccessControl> GetAccessControlAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult(AccessControl.Empty);
+
     // ── Typed listers (over the grids) ───────────────────────────────────────
 
     ValueTask<IReadOnlyList<KubeNamespace>> ListNamespacesAsync(CancellationToken ct = default);
@@ -150,6 +192,14 @@ public interface IClusterEngine : IBackend
     ValueTask<IReadOnlyList<Pod>> ListPodsAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Service>> ListServicesAsync(string? ns = null, CancellationToken ct = default);
     ValueTask<IReadOnlyList<Ingress>> ListIngressesAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List NetworkPolicies (KON-476). Empty by default rather than abstract: an orchestrator with no
+    /// such concept should cost nothing, and "no policies" is the truthful answer for it.
+    /// </summary>
+    ValueTask<IReadOnlyList<NetworkPolicy>> ListNetworkPoliciesAsync(string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<NetworkPolicy>>([]);
+
     ValueTask<IReadOnlyList<PersistentVolumeClaim>> ListPvcsAsync(string? ns = null, CancellationToken ct = default);
 
     /// <summary>
@@ -162,7 +212,32 @@ public interface IClusterEngine : IBackend
     /// with no provisioner, a class that does not exist, or a binding mode that is waiting on a pod.
     /// </summary>
     ValueTask<IReadOnlyList<StorageClass>> ListStorageClassesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Every admission webhook, mutating and validating, one entry per webhook rather than per
+    /// configuration (KON-478). Cluster-scoped. This is where "why won't my apply go through" often
+    /// ends: a webhook that rejects, or one that cannot be reached and fails closed.
+    /// <para>
+    /// Empty by default, like <see cref="FindUsersAsync"/>: an engine without admission control has
+    /// no webhooks to list, and a plugin engine should not have to implement this to keep compiling.
+    /// </para>
+    /// </summary>
+    ValueTask<IReadOnlyList<AdmissionWebhook>> ListAdmissionWebhooksAsync(CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<AdmissionWebhook>>([]);
     ValueTask<IReadOnlyList<ClusterEvent>> ListEventsAsync(string? ns = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// List HorizontalPodAutoscalers (KON-477) — for a workload page to say what scales it. Empty by
+    /// default, like <see cref="FindUsersAsync"/>: an engine without autoscalers has none to report.
+    /// </summary>
+    ValueTask<IReadOnlyList<HorizontalPodAutoscaler>> ListAutoscalersAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<HorizontalPodAutoscaler>>([]);
+
+    /// <summary>List PodDisruptionBudgets (KON-477). Empty by default, as above.</summary>
+    ValueTask<IReadOnlyList<PodDisruptionBudget>> ListDisruptionBudgetsAsync(
+        string? ns = null, CancellationToken ct = default) =>
+        ValueTask.FromResult<IReadOnlyList<PodDisruptionBudget>>([]);
 
     /// <summary>List ConfigMaps — keys and sizes, not values (KON-249).</summary>
     ValueTask<IReadOnlyList<ConfigMapSummary>> ListConfigMapsAsync(string? ns = null, CancellationToken ct = default);

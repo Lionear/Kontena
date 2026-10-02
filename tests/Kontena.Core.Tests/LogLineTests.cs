@@ -82,6 +82,38 @@ public sealed class LogLineTests
 
         Assert.Equal(LogSource.Stderr, entry.Source);
     }
+
+    [Fact]
+    public void The_colour_a_container_painted_its_output_with_does_not_reach_the_screen()
+    {
+        // The systemd boot log inside a kindest/node, which is where this gets noticed (KON-469).
+        // A green [ OK ], then a cleared line and a hidden cursor: those last two carry no digits and
+        // a private "?", which is why the pattern follows the CSI grammar and not the common shorthand.
+        var entry = LogLine.Parse(
+            "2026-09-10T19:06:13.000000000Z \e[0;32m  OK  \e[0m] Finished \e[0;1;39msystemd-remount-fs\e[0m.\e[K\e[?25l",
+            LogSource.Stdout, ReadAt);
+
+        Assert.Equal("  OK  ] Finished systemd-remount-fs.", entry.Message);
+    }
+
+    [Fact]
+    public void A_line_that_is_only_colour_codes_is_left_empty_rather_than_littered()
+    {
+        var entry = LogLine.Parse("\e[0m\e[K", LogSource.Stdout, ReadAt);
+
+        Assert.Equal(string.Empty, entry.Message);
+    }
+
+    [Fact]
+    public void A_line_with_no_escapes_comes_back_untouched()
+    {
+        // The overwhelming majority. Worth pinning: the strip runs on every line of every stream.
+        const string plain = "level=info msg=\"ready\" addr=[::]:8080 pct=100%";
+
+        var entry = LogLine.Parse(plain, LogSource.Stdout, ReadAt);
+
+        Assert.Equal(plain, entry.Message);
+    }
 }
 
 internal static class TimestampExtensions
