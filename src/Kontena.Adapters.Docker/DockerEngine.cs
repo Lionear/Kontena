@@ -12,6 +12,7 @@ using Docker.DotNet.Models;
 using Kontena.Sdk.Errors;
 using Kontena.Sdk.Models;
 using Kontena.Sdk;
+using Kontena.Sdk.Tooling;
 using KontenaState = Kontena.Sdk.Models.ContainerState;
 using KontenaPort = Kontena.Sdk.Models.PortBinding;
 using DockerPortBinding = Docker.DotNet.Models.PortBinding;
@@ -1037,7 +1038,7 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
     }
 
     /// <summary>One merged stdout/stderr line from a CLI run; <see cref="Error"/> marks a failure.</summary>
-    private readonly record struct CliLine(string Text, string? Error);
+    internal readonly record struct CliLine(string Text, string? Error);
 
     /// <summary>
     /// Run an external CLI (<c>docker</c>/<c>podman</c> with a subcommand), merging stdout and
@@ -1045,14 +1046,17 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
     /// to stderr. Cancellation kills the whole process tree; a non-zero exit and a missing CLI
     /// both surface as an error line. <paramref name="what"/> names the subcommand for that message.
     /// </summary>
-    private static async IAsyncEnumerable<CliLine> RunCliAsync(
+    internal static async IAsyncEnumerable<CliLine> RunCliAsync(
         string exe, IReadOnlyList<string> args, string? workingDir,
         IReadOnlyDictionary<string, string>? env, string what,
         [EnumeratorCancellation] CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
-            FileName = exe,
+            // Looked up ourselves, not by .NET: that searches only our own PATH, and from Finder or
+            // the Dock that is launchd's bare one (KON-487). Not found → the bare name fails to start
+            // below, with the "is the CLI installed" message.
+            FileName = ToolLocator.Locate(exe) ?? exe,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -1065,6 +1069,10 @@ public sealed class DockerEngine : IContainerEngine, IDisposable
         if (env is not null)
             foreach (var (key, value) in env)
                 psi.Environment[key] = value;
+
+        // The CLI looks for its own helpers on PATH — docker-credential-desktop on every pull.
+        if (OperatingSystem.IsMacOS())
+            psi.Environment["PATH"] = ToolLocator.LoginPath(psi.Environment.TryGetValue("PATH", out var inherited) ? inherited : null);
 
         var process = new Process { StartInfo = psi };
 
