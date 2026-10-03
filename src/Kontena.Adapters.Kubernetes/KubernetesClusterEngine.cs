@@ -775,7 +775,16 @@ public sealed class KubernetesClusterEngine
             await foreach (var e in ResourceWatch
                                .WatchAsync(_client.HttpClient, _client.BaseUri, resource, kind, ns, ct)
                                .ConfigureAwait(false))
+            {
+                // A definition that moved changes what discovery serves, and discovery is cached for the
+                // session: forget its group before anyone hears about it, or the read the event
+                // prompts would answer from before the change (KON-488). A CRD is named
+                // "<plural>.<group>".
+                if (kind == GroupVersionKind.CustomResourceDefinition && e.Resource.Name.IndexOf('.') is > 0 and var dot)
+                    _resources.InvalidateGroup(e.Resource.Name[(dot + 1)..]);
+
                 yield return e;
+            }
 
             yield break;
         }

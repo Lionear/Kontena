@@ -683,7 +683,10 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
             "PersistentVolume" => _volumes.Select(v => new ResourceRef(kind, null, v.Name)),
             "StorageClass" => _storageClasses.Select(c => new ResourceRef(kind, null, c.Name)),
             // A custom kind is whatever its listing holds (KON-483) — not workloads under its name.
-            _ when Resources.Any(r => r.IsCustom && r.Kind.Kind == kind.Kind) =>
+            // One per custom kind, named the way a definition is: "<plural>.<group>" (KON-488).
+            "CustomResourceDefinition" => _served.Where(r => r.IsCustom)
+                .Select(r => new ResourceRef(kind, null, $"{r.Plural}.{r.Kind.Group}")),
+            _ when _served.Any(r => r.IsCustom && r.Kind.Kind == kind.Kind) =>
                 TableOf(kind, ns).Rows.Select(r => r.Reference),
             // Everything left is a workload kind. Spelled as the fallthrough rather than five cases,
             // but it is a fallthrough over a known set — a kind the fake does not model would come out
@@ -952,7 +955,25 @@ public sealed class FakeClusterEngine : IClusterEngine, IMetricsAware, IMetricsH
 
     /// <inheritdoc/>
     public ValueTask<IReadOnlyList<ApiResource>> DiscoverResourcesAsync(CancellationToken ct = default) =>
-        ValueTask.FromResult<IReadOnlyList<ApiResource>>(Resources);
+        ValueTask.FromResult(Counted<IReadOnlyList<ApiResource>>(nameof(DiscoverResourcesAsync), _served));
+
+    /// <summary>What discovery serves on this engine: <see cref="Resources"/> plus whatever was installed.</summary>
+    private ApiResource[] _served = Resources;
+
+    /// <summary>
+    /// Test hook (KON-488): a CRD that arrives the way kubectl or Helm brings one — served from now on,
+    /// and announced only on the watch, never through this engine's apply.
+    /// </summary>
+    public void InstallCustomResource(ApiResource resource)
+    {
+        _served = [.. _served, resource];
+        EmitWatchEvent(new ResourceEvent
+        {
+            Type = WatchEventType.Added,
+            Resource = new ResourceRef(
+                GroupVersionKind.CustomResourceDefinition, null, $"{resource.Plural}.{resource.Kind.Group}"),
+        });
+    }
 
     /// <summary>
     /// One of each rung of the ladder, for the certificate the fake serves: a Deployment that mounts

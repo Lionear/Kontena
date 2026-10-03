@@ -184,7 +184,9 @@ public partial class MainWindowViewModel
     /// <para>
     /// Read when the cluster opens and after an apply — which is how a CRD arrives — rather than before
     /// every navigation: the sidebar refresh was made cheap on purpose (KON-354, KON-396), and the set
-    /// of installed operators is not something that changes between two clicks.
+    /// of installed operators is not something that changes between two clicks. And when a definition
+    /// changes outside Kontena — kubectl, Helm — the watch in
+    /// <see cref="FollowCustomResourceDefinitions"/> reads it again (KON-488).
     /// </para>
     /// </summary>
     private async Task SyncCustomResourceNavAsync()
@@ -780,6 +782,55 @@ public partial class MainWindowViewModel
         _namespaceWatch?.Cancel();
         _namespaceWatch?.Dispose();
         _namespaceWatch = null;
+    }
+
+    /// <summary>Live while Custom resources follows the cluster's definitions; null otherwise.</summary>
+    private CancellationTokenSource? _crdWatch;
+
+    /// <summary>
+    /// Keep Custom resources in step with the CRDs the cluster has, however they got there (KON-488).
+    /// <para>
+    /// Opening the cluster and Kontena's own apply were the only two reads, so a CRD installed with
+    /// kubectl or Helm stayed missing until a reconnect. Not fixed by reading again per navigation —
+    /// that is the cost KON-354 and KON-396 took out — but by one watch on a kind that barely moves:
+    /// the section is read again only when a definition actually changes.
+    /// </para>
+    /// <para>
+    /// A stream that ends is started again, unlike the namespace watch: there is no per-navigation
+    /// read to fall back on here, and an apiserver closes every watch within the hour. Only a stream
+    /// that lived a while, though — one refused outright (RBAC, no apiextensions) would otherwise be
+    /// retried in a tight loop, and then the section simply keeps its open-and-apply reads.
+    /// </para>
+    /// </summary>
+    private void FollowCustomResourceDefinitions()
+    {
+        StopFollowingCustomResourceDefinitions();
+
+        if (_cluster is not { } cluster || !cluster.Capabilities.Crds)
+            return;
+
+        var started = Environment.TickCount64;
+        CancellationTokenSource? mine = null;
+        mine = ClusterWatch.Follow(
+            cluster, [GroupVersionKind.CustomResourceDefinition], null, SyncCustomResourceNavAsync,
+            (live, _) =>
+            {
+                // A late word from a watch already replaced is not this one's to act on.
+                if (live || mine is null || !ReferenceEquals(mine, _crdWatch))
+                    return;
+
+                StopFollowingCustomResourceDefinitions();
+                if (Environment.TickCount64 - started > 60_000)
+                    FollowCustomResourceDefinitions();
+            });
+        _crdWatch = mine;
+    }
+
+    private void StopFollowingCustomResourceDefinitions()
+    {
+        _crdWatch?.Cancel();
+        _crdWatch?.Dispose();
+        _crdWatch = null;
     }
 
     /// <summary>

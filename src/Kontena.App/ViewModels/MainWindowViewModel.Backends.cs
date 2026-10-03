@@ -651,6 +651,7 @@ public partial class MainWindowViewModel
         _activityLog.Detach();
         await StopPortForwardsAsync();
         StopFollowingNamespaces();
+        StopFollowingCustomResourceDefinitions();
         (_engine as IDisposable)?.Dispose();
         (_cluster as IDisposable)?.Dispose();
         _engine = null;
@@ -865,6 +866,7 @@ public partial class MainWindowViewModel
         // re-read in front of every navigation (KON-396) — so this is the read, not the first of many.
         await ReadNamespacesAsync();
         FollowNamespaces();
+        FollowCustomResourceDefinitions();
 
         // Fills the Workloads submenu.
         await UpdateClusterNavAsync();
