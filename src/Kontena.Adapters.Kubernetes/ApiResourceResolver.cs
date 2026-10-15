@@ -62,6 +62,22 @@ internal sealed class ApiResourceResolver(IKubernetes client)
     }
 
     /// <summary>
+    /// Forget every version of one group — what a CRD event names, since a definition carries its group
+    /// but serves any number of versions (KON-488). Without it a CRD installed outside Kontena into a
+    /// group already cached here stays a "no such kind" for the rest of the session.
+    /// </summary>
+    public void InvalidateGroup(string group)
+    {
+        foreach (var key in _cache.Keys)
+        {
+            if (key.StartsWith(group + "/", StringComparison.Ordinal))
+                _cache.TryRemove(key, out _);
+        }
+
+        _definitions = null;
+    }
+
+    /// <summary>
     /// Everything the cluster serves: the core group plus every API group at its preferred version.
     /// <para>
     /// Subresources ("pods/log") and anything that cannot be listed are left out — the first is not a

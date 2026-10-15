@@ -499,6 +499,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable, IPluginHo
         _terminals.DisposeAsync().AsTask().GetAwaiter().GetResult();
         Containers?.Dispose();
         StopFollowingNamespaces();
+        StopFollowingCustomResourceDefinitions();
         _activityLog.Dispose();
         (_engine as IDisposable)?.Dispose();
         (_cluster as IDisposable)?.Dispose();

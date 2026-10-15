@@ -39,6 +39,7 @@ public readonly record struct GroupVersionKind(string Group, string Version, str
     public static GroupVersionKind ReplicaSet => new("apps", "v1", "ReplicaSet");
     public static GroupVersionKind Job => new("batch", "v1", "Job");
     public static GroupVersionKind CronJob => new("batch", "v1", "CronJob");
+    public static GroupVersionKind CustomResourceDefinition => new("apiextensions.k8s.io", "v1", "CustomResourceDefinition");
 
     /// <summary>
     /// The coordinate for a workload kind. Spelled out per kind rather than defaulted: the batch
