@@ -3,8 +3,9 @@
 **One UI. Any engine.** A cross-platform desktop app to manage containers through a single,
 fast, backend-agnostic interface — regardless of which runtime engine powers them underneath.
 
-Docker and Podman at launch; Apple's native `container` (macOS 26) planned. Kubernetes / Swarm
-orchestration comes later.
+Container engines: Docker, Podman and Apple's native `container` (macOS 26), plus nerdctl as a
+plugin. Clusters: Kubernetes, through your kubeconfig or a local kind/minikube cluster that Kontena
+creates for you.
 
 > Status: early scaffold. Built with **.NET 10** + **Avalonia** (MVVM).
 
@@ -27,8 +28,12 @@ Kontena.slnx
 │  ├─ Kontena.Engines                # Backend registry and probing                     (no UI)
 │  ├─ Kontena.Adapters.Docker        # Docker adapter & providers                       (no UI)
 │  ├─ Kontena.Adapters.Podman        # Podman providers, reusing the Docker adapter     (no UI)
+│  ├─ Kontena.Adapters.Apple         # Apple `container` adapter (macOS 26)             (no UI)
 │  ├─ Kontena.Adapters.Kubernetes    # Kubernetes adapter (OAL)                         (no UI)
 │  ├─ Kontena.Adapters.LocalClusters # kind / minikube provisioners                     (no UI)
+│  ├─ Kontena.Adapters.RemoteClusters # k0s rollout onto your own machines              (no UI)
+│  ├─ Kontena.Plugins.Nerdctl        # nerdctl engine, shipped as a plugin              (no UI)
+│  ├─ Kontena.Plugins.ManifestStudio # Manifest Studio, shipped as a plugin
 │  └─ Kontena.App                    # Avalonia desktop UI (MVVM)
 └─ tests/                            # one suite per project, plus
    └─ Kontena.Sdk.Tests              # guards the extension boundary itself
@@ -42,15 +47,15 @@ nothing else, and `Kontena.Core` depends on the SDK rather than the reverse.
 
 Kontena is provider-based. Every backend registers as an `IBackendProvider` with the
 `BackendRegistry`, which probes providers for availability — the app hard-codes nothing.
-Built-in providers cover Docker, Podman (reusing the Docker-compatible adapter), Kubernetes, and
-in-memory Fakes for development.
+Built-in providers cover Docker, Podman (reusing the Docker-compatible adapter), Apple `container`,
+Kubernetes, and in-memory Fakes for development.
 
 To add a new backend you implement two interfaces — `IContainerEngine` (the CEAL) or
 `IClusterEngine` (the OAL), plus `IBackendProvider` — and expose them through `IEnginePlugin`. All
 of it comes from **`Kontena.Sdk`**, which is the only project an adapter references and is MIT
-licensed for exactly that reason. A future plugin loader (KON-49) will discover SDK plugins from
-external assemblies and register their providers at runtime, which is the foundation for a store of
-installable adapters (KON-51).
+licensed for exactly that reason. The plugin loader discovers SDK plugins from external assemblies,
+asks for consent before loading one, and registers their providers at runtime; nerdctl and Manifest
+Studio ship that way. A store of installable plugins (KON-51) builds on it.
 
 ## Prerequisites
 
