@@ -889,6 +889,36 @@ public class K8sMapTests
     }
 
     [Fact]
+    public void An_ingress_backend_that_names_its_port_keeps_the_name()
+    {
+        // KON-462: a backend carries a port number or a port name, never both; reading only the
+        // number turned "web:http" into "web:0", in the rules and in the default backend.
+        var named = new V1IngressServiceBackend { Name = "web", Port = new V1ServiceBackendPort { Name = "http" } };
+        var mapped = K8sMap.ToIngress(new V1Ingress
+        {
+            Metadata = new V1ObjectMeta { Name = "shop", NamespaceProperty = "demo" },
+            Spec = new V1IngressSpec
+            {
+                DefaultBackend = new V1IngressBackend { Service = named },
+                Rules =
+                [
+                    new V1IngressRule
+                    {
+                        Host = "www.shop.demo.local",
+                        Http = new V1HTTPIngressRuleValue
+                        {
+                            Paths = [new V1HTTPIngressPath { Path = "/", Backend = new V1IngressBackend { Service = named } }],
+                        },
+                    },
+                ],
+            },
+        });
+
+        Assert.Equal("http", Assert.Single(mapped.Rules).Port);
+        Assert.Equal("http", mapped.DefaultBackend?.Port);
+    }
+
+    [Fact]
     public void An_ingress_without_a_default_backend_maps_to_none()
     {
         // Distinct from one pointing at nothing: unmatched traffic gets the controller's own 404.

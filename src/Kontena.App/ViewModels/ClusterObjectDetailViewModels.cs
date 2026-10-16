@@ -983,7 +983,7 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
     /// <summary>Where unmatched traffic goes, or null when the ingress names no default backend —
     /// in which case unmatched traffic is the controller's 404 and there is nothing to show.</summary>
     public string? DefaultBackendText => _ingress.DefaultBackend is { } b
-        ? $"{b.ServiceName}:{b.ServicePort}"
+        ? $"{b.ServiceName}:{b.Port}"
         : null;
 
     public bool HasDefaultBackend => DefaultBackendText is not null;
@@ -1057,7 +1057,7 @@ public sealed partial class IngressRuleRow
         // Same substitutions the list row makes, so the two never read differently for one rule.
         Host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
         Path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
-        Backend = $"{r.ServiceName}:{r.ServicePort}";
+        Backend = $"{r.ServiceName}:{r.Port}";
 
         // A rule with no host matches every host its controller answers on, so there is no one
         // address to open and the button stays away rather than inventing one.

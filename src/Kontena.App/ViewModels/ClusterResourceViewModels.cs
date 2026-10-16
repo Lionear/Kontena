@@ -1320,7 +1320,7 @@ public sealed partial class IngressRow
             {
                 var host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
                 var path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
-                return $"{host}{path} → {r.ServiceName}:{r.ServicePort}";
+                return $"{host}{path} → {r.ServiceName}:{r.Port}";
             })
             .ToList();
         HostsTooltip = rules.Count == 0 ? null : string.Join("\n", rules);
