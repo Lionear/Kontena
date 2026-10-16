@@ -11,6 +11,502 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 _Nothing yet._
 
+## [0.5.0] - 2026-10-16
+
+### Added
+
+A plugin now says in its `plugin.json` which operating systems it runs on — and from which version of
+them — and what it adds to Kontena: container engines, clusters, pages of its own, or a combination.
+Kontena reads that before it loads anything, so a plugin built for macOS 26 is not offered, asked
+about or loaded on a Windows machine, and a plugin that turns out to contribute something it never
+declared is refused rather than quietly registered. The minimum Kontena version a plugin asks for is
+now a `major.minor.patch` version and nothing else; a manifest that writes it any other way is
+reported in Settings instead of being ignored.
+- **Turn off the adapters you don't use.** A new **Settings › Extensions** lists every adapter this
+  build ships — Docker, Podman, Apple container, Kubernetes — plus any plugin you have installed, and
+  gives each one a switch. Turning one off stops Kontena offering its backends and stops it probing
+  for them, so a machine that never touches Kubernetes no longer carries a Clusters group or pays for
+  the contexts behind it. Nothing is removed from your machine and nothing an adapter manages is
+  touched; turn it back on and everything returns. An adapter that cannot run on your system is not
+  listed at all rather than listed and unusable. Switching off the adapter behind the backend you have
+  open asks first, and if the one Kontena would open on next launch is gone because you switched its
+  adapter off, the start-up message now says that instead of blaming a removed kube-context.
+- **See what a pod actually runs with.** The pod's Overview tab now has an **Environment variables**
+  section listing what each container declares, grouped per container on a pod that has more than
+  one. A variable set from somewhere else says where — `from secret db-credentials.password`,
+  `from configmap app-config.LOG_LEVEL`, `from field status.podIP` — rather than showing a blank, and
+  a secret-backed one has an eye that fetches the real value when you press it and drops it again
+  when you press it a second time. Read off the pod itself, so the section costs no extra call.
+- **Save what you edit on a Secret's Data tab.** The field editor could show and change keys but not
+  write them: Apply reported success and sent nothing. It now writes through the object's own
+  manifest, so a changed value, a renamed key, an added one and a removed one all reach the cluster —
+  and **Check** asks the apiserver what the change would do before you make it. Keys nobody touched
+  travel back untouched, binary ones included: a certificate is passed through as the bytes it is
+  rather than re-encoded from something that was never text.
+- **A Secret managed by the External Secrets Operator says so instead of offering to be edited.** ESO
+  reconciles its target Secret from an `ExternalSecret`, so a value typed here would be quietly
+  overwritten at the next sync — the change appears to save and then undoes itself. The Data tab now
+  names where the values come from and points at the `ExternalSecret`, and leaves Edit off. Reading,
+  revealing and copying are unchanged. Detected by the `reconcile.external-secrets.io/managed` label
+  that ESO puts on every Secret it manages, whatever the ExternalSecret's `creationPolicy` is.
+- **Fixed before it shipped:** the write failed against every real cluster. The manifest the editor
+  rewrites is the one the apiserver hands back, bookkeeping and all, and a server-side apply refuses
+  a body carrying `managedFields`. It is now stripped along with `resourceVersion`, `uid`,
+  `creationTimestamp`, `generation`, `selfLink` and any `status` block — the same edit a person makes
+  by hand between `kubectl get -o yaml` and `kubectl apply -f -`.
+- **Open a connection in a window of its own.** Every backend in the switcher that answered now has
+  an **Open in a new window** button beside it, so Docker and a Kubernetes cluster can be on screen
+  at the same time — each in its own window, with its own sidebar, pages and terminal — instead of
+  taking turns in one. The window you spawned it from stays where it was, and the system's window
+  list names each one after the backend it is on.
+- **Search everything for the same thing.** A new setting under *Settings › General › Search* gives a
+  connection one search term instead of one per resource type: type `checkout` on Pods and
+  Deployments, Services and the rest open filtered by it too. Off by default — each resource type
+  keeps its own term unless you ask for this.
+Manifest Studio remembers the folders you have opened. The page you land on when nothing is open now
+lists the last eight workspaces under the "Open folder…" button, most recent first, each with its path
+and a mark if it is a Kustomize project — so coming back to yesterday's manifests is one click instead
+of a walk through the folder picker. Opening one from the list is the same as picking it: git status,
+Plan &amp; apply and Source control all follow it. A folder that has since been moved or deleted is left
+out rather than offered and then failing, and it is not forgotten either — a workspace on a drive you
+have not plugged in yet comes back when the drive does.
+Manifest Studio can clone a repository into a workspace. Beside "Open folder…" on the page you land on
+when nothing is open there is now "Clone repository…": give it a repository URL and the folder to clone
+into, and it clones with git and opens the result as the workspace — no more cloning in a terminal first
+and then walking the folder picker to the same place. The repository's own name becomes the new folder,
+so the full destination is on screen before you start and two repositories cloned into the same place
+end up beside each other rather than nested. While it runs it shows git's own counting rather than a
+progress bar invented here, and when git refuses — a URL that cannot be reached, a repository you have
+no access to, a folder that already holds something else — it is git's own sentence that ends up on the
+page. A clone that opens is a workspace like any other: git status, Plan &amp; apply, Source control and
+the recent list all follow it.
+- **The tools a plugin needs are now on the Tools page too.** A plugin says in its `plugin.json` which
+  command-line tools it drives, and Kontena lists them under **Settings › Tools** beside its own — with
+  the same "is it installed", version check, install hints and documentation link that kubectl and kind
+  get. Each extension gets its own heading, and a tool already listed there is not listed twice. The
+  first two to use it are the ones that were shelling out without any of it: Manifest Studio's `git` and
+  the nerdctl plugin's `nerdctl`, neither of which had anywhere to report itself missing. The dialog that
+  asks whether to run a plugin now names the commands it says it will run, and a plugin whose code drives
+  a tool its `plugin.json` leaves out is refused rather than loaded.
+- **The restart count now says how long ago, not just how often.** Hovering an amber RESTARTS count
+  reads "Restarted 8 times, most recently 4 min ago" — the distinction the number on its own cannot
+  make, since a pod that restarted eight times last month and one that restarted eight times this
+  hour arrive as the same figure. The moment comes from the kubelet's own record of when each
+  container's previous run ended, so it costs no extra call; engines that do not report it simply
+  leave the sentence at the count.
+- **A storage class now shows how many volumes it provisioned, and clicking that count opens them.**
+  The Storage classes page had no route forward to the PersistentVolumes a class made — only the
+  reverse, from a volume or claim back to its class. The new VOLUMES column shows the count (or
+  "0 volumes" when nothing uses it) and links to the Volumes page pre-filtered to that class.
+- **A storage class now opens a detail page**, like every other cluster resource: its own
+  Overview — provisioner, reclaim policy, expansion, binding explained in plain words, and the
+  volumes it provisioned listed right there, not just a count — plus Events and YAML, reached by
+  clicking its name.
+- **See a service's or pod's internal cluster DNS name, with a copy button.** Service detail pages
+  always show it (`<name>.<namespace>.svc.cluster.local`); pod detail pages show it only when the pod
+  actually has one — part of a headless Service (the StatefulSet pattern) or with an explicit
+  hostname/subdomain set — since most pods only have an IP, not a resolvable name.
+**Ingresses now have a detail page.** Clicking an ingress in the list opens the same drawer every
+other kind has: its routing rules one per row with the path and the backend service they point at —
+where the list could only fit them in a tooltip — the default backend when it names one, which TLS
+certificate covers which hosts, its class, address and events, and the live YAML, editable and
+appliable like everywhere else. An ingress was the last kind whose manifest could not be read from
+its own row. The page follows the object while it is open, so an address assigned by the controller
+after you opened it arrives on its own.
+- **The Resources page can be searched and sorted like every other list.** Browsing a resource type
+  meant reading the rows in whatever order the cluster sent them, with the search box in the toolbar
+  greyed out — the one page in the app where it did nothing. It now filters the listing across every
+  column the type declares, and the column headers sort. Sorting reads what the value means rather
+  than how it is spelled, so `AGE` puts `12h` before `3d`, `MEMORY` puts `512Mi` before `2Gi`, and
+  `READY` puts `0/2` before `1/1` — including on a custom resource, whose columns are whatever its
+  author decided to print.
+- **Config maps and secrets have sortable column headers.** They were the last two listings still
+  drawing plain labels where every other list lets you click one.
+- **Custom resource types can be found without knowing what they are called.** The type filter on the
+  Resources page matched the kind and its API group and nothing else, so knowing that something lives
+  in a custom resource — but not that the type is called `Dragonfly` — meant scrolling the whole list.
+  It now also matches the names `kubectl` accepts (`cert`, `certificates`), the categories a type
+  declares itself part of, the operator that installed it, and what the type is *for*, so searching
+  `redis` or `TLS` finds the types that do that.
+- **A custom resource type says what it is for.** Each entry now carries a line of description from
+  the definition itself, plus the operator or Helm release that installed it and the other names it
+  answers to — the things that tell two types called `Cluster` apart.
+- **An object says which workloads use it, and you can click through to them.** Opening a custom
+  resource lists the Deployments and StatefulSets that use it or were created by it, and clicking one
+  opens that workload. Every row says how the link was found — an `ownerReference`, a ConfigMap or
+  Secret the object owns and the workload mounts, or an annotation naming it — so a relation can be
+  checked rather than taken on trust, and says which way it runs. When nothing turns up, it says what
+  it looked for instead of leaving the section blank.
+- **An Ingress rule's backend opens its service.** On the Ingress detail page the backend in the rules
+  table is a link to that service's page. When no service by that name exists in the namespace, the
+  backend stays plain text and its tooltip says so: a typo in the service name is one of the most
+  common reasons an ingress routes nothing.
+- **Find an object when you have forgotten what type it is.** A new **Find** entry under *System*
+  searches every resource type the cluster serves — custom ones included — for objects whose name
+  matches what you type, so remembering `payments-config` is enough without also remembering whether
+  it was a ConfigMap, a Secret or something an operator installed. Results appear as each type comes
+  back rather than all at the end, with the number of types searched so far on screen, and clicking
+  one opens that object's own page. Kubernetes has no search of its own, so this is one listing per
+  type: eight run at once to keep the rest of the window responsive, Events are skipped because their
+  names are generated, and a type this account may not read is simply one type fewer in the answer
+  rather than an error. Searching starts once typing stops, not on every keystroke.
+- **Open an ingress's address straight from its page.** The Ingress detail page's header now carries
+  an **Open** button that hands the rule's URL to your system browser, the way ArgoCD does: one
+  button when the ingress routes a single host and path, and a dropdown listing every host/path
+  combination when it routes more than one. Whether a link is `http` or `https` comes from the
+  ingress's own TLS block — a host the ingress presents a certificate for opens over https, wildcard
+  certificates like `*.example.com` included — so there is no separate setting to keep in step. It is
+  a shortcut, not a health check: an ingress host is routinely a cluster-internal name or another
+  environment's domain that your machine cannot resolve, and the button opens it either way. A rule
+  with no host matches whatever its controller answers on, so it offers no link rather than guessing
+  an address.
+- **Several log lines at once, copied together.** Selecting inside a log line stayed inside that line,
+  so a stack trace came out of the Logs tab one line at a time. Ctrl-click (Cmd-click on macOS) picks
+  out rows and Shift-click takes a run of them; Ctrl+C or the right-click **Copy** puts them on the
+  clipboard in the order they are read — with or without the timestamp column, following the console's
+  own **Timestamps** toggle, so what is pasted is what was on screen. Dragging across a line still
+  selects the text inside it — the two gestures are told apart by the modifier, and neither takes
+  anything from the other. Pod logs, container logs and the compose log stream all work the same way.
+- **Create and delete namespaces from the Namespaces page.** The list was read-only, so the only way
+  to get a namespace was to apply a manifest that declared it — a strange price for an object whose
+  whole content is its name. **New namespace** asks for that name and creates it. The name is checked
+  as you type: a namespace name is a DNS label, and the field says which rule it broke rather than
+  greying the button out for a reason nobody can see.
+- **Delete a namespace, with a confirmation that says what that means.** The row shows a name and an
+  age, and the delete takes every object that was ever put in it — workloads, pods, services,
+  ingresses, config maps, secrets, and the data in its volume claims. The confirmation says so before
+  the click, along with the part that surprises people afterwards: the namespace sits in
+  `Terminating` until the cluster has finished emptying it. The four namespaces Kubernetes needs —
+  `default`, `kube-system`, `kube-public` and `kube-node-lease` — are not offered a Delete button at
+  all, rather than offering one that breaks the cluster or is refused.
+- **A local kind cluster can be given Calico or Cilium instead of the network kind wires in itself.**
+  The create form under Settings › Local clusters now has a **Pod network (CNI)** field: leave it on
+  `kindnet` and nothing changes, or pick `calico` or `cilium` and kind is told to install no network at
+  all, after which Kontena applies that project's own install manifest as soon as the cluster answers.
+  What arrives is pinned to a version in Kontena rather than tracked as "latest", so a cluster built
+  today and one built next month are the same cluster; the form's config preview shows the
+  `disableDefaultCNI` it will write before anything runs. The manifest goes on through the same
+  server-side apply as every other manifest in Kontena, which is what lets a bundle the size of
+  Calico's land in one pass and report a rejection per resource in the server's own words. Cilium is
+  rendered from its Helm chart, the only form it publishes, so that choice needs `helm` (Settings ›
+  Tools). Either way the nodes report NotReady for the half minute it takes the network's pods to come
+  up — kind is no longer asked to wait for a readiness that cannot arrive before the manifest does.
+- **A node's taints are listed on its detail page.** They were nowhere in Kontena before — not
+  filtered out, never read: a cordoned node showed the word "Cordoned" and nothing about the
+  `node.kubernetes.io/unschedulable:NoSchedule` that Kubernetes puts there itself and that is the
+  actual reason nothing schedules. The page now carries a Taints card above Conditions with every
+  taint the node has, key, value and effect, the ones nobody typed included. A node with no taints
+  gets no card.
+- **Helm releases get their own page.** Kontena could render a chart for Apply manifest, but it
+  could not see what was already installed. The new *Helm releases* page under System lists every
+  release with its chart and version, app version, status, revision and when it was last updated.
+  Failed and pending releases are listed too, and the list follows the cluster live. A release
+  opens into its values (what you supplied, or merged with the chart's defaults), the manifest it
+  rendered, and its revision history.
+- **Upgrade, roll back and uninstall a release from Kontena.** An upgrade shows the values diff
+  before it can run, in the same review-first order as the dry-run on Apply manifest. Rolling back
+  to an earlier revision and uninstalling are always confirmed first. When helm fails, the dialog
+  shows helm's own error message. The page needs the helm CLI, and it runs helm against the
+  cluster's own kube-context, never whichever context your terminal happens to be on. Without helm
+  installed, the page stays in the sidebar and says so.
+A cluster now has an **Access control** page that answers "who may do what". Each row is one
+ServiceAccount, user or group, the Role or ClusterRole a binding gives it, where that applies — one
+namespace or the whole cluster — and the binding that does it. Open a row to see the role's rules:
+which verbs, on which resources. Searching for a resource such as `secrets` lists everything that can
+touch one, and a binding that points at a role that no longer exists is marked, because it grants
+nothing.
+- **The Volumes page shows each volume's access modes.** The cluster Volumes page (Storage →
+  Volumes) had status, capacity, claim, storage class and reclaim policy, but no way to tell a
+  `RWO` volume from a `RWX` one without opening its YAML. It now has an ACCESS column, as the
+  Volume claims page already had.
+- **Network policies get a page of their own.** They were only a raw table in the Resources
+  browser, and a policy's meaning — a pod selector, two directions and nested peers — had to be
+  worked out from the YAML. **Network policies** under Network lists each policy with the pods it
+  applies to and the directions it isolates. Opening one shows its ingress and egress rules as plain
+  sentences ("Pods matching app in (api, migrate) in this namespace", "TCP 5432"), says outright
+  when a direction is a deny-all, and has an **Applies to** tab with the pods its selector matches
+  right now, `matchExpressions` included.
+- **A Deployment's or StatefulSet's page says what autoscales it and which disruption budget covers
+  it.** HorizontalPodAutoscalers and PodDisruptionBudgets were only in the generic Resources browser,
+  a page away from the workload they belong to. The Overview tab now has an Autoscaling section —
+  current, desired, min and max replicas, and each metric as current against target — and a
+  Disruption budget section with min available or max unavailable, healthy pods, and how many
+  disruptions are allowed right now (zero is what makes a drain wait). When there is none, the page
+  says so.
+- **Admission webhooks have a page of their own.** Mutating and validating webhooks could only be
+  found through the generic Resources browser, one configuration at a time and as raw YAML. The new
+  **Admission webhooks** page under System lists every webhook on the cluster: what it is called for
+  — "CREATE, UPDATE on deployments.apps" rather than the rule as the API writes it — which service it
+  calls, and what happens when that service is down or slow. A webhook that fails closed is marked,
+  and its tooltip says in plain words that every request it matches is then rejected: often the
+  answer to "why won't my apply go through" when a policy engine such as Kyverno or Gatekeeper is
+  installed.
+- **Copy a resource's name from its detail page.** A **Copy** button now sits beside the title of
+  every detail page — pods, workloads, services, ingresses, network policies, ConfigMaps and Secrets,
+  storage classes, namespaces, nodes, Helm releases and containers — so the name goes to the
+  clipboard in one click instead of being retyped into a terminal.
+- **Copy a resource's name from its row.** Right-click a row in any resource table (containers,
+  images, volumes, networks and every cluster list, including custom resources) and choose
+  **Copy name**. Namespaced resources also offer **Copy namespace/name**, and for an image the name
+  is its `repository:tag`. From the keyboard, focus the row's name and press the Menu key or
+  Shift+F10.
+- **Custom resources get a detail page of their own.** Clicking a custom resource — a CloudNativePG
+  `Cluster`, a cert-manager `Certificate`, anything an operator installed — now opens the same kind of
+  page a Deployment has, instead of a panel with only its YAML. The page shows the columns its
+  definition declares, its status fields and its conditions (coloured by whether they are healthy),
+  its labels and annotations, what owns it and what uses it, the pods it runs, its events and its
+  YAML. Built-in kinds with no page of their own open it too, from the Resources page and the Events feed.
+- **Custom resources are in the sidebar, as a menu that folds out.** A **Custom resources** section
+  lists each API group the cluster has custom kinds for — `postgresql.cnpg.io`, `cert-manager.io` — as
+  a folder. Clicking one folds out its kinds, the way Freelens does, and a kind opens its own list, laid
+  out like Pods or Deployments: the name as a link, its namespace, the columns its definition declares. Folders stay open for the rest of the session. The full Resources
+  page is still there for searching across every kind.
+- **Copy labels and selectors from a detail page.** Each label chip on a pod copies itself as
+  `key=value`, and a **Copy** button beside them copies all of them as one selector
+  (`app=api,tier=web`) that pastes straight into `kubectl -l`. The same button sits beside a
+  workload's labels and selector, a Service's selector, a namespace's labels and a network policy's
+  pod selector.
+
+### Changed
+
+- **A pod in trouble now looks like it.** A pod stuck in CrashLoopBackOff, unable to pull its image,
+  restarting over and over or running with containers that never went ready used to read as ordinary
+  text in the list — and its phase would happily say "Running" while a container crash-looped
+  underneath. Those rows now carry a red wash, a warning glyph where the status dot sits, and the
+  reason itself in the status column: **Pod in CrashLoopBackOff**, not a vague "Degraded". The same
+  mark shows up in a workload's or service's pod list and on the pod's own page.
+- **Edit a Secret as fields, on its own Data tab.** A secret's keys were already listed there,
+  masked, with a reveal and a copy — so editing happens there too, instead of in a separate manifest
+  modal. Each key is a name and a value you can unmask, change, undo or remove, and a key can be
+  added. Binary keys say so and point at the YAML tab rather than offering half a certificate as
+  text. **Writing is not wired up yet:** Check and Apply say so plainly and send nothing — the YAML
+  tab on the same page is still the way to apply.
+Manifest Studio now looks like the rest of Kontena. The editor page is one framed workspace with three
+panes — files, editor, problems — instead of a bare tree beside a plain text box: the file list carries
+folder and file icons, marks the document you are editing, and shows a badge for anything git reports as
+changed. Tabs are the filenames in the app's mono face, with a dot for unsaved changes, and a status
+strip under the editor says how many problems the current document has, where it is, and offers Save.
+Manifests are syntax-coloured, on the app's own code surface, in both the dark and the light theme.
+
+The findings the editor already underlined are now also listed, each naming the authority that produced
+it — schema, cluster discovery, cross-document or policy — and, where one exists, offering the quick fix
+in a single click. Plan &amp; apply renders every document as its own row with a coloured diff and says in
+so many words that a dry run persisted nothing; Source control gained a branch card, per-file change
+badges and a warning when the branch is behind its remote. Opening the plugin without a folder now
+explains what a workspace is instead of showing an empty tree.
+- **Settings opens over what you were reading, not instead of it.** It used to be a destination: going
+  there left the page you were on, and getting back meant a Back press to somewhere you had not chosen
+  to leave. It is now a dialog over the current screen — the page behind it, the detail drawer and your
+  search term are all still there when you close it. Escape or the ✕ closes it, and a question Settings
+  asks you — switching off the adapter behind the backend you have open, say — still appears on top of
+  it rather than in its place. Every section comes along, including Local clusters and Roll out a
+  cluster; the sidebar sub-nav and where you left off inside it are unchanged.
+- **Secrets list button relabeled from "Edit" to "YAML".** It opens the live manifest editor, not the
+  field-editor "Edit" button on the detail page — the shared label was confusing the two.
+- **A rollout restart is now something you can see happen.** Pressing Restart used to close the
+  confirmation and leave no trace: the request itself takes milliseconds, so on a quick cluster the
+  workload was read back as *Complete* — the same green it showed a moment earlier — and there was
+  nothing to say the click had landed. Kontena now confirms the request the instant it is accepted,
+  the workload reads **Restarting…** until the cluster has actually begun moving pods, and it says so
+  again when the rollout finishes. Nothing is slowed down or padded to achieve this; it is the
+  rollout's own progress, shown at the moments it is worth showing.
+- **A workload's detail page now follows its own rollout.** The page read its workload once, when it
+  was opened, and then only watched for it being deleted — so the status, the replica counts and the
+  up-to-date figure in the header stood still while a rollout ran to completion in front of you. It
+  now keeps up with the object it is showing, restart or no restart.
+- **Pods that arrived seconds ago are marked on a workload's Pods tab**, so the replacements a
+  restart brings in are visible as replacements instead of being six near-identical names you have to
+  read the AGE column to tell apart. The mark fades out on its own as the pod stops being new.
+- **The switch for an extension now sits beside its name.** On Settings › Extensions each adapter's
+  on/off switch was in the bottom corner of its card, on the same line as the kind and the version —
+  the last thing you read, though it is the only thing on the card you can act on. It is now at the
+  top right, next to the name, and the sentence explaining why a switch is greyed out ("Requires
+  macOS 26 or later") sits directly under it rather than further down the card. The `built-in` badge
+  moved the other way, down to the line with the kind and the version, so the title line has room for
+  both a full name and the switch at the narrowest the window opens.
+- **Access modes read `RWO`, `ROX`, `RWX`, `RWOP`, as in kubectl.** The Volume claims page showed
+  them spelled out (`ReadWriteOnce, ReadWriteMany`), which the column was never wide enough for.
+- **A node card says when a node is cordoned or tainted, and the whole card opens it.** A cordoned
+  node still showed a green Ready on the Nodes page — nothing on its card said it takes no new pods.
+  The card now carries an **Unschedulable** chip when the node is cordoned, and a taint count whose
+  tooltip lists each taint as `key=value:Effect`. Clicking anywhere on the card opens the node, not
+  just its name; Cordon and Drain still do only what they say.
+
+### Fixed
+
+- **The window no longer locks up when you click quickly through the cluster pages.** Leaving a page
+  now ends the read it had out, instead of leaving it running against a page you can no longer see.
+  Clicking through Pods, Deployments, Nodes and the rest used to stack one cluster-wide read per
+  click: they queued for the same connection, got slower as they piled up, and the app eventually
+  stopped responding. The same applies to the sidebar, which no longer refreshes once per click with
+  every earlier refresh still outstanding.
+- **The diagnostic log records one line per navigation.** It logged every page change twice, a
+  millisecond apart, which read like the app navigating twice when it never was.
+- **The cluster sidebar keeps its shape when you switch namespace.** The per-kind entries under
+  Workloads — Deployments, StatefulSets, Jobs and the rest — used to be rebuilt for whichever
+  namespace you picked, so entries for kinds that namespace had none of disappeared and came back on
+  the way back, moving the menu out from under the pointer mid-click. The list is now what the
+  cluster runs, not what the namespace runs, and it stays put.
+- **A kind's page says which namespace is empty.** Clicking an entry for a kind this namespace has
+  none of now opens that page and says *No Job objects found for namespace monitoring*, instead of
+  quietly putting you back on All workloads.
+- **One wrong write no longer takes your only copy of the settings.** Every save now keeps the file
+  it replaces as `settings.json.bak`, next to the settings and readable only by you. If something
+  writes the wrong settings — a tool, a bug, a stray copy of defaults — the remote engines,
+  registries, kubeconfig paths and everything else you had are still there one step back.
+- **A restarting workload no longer reads as a broken one.** A Deployment, StatefulSet or DaemonSet
+  whose ready count dipped to zero was called *Degraded* and drawn red — which is what a single-replica
+  workload looks like for the few seconds any ordinary restart takes, so restarting something on
+  purpose lit the row up as if it had failed. Not being at the desired count is now *Progressing* in
+  amber, whatever the count is, and red is kept for a workload that is actually stuck: one whose own
+  pods have a container in CrashLoopBackOff, ImagePullBackOff, ErrImagePull or CreateContainerError.
+  A stuck workload still gets the full treatment it had — the row washed red, a warning triangle in
+  place of the status dot, and the reason spelled out.
+- **A workload's detail page uses the same status colours as the list it came from.** *Progressing*
+  was drawn in info blue there and *Paused* in amber, so the same workload changed colour depending
+  on which page you were looking at.
+- **Running Kontena from a working copy no longer writes over an installed Kontena's configuration.**
+  A build made for development kept its settings, plugins, downloaded tool copies and diagnostics log
+  in exactly the same directory as the installed app, so trying a change out overwrote the settings
+  you use every day. A debug build now keeps its own directory (`Lionear/Kontena-Dev` beside
+  `Lionear/Kontena`) and starts from defaults there; an installed Kontena is unaffected and reads and
+  writes where it always did.
+- **The terminal on macOS finds the tools you have installed.** `kubectl`, `helm`, `k9s` and
+  everything else from Homebrew came back as *command not found* in a terminal opened from Kontena,
+  while the same command worked in Terminal.app. An app started from the Dock or Finder is handed a
+  bare PATH by macOS, and the directories that are missing from it — `/opt/homebrew/bin`,
+  `/usr/local/bin`, anything in `/etc/paths.d` — are added by a login shell, which the terminal's
+  shell is not. Kontena now hands those directories to the shell itself, whichever shell you use.
+  Your own PATH keeps its order: what a login shell would have added comes after it, never in front.
+- **A usage chart no longer gets stuck on the last few live readings while claiming to be drawing
+  history.** If a live sample happened to arrive in the moment between two of the chart's history
+  queries, the page redrew itself from the handful of points Kontena had sampled since it was opened
+  — under a source chip that still said Prometheus — and stayed that way until the next scheduled
+  refresh. The series is now fetched first and drawn in one go, so a reading arriving mid-draw
+  cannot take the picture back.
+- **A search survives a trip to another resource type.** Searching Pods for `api`, looking something
+  up under Deployments and coming back left the pods list showing everything again — the term was
+  cleared by every navigation, because a cluster page is rebuilt each time you open it. Each resource
+  type now keeps the term you left it on, in the box as well as in the list, for as long as the
+  connection lasts. Clearing the box is remembered too, and another connection starts from nothing.
+- **Installing a plugin on macOS now points at the folder Kontena actually reads.** The release notes
+  and the changelog sent Mac users to `~/.config/Lionear/Kontena/plugins/`, a folder Kontena never
+  scans there: on macOS plugins live under `~/Library/Application Support/Lionear/Kontena/plugins/`.
+  Anyone who followed the old instructions saw their plugin never appear, and got no error to explain
+  it — the folder they filled was simply not looked at. Linux and Windows were already right.
+- **The switch in Settings › Extensions no longer springs back.** Switching an adapter off recorded the
+  choice but redrew the page from the state it had before the click, so the switch flipped itself back
+  to on and nothing on screen said the adapter was now off. Worse, it could not be undone: the next
+  click asked for a change that had already happened, so it wrote nothing at all, and the adapter stayed
+  gone from the backend switcher until you noticed on the following launch. The page is now rebuilt from
+  what was actually saved.
+- **A damaged settings file no longer costs you your configuration.** Settings are now written
+  beside the file and renamed over it, so a crash, a power cut or a full disk can no longer leave a
+  half-written one behind. If a file still turns out to be unreadable — hand-edited, merged by hand,
+  damaged by an older crash — Kontena keeps a copy of it as `settings.json.corrupt` before it starts
+  on defaults, so the remote engines, registry names, kubeconfig paths and window settings in it can
+  be read back by hand. Previously the app started on defaults without a word, and the first
+  preference you changed after that wrote those defaults straight over everything you had.
+- **The Settings dialog no longer changes size when you move between its sections.** It took its size
+  from whatever section happened to be open, so a short one — Updates, Registries, Tools — snapped the
+  dialog smaller and the next one snapped it back, with the sub-nav you were aiming at moving under the
+  pointer. It now fills the room the window has, up to the same maximum as before, whichever section is
+  open; a section taller than that scrolls, as it already did.
+- Compact density now applies to the cluster lists too — pods, workloads, services, namespaces,
+  events and the rest — and to the services inside a Compose project. They spaced their rows with a
+  literal instead of the shared row-spacing resource, so the setting only ever reached the
+  container, image, volume and network tables.
+- **A pod that restarted a few times no longer reads as a broken one.** A pod with five or more
+  restarts was drawn the way a failing pod is — the row washed red, a warning triangle in place of
+  the status dot, and "Restarted 8 times" where the status belongs — even when it was `1/1 Ready` and
+  serving traffic. A restart count is history; it says what happened, not what is wrong now. Such a
+  pod is simply *Running* again, and red stays reserved for a pod that is actually unhealthy: one
+  with a container in CrashLoopBackOff, ImagePullBackOff, ErrImagePull or CreateContainerError, one
+  that failed, or one that is running without all its containers ready.
+- **The restart count itself now says when it is worth a look.** From five restarts up the number in
+  the RESTARTS column is drawn in amber with the count spelled out on hover, so a pod that restarted
+  eight times still stands apart from one that restarted once — without claiming anything is wrong
+  with it. The pod's own page reads the number the same way.
+- **The app no longer gets slower the more you navigate.** Backing out of a detail opened from inside
+  another one — a pod from a workload's or service's related-pods list — left the pod's detail behind
+  undisposed, holding a cluster-wide watch open and a subscription that kept it alive for the rest of
+  the session. Every such round trip added one more, and the sidebar refresh paid for all of them.
+- **A node's, a namespace's and a service's detail page now keep up with the cluster.** Each of them
+  read its object once, when you opened it, and from then on watched only for it being deleted — so
+  anything that changed while the page was in front of you went unseen until you closed and reopened
+  it. A node that went `NotReady`, or that someone cordoned from elsewhere, kept reporting itself as
+  `Ready` and schedulable. A namespace that started terminating kept saying `Active`, warning banner
+  and all. And a service whose selector was edited went on listing the pods it used to reach, which
+  is not a stale answer but a wrong one — the Endpoints tab is worked out from the selector every
+  time it is drawn. The external address of a `LoadBalancer` service, which is blank until the
+  provider assigns one, now appears when it arrives instead of on your next visit.
+- **Log lines can be selected and copied again — everywhere logs are shown.** Dragging across a line
+  in a pod's or container's Logs tab did nothing at all, so sharing an error line or looking up a
+  stack trace meant a screenshot. The consoles drew their lines as plain text blocks, which have no
+  selection to give: select a line, part of a line, or several with the mouse, and copy with Ctrl+C
+  (Cmd+C on macOS) or the right-click menu. The same fix covers the compose log stream, the compose
+  up and image build consoles, the rollout, cluster-create and tooling output, and the revealed value
+  of a Secret or ConfigMap key — none of which could be selected either.
+- **A log that is still streaming no longer scrolls the line out from under the pointer.** Following
+  now waits while you are dragging a selection and picks up again the moment you let go.
+- **Eight cluster lists no longer redraw every row on each update.** Nodes, Namespaces, Ingresses,
+  Network policies, Volume claims, Volumes, Storage classes and Admission webhooks rebuilt their whole
+  list whenever the cluster changed, which lost the hover and the keyboard focus every few seconds on
+  a busy cluster. Like Pods, Workloads and Services, they now replace only the rows that changed.
+- **An Ingress backend that names its service port shows that name.** A backend written as
+  `port: { name: http }` showed as `web:0` in the rules, the default backend and the hosts tooltip on
+  the Ingresses list. It now reads `web:http`, the way `kubectl describe` shows it.
+- **Settings › Extensions lists every adapter Kontena ships, including the ones your machine cannot
+  run.** Apple container simply did not appear on Windows or Linux, which read as *Kontena does not
+  do Apple's runtime* when the true answer was *your machine cannot*. Its card is now on the page
+  like the others, with the switch greyed out and the requirement spelled out beside it — *Requires
+  macOS 26 or later*. The reason is read from the adapter's own manifest, so an adapter added later
+  with a platform floor of its own explains itself the same way without anything being written for
+  it. Adapters your machine does run are unchanged, and one it does not still gets no backend built,
+  probed or offered in the switcher, whatever the stored settings say.
+- **Readable output from `kind` and `minikube`, and log lines without their colour codes.** On Windows
+  the live output of creating a local cluster came back as mojibake — every tick, box and picture
+  frame `kind` prints turned into a run of stray characters, because the output was read with the
+  machine's console codepage instead of the UTF-8 the tools actually write. Every tool Kontena runs is
+  now read as UTF-8. Separately, and on all platforms: container and pod logs from anything that
+  colours its output — a kind node's systemd boot log is the usual one — drew the colour codes as
+  literal text (`[0;32m OK [0m Finished ...`). Those are now stripped, so the line reads as it should
+  on screen, in the filter box, and on the clipboard when it is copied.
+- **Settings are kept on Linux accounts that have no `~/.config` yet.** On such an account Kontena
+  saved its settings, plugins and tool copies in a `Lionear/Kontena` folder inside whatever directory
+  it was started from, so they seemed lost the next time it started somewhere else. Kontena now
+  creates `~/.config` when it is missing and always keeps its data there.
+- **The Resources page no longer shows a stale status.** The listing was read once, when a kind was
+  picked, and never again, so a custom resource's status column kept saying what was true at that
+  moment — a CloudNativePG cluster that had long since come up still read *Waiting for the instances
+  to become active* with one instance ready. The page now follows the cluster like every other list,
+  for custom kinds as well as built-in ones, and says so when it cannot.
+- **Creating a local kind cluster on macOS works when Kontena is opened from Finder or the Dock.**
+  It failed with `"docker": executable not found in $PATH`. Kontena found `kind` itself, but `kind`
+  could not find `docker`. A Mac app opened that way gets a minimal PATH without Homebrew's
+  directories, and every tool Kontena started inherited it. Tools now get the same extra directories
+  the built-in terminal already gets: `/etc/paths`, `/etc/paths.d` and the usual Homebrew and
+  installer locations.
+- **Building an image and running Compose on macOS work when Kontena is opened from Finder or the
+  Dock.** Both started `docker` (or `podman`) by its bare name. A Mac app opened that way gets a
+  minimal PATH without Homebrew's directories, so the CLI was not found, and once found it could not
+  find its own credential helper for a pull. Kontena now looks the CLI up itself and hands it the same
+  PATH every other tool it starts already gets.
+- **Custom resources in the sidebar now picks up CRDs installed outside Kontena.** A CRD applied with
+  `kubectl` or Helm used to show up only after reconnecting to the cluster, because the section was
+  read only when the cluster opened and after Kontena's own Apply manifest. It now follows the
+  cluster's CustomResourceDefinitions with a single watch. That also covers a new kind in an API group
+  Kontena had already read. Navigating does not trigger any extra reads.
+
+### Security
+
+- **A cluster name can no longer steer where the k0s provisioner writes and deletes.** The temporary
+  `k0sctl.yaml` was named after the cluster, so a name that was rooted or held `..` made `Path.Combine`
+  drop the directory it was meant to land in — and the cleanup afterwards deleted that path's parent
+  recursively. The wizard rejects such a name, but the provisioner is a public API and was trusting its
+  caller. It now validates the spec itself before touching the disk, gives the file a fixed name inside
+  a directory created for the run, and deletes only that directory.
+
 ## [0.4.0] - 2026-08-17
 
 ### Added
@@ -1568,7 +2064,8 @@ A prerelease git tag no longer publishes a release. `v0.2.0-rc.1` was accepted a
 - **Refined look** — a crisp vector app mark used throughout, and theme-aware surfaces that hold up in
   both light and dark.
 
-[Unreleased]: https://github.com/Lionear/Kontena/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Lionear/Kontena/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Lionear/Kontena/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Lionear/Kontena/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Lionear/Kontena/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Lionear/Kontena/compare/v0.1.0...v0.2.0
