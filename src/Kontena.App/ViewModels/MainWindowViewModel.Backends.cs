@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -1330,12 +1331,21 @@ public partial class MainWindowViewModel
 
         Engines.Clear();
         Clusters.Clear();
-        foreach (var probe in _probes)
+
+        // In the order the user arranged them (KON-410); both groups are known up front, so each row
+        // can say whether it has a neighbour to swap with.
+        var order = _settings.InBackendOrder(_probes.Select(p => p.Provider.Backend));
+        var shown = _probes
+            .Where(p => BelongsInSwitcher(p, p.Provider.Backend == _activeBackend))
+            .OrderBy(p => IndexIn(order, p.Provider.Backend))
+            .ToList();
+        var groups = shown.ToLookup(p => p.Provider.Kind == BackendKind.Cluster);
+
+        foreach (var probe in shown)
         {
             var isActive = probe.Provider.Backend == _activeBackend;
-
-            if (!BelongsInSwitcher(probe, isActive))
-                continue;
+            var group = groups[probe.Provider.Kind == BackendKind.Cluster].Select(p => p.Provider.Backend).ToList();
+            var at = group.IndexOf(probe.Provider.Backend);
 
             if (isActive)
             {
@@ -1368,13 +1378,40 @@ public partial class MainWindowViewModel
                 // A row that cannot be switched to is a row that can be asked again — never a dead
                 // button (KON-117, KON-328). Clicking an unreachable backend is the most direct way a
                 // user can say "it is running now", and before this it did nothing at all.
-                SwitchCommand = isActive ? null : probe.Connected ? SwitchEngineCommand : RetryBackendCommand,
+                SwitchCommand = isActive ? StayCommand : probe.Connected ? SwitchEngineCommand : RetryBackendCommand,
+                MoveUpCommand = new RelayCommand(() => MoveBackend(group, probe.Provider.Backend, -1), () => at > 0),
+                MoveDownCommand = new RelayCommand(() => MoveBackend(group, probe.Provider.Backend, 1), () => at < group.Count - 1),
             };
 
             (probe.Provider.Kind == BackendKind.Cluster ? Clusters : Engines).Add(option);
         }
 
         OnPropertyChanged(nameof(HasClusters));
+    }
+
+    /// <summary>
+    /// The open backend's row command: nothing to switch to, but not null. Avalonia disables a button
+    /// without a command, and with the row everything in it — its new-window (KON-424) and move
+    /// (KON-410) buttons were dead on exactly the row you are on.
+    /// </summary>
+    private static readonly ICommand StayCommand = new RelayCommand(() => { });
+
+    /// <summary>Swap a switcher row with its neighbour and remember the order (KON-410).</summary>
+    private void MoveBackend(IReadOnlyList<string> group, string backend, int by)
+    {
+        _settings = _store.Update(s => s.WithBackendMoved(group, backend, by));
+        RebuildEngineList();
+    }
+
+    private static int IndexIn(IReadOnlyList<string> order, string backend)
+    {
+        for (var i = 0; i < order.Count; i++)
+        {
+            if (order[i] == backend)
+                return i;
+        }
+
+        return int.MaxValue;
     }
 
     /// <summary>

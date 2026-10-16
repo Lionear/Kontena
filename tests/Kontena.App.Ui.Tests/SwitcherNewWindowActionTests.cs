@@ -116,7 +116,9 @@ public sealed class SwitcherNewWindowActionTests(HeadlessSessionFixture headless
     private static IEnumerable<Button> NewWindowButtons(Visual root) =>
         root.GetVisualDescendants()
             .OfType<Button>()
-            .Where(b => ToolTip.GetTip(b) as string == Tip && b.IsEffectivelyVisible);
+            // Enabled as well as visible: a row without a command is disabled with all it holds, and
+            // the active row's button sat there visible and dead until KON-410 caught it.
+            .Where(b => ToolTip.GetTip(b) as string == Tip && b.IsEffectivelyVisible && b.IsEffectivelyEnabled);
 
     /// <summary>
     /// Pump until the probe round has landed, without leaving the UI thread. The session dispatches a

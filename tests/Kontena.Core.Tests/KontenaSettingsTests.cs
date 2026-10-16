@@ -105,6 +105,7 @@ public class KontenaSettingsTests
             KubeconfigPaths = ["/srv/kubeconfigs/acme.yaml", "~/Downloads/kubeconfig"],
             AllowedPlugins = ["com.acme.nerdctl@1.0.0", "com.acme.nerdctl@1.1.0"],
             DisabledAdapters = ["podman", "kubernetes"],
+            BackendOrder = ["podman", "docker", "kubernetes:prod"],
             AllowedExecCredentials =
             [
                 "gke-prod#gke-gcloud-auth-plugin",
@@ -166,6 +167,9 @@ public class KontenaSettingsTests
         // an adapter that quietly comes back on.
         Assert.Equal(original.DisabledAdapters, restored.DisabledAdapters);
 
+        // The switcher order the user arranged (KON-410); lost, and every connection jumps back.
+        Assert.Equal(original.BackendOrder, restored.BackendOrder);
+
         // The same for a kubeconfig credential command (KON-365): the command is part of the entry, and
         // one carrying spaces has to come back as the one string it went in as.
         Assert.Equal(original.AllowedExecCredentials, restored.AllowedExecCredentials);
@@ -194,6 +198,7 @@ public class KontenaSettingsTests
                 KubeconfigPaths = restored.KubeconfigPaths,
                 AllowedPlugins = restored.AllowedPlugins,
                 DisabledAdapters = restored.DisabledAdapters,
+                BackendOrder = restored.BackendOrder,
                 AllowedExecCredentials = restored.AllowedExecCredentials,
                 BackendNames = restored.BackendNames,
                 KnownClusters = restored.KnownClusters,
