@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
@@ -36,7 +37,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:NetworkRowViewModel">
-                                <Border Classes="row" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                <Border Classes="row" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" controls:CopyMenu.Name="{Binding Name}">
                                     <Grid Margin="{DynamicResource RowMargin}" ColumnDefinitions="1.4*,.8*,.7*,1.2*,1.4*,68" VerticalAlignment="Center">
                                         <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}"

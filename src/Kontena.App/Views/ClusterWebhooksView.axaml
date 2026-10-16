@@ -33,7 +33,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:AdmissionWebhookRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}" controls:CopyMenu.Name="{Binding Name}">
                                     <Grid ColumnDefinitions="1.8*,0.8*,2*,0.7*,1.4*,0.5*">
                                         <!-- The webhook, and under it the configuration it lives in — which
                                              is usually what names the policy engine behind it. -->
