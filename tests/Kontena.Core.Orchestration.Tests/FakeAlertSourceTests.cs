@@ -13,7 +13,8 @@ public class FakeAlertSourceTests
         var alerts = await new FakeAlertSource().ListAlertsAsync();
 
         Assert.Equal(2, alerts.Count(a => a.Name == "KubePodCrashLooping"));
-        Assert.Equal(4, alerts.Count(a => a.State == AlertState.Firing && !a.IsSilenced));
+        // Four to look at, plus the Watchdog heartbeat that fires on every kube-prometheus cluster (KON-411).
+        Assert.Equal(5, alerts.Count(a => a.State == AlertState.Firing && !a.IsSilenced));
         Assert.Single(alerts, a => a.State == AlertState.Pending);
         Assert.Single(alerts, a => a.IsSilenced);
     }

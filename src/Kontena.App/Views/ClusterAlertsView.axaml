@@ -93,6 +93,24 @@
                         Command="{Binding NewRuleCommand}" IsVisible="{Binding CanWriteRules}"
                         Content="New rule"/>
             </Grid>
+            <!-- Alertmanager's heartbeat, the Watchdog (KON-411): a line, not an alert. Dim while it
+                 fires; amber, without the triangle that belongs to red, when a cluster that has one
+                 stops sending it. Nothing at all on a cluster that never had one. -->
+            <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,-6,0,0" IsVisible="{Binding IsHeartbeatOk}"
+                        ToolTip.Tip="The Watchdog alert is firing, as it always should: alerts can reach Alertmanager.">
+                <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource TextDim}"
+                      Data="{StaticResource IconActivity}" VerticalAlignment="Center"/>
+                <TextBlock Text="Alertmanager heartbeat: OK" FontSize="12.5" Foreground="{DynamicResource TextDim}"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,-6,0,0" IsVisible="{Binding IsHeartbeatMissing}"
+                        ToolTip.Tip="The Watchdog alert should always be firing and is not. Alertmanager answers, but alerts may not be reaching it: check Prometheus and its rules.">
+                <Path Classes="icon" Width="14" Height="14" Stroke="{DynamicResource Warn}"
+                      Data="{StaticResource IconActivity}" VerticalAlignment="Center"/>
+                <TextBlock Text="Alertmanager heartbeat missing" FontSize="12.5" FontWeight="Medium"
+                           Foreground="{DynamicResource WarnText}" VerticalAlignment="Center"/>
+            </StackPanel>
+
             <Border Height="2" Margin="0,-8,0,0"><ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Height="2"/></Border>
 
             <!-- Never silent about not being live (KON-250). Usually not a failure: Alertmanager has

@@ -126,6 +126,23 @@ public sealed class FakeAlertSource : IAlertSource
                 StartsAt = now.AddHours(-9).AddMinutes(-30),
                 Receivers = ["slack-infra"],
             },
+            // kube-prometheus-stack's heartbeat: fires all the time to prove the pipeline works, and the
+            // Alerts page shows it as a heartbeat line rather than as an alert (KON-411).
+            new Alert
+            {
+                Fingerprint = "a1b2c3d4e5f60009",
+                Labels = new Dictionary<string, string>
+                {
+                    ["alertname"] = "Watchdog",
+                    ["severity"] = "none",
+                },
+                Annotations = new Dictionary<string, string>
+                {
+                    ["summary"] = "An alert that should always be firing to certify that Alertmanager is working properly.",
+                },
+                StartsAt = now.AddDays(-12),
+                Receivers = ["null"],
+            },
             // Pending: Prometheus has it, Alertmanager has not been told — hence no receiver.
             new Alert
             {
@@ -176,6 +193,7 @@ public sealed class FakeAlertSource : IAlertSource
                 "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"checkout\"}[5m])) by (le)) > 1"),
             Rule("KubeJobFailed", "kubernetes-apps", "warning", TimeSpan.FromMinutes(15), AlertState.Firing,
                 "kube_job_failed{job=\"kube-state-metrics\"} > 0"),
+            Rule("Watchdog", "general.rules", "none", TimeSpan.Zero, AlertState.Firing, "vector(1)"),
             // Loaded, evaluating, false — the state a freshly applied rule sits in, which the
             // "applied but not firing" result screen has to be able to show.
             Rule("AppHighErrorRate", "checkout-slo", "critical", TimeSpan.FromMinutes(10), AlertState.Inactive,
