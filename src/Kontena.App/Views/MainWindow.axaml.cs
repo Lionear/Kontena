@@ -304,6 +304,33 @@ public partial class MainWindow : Window
     private const int CascadeOffset = 32;
 
     /// <summary>
+    /// Keeps the keyboard on the row that moved (KON-410). Moving rebuilds the list, which takes the
+    /// focused button with it; without this every press of Move up sends the focus back to the start.
+    /// Click runs before the command, so the refocus is posted to run after the rebuild.
+    /// </summary>
+    private void OnMoveBackendClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: EngineOption option } button
+            || button.FindAncestorOfType<ItemsControl>() is not { } list)
+        {
+            return;
+        }
+
+        var tip = ToolTip.GetTip(button);
+        Dispatcher.UIThread.Post(() =>
+        {
+            var moves = list.GetVisualDescendants().OfType<Button>()
+                .Where(b => b.DataContext is EngineOption o && o.Backend == option.Backend
+                            && ToolTip.GetTip(b) is "Move up" or "Move down")
+                .ToList();
+
+            // The same button if it can still be pressed; at the end of the list, its partner.
+            (moves.FirstOrDefault(b => Equals(ToolTip.GetTip(b), tip) && b.IsEffectivelyEnabled)
+                ?? moves.FirstOrDefault(b => b.IsEffectivelyEnabled))?.Focus(NavigationMethod.Tab);
+        }, DispatcherPriority.Background);
+    }
+
+    /// <summary>
     /// Whether this is the window the app launched with, as opposed to one spawned from the switcher
     /// (KON-424). Asked of the lifetime rather than kept as a flag here, so a window built by a test
     /// or the designer — where there is no lifetime — answers the same as the only window there is.

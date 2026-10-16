@@ -389,6 +389,52 @@ public sealed record KontenaSettings
     /// </summary>
     public double DetailDrawerWidth { get; init; } = 500;
 
+    /// <summary>
+    /// The order the user put their connections in, in the backend switcher (KON-410). Empty until
+    /// they move one; a backend not in it keeps the order it was found in, after the ones that are.
+    /// </summary>
+    public IReadOnlyList<string> BackendOrder { get; init; } = [];
+
+    /// <summary><paramref name="backends"/> in the user's order. Stable, so unknown ids keep theirs.</summary>
+    public IReadOnlyList<string> InBackendOrder(IEnumerable<string> backends) =>
+    [
+        .. backends
+            .Select((id, found) => (id, found, rank: IndexOf(BackendOrder, id)))
+            .OrderBy(b => b.rank < 0 ? int.MaxValue : b.rank)
+            .ThenBy(b => b.found)
+            .Select(b => b.id),
+    ];
+
+    /// <summary>
+    /// Move <paramref name="backend"/> <paramref name="by"/> places within <paramref name="group"/> —
+    /// the rows the switcher shows together, in their current order. Past either end changes nothing.
+    /// The rest of the stored order stays, so arranging clusters leaves the engines as they were.
+    /// </summary>
+    public KontenaSettings WithBackendMoved(IReadOnlyList<string> group, string backend, int by)
+    {
+        var from = IndexOf(group, backend);
+        var to = from + by;
+        if (from < 0 || to < 0 || to >= group.Count)
+            return this;
+
+        var moved = group.ToList();
+        moved.RemoveAt(from);
+        moved.Insert(to, backend);
+
+        return this with { BackendOrder = [.. moved, .. BackendOrder.Where(id => !moved.Contains(id, StringComparer.Ordinal))] };
+    }
+
+    private static int IndexOf(IReadOnlyList<string> ids, string id)
+    {
+        for (var i = 0; i < ids.Count; i++)
+        {
+            if (string.Equals(ids[i], id, StringComparison.Ordinal))
+                return i;
+        }
+
+        return -1;
+    }
+
     /// <summary>Recently used build-context folders, most-recent first (for the Build modal).</summary>
     public IReadOnlyList<string> RecentBuildContexts { get; init; } = [];
 

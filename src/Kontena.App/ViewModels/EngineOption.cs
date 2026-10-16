@@ -31,7 +31,8 @@ public sealed class EngineOption
 
     /// <summary>
     /// What clicking the row does: switch to it when it answered, ask it again when it did not
-    /// (KON-328). Null only for the backend already open.
+    /// (KON-328). On the backend already open it does nothing, and is still set: a row without a
+    /// command is disabled, and so is every button inside it.
     /// </summary>
     public ICommand? SwitchCommand { get; init; }
 
@@ -51,6 +52,12 @@ public sealed class EngineOption
     /// patch" beside it would be advice about the wrong problem.
     /// </summary>
     public bool HasNewerPatch => Support is { IsProblem: false, NewerPatch: not null };
+
+    /// <summary>Move this row one place up or down within its group (KON-410). Disabled at the ends.</summary>
+    public ICommand? MoveUpCommand { get; init; }
+
+    /// <inheritdoc cref="MoveUpCommand"/>
+    public ICommand? MoveDownCommand { get; init; }
 
     /// <summary>The sentence behind the row, worded once in <see cref="VersionSupport.Detail"/>.</summary>
     public string SupportSummary => Support?.Detail ?? string.Empty;
