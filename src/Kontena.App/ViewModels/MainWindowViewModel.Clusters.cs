@@ -659,7 +659,7 @@ public partial class MainWindowViewModel
             return;
 
         ShowDetail(new ClusterIngressDetailViewModel(
-            _cluster, ingress, onDelete: () => ConfirmDeleteIngress(ingress)),
+            _cluster, ingress, onDelete: () => ConfirmDeleteIngress(ingress), onOpenService: ShowServiceDetail),
             $"ingress {ingress.Name}", ingress);
     }
 
