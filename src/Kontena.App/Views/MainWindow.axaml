@@ -440,6 +440,10 @@
                     </Button>
                 </StackPanel>
 
+                <!-- Where the resource nav ends and the app's own entries begin (KON-409); the same
+                     rule as the one under the brand. Docked after the block, so it sits above it. -->
+                <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource Border}" Margin="4,8,4,8"/>
+
                 <!-- Nothing to navigate to while no backend is open; a dead nav is worse than none. -->
                 <!-- Scrolls because the nav is no longer a fixed height: expanding Workloads adds up to
                      five entries (KON-169), and without this they slide behind the Activity/Settings
