@@ -201,6 +201,28 @@ public sealed class IngressDetailTests
         Assert.Equal("nginx", detail.ClassText);
     }
 
+    // ── Backend service (KON-456) ────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_backend_links_to_its_service_only_when_that_service_exists()
+    {
+        // A backend naming a service that is not there is one of the commonest reasons an ingress
+        // routes nothing, so that one stays plain text and says why, instead of linking to nothing.
+        Service? opened = null;
+        using var detail = new ClusterIngressDetailViewModel(
+            new FakeClusterEngine(),
+            Ingress([new IngressRule("app.example.com", "/", "web", 80), new IngressRule("app.example.com", "/typo", "wbe", 80)]),
+            onOpenService: s => opened = s);
+
+        await detail.LoadServicesAsync();
+
+        Assert.Equal([true, false], detail.Rules.Select(r => r.CanOpenService));
+        Assert.Equal([false, true], detail.Rules.Select(r => r.MissingServiceNote is not null));
+
+        detail.Rules[0].OpenServiceCommand.Execute(null);
+        Assert.Equal(("web", "app"), (opened?.Name, opened?.Namespace));
+    }
+
     // ── Open in the browser (KON-461) ────────────────────────────────────────
 
     [Fact]
