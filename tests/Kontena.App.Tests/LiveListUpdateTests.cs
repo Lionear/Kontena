@@ -105,6 +105,79 @@ public sealed class LiveListUpdateTests
         Assert.Same(afterFirst[0], shown[0]);
     }
 
+    /// <summary>
+    /// The same property per page, through the page's own reload (KON-457). A row type without value
+    /// equality makes every reload replace every row, which is the rebuild ListSync exists to avoid.
+    /// Config maps, secrets, events and Helm releases are not here yet: their rows carry nested
+    /// state, and each needs its own look.
+    /// </summary>
+    public static TheoryData<string, Func<IClusterEngine, IListPage>> RowListPages() => new()
+    {
+        { "nodes", c => new ClusterNodesViewModel(c) },
+        { "namespaces", c => new ClusterNamespacesViewModel(c) },
+        { "deployments", c => new ClusterWorkloadsViewModel(c, "app", kind: WorkloadKind.Deployment) },
+        { "pods", c => new ClusterPodsViewModel(c, "app") },
+        { "services", c => new ClusterServicesViewModel(c, "app") },
+        { "ingresses", c => new ClusterIngressesViewModel(c, "app") },
+        { "network policies", c => new ClusterNetworkPoliciesViewModel(c, "app") },
+        { "volume claims", c => new ClusterPvcsViewModel(c, "app") },
+        { "volumes", c => new ClusterVolumesViewModel(c) },
+        { "storage classes", c => new ClusterStorageClassesViewModel(c) },
+        { "admission webhooks", c => new ClusterWebhooksViewModel(c) },
+    };
+
+    [Theory]
+    [MemberData(nameof(RowListPages))]
+    public async Task Reloading_an_unchanged_page_keeps_every_row_it_showed(
+        string page, Func<IClusterEngine, IListPage> build)
+    {
+        var list = build(new FakeClusterEngine());
+
+        await list.LoadAsync();
+        var before = Rows(list);
+        await list.LoadAsync();
+
+        Assert.NotEmpty(before);
+        Assert.True(before.SequenceEqual(Rows(list), ReferenceEqualityComparer.Instance), $"{page} replaced its rows");
+    }
+
+    /// <summary>
+    /// And the other half: a row whose drawn fields changed, but not its name, is a different row.
+    /// A signature of only the name would pass the theory above and leave stale text on screen.
+    /// </summary>
+    public static TheoryData<string, object, object> RowsThatChanged()
+    {
+        var fake = new FakeClusterEngine();
+        var node = fake.ListNodesAsync().AsTask().Result[0];
+        var ns = fake.ListNamespacesAsync().AsTask().Result[0];
+        var pv = fake.ListVolumesAsync().AsTask().Result[0];
+        var hook = fake.ListAdmissionWebhooksAsync().AsTask().Result[0];
+        var sc = fake.ListStorageClassesAsync().AsTask().Result[0];
+        var ingress = fake.ListIngressesAsync("app").AsTask().Result[0];
+        var policy = fake.ListNetworkPoliciesAsync("app").AsTask().Result[0];
+        var pvc = fake.ListPvcsAsync("app").AsTask().Result[0];
+
+        return new()
+        {
+            { "node", new NodeCardRow(node), new NodeCardRow(node with { Unschedulable = !node.Unschedulable }) },
+            { "namespace", new NamespaceRow(ns), new NamespaceRow(ns with { Phase = "Terminating" }) },
+            { "volume", new PersistentVolumeRow(pv), new PersistentVolumeRow(pv with { Claim = "app/other" }) },
+            { "webhook", new AdmissionWebhookRow(hook), new AdmissionWebhookRow(hook with { Target = "elsewhere" }) },
+            { "storage class", new StorageClassRow(sc, 2), new StorageClassRow(sc, 3) },
+            { "ingress", new IngressRow(ingress), new IngressRow(ingress with { Addresses = ["10.0.0.99"] }) },
+            { "network policy", new NetworkPolicyRow(policy), new NetworkPolicyRow(policy with { AffectsEgress = !policy.AffectsEgress }) },
+            { "volume claim", new PvcRow(pvc), new PvcRow(pvc with { Volume = "pv-other" }) },
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(RowsThatChanged))]
+    public void A_row_whose_drawn_fields_changed_is_not_equal_to_its_old_self(string kind, object row, object changed) =>
+        Assert.False(row.Equals(changed), $"a {kind} row ignores a field it draws");
+
+    private static List<object> Rows(IListPage page) =>
+        [.. ((System.Collections.IList)page.GetType().GetProperty("Items")!.GetValue(page)!).Cast<object>()];
+
     [Fact]
     public void A_row_that_is_no_longer_wanted_leaves_the_list()
     {
