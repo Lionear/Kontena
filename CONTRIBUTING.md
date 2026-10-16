@@ -109,6 +109,9 @@ See [`changelog.d/README.md`](changelog.d/README.md) for the details.
 - Never write a version heading yourself.
 - Preview what the next release's notes will read like with
   `python3 tools/changelog-render.py --dry-run`. CI validates the filenames on every PR.
+- A pull request that changes anything under `src/` needs a fragment, and CI fails it without one.
+  A change nobody using Kontena can see (a refactor, a rename, a test-only race fix) opts out with
+  the **`no-changelog`** label, so the choice is on the PR for anyone to find later.
 - A fragment can only *add*. To correct an unreleased entry that a later change made wrong, edit that
   entry where it lives — in `CHANGELOG.md` if it was already folded in, or in its own fragment.
 - **Releasing is a tag.** `<Version>` in `Directory.Build.props` is already the version being
