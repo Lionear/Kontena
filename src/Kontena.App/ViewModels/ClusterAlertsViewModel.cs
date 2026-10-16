@@ -21,6 +21,22 @@ public enum AlertSection
 }
 
 /// <summary>
+/// Whether Alertmanager's own heartbeat — the <c>Watchdog</c> alert that fires all the time on purpose
+/// — is there (KON-411).
+/// </summary>
+public enum AlertmanagerHeartbeat
+{
+    /// <summary>This cluster has no Watchdog to watch, so there is nothing to say.</summary>
+    None,
+
+    /// <summary>The Watchdog fires: alerts can reach Alertmanager.</summary>
+    Ok,
+
+    /// <summary>It should be firing and is not: the pipeline behind Alertmanager is broken.</summary>
+    Missing,
+}
+
+/// <summary>
 /// The Alerts page (KON-207): what is wrong right now, grouped the way Alertmanager already groups it.
 /// <para>
 /// One group per <c>alertname</c>, because Alertmanager groups, dedupes and inhibits before we ever
@@ -48,6 +64,9 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
 
     /// <summary>When the alerts on screen were read, or null while nothing has been read yet.</summary>
     private DateTimeOffset? _readAt;
+
+    /// <summary>Whether a read on this page has ever seen the Watchdog fire (KON-411).</summary>
+    private bool _sawHeartbeat;
 
     /// <summary>The last read's failure and when it happened, or null when the last read worked.</summary>
     private string? _failure;
@@ -159,6 +178,9 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
         try
         {
             await base.LoadAsync();
+            OnPropertyChanged(nameof(Heartbeat));
+            OnPropertyChanged(nameof(IsHeartbeatOk));
+            OnPropertyChanged(nameof(IsHeartbeatMissing));
             _readAt = DateTimeOffset.Now;
             _failure = null;
             _failedAt = null;
@@ -288,6 +310,16 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     public string PendingCaption => $"{Pending.Sum(g => g.Count)}";
     public string SilencedCaption => $"{Silenced.Sum(g => g.Count)}";
 
+    /// <summary>
+    /// Alertmanager's heartbeat (KON-411): one line at the top of the page rather than a firing alert.
+    /// Never notified and never counted in the badge — it says the pipeline works, not that anything
+    /// is wrong.
+    /// </summary>
+    public AlertmanagerHeartbeat Heartbeat { get; private set; }
+
+    public bool IsHeartbeatOk => Heartbeat == AlertmanagerHeartbeat.Ok;
+    public bool IsHeartbeatMissing => Heartbeat == AlertmanagerHeartbeat.Missing;
+
     /// <summary>Nothing wrong, and the cluster did answer — a different sentence from having no source.</summary>
     public bool IsAllClear => HasLoaded && HasAlerting && All.Count == 0;
 
@@ -315,6 +347,9 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
         var silences = _alerts.ListSilencesAsync(ct).AsTask();
         await Task.WhenAll(alerts, rules, silences);
 
+        Heartbeat = HeartbeatOf(alerts.Result, rules.Result, _sawHeartbeat);
+        _sawHeartbeat |= Heartbeat == AlertmanagerHeartbeat.Ok;
+
         return Group(alerts.Result, rules.Result, silences.Result, _onOpenDetail, ExpireSilence);
     }
 
@@ -337,6 +372,7 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
         return
         [
             .. alerts
+                .Where(a => !IsHeartbeat(a))
                 .GroupBy(a => (Section: SectionOf(a), a.Name))
                 .Select(g =>
                 {
@@ -411,7 +447,29 @@ public partial class ClusterAlertsViewModel : ClusterListPageViewModel<AlertGrou
     /// counting either would make the number mean "things", not "things to look at".
     /// </summary>
     public static int BadgeCount(IReadOnlyList<Alert> alerts) =>
-        alerts.Count(a => a.State == AlertState.Firing && !a.IsSilenced);
+        alerts.Count(a => a.State == AlertState.Firing && !a.IsSilenced && !IsHeartbeat(a));
+
+    /// <summary>
+    /// The heartbeat from one read. Missing only where this cluster is known to have a Watchdog — a
+    /// rule for it, or this page having seen it fire — because it is a kube-prometheus-stack convention,
+    /// and every other cluster would otherwise show a warning for something it never had.
+    /// </summary>
+    internal static AlertmanagerHeartbeat HeartbeatOf(
+        IReadOnlyList<Alert> alerts, IReadOnlyList<AlertRule> rules, bool seenBefore)
+    {
+        // Silenced still counts: people mute the Watchdog to quiet a receiver, and it keeps firing.
+        if (alerts.Any(a => IsHeartbeat(a) && a.State == AlertState.Firing))
+            return AlertmanagerHeartbeat.Ok;
+
+        return seenBefore || rules.Any(r => r.Name == HeartbeatName)
+            ? AlertmanagerHeartbeat.Missing
+            : AlertmanagerHeartbeat.None;
+    }
+
+    /// <summary>The alertname kube-prometheus-stack gives the alert that always fires.</summary>
+    private const string HeartbeatName = "Watchdog";
+
+    private static bool IsHeartbeat(Alert alert) => alert.Name == HeartbeatName;
 }
 
 /// <summary>One alertname within one section: the header carries the sentence.</summary>

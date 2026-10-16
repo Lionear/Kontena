@@ -64,6 +64,46 @@ public class ClusterAlertsViewModelTests
     }
 
     [Fact]
+    public void The_watchdog_is_a_heartbeat_not_a_firing_alert()
+    {
+        // KON-411: it says the alerting pipeline works, so it sits in no section; the page shows it as
+        // a heartbeat line instead.
+        var groups = ClusterAlertsViewModel.Group([Alert("Watchdog", severity: "none"), Alert("A")], [], []);
+
+        Assert.Equal(["A"], groups.Select(g => g.Name));
+    }
+
+    public static TheoryData<string, bool, bool, AlertmanagerHeartbeat> Heartbeats() => new()
+    {
+        // The Watchdog firing is the proof; silenced counts too, people mute it to quiet a receiver.
+        { "firing", true, false, AlertmanagerHeartbeat.Ok },
+        // Alertmanager answers, a Watchdog rule exists, and nothing fires: the pipeline behind it broke.
+        { "rule but no alert", false, true, AlertmanagerHeartbeat.Missing },
+        // No rule and never seen: this cluster has no Watchdog at all (it is a kube-prometheus-stack
+        // convention), and warning about a missing one would be amber on every other cluster.
+        { "no watchdog here", false, false, AlertmanagerHeartbeat.None },
+    };
+
+    [Theory]
+    [MemberData(nameof(Heartbeats))]
+    public void The_heartbeat_reads_off_the_watchdog_and_its_rule(
+        string _, bool watchdogFires, bool hasRule, AlertmanagerHeartbeat expected)
+    {
+        Alert[] alerts = watchdogFires ? [Alert("Watchdog", severity: "none", silencedBy: ["sil-1"])] : [Alert("A")];
+        AlertRule[] rules = hasRule ? [new AlertRule { Name = "Watchdog", Expr = "vector(1)" }] : [];
+
+        Assert.Equal(expected, ClusterAlertsViewModel.HeartbeatOf(alerts, rules, seenBefore: false));
+    }
+
+    [Fact]
+    public void A_watchdog_seen_earlier_and_gone_now_is_missing_even_without_a_rule()
+    {
+        // Rules come from Prometheus and may not be readable; having seen it fire on this page is
+        // proof enough that this cluster has one.
+        Assert.Equal(AlertmanagerHeartbeat.Missing, ClusterAlertsViewModel.HeartbeatOf([Alert("A")], [], seenBefore: true));
+    }
+
+    [Fact]
     public void One_alertname_can_sit_in_two_sections_when_only_some_instances_are_muted()
     {
         // Two of three pods silenced is exactly this, and folding them together would either hide a
@@ -138,10 +178,12 @@ public class ClusterAlertsViewModelTests
             Alert("B"),
             Alert("C", state: AlertState.Pending),
             Alert("D", silencedBy: ["sil-1"]),
+            Alert("Watchdog", severity: "none"),
         };
 
         // Pending may never fire and silenced was already decided about; counting either turns the
-        // badge into a number people learn to ignore.
+        // badge into a number people learn to ignore. The Watchdog fires on purpose, all the time, to
+        // prove Alertmanager works (KON-411): counting it would put a 1 on every healthy cluster.
         Assert.Equal(2, ClusterAlertsViewModel.BadgeCount(alerts));
         Assert.Equal(0, ClusterAlertsViewModel.BadgeCount([]));
     }
