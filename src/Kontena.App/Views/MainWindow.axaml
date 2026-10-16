@@ -42,37 +42,43 @@
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="30" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                            <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
-                                <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
-                            </Border>
-                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
-                                    VerticalAlignment="Center" IsVisible="{Binding CanRetry}">
-                                <TextBlock Text="Retry" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                            </Border>
-                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
-                                    VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
-                                <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                            </Border>
-                            <!-- This backend runs a release its publisher has dropped (KON-370). The
-                                 sentence behind it — which line, and since when — is in the tooltip,
-                                 because the row is a row and not a place to explain things. -->
-                            <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
-                                    BorderThickness="1" CornerRadius="20" Padding="6,1"
-                                    VerticalAlignment="Center" IsVisible="{Binding IsUnsupported}"
-                                    ToolTip.Tip="{Binding SupportSummary}">
-                                <TextBlock Text="Unsupported" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource WarnText}"/>
-                            </Border>
-                            <!-- A newer release on a line that is still maintained (KON-371). The
-                                 answer already carried this and nothing showed it. Grey, not amber:
-                                 being a patch behind is worth mentioning, not worth a warning. -->
-                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
-                                    VerticalAlignment="Center" IsVisible="{Binding HasNewerPatch}"
-                                    ToolTip.Tip="{Binding SupportSummary}">
-                                <TextBlock Text="Update" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                            </Border>
-                        </StackPanel>
+                        <!-- A Grid, not a horizontal StackPanel: that hands the name unbounded width, so a long
+                             one ran past the row instead of ending in an ellipsis (KON-410). Left-aligned,
+                             so a short name keeps its pills right beside it. -->
+                        <Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Left">
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                                       TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0">
+                                <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
+                                    <TextBlock Text="Connected" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                                </Border>
+                                <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                        VerticalAlignment="Center" IsVisible="{Binding CanRetry}">
+                                    <TextBlock Text="Retry" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                </Border>
+                                <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                        VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
+                                    <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                </Border>
+                                <!-- This backend runs a release its publisher has dropped (KON-370). The
+                                     sentence behind it — which line, and since when — is in the tooltip,
+                                     because the row is a row and not a place to explain things. -->
+                                <Border Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource WarnSoftBorder}"
+                                        BorderThickness="1" CornerRadius="20" Padding="6,1"
+                                        VerticalAlignment="Center" IsVisible="{Binding IsUnsupported}"
+                                        ToolTip.Tip="{Binding SupportSummary}">
+                                    <TextBlock Text="Unsupported" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource WarnText}"/>
+                                </Border>
+                                <!-- A newer release on a line that is still maintained (KON-371). The
+                                     answer already carried this and nothing showed it. Grey, not amber:
+                                     being a patch behind is worth mentioning, not worth a warning. -->
+                                <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                        VerticalAlignment="Center" IsVisible="{Binding HasNewerPatch}"
+                                        ToolTip.Tip="{Binding SupportSummary}">
+                                    <TextBlock Text="Update" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
@@ -104,23 +110,29 @@
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <controls:BackendChip Grid.Column="0" Chip="{Binding Chip}" ChipSize="30" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center" Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"/>
-                            <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center"
-                                    IsVisible="{Binding IsConnected}">
-                                <TextBlock Text="Reachable" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
-                            </Border>
-                            <!-- The down card lists what did not answer, so retrying one is the whole
-                                 point of the list rather than an afterthought (KON-328). -->
-                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
-                                    VerticalAlignment="Center" IsVisible="{Binding CanRetry}">
-                                <TextBlock Text="Retry" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                            </Border>
-                            <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
-                                    VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
-                                <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
-                            </Border>
-                        </StackPanel>
+                        <!-- A Grid, not a horizontal StackPanel: that hands the name unbounded width, so a long
+                             one ran past the row instead of ending in an ellipsis (KON-410). Left-aligned,
+                             so a short name keeps its pills right beside it. -->
+                        <Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Left">
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource Text}"
+                                       TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0">
+                                <Border Background="#34D39916" CornerRadius="20" Padding="6,1" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsConnected}">
+                                    <TextBlock Text="Reachable" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Success}"/>
+                                </Border>
+                                <!-- The down card lists what did not answer, so retrying one is the whole
+                                     point of the list rather than an afterthought (KON-328). -->
+                                <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                        VerticalAlignment="Center" IsVisible="{Binding CanRetry}">
+                                    <TextBlock Text="Retry" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                </Border>
+                                <Border Background="{DynamicResource Surface2}" CornerRadius="20" Padding="6,1"
+                                        VerticalAlignment="Center" IsVisible="{Binding IsRetrying}">
+                                    <TextBlock Text="Connecting…" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
                         <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
                                    Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
@@ -346,7 +358,7 @@
 
                     <Button.Flyout>
                         <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="flat">
-                            <Border Width="280" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
+                            <Border Width="360" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                                     BorderThickness="1" CornerRadius="{StaticResource Radius}" Padding="6" BoxShadow="0 12 40 0 #66000000">
                                 <StackPanel Spacing="2">
                                     <StackPanel Orientation="Horizontal" Spacing="7" Margin="10,8,10,5">
