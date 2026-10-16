@@ -9,6 +9,8 @@ name: Changelog
 # skipped in silence at release time, and the entry would quietly never appear in the changelog.
 on:
   pull_request:
+    # labeled/unlabeled too, so the no-changelog label (below) takes effect without a new push.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [develop, main]
 
@@ -55,6 +57,19 @@ jobs:
             echo "::error file=CHANGELOG.md::Entries go in changelog.d/<ticket>.<category>.md, which the release folds in here — see changelog.d/README.md and CONTRIBUTING.md."
             exit 1
           fi
+
+      # The mirror image of the guard above: a branch that changes the app and writes nothing at all
+      # (KON-459). #316 changed src/ across four tickets, added no fragment and went green. A change a
+      # user cannot see opts out with the no-changelog label, which stays visible on the pull request.
+      - name: A change to the app carries a fragment
+        if: >-
+          github.event_name == 'pull_request' && github.base_ref != 'main'
+          && !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          BASE="origin/$BASE_REF" tools/changelog-required.sh
 
       # Shows the maintainer what the next release's notes will read like, without changing anything.
       - name: Preview the Unreleased section
