@@ -44,12 +44,13 @@ public sealed class IngressDetailTests
         using var detail = Detail(Ingress([
             new IngressRule("app.example.com", "/", "web", 80),
             new IngressRule("app.example.com", "/api", "api", 8080),
+            new IngressRule("app.example.com", "/admin", "admin", 0) { ServicePortName = "http" },
         ]));
 
         Assert.True(detail.HasRules);
-        Assert.Equal(["app.example.com", "app.example.com"], detail.Rules.Select(r => r.Host));
-        Assert.Equal(["/", "/api"], detail.Rules.Select(r => r.Path));
-        Assert.Equal(["web:80", "api:8080"], detail.Rules.Select(r => r.Backend));
+        Assert.Equal(["app.example.com", "app.example.com", "app.example.com"], detail.Rules.Select(r => r.Host));
+        Assert.Equal(["/", "/api", "/admin"], detail.Rules.Select(r => r.Path));
+        Assert.Equal(["web:80", "api:8080", "admin:http"], detail.Rules.Select(r => r.Backend));
     }
 
     [Fact]

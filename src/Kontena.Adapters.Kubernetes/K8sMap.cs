@@ -547,10 +547,16 @@ internal static class K8sMap
                     r.Host ?? "*",
                     p.Path ?? "/",
                     p.Backend?.Service?.Name ?? string.Empty,
-                    p.Backend?.Service?.Port?.Number ?? 0))),
+                    p.Backend?.Service?.Port?.Number ?? 0)
+                {
+                    ServicePortName = p.Backend?.Service?.Port?.Name ?? string.Empty,
+                })),
         ],
         DefaultBackend = i.Spec?.DefaultBackend?.Service is { } fallback
             ? new IngressBackend(fallback.Name ?? string.Empty, fallback.Port?.Number ?? 0)
+            {
+                ServicePortName = fallback.Port?.Name ?? string.Empty,
+            }
             : null,
         Addresses = [.. (i.Status?.LoadBalancer?.Ingress ?? []).Select(a => a.Ip ?? a.Hostname ?? string.Empty).Where(a => a.Length > 0)],
         Tls =
