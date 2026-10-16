@@ -44,12 +44,13 @@ public sealed class IngressDetailTests
         using var detail = Detail(Ingress([
             new IngressRule("app.example.com", "/", "web", 80),
             new IngressRule("app.example.com", "/api", "api", 8080),
+            new IngressRule("app.example.com", "/admin", "admin", 0) { ServicePortName = "http" },
         ]));
 
         Assert.True(detail.HasRules);
-        Assert.Equal(["app.example.com", "app.example.com"], detail.Rules.Select(r => r.Host));
-        Assert.Equal(["/", "/api"], detail.Rules.Select(r => r.Path));
-        Assert.Equal(["web:80", "api:8080"], detail.Rules.Select(r => r.Backend));
+        Assert.Equal(["app.example.com", "app.example.com", "app.example.com"], detail.Rules.Select(r => r.Host));
+        Assert.Equal(["/", "/api", "/admin"], detail.Rules.Select(r => r.Path));
+        Assert.Equal(["web:80", "api:8080", "admin:http"], detail.Rules.Select(r => r.Backend));
     }
 
     [Fact]
@@ -198,6 +199,28 @@ public sealed class IngressDetailTests
 
         Assert.Equal("gone.example.com", Assert.Single(detail.Rules).Host);
         Assert.Equal("nginx", detail.ClassText);
+    }
+
+    // ── Backend service (KON-456) ────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_backend_links_to_its_service_only_when_that_service_exists()
+    {
+        // A backend naming a service that is not there is one of the commonest reasons an ingress
+        // routes nothing, so that one stays plain text and says why, instead of linking to nothing.
+        Service? opened = null;
+        using var detail = new ClusterIngressDetailViewModel(
+            new FakeClusterEngine(),
+            Ingress([new IngressRule("app.example.com", "/", "web", 80), new IngressRule("app.example.com", "/typo", "wbe", 80)]),
+            onOpenService: s => opened = s);
+
+        await detail.LoadServicesAsync();
+
+        Assert.Equal([true, false], detail.Rules.Select(r => r.CanOpenService));
+        Assert.Equal([false, true], detail.Rules.Select(r => r.MissingServiceNote is not null));
+
+        detail.Rules[0].OpenServiceCommand.Execute(null);
+        Assert.Equal(("web", "app"), (opened?.Name, opened?.Namespace));
     }
 
     // ── Open in the browser (KON-461) ────────────────────────────────────────

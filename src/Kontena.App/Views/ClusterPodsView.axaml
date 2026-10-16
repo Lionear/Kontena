@@ -44,7 +44,8 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PodRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}"
-                                        Classes.trouble="{Binding HasTrouble}">
+                                        Classes.trouble="{Binding HasTrouble}"
+                                        controls:CopyMenu.Name="{Binding Name}" controls:CopyMenu.Namespace="{Binding Namespace}">
                                     <Grid ColumnDefinitions="1.8*,1.1*,0.6*,1.6*,0.8*,1.5*,0.7*,84">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>

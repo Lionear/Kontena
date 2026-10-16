@@ -938,9 +938,15 @@ public sealed partial class ClusterStorageClassDetailViewModel : ClusterObjectDe
 /// </summary>
 public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailViewModel
 {
+    private readonly Action<Service>? _onOpenService;
     private Ingress _ingress;
 
-    public ClusterIngressDetailViewModel(IClusterEngine cluster, Ingress ingress, Action? onDelete = null)
+    // Null until the read answers: an unknown service is not a missing one.
+    private IReadOnlyList<Service>? _services;
+
+    /// <param name="onOpenService">Route from a rule's backend to its service (KON-456).</param>
+    public ClusterIngressDetailViewModel(
+        IClusterEngine cluster, Ingress ingress, Action? onDelete = null, Action<Service>? onOpenService = null)
         : base(
             cluster, new ResourceRef(GroupVersionKind.Ingress, ingress.Namespace, ingress.Name),
             onOpenPod: null, onDelete)
@@ -948,7 +954,31 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
         ArgumentNullException.ThrowIfNull(ingress);
 
         _ingress = ingress;
+        _onOpenService = onOpenService;
         Fill(ingress);
+
+        if (onOpenService is not null)
+            _ = LoadServicesAsync();
+    }
+
+    /// <summary>
+    /// Read the services in this ingress's namespace, so each backend knows whether it has one to
+    /// link to (KON-456). One read for the page, not one per rule. A failed read leaves the backends
+    /// as plain text without calling any of them missing.
+    /// </summary>
+    public async Task LoadServicesAsync()
+    {
+        try
+        {
+            _services = await Cluster.ListServicesAsync(_ingress.Namespace);
+        }
+        catch
+        {
+            return;
+        }
+
+        Fill(_ingress);
+        OnPropertyChanged(nameof(OnlyLink));
     }
 
     public string ClassText => _ingress.Class.Length == 0 ? "—" : _ingress.Class;
@@ -983,7 +1013,7 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
     /// <summary>Where unmatched traffic goes, or null when the ingress names no default backend —
     /// in which case unmatched traffic is the controller's 404 and there is nothing to show.</summary>
     public string? DefaultBackendText => _ingress.DefaultBackend is { } b
-        ? $"{b.ServiceName}:{b.ServicePort}"
+        ? $"{b.ServiceName}:{b.Port}"
         : null;
 
     public bool HasDefaultBackend => DefaultBackendText is not null;
@@ -1002,7 +1032,7 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
         Links.Clear();
         foreach (var r in i.Rules)
         {
-            var row = new IngressRuleRow(r, tlsHosts);
+            var row = new IngressRuleRow(r, tlsHosts, _services, _onOpenService);
             Rules.Add(row);
 
             if (row.CanOpen)
@@ -1052,12 +1082,29 @@ public sealed partial class ClusterIngressDetailViewModel : ClusterObjectDetailV
 /// <summary>One row of an ingress's routing table.</summary>
 public sealed partial class IngressRuleRow
 {
-    public IngressRuleRow(IngressRule r, IReadOnlyList<string> tlsHosts)
+    private readonly Service? _service;
+    private readonly Action<Service>? _onOpenService;
+
+    /// <param name="services">The services in the ingress's namespace, or null while they are not
+    /// known yet — in which case the backend is neither a link nor called missing.</param>
+    public IngressRuleRow(
+        IngressRule r, IReadOnlyList<string> tlsHosts,
+        IReadOnlyList<Service>? services = null, Action<Service>? onOpenService = null)
     {
+        _onOpenService = onOpenService;
+        _service = services?.FirstOrDefault(s => s.Name == r.ServiceName);
+
+        // Link only where there is something at the other end (KON-254): a backend naming a service
+        // that is not there is the ingress's problem, and saying so beats a link to nothing.
+        CanOpenService = onOpenService is not null && _service is not null;
+        MissingServiceNote = services is not null && _service is null
+            ? $"There is no service named {r.ServiceName} in this namespace, so this rule routes nowhere."
+            : null;
+
         // Same substitutions the list row makes, so the two never read differently for one rule.
         Host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
         Path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
-        Backend = $"{r.ServiceName}:{r.ServicePort}";
+        Backend = $"{r.ServiceName}:{r.Port}";
 
         // A rule with no host matches every host its controller answers on, so there is no one
         // address to open and the button stays away rather than inventing one.
@@ -1069,6 +1116,18 @@ public sealed partial class IngressRuleRow
     public string Host { get; }
     public string Path { get; }
     public string Backend { get; }
+
+    public bool CanOpenService { get; }
+
+    /// <summary>Why the backend is not a link, when its service does not exist; null otherwise.</summary>
+    public string? MissingServiceNote { get; }
+
+    [RelayCommand(CanExecute = nameof(CanOpenService))]
+    private void OpenService()
+    {
+        if (_service is { } s)
+            _onOpenService?.Invoke(s);
+    }
 
     /// <summary>What this rule's host and path resolve to, or null when the rule names no host.</summary>
     public string? Url { get; }

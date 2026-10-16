@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Kontena.Sdk.Orchestration.Models;
 
 /// <summary>How a Service is exposed.</summary>
@@ -44,10 +46,24 @@ public sealed record Service
 }
 
 /// <summary>One host/path routing rule of an Ingress.</summary>
-public readonly record struct IngressRule(string Host, string Path, string ServiceName, int ServicePort);
+public readonly record struct IngressRule(string Host, string Path, string ServiceName, int ServicePort)
+{
+    /// <summary>The service port by name, when the rule names it instead of numbering it (KON-462).</summary>
+    public string ServicePortName { get; init; } = string.Empty;
+
+    /// <summary>The port as the rule wrote it: its name if it has one, otherwise its number.</summary>
+    public string Port => string.IsNullOrEmpty(ServicePortName) ? ServicePort.ToString(CultureInfo.InvariantCulture) : ServicePortName;
+}
 
 /// <summary>Where an Ingress sends traffic that matches no rule, when it names one.</summary>
-public readonly record struct IngressBackend(string ServiceName, int ServicePort);
+public readonly record struct IngressBackend(string ServiceName, int ServicePort)
+{
+    /// <summary>The service port by name, when the backend names it instead of numbering it (KON-462).</summary>
+    public string ServicePortName { get; init; } = string.Empty;
+
+    /// <summary>The port as the backend wrote it: its name if it has one, otherwise its number.</summary>
+    public string Port => string.IsNullOrEmpty(ServicePortName) ? ServicePort.ToString(CultureInfo.InvariantCulture) : ServicePortName;
+}
 
 /// <summary>
 /// One TLS block: the certificate, and which hosts it is presented for. Kept together rather than as

@@ -9,7 +9,7 @@ public sealed class DataDirectoryTests
 {
     /// <summary>Where the installed app keeps its data — the directory a debug build must stay out of.</summary>
     private static readonly string Installed = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create),
         "Lionear", "Kontena");
 
     /// <summary>
@@ -26,4 +26,12 @@ public sealed class DataDirectoryTests
         Assert.Equal(Installed, ProductInfo.DataDirectory);
 #endif
     }
+
+    /// <summary>
+    /// KON-480: on a Linux account without <c>~/.config</c> the platform folder came back empty, and
+    /// everything Kontena saved landed relative to whatever directory it was started from.
+    /// </summary>
+    [Fact]
+    public void The_data_directory_is_an_absolute_path() =>
+        Assert.True(Path.IsPathRooted(ProductInfo.DataDirectory), ProductInfo.DataDirectory);
 }

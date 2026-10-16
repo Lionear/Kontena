@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.ObjectModel;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -966,6 +967,20 @@ public sealed partial class NodeCardRow
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_node);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f',
+            Name, Roles, Status, Version, Cordoned, CanMaintain, CpuText, MemoryText, PodsText, DiskText,
+            Fraction(CpuFraction), Fraction(MemoryFraction), Fraction(DiskFraction), VersionWarning,
+            string.Join('\u001e', Problems.Select(p => p.Label + '\u001d' + p.Detail)));
+
+    public override bool Equals(object? obj) =>
+        obj is NodeCardRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
+
+    private static string Fraction(double value) => value.ToString("R", CultureInfo.InvariantCulture);
 }
 
 /// <summary>
@@ -1050,6 +1065,15 @@ public sealed partial class NamespaceRow
 
     [RelayCommand]
     private void Delete() => _onDelete?.Invoke(this);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Status, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is NamespaceRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed partial class PersistentVolumeRow
@@ -1133,6 +1157,15 @@ public sealed partial class PersistentVolumeRow
 
     [RelayCommand]
     private void OpenClass() => _onOpenClass?.Invoke(StorageClass);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Status, Capacity, AccessModes, Reclaim, StorageClass, Claim, Driver, Age, Note);
+
+    public override bool Equals(object? obj) =>
+        obj is PersistentVolumeRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed class AdmissionWebhookRow
@@ -1201,6 +1234,15 @@ public sealed class AdmissionWebhookRow
             _ => $"everything in {group}",
         }
         : group is "" or "*" ? resource : $"{resource}.{group}";
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Configuration, Kind, FailurePolicy, FailureDetail, Target, Rules, RulesDetail, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is AdmissionWebhookRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed partial class StorageClassRow
@@ -1282,6 +1324,15 @@ public sealed partial class StorageClassRow
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_class);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Provisioner, Reclaim, IsDefault, Expansion, Binding, BindingDetail, NoProvisioner, VolumeCountLabel, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is StorageClassRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 
@@ -1320,7 +1371,7 @@ public sealed partial class IngressRow
             {
                 var host = string.IsNullOrEmpty(r.Host) ? "*" : r.Host;
                 var path = string.IsNullOrEmpty(r.Path) ? "/" : r.Path;
-                return $"{host}{path} → {r.ServiceName}:{r.ServicePort}";
+                return $"{host}{path} → {r.ServiceName}:{r.Port}";
             })
             .ToList();
         HostsTooltip = rules.Count == 0 ? null : string.Join("\n", rules);
@@ -1376,6 +1427,15 @@ public sealed partial class IngressRow
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_ingress);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Namespace, Class, Hosts, HostsTooltip, Address, AddressTooltip, HasTls, TlsTooltip, HasNoRules, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is IngressRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed partial class NetworkPolicyRow
@@ -1417,6 +1477,15 @@ public sealed partial class NetworkPolicyRow
 
     [RelayCommand]
     private void Open() => _onOpenDetail?.Invoke(_policy);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Namespace, AppliesTo, Isolates, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is NetworkPolicyRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed partial class PvcRow
@@ -1500,6 +1569,15 @@ public sealed partial class PvcRow
 
     [RelayCommand]
     private void OpenClass() => _onOpenClass?.Invoke(_className);
+
+    /// <summary>Same rule as <see cref="PodRow"/>: equal when everything drawn is equal (KON-250, KON-457).</summary>
+    private string Signature =>
+        string.Join('\u001f', Name, Namespace, Status, Volume, Capacity, StorageClass, AccessModes, PendingHint, Age);
+
+    public override bool Equals(object? obj) =>
+        obj is PvcRow row && string.Equals(Signature, row.Signature, StringComparison.Ordinal);
+
+    public override int GetHashCode() => Signature.GetHashCode(StringComparison.Ordinal);
 }
 
 public sealed partial class WorkloadRow

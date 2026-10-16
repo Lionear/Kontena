@@ -1,5 +1,6 @@
 using Kontena.App.ViewModels;
 using Kontena.Core.Orchestration.Fakes;
+using Kontena.Sdk.Orchestration.Models;
 
 namespace Kontena.App.Tests;
 
@@ -9,10 +10,10 @@ namespace Kontena.App.Tests;
 /// </summary>
 public sealed class CustomResourceNavTests
 {
-    private static async Task<MainWindowViewModel> ShellAsync()
+    private static async Task<MainWindowViewModel> ShellAsync(FakeClusterEngine? cluster = null)
     {
         var shell = new MainWindowViewModel();
-        Assert.True(await shell.EnterClusterModeAsync(new FakeClusterEngine()));
+        Assert.True(await shell.EnterClusterModeAsync(cluster ?? new FakeClusterEngine()));
 
         for (var i = 0; i < 100 && shell.NavGroups.All(g => g.Label != "Custom resources"); i++)
             await Task.Delay(10);
@@ -104,5 +105,61 @@ public sealed class CustomResourceNavTests
         var detail = Assert.IsType<ClusterCustomResourceDetailViewModel>(shell.Detail);
         Assert.Equal("Certificate", detail.Kind);
         Assert.True(detail.IsYamlSelected);
+    }
+
+    /// <summary>
+    /// A CRD installed with kubectl or Helm — no apply through Kontena, no reconnect — still gets its
+    /// entry, because the section follows the definitions rather than only the two reads it had
+    /// (KON-488).
+    /// </summary>
+    [Fact]
+    public async Task A_crd_installed_outside_kontena_appears_without_a_reconnect()
+    {
+        var cluster = new FakeClusterEngine();
+        var shell = await ShellAsync(cluster);
+
+        cluster.InstallCustomResource(new ApiResource
+        {
+            Kind = new GroupVersionKind("monitoring.coreos.com", "v1", "PrometheusRule"),
+            Plural = "prometheusrules", Namespaced = true, Verbs = ["list"], IsCustom = true,
+        });
+
+        IEnumerable<string> Keys() =>
+            shell.NavGroups.FirstOrDefault(g => g.Label == "Custom resources")?.Items.Select(i => i.Key) ?? [];
+
+        for (var i = 0; i < 300 && !Keys().Contains("crd-group:monitoring.coreos.com"); i++)
+            await Task.Delay(10);
+
+        Assert.Equal(
+            [
+                "crd-group:cert-manager.io", "resources:cert-manager.io/Certificate",
+                "crd-group:monitoring.coreos.com", "resources:monitoring.coreos.com/PrometheusRule",
+            ],
+            Keys());
+    }
+
+    /// <summary>
+    /// What the watch must not cost: navigating reads discovery no more than it did before (KON-354,
+    /// KON-396). The section is redrawn on a definition changing, never on a click.
+    /// </summary>
+    [Fact]
+    public async Task Navigating_does_not_read_discovery_again()
+    {
+        var cluster = new FakeClusterEngine();
+        var shell = await ShellAsync(cluster);
+
+        // Past the watch's opening burst, which is one read and settles 400 ms after the open.
+        var before = -1;
+        for (var i = 0; i < 50 && cluster.CallsTo(nameof(FakeClusterEngine.DiscoverResourcesAsync)) != before; i++)
+        {
+            before = cluster.CallsTo(nameof(FakeClusterEngine.DiscoverResourcesAsync));
+            await Task.Delay(600);
+        }
+
+        foreach (var key in new[] { "events", "webhooks", "events", "helm" })
+            shell.NavigateCommand.Execute(key);
+        await Task.Delay(600);
+
+        Assert.Equal(before, cluster.CallsTo(nameof(FakeClusterEngine.DiscoverResourcesAsync)));
     }
 }

@@ -121,7 +121,13 @@
                                                            Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Path}" FontFamily="{StaticResource Mono}" FontSize="12.5"
                                                            Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis" Margin="0,0,14,0" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="{Binding Backend}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                                <Button Grid.Column="2" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                        Command="{Binding OpenServiceCommand}" IsVisible="{Binding CanOpenService}"
+                                                        ToolTip.Tip="Open this service">
+                                                    <TextBlock Text="{Binding Backend}" FontFamily="{StaticResource Mono}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                                </Button>
+                                                <TextBlock Grid.Column="2" Text="{Binding Backend}" IsVisible="{Binding !CanOpenService}"
+                                                           ToolTip.Tip="{Binding MissingServiceNote}" FontFamily="{StaticResource Mono}" FontSize="12.5"
                                                            Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                                             </Grid>
                                         </Border>
