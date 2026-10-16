@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Kontena.Sdk.Orchestration.Models;
 
 /// <summary>How a Service is exposed.</summary>
@@ -50,7 +52,7 @@ public readonly record struct IngressRule(string Host, string Path, string Servi
     public string ServicePortName { get; init; } = string.Empty;
 
     /// <summary>The port as the rule wrote it: its name if it has one, otherwise its number.</summary>
-    public string Port => string.IsNullOrEmpty(ServicePortName) ? ServicePort.ToString() : ServicePortName;
+    public string Port => string.IsNullOrEmpty(ServicePortName) ? ServicePort.ToString(CultureInfo.InvariantCulture) : ServicePortName;
 }
 
 /// <summary>Where an Ingress sends traffic that matches no rule, when it names one.</summary>
@@ -60,7 +62,7 @@ public readonly record struct IngressBackend(string ServiceName, int ServicePort
     public string ServicePortName { get; init; } = string.Empty;
 
     /// <summary>The port as the backend wrote it: its name if it has one, otherwise its number.</summary>
-    public string Port => string.IsNullOrEmpty(ServicePortName) ? ServicePort.ToString() : ServicePortName;
+    public string Port => string.IsNullOrEmpty(ServicePortName) ? ServicePort.ToString(CultureInfo.InvariantCulture) : ServicePortName;
 }
 
 /// <summary>
