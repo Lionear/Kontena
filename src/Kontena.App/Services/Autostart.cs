@@ -110,23 +110,9 @@ public sealed class XdgAutostart : IAutostart
         return IsEnabled();
     }
 
-    /// <summary>
-    /// <c>Exec</c> is quoted because the path can contain spaces, and an AppImage often lives in a
-    /// directory that has them.
-    /// </summary>
+    /// <summary>The application-menu entry (KON-444), plus the key that makes it an autostart one.</summary>
     private static string Entry(string target) =>
-        $"""
-        [Desktop Entry]
-        Type=Application
-        Name=Kontena
-        Comment=Manage containers through one UI, whichever engine is underneath
-        Exec="{target}"
-        Icon=kontena
-        Terminal=false
-        Categories=Development;System;
-        X-GNOME-Autostart-enabled=true
-
-        """;
+        DesktopMenuEntry.Entry(target) + "X-GNOME-Autostart-enabled=true\n";
 }
 
 
