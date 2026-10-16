@@ -67,6 +67,12 @@ public sealed record KontenaSettings
     public bool ShareSearchAcrossResources { get; init; }
 
     /// <summary>
+    /// Mask where connections point — engine sockets, cluster servers — in the backend switcher, for
+    /// screen shares and demos (KON-410). Each row can still show its own address for a moment.
+    /// </summary>
+    public bool HideServerAddresses { get; init; }
+
+    /// <summary>
     /// Legacy: the engine to activate on launch, from before clusters existed and before "last
     /// used" was an option. Superseded by <see cref="Startup"/> and <see cref="PinnedBackend"/>,
     /// and only read now to carry an existing choice forward — see <see cref="ResolvedStartup"/>.

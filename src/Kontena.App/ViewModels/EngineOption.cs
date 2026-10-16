@@ -1,10 +1,12 @@
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Kontena.Core.Versioning;
 
 namespace Kontena.App.ViewModels;
 
 /// <summary>An engine entry shown in the backend-switcher dropdown.</summary>
-public sealed class EngineOption
+public sealed partial class EngineOption : ObservableObject
 {
     public required string Backend { get; init; }
 
@@ -15,6 +17,36 @@ public sealed class EngineOption
 
     /// <summary>Secondary line — version/endpoint, or a short "not connected" reason.</summary>
     public string Detail { get; init; } = string.Empty;
+
+    /// <summary>Whether "Hide server addresses" is on (KON-410).</summary>
+    public bool HideAddress { get; init; }
+
+    /// <summary>This row's address shown for now, with the setting on. Until the list is rebuilt.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DetailText))]
+    private bool _revealed;
+
+    /// <summary>The detail line as shown: its address masked while hidden and not revealed.</summary>
+    public string DetailText
+    {
+        get
+        {
+            var (version, _) = BackendDetail.Split(Detail);
+            return CanReveal && !Revealed ? $"{version} · {BackendDetail.Mask}" : Detail;
+        }
+    }
+
+    /// <summary>Whether there is an address to show or hide; no eye where there is nothing behind it.</summary>
+    public bool CanReveal => HideAddress && BackendDetail.Split(Detail).Address.Length > 0;
+
+    [RelayCommand]
+    private void ToggleReveal() => Revealed = !Revealed;
+
+    /// <summary>The eye's accessible name, naming the connection rather than saying "Show" twelve times.</summary>
+    public string ShowAddressTip => $"Show the address of {Name}";
+
+    /// <inheritdoc cref="ShowAddressTip"/>
+    public string HideAddressTip => $"Hide the address of {Name}";
 
     /// <summary>Whether this is the currently active engine.</summary>
     public bool IsActive { get; init; }

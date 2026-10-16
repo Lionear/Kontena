@@ -11,7 +11,8 @@ using Kontena.Engines.Fakes;
 namespace Kontena.App.Ui.Tests;
 
 /// <summary>
-/// Connections in the switcher can be put in the user's own order, and the order is kept (KON-410).
+/// What a switcher row offers besides switching (KON-410): moving it, and showing its address when
+/// "Hide server addresses" is on.
 /// <para>
 /// Through the rendered flyout, because the buttons are what makes it reachable by keyboard; a press
 /// inside a popup does not arrive headlessly (see <c>SwitcherNewWindowActionTests</c>), so each
@@ -19,7 +20,7 @@ namespace Kontena.App.Ui.Tests;
 /// </para>
 /// </summary>
 [Collection(HeadlessTests.Name)]
-public sealed class SwitcherReorderTests(HeadlessSessionFixture headless)
+public sealed class SwitcherRowActionTests(HeadlessSessionFixture headless)
 {
     private static readonly FakeEngineProvider First = new("fake-first", "First engine", "F");
     private static readonly FakeEngineProvider Second = new("fake-second", "Second engine", "S");
@@ -49,10 +50,43 @@ public sealed class SwitcherReorderTests(HeadlessSessionFixture headless)
             },
             CancellationToken.None);
 
-    private static (MainWindowViewModel Vm, Control Rows) Switcher(string path)
+    [Fact]
+    public Task Hiding_addresses_masks_the_pill_and_every_row_until_one_is_shown() =>
+        headless.Session.Dispatch(
+            () =>
+            {
+                var path = Path.Combine(Path.GetTempPath(), $"kontena-hideaddr-{Guid.NewGuid():N}.json");
+                var (vm, rows) = Switcher(path, hide: true);
+
+                Assert.Equal(BackendDetail.Mask, vm.EngineEndpoint);
+                Assert.All(vm.Engines, e => Assert.EndsWith(BackendDetail.Mask, e.DetailText, StringComparison.Ordinal));
+
+                // The eye, found by its name, which says which connection it is for.
+                var eye = rows.GetVisualDescendants().OfType<Button>()
+                    .Single(b => Equals(ToolTip.GetTip(b), $"Show the address of {Second.DisplayName}") && b.IsEffectivelyVisible);
+                Assert.True(eye.IsEffectivelyEnabled);
+                eye.Command!.Execute(null);
+
+                var second = vm.Engines.Single(e => e.Backend == Second.Backend);
+                Assert.DoesNotContain(BackendDetail.Mask, second.DetailText, StringComparison.Ordinal);
+                Assert.EndsWith(BackendDetail.Mask, vm.Engines.Single(e => e.Backend == First.Backend).DetailText, StringComparison.Ordinal);
+
+                // Switched off in Settings, the switcher shows everything again without a restart.
+                vm.ShowSettingsCommand.Execute(null);
+                vm.SettingsPage!.HideServerAddresses = false;
+                Assert.All(vm.Engines, e => Assert.DoesNotContain(BackendDetail.Mask, e.DetailText, StringComparison.Ordinal));
+                Assert.NotEqual(BackendDetail.Mask, vm.EngineEndpoint);
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
+
+    private static (MainWindowViewModel Vm, Control Rows) Switcher(string path, bool hide = false)
     {
         var store = new SettingsStore(path);
-        var settings = store.Load() with { Onboarded = true, Startup = StartupBackend.LastUsed, LastBackend = First.Backend };
+        var settings = store.Load() with
+        {
+            Onboarded = true, Startup = StartupBackend.LastUsed, LastBackend = First.Backend, HideServerAddresses = hide,
+        };
         var vm = new MainWindowViewModel(
             new BackendRegistry([First, Second]), store, settings,
             updateService: new FakeUpdateService(), probeGrace: TimeSpan.FromMilliseconds(100));
