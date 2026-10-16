@@ -50,6 +50,10 @@ public partial class App : Application
             DensityApplier.Apply(settings.CompactDensity);
             Diag.Mark("settings read, theme applied");
 
+            // An AppImage puts itself in the application menu (KON-444). Off the startup path: it is
+            // file I/O nobody waits for, and a no-op on every start after the first.
+            _ = Task.Run(DesktopMenuEntry.EnsureForThisAppImage);
+
             // Provider-based: the registry discovers backends (and, later, plugins). BackendCatalog
             // owns the composition so the runtime demo toggle (KON-96) builds the same list.
             // Which clusters exist is read from files; which of them belong in the switcher is the
