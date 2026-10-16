@@ -25,7 +25,8 @@ public static class ProductInfo
     /// </para>
     /// </summary>
     public static string DataDirectory { get; private set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        // Create: without it a missing ~/.config comes back as "", and the path turns relative (KON-480).
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create),
         "Lionear",
 #if DEBUG
         Name + "-Dev");
