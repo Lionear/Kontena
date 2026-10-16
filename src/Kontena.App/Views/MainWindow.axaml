@@ -79,8 +79,23 @@
                                 </Border>
                             </StackPanel>
                         </Grid>
-                        <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
-                                   Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                        <!-- The address masked while "Hide server addresses" is on, with an eye to show this
+                             row's (KON-410). Two buttons, so the tooltip that is their name says which
+                             connection — the same reason the pod page has two (KON-416). -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding DetailText}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                                       Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Panel Grid.Column="1" Margin="4,0,0,0" IsVisible="{Binding CanReveal}">
+                                <Button Classes="ghost" Padding="3,1" Command="{Binding ToggleRevealCommand}"
+                                        IsVisible="{Binding !Revealed}" ToolTip.Tip="{Binding ShowAddressTip}">
+                                    <Path Classes="icon" Width="12" Height="12" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconEye}"/>
+                                </Button>
+                                <Button Classes="ghost" Padding="3,1" Command="{Binding ToggleRevealCommand}"
+                                        IsVisible="{Binding Revealed}" ToolTip.Tip="{Binding HideAddressTip}">
+                                    <Path Classes="icon" Width="12" Height="12" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconEyeOff}"/>
+                                </Button>
+                            </Panel>
+                        </Grid>
                     </StackPanel>
                     <Path Grid.Column="2" Classes="icon" Width="16" Height="16" Stroke="{DynamicResource Primary}"
                           Data="{StaticResource IconCheck}" VerticalAlignment="Center" IsVisible="{Binding IsActive}"/>
@@ -147,8 +162,23 @@
                                 </Border>
                             </StackPanel>
                         </Grid>
-                        <TextBlock Text="{Binding Detail}" FontSize="11.5" FontFamily="{StaticResource Mono}"
-                                   Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis"/>
+                        <!-- The address masked while "Hide server addresses" is on, with an eye to show this
+                             row's (KON-410). Two buttons, so the tooltip that is their name says which
+                             connection — the same reason the pod page has two (KON-416). -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding DetailText}" FontSize="11.5" FontFamily="{StaticResource Mono}"
+                                       Foreground="{DynamicResource TextFaint}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Panel Grid.Column="1" Margin="4,0,0,0" IsVisible="{Binding CanReveal}">
+                                <Button Classes="ghost" Padding="3,1" Command="{Binding ToggleRevealCommand}"
+                                        IsVisible="{Binding !Revealed}" ToolTip.Tip="{Binding ShowAddressTip}">
+                                    <Path Classes="icon" Width="12" Height="12" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconEye}"/>
+                                </Button>
+                                <Button Classes="ghost" Padding="3,1" Command="{Binding ToggleRevealCommand}"
+                                        IsVisible="{Binding Revealed}" ToolTip.Tip="{Binding HideAddressTip}">
+                                    <Path Classes="icon" Width="12" Height="12" Stroke="{DynamicResource TextDim}" Data="{StaticResource IconEyeOff}"/>
+                                </Button>
+                            </Panel>
+                        </Grid>
                     </StackPanel>
                 </Grid>
             </Button>

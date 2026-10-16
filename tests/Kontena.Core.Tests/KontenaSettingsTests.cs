@@ -106,6 +106,7 @@ public class KontenaSettingsTests
             AllowedPlugins = ["com.acme.nerdctl@1.0.0", "com.acme.nerdctl@1.1.0"],
             DisabledAdapters = ["podman", "kubernetes"],
             BackendOrder = ["podman", "docker", "kubernetes:prod"],
+            HideServerAddresses = true,
             AllowedExecCredentials =
             [
                 "gke-prod#gke-gcloud-auth-plugin",

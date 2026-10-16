@@ -340,6 +340,7 @@ public partial class SettingsViewModel : ViewModelBase
         _theme = settings.Theme;
         _compactDensity = settings.CompactDensity;
         _shareSearchAcrossResources = settings.ShareSearchAcrossResources;
+        _hideServerAddresses = settings.HideServerAddresses;
         _autoDetect = settings.AutoDetectEngines;
         _diagnosticLogging = settings.DiagnosticLogging;
 
@@ -507,6 +508,18 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _shareSearchAcrossResources;
 
     partial void OnShareSearchAcrossResourcesChanged(bool value) => Save();
+
+    /// <summary>Mask connection addresses in the backend switcher (KON-410).</summary>
+    [ObservableProperty] private bool _hideServerAddresses;
+
+    /// <summary>Tells the shell to redraw the switcher; set by the shell, like the shortcuts' one.</summary>
+    public Action? RequestServerAddressesChanged { get; init; }
+
+    partial void OnHideServerAddressesChanged(bool value)
+    {
+        Save();
+        RequestServerAddressesChanged?.Invoke();
+    }
 
     // ── Diagnostics (KON-389) ───────────────────────────────────────────────
 
@@ -697,6 +710,7 @@ public partial class SettingsViewModel : ViewModelBase
             Theme = Theme,
             CompactDensity = CompactDensity,
             ShareSearchAcrossResources = ShareSearchAcrossResources,
+            HideServerAddresses = HideServerAddresses,
             AutoDetectEngines = AutoDetect,
             Startup = startup,
             PinnedBackend = startup == StartupBackend.Pinned ? pinned : null,

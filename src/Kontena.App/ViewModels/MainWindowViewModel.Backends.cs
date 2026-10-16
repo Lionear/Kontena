@@ -998,6 +998,13 @@ public partial class MainWindowViewModel
             // A changed shortcut has to reach the window's binding collection, or it would only take
             // effect on the next launch (KON-180).
             RequestShortcutsChanged = ShortcutsChanged,
+
+            // Hiding addresses takes effect in the switcher as the switch is flipped (KON-410).
+            RequestServerAddressesChanged = () =>
+            {
+                _settings = _store.Load();
+                RebuildEngineList();
+            },
         };
 
         SettingsPage.RequestConfirm = ShowConfirm;
@@ -1350,18 +1357,11 @@ public partial class MainWindowViewModel
             if (isActive)
             {
                 // Detail is "{version} · {endpoint}" — split it so the endpoint sits on its own line.
-                var detail = probe.Detail ?? string.Empty;
-                var sep = detail.IndexOf(" · ", StringComparison.Ordinal);
-                if (sep >= 0)
-                {
-                    EngineDetail = detail[..sep];
-                    EngineEndpoint = detail[(sep + 3)..];
-                }
-                else
-                {
-                    EngineDetail = string.IsNullOrEmpty(detail) ? "engine" : detail;
-                    EngineEndpoint = string.Empty;
-                }
+                // Masked without an eye when addresses are hidden: the pill opens the switcher, where
+                // each row has one (KON-410).
+                var (version, address) = BackendDetail.Split(probe.Detail ?? string.Empty);
+                EngineDetail = string.IsNullOrEmpty(version) ? "engine" : version;
+                EngineEndpoint = _settings.HideServerAddresses && address.Length > 0 ? BackendDetail.Mask : address;
             }
 
             var option = new EngineOption
@@ -1370,6 +1370,7 @@ public partial class MainWindowViewModel
                 Name = NameOf(probe.Provider),
                 Chip = BackendChipInfo.For(probe.Provider),
                 Detail = probe.Detail ?? string.Empty,
+                HideAddress = _settings.HideServerAddresses,
                 IsActive = isActive,
                 IsConnected = probe.Connected,
                 IsRetrying = probe.Provider.Backend == _retryingBackend,
