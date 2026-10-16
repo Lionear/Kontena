@@ -51,7 +51,7 @@
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:HelmReleaseRow">
-                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}">
+                                <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}" controls:CopyMenu.Name="{Binding Name}" controls:CopyMenu.Namespace="{Binding Namespace}">
                                     <Grid ColumnDefinitions="1.3*,1*,1.5*,0.8*,0.9*,0.6*,0.7*,100">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}"
                                                 IsEnabled="{Binding CanOpen}" VerticalAlignment="Center" Margin="0,0,14,0">

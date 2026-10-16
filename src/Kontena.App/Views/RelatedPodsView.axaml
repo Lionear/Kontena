@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Kontena.App.ViewModels"
+             xmlns:controls="using:Kontena.App.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="500"
@@ -32,7 +33,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PodRow">
                                 <Border BorderBrush="{DynamicResource BorderSoft}" BorderThickness="0,0,0,1" Padding="{DynamicResource RowPadding}"
-                                        Classes.trouble="{Binding HasTrouble}" Classes.fresh="{Binding IsRecentlyCreated}">
+                                        Classes.trouble="{Binding HasTrouble}" Classes.fresh="{Binding IsRecentlyCreated}" controls:CopyMenu.Name="{Binding Name}" controls:CopyMenu.Namespace="{Binding Namespace}">
                                     <Grid ColumnDefinitions="2*,0.7*,1.6*,0.8*,1.4*,0.7*">
                                         <Button Grid.Column="0" Classes="link" HorizontalAlignment="Left" Command="{Binding OpenCommand}" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>

@@ -148,13 +148,16 @@ public partial class ClusterResourcesView : UserControl
 
         grid.Children.Add(At(Actions(row), column));
 
-        return new Border
+        var border = new Border
         {
             Child = grid,
             BorderThickness = new Thickness(0, 0, 0, 1),
             [!Border.PaddingProperty] = new DynamicResourceExtension("RowPadding"),
             [!Border.BorderBrushProperty] = new DynamicResourceExtension("BorderSoft"),
         };
+        CopyMenu.SetNamespace(border, row.Reference.Namespace);
+        CopyMenu.SetName(border, row.Reference.Name);
+        return border;
     }
 
     private static string CellText(ResourceRow row, int index) =>
